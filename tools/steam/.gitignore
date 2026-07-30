@@ -1,0 +1,36 @@
+# ═════════════════════════════════════════════════════════════════════════════
+#  Steam credential and scratch files. Checked by check_gitignore.sh, which
+#  upload.sh runs in every mode including a dry run.
+#
+#  This is the directory steamcmd is run from, so it is where its session state
+#  lands. A committed session file is a handed-over build account: it authorises
+#  uploading to the app without a password or a Steam Guard code, and revoking it
+#  means rotating the account.
+# ═════════════════════════════════════════════════════════════════════════════
+
+# Everything generated: staged depot content, rendered VDFs, steamcmd's
+# BuildOutput, upload logs, the synthetic fixture.
+output/
+
+# A local steamcmd install, if you keep one beside the scripts instead of on
+# PATH. Contains config.vdf and the ssfn sentry files.
+steamcmd/
+sdk/
+
+# ── Steam session state — never commit any of these ──────────────────────────
+# config.vdf holds the cached, already-Steam-Guard-approved login token.
+config.vdf
+loginusers.vdf
+# ssfn<digits> is the Steam Guard machine-authorisation ("sentry") file. Having
+# one is what makes a machine "remembered", so it is equivalent to the second
+# factor.
+ssfn*
+# Other names the sentry file has shipped under.
+sentry
+sentry.*
+*.sentryfile
+*.ssfn
+
+# A local override of a build script (e.g. pointing ContentRoot at a scratch
+# tree). Useful, never shared — the committed templates are the source of truth.
+*.vdf.local

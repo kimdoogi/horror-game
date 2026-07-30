@@ -1,0 +1,32 @@
+{
+    "name": "HorrorGame.Net.SteamTransport",
+    "rootNamespace": "HorrorGame.Net.SteamTransport",
+    "references": [
+        "HorrorGame.Net",
+        "Mirror",
+        "FizzySteamworks"
+    ],
+    "includePlatforms": [
+        "Editor",
+        "LinuxStandalone64",
+        "macOSStandalone",
+        "WindowsStandalone32",
+        "WindowsStandalone64"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [
+        "HORRORGAME_FIZZYSTEAMWORKS"
+    ],
+    "versionDefines": [
+        {
+            "name": "com.mirror.steamworks.net",
+            "expression": "",
+            "define": "HORRORGAME_FIZZYSTEAMWORKS"
+        }
+    ],
+    "noEngineReferences": false
+}

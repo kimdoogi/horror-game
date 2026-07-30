@@ -1,0 +1,20 @@
+{
+    "name": "HorrorGame.EditorTools.SceneGen",
+    "rootNamespace": "HorrorGame.EditorTools.SceneGen",
+    "references": [
+        "HorrorGame.Core",
+        "Unity.AI.Navigation",
+        "UnityEngine.UI"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

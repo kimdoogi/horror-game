@@ -1,0 +1,60 @@
+// ═══════════════════════════════════════════════════════════════════════════
+//  SteamPipe app build script. GENERATED — do not edit.
+//
+//  Source     tools/steam/templates/app_build.vdf.template
+//  Values     tools/steam/steam.config
+//  Rendered   ${OUTPUT_ROOT}/vdf/app_build.vdf, by tools/steam/lib/steampipe.py
+//
+//  Every dry run overwrites this file, and nothing under ${OUTPUT_ROOT}/ is
+//  committed. Edit the template; a hand-edit here is validated away.
+// ═══════════════════════════════════════════════════════════════════════════
+"AppBuild"
+{
+    // From steam.config. Nothing else in the repo names an App ID.
+    "AppID"       "${APP_ID}"
+
+    // Shows up on the Builds page on partner.steamgames.com and is the only
+    // thing distinguishing two uploads three weeks later. Carries the branch,
+    // the git commit and a UTC timestamp so a reported bug can be traced to a
+    // commit without asking the player anything.
+    "Desc"        "${DESC}"
+
+    // The staging tree assembled by upload.sh — NOT a Unity build directory.
+    // Unity leaves *_BurstDebugInformation_DoNotShip folders, .pdb files and
+    // .DS_Store behind; pointing ContentRoot at its output ships all of them,
+    // and a depot cannot be un-shipped. The stager exists for this one reason.
+    "ContentRoot" "${CONTENT_ROOT}"
+
+    // steamcmd's own working area: chunk cache, manifests, build logs.
+    "BuildOutput" "${BUILD_OUTPUT}"
+
+    // Empty = upload the build and leave it unassigned to any branch, which is
+    // the safe default and what a bare `upload.sh --upload` does.
+    //
+    // SteamPipe will not set the *default* branch live from a build script, by
+    // Valve's design. Promotion to default is therefore always a separate,
+    // deliberate act on the Builds page — see docs/STEAM-RELEASE.md,
+    // "Promoting a build to default".
+    "SetLive"     "${SET_LIVE}"
+
+    // 1 = steamcmd logs in, computes the build and reports what it *would*
+    // upload without uploading. That still contacts Steam, so it is not the
+    // offline dry run; `upload.sh --dry-run` is (it never renders Preview 1
+    // because it never runs steamcmd at all).
+    "Preview"     "${PREVIEW}"
+
+    // Local content server override, for testing a download without Steam's
+    // CDN. Unused; kept present because omitting it makes older steamcmd
+    // builds warn.
+    "Local"       ""
+
+    // One depot per platform. The depot's operating system and architecture are
+    // configured on the partner site's Depots page, not here — a build script
+    // cannot declare them, and a depot with the wrong OS silently installs
+    // Windows files onto a Mac.
+    "Depots"
+    {
+        "${DEPOT_WINDOWS}" "depot_windows.vdf"
+        "${DEPOT_MACOS}" "depot_macos.vdf"
+    }
+}

@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Balance and rules tests for HorrorGame.Core.
+
+    These run on any machine with the .NET SDK — no Unity, no license, no editor
+    launch. That is the point: the numbers in §05–§08 and the map rules in §12 are
+    the parts of the design most likely to be broken by a careless edit, and they
+    are all reachable without an engine.
+
+    Unity's own Test Framework covers the adapter layer separately, under
+    unity/HorrorGame/Assets/Tests/.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>HorrorGame.Core.Tests</RootNamespace>
+    <!-- Tests exercise nullable edge cases on purpose; don't fail the build for it. -->
+    <WarningsNotAsErrors>CS8625;CS8600;CS8602;CS8604</WarningsNotAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="NUnit" Version="4.2.2" />
+    <PackageReference Include="NUnit3TestAdapter" Version="4.6.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../HorrorGame.Core/HorrorGame.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Path to the core sources, so tests can assert things about the files themselves
+         (for example: that no core file references UnityEngine). -->
+    <AssemblyAttribute Include="HorrorGame.Core.Tests.CoreSourceRootAttribute">
+      <_Parameter1>$(MSBuildThisFileDirectory)../../unity/HorrorGame/Assets/Scripts/Core</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+</Project>

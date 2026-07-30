@@ -1,0 +1,906 @@
+{
+  "grid_metres": 2.5,
+  "origin": "min-X / min-Y corner of the footprint, at the floor top surface (z = 0)",
+  "storey_metres": 3.75,
+  "corridor_clear": {
+    "width": 2.2,
+    "height": 3.0
+  },
+  "gallery_rise_metres": 3.0,
+  "design_sections": [
+    "§03",
+    "§04",
+    "§05",
+    "§06",
+    "§08",
+    "§12"
+  ],
+  "prototype_assembly": {
+    "pieces": 25,
+    "connections": 26,
+    "loops": 3,
+    "open_docks": 18,
+    "extent": [
+      30.0,
+      55.0
+    ],
+    "dead_ends": 1,
+    "observation_posts": 2
+  },
+  "pieces": [
+    {
+      "name": "Corridor_Straight_2m5",
+      "file": "Corridor_Straight_2m5.fbx",
+      "kind": "corridor",
+      "grid_snapped": true,
+      "footprint_metres": [
+        2.5,
+        2.5
+      ],
+      "footprint_cells": [
+        1,
+        1
+      ],
+      "height_metres": 3.3,
+      "max_straight_run_metres": 2.5,
+      "floor_slot": "Floor_Concrete",
+      "material_slots": [
+        "Ceiling_Structure",
+        "Wall_Structure",
+        "Floor_Concrete"
+      ],
+      "triangles": 232,
+      "vertices": 128,
+      "docks": [
+        {
+          "edge": "-Y",
+          "centre": [
+            1.25,
+            0.0
+          ],
+          "width": 2.2,
+          "height": 3.0,
+          "level": 0.0
+        },
+        {
+          "edge": "+Y",
+          "centre": [
+            1.25,
+            2.5
+          ],
+          "width": 2.2,
+          "height": 3.0,
+          "level": 0.0
+        }
+      ],
+      "note": "Grid-unit filler. corner + 5 m + 2.5 m = a 10 m S-corridor leg."
+    },
+    {
+      "name": "Corridor_Straight_5m",
+      "file": "Corridor_Straight_5m.fbx",
+      "kind": "corridor",
+      "grid_snapped": true,
+      "footprint_metres": [
+        2.5,
+        5.0
+      ],
+      "footprint_cells": [
+        1,
+        2
+      ],
+      "height_metres": 3.3,
+      "max_straight_run_metres": 5.0,
+      "floor_slot": "Floor_Concrete",
+      "material_slots": [
+        "Ceiling_Structure",
+        "Wall_Structure",
+        "Floor_Concrete"
+      ],
+      "triangles": 320,
+      "vertices": 176,
+      "docks": [
+        {
+          "edge": "-Y",
+          "centre": [
+            1.25,
+            0.0
+          ],
+          "width": 2.2,
+          "height": 3.0,
+          "level": 0.0
+        },
+        {
+          "edge": "+Y",
+          "centre": [
+            1.25,
+            5.0
+          ],
+          "width": 2.2,
+          "height": 3.0,
+          "level": 0.0
+        }
+      ],
+      "note": "§12 straight section, 5 m."
+    },
+    {
+      "name": "Corridor_Straight_10m",
+      "file": "Corridor_Straight_10m.fbx",
+      "kind": "corridor",
+      "grid_snapped": true,
+      "footprint_metres": [
+        2.5,
+        10.0
+      ],
+      "footprint_cells": [
+        1,
+        4
+      ],
+      "height_metres": 3.3,
+      "max_straight_run_metres": 10.0,
+      "floor_slot": "Floor_Concrete",
+      "material_slots": [
+        "Ceiling_Structure",
+        "Wall_Structure",
+        "Floor_Concrete"
+      ],
+      "triangles": 496,
+      "vertices": 272,
+      "docks": [
+        {
+          "edge": "-Y",
+          "centre": [
+            1.25,
+            0.0
+          ],
+          "width": 2.2,
+          "height": 3.0,
+          "level": 0.0
+        },
+        {
+          "edge": "+Y",
+          "centre": [
+            1.25,
+            10.0
+          ],
+          "width": 2.2,
+          "height": 3.0,
+          "level": 0.0
+        }
+      ],
+      "note": "§12 straight section, 10 m. Longest straight in the kit — half the 20 m cap."
+    },
+    {
+      "name": "Corridor_Corner_L",
+      "file": "Corridor_Corner_L.fbx",
+      "kind": "corridor",
+      "grid_snapped": true,
+      "footprint_metres": [
+        2.5,
+        2.5
+      ],
+      "footprint_cells": [
+        1,
+        1
+      ],
+      "height_metres": 3.3,
+      "max_straight_run_metres": 2.5,
+      "floor_slot": "Floor_Concrete",
+      "material_slots": [
+        "Ceiling_Structure",
+        "Wall_Structure",
+        "Floor_Concrete"
+      ],
+      "triangles": 232,
+      "vertices": 128,
+      "docks": [
+        {
+          "edge": "-Y",
+          "centre": [
+            1.25,
+            0.0
+          ],
+          "width": 2.2,
+          "height": 3.0,
+          "level": 0.0
+        },
+        {
+          "edge": "+X",
+          "centre": [
+            2.5,
+            1.25
+          ],
+          "width": 2.2,
+          "height": 3.0,
+          "level": 0.0
+        }
+      ],
+      "note": "90° turn. Composes the S-corridor by hand."
+    },
+    {
+      "name": "SCorridor_Unit_10m_x2",
+      "file": "SCorridor_Unit_10m_x2.fbx",
+      "kind": "corridor",
+      "grid_snapped": true,
+      "footprint_metres": [
+        5.0,
+        17.5
+      ],
+      "footprint_cells": [
+        2,
+        7
+      ],
+      "height_metres": 3.3,
+      "max_straight_run_metres": 10.0,
+      "floor_slot": "Floor_Concrete",
+      "material_slots": [
+        "Ceiling_Structure",
+        "Wall_Structure",
+        "Floor_Concrete"
+      ],
+      "triangles": 640,
+      "vertices": 352,
+      "docks": [
+        {
+          "edge": "-Y",
+          "centre": [
+            1.25,
+            0.0
+          ],
+          "width": 2.2,
+          "height": 3.0,
+          "level": 0.0
+        },
+        {
+          "edge": "+Y",
+          "centre": [
+            3.75,
+            17.5
+          ],
+          "width": 2.2,
+          "height": 3.0,
+          "level": 0.0
+        }
+      ],
+      "note": "§12 맵의 기본 단위: two 10 m legs, 20.00 m of path, 4.17 s of broken sight."
+    },
+    {
+      "name": "Junction_T",
+      "file": "Junction_T.fbx",
+      "kind": "junction",
+      "grid_snapped": true,
+      "footprint_metres": [
+        2.5,
+        2.5
+      ],
+      "footprint_cells": [
+        1,
+        1
+      ],
+      "height_metres": 3.3,
+      "max_straight_run_metres": 2.5,
+      "floor_slot": "Floor_Concrete",
+      "material_slots": [
+        "Ceiling_Structure",
+        "Wall_Structure",
+        "Floor_Concrete"
+      ],
+      "triangles": 232,
+      "vertices": 128,
+      "docks": [
+        {
+          "edge": "-Y",
+          "centre": [
+            1.25,
+            0.0
+          ],
+          "width": 2.2,
+          "height": 3.0,
+          "level": 0.0
+        },
+        {
+          "edge": "+Y",
+          "centre": [
+            1.25,
+            2.5
+          ],
+          "width": 2.2,
+          "height": 3.0,
+          "level": 0.0
+        },
+        {
+          "edge": "+X",
+          "centre": [
+            2.5,
+            1.25
+          ],
+          "width": 2.2,
+          "height": 3.0,
+          "level": 0.0
+        }
+      ],
+      "note": "§12 분기 / loop feeder."
+    },
+    {
+      "name": "Junction_Cross_4Way",
+      "file": "Junction_Cross_4Way.fbx",
+      "kind": "junction",
+      "grid_snapped": true,
+      "footprint_metres": [
+        2.5,
+        2.5
+      ],
+      "footprint_cells": [
+        1,
+        1
+      ],
+      "height_metres": 3.3,
+      "max_straight_run_metres": 2.5,
+      "floor_slot": "Floor_Concrete",
+      "material_slots": [
+        "Ceiling_Structure",
+        "Wall_Structure",
+        "Floor_Concrete"
+      ],
+      "triangles": 320,
+      "vertices": 176,
+      "docks": [
+        {
+          "edge": "-Y",
+          "centre": [
+            1.25,
+            0.0
+          ],
+          "width": 2.2,
+          "height": 3.0,
+          "level": 0.0
+        },
+        {
+          "edge": "+Y",
+          "centre": [
+            1.25,
+            2.5
+          ],
+          "width": 2.2,
+          "height": 3.0,
+          "level": 0.0
+        },
+        {
+          "edge": "-X",
+          "centre": [
+            0.0,
+            1.25
+          ],
+          "width": 2.2,
+          "height": 3.0,
+          "level": 0.0
+        },
+        {
+          "edge": "+X",
+          "centre": [
+            2.5,
+            1.25
+          ],
+          "width": 2.2,
+          "height": 3.0,
+          "level": 0.0
+        }
+      ],
+      "note": "§12 순환로: 전체 3+ required, 트리 구조는 사형선고."
+    },
+    {
+      "name": "DeadEnd_Cap",
+      "file": "DeadEnd_Cap.fbx",
+      "kind": "deadend",
+      "grid_snapped": true,
+      "footprint_metres": [
+        2.5,
+        5.0
+      ],
+      "footprint_cells": [
+        1,
+        2
+      ],
+      "height_metres": 3.3,
+      "max_straight_run_metres": 5.0,
+      "floor_slot": "Floor_Concrete",
+      "material_slots": [
+        "Ceiling_Structure",
+        "Wall_Structure",
+        "Trim_Steel",
+        "Floor_Concrete"
+      ],
+      "triangles": 628,
+      "vertices": 344,
+      "docks": [
+        {
+          "edge": "-Y",
+          "centre": [
+            1.25,
+            0.0
+          ],
+          "width": 2.2,
+          "height": 3.0,
+          "level": 0.0
+        }
+      ],
+      "note": "§12 막힌 길 20~25%, each with a reward — plinth + alcove built in."
+    },
+    {
+      "name": "Hall_Open_20x20",
+      "file": "Hall_Open_20x20.fbx",
+      "kind": "open",
+      "grid_snapped": true,
+      "footprint_metres": [
+        20.0,
+        20.0
+      ],
+      "footprint_cells": [
+        8,
+        8
+      ],
+      "height_metres": 6.3,
+      "max_straight_run_metres": 20.0,
+      "floor_slot": "Floor_Tile",
+      "material_slots": [
+        "Ceiling_Structure",
+        "Wall_Structure",
+        "Floor_Tile"
+      ],
+      "triangles": 1288,
+      "vertices": 704,
+      "docks": [
+        {
+          "edge": "-Y",
+          "centre": [
+            6.25,
+            0.0
+          ],
+          "width": 2.2,
+          "height": 3.0,
+          "level": 0.0
+        },
+        {
+          "edge": "-Y",
+          "centre": [
+            13.75,
+            0.0
+          ],
+          "width": 2.2,
+          "height": 3.0,
+          "level": 0.0
+        },
+        {
+          "edge": "+Y",
+          "centre": [
+            6.25,
+            20.0
+          ],
+          "width": 2.2,
+          "height": 3.0,
+          "level": 0.0
+        },
+        {
+          "edge": "+Y",
+          "centre": [
+            13.75,
+            20.0
+          ],
+          "width": 2.2,
+          "height": 3.0,
+          "level": 0.0
+        },
+        {
+          "edge": "-X",
+          "centre": [
+            0.0,
+            6.25
+          ],
+          "width": 2.2,
+          "height": 3.0,
+          "level": 0.0
+        },
+        {
+          "edge": "-X",
+          "centre": [
+            0.0,
+            13.75
+          ],
+          "width": 2.2,
+          "height": 3.0,
+          "level": 0.0
+        },
+        {
+          "edge": "+X",
+          "centre": [
+            20.0,
+            6.25
+          ],
+          "width": 2.2,
+          "height": 3.0,
+          "level": 0.0
+        },
+        {
+          "edge": "+X",
+          "centre": [
+            20.0,
+            13.75
+          ],
+          "width": 2.2,
+          "height": 3.0,
+          "level": 0.0
+        }
+      ],
+      "note": "§12 개방 공간, 20 m sight line. §12's own table: aggro at 10 m+ is where escape is reliable."
+    },
+    {
+      "name": "Stairwell_Metal",
+      "file": "Stairwell_Metal.fbx",
+      "kind": "stair",
+      "grid_snapped": true,
+      "footprint_metres": [
+        5.0,
+        5.0
+      ],
+      "footprint_cells": [
+        2,
+        2
+      ],
+      "height_metres": 7.05,
+      "max_straight_run_metres": 5.0,
+      "floor_slot": "Floor_Metal",
+      "material_slots": [
+        "Ceiling_Structure",
+        "Wall_Structure",
+        "Floor_Metal"
+      ],
+      "triangles": 1088,
+      "vertices": 624,
+      "docks": [
+        {
+          "edge": "-Y",
+          "centre": [
+            1.25,
+            0.0
+          ],
+          "width": 2.2,
+          "height": 3.0,
+          "level": 0.0
+        },
+        {
+          "edge": "-Y",
+          "centre": [
+            3.75,
+            0.0
+          ],
+          "width": 2.2,
+          "height": 3.0,
+          "level": 3.75
+        }
+      ],
+      "note": "§12 계단 = 금속. Climbs one storey (3.75 m); spine wall breaks sight between flights."
+    },
+    {
+      "name": "ObservationPost_Gallery",
+      "file": "ObservationPost_Gallery.fbx",
+      "kind": "observation",
+      "grid_snapped": true,
+      "footprint_metres": [
+        2.5,
+        15.0
+      ],
+      "footprint_cells": [
+        1,
+        6
+      ],
+      "height_metres": 3.3,
+      "max_straight_run_metres": 15.0,
+      "floor_slot": "Floor_Concrete",
+      "material_slots": [
+        "Ceiling_Structure",
+        "Wall_Structure",
+        "Trim_Steel",
+        "Floor_Concrete"
+      ],
+      "triangles": 1156,
+      "vertices": 632,
+      "docks": [
+        {
+          "edge": "-Y",
+          "centre": [
+            1.25,
+            0.0
+          ],
+          "width": 2.2,
+          "height": 2.4,
+          "level": 0.0
+        },
+        {
+          "edge": "+Y",
+          "centre": [
+            1.25,
+            15.0
+          ],
+          "width": 2.2,
+          "height": 2.4,
+          "level": 0.0
+        }
+      ],
+      "note": "§04 관측자 15 m. Place at +3.00 m over a floor: 14.70 m horizontal = 15.00 m slant."
+    },
+    {
+      "name": "ObservationPost_BarredWindow",
+      "file": "ObservationPost_BarredWindow.fbx",
+      "kind": "observation",
+      "grid_snapped": true,
+      "footprint_metres": [
+        2.5,
+        2.5
+      ],
+      "footprint_cells": [
+        1,
+        1
+      ],
+      "height_metres": 3.3,
+      "max_straight_run_metres": 2.5,
+      "floor_slot": "Floor_Concrete",
+      "material_slots": [
+        "Ceiling_Structure",
+        "Wall_Structure",
+        "Trim_Steel",
+        "Floor_Concrete"
+      ],
+      "triangles": 848,
+      "vertices": 464,
+      "docks": [
+        {
+          "edge": "-Y",
+          "centre": [
+            1.25,
+            0.0
+          ],
+          "width": 2.2,
+          "height": 3.0,
+          "level": 0.0
+        }
+      ],
+      "note": "§12 창문 · 격자 variant. 0.14 m bar gaps vs the monster's 0.93 m shoulders."
+    },
+    {
+      "name": "Doorway_Frame",
+      "file": "Doorway_Frame.fbx",
+      "kind": "door",
+      "grid_snapped": true,
+      "footprint_metres": [
+        2.5,
+        2.5
+      ],
+      "footprint_cells": [
+        1,
+        1
+      ],
+      "height_metres": 3.3,
+      "max_straight_run_metres": 2.5,
+      "floor_slot": "Floor_Concrete",
+      "material_slots": [
+        "Ceiling_Structure",
+        "Wall_Structure",
+        "Trim_Steel",
+        "Floor_Concrete"
+      ],
+      "triangles": 628,
+      "vertices": 344,
+      "docks": [
+        {
+          "edge": "-Y",
+          "centre": [
+            1.25,
+            0.0
+          ],
+          "width": 2.2,
+          "height": 3.0,
+          "level": 0.0
+        },
+        {
+          "edge": "+Y",
+          "centre": [
+            1.25,
+            2.5
+          ],
+          "width": 2.2,
+          "height": 3.0,
+          "level": 0.0
+        }
+      ],
+      "note": "§12 병목. 2.20 x 2.40 m opening; 2.08 m at the hinge pintles."
+    },
+    {
+      "name": "Door_Panel_Lockable",
+      "file": "Door_Panel_Lockable.fbx",
+      "kind": "prop",
+      "grid_snapped": false,
+      "footprint_metres": [
+        1.1,
+        0.175
+      ],
+      "footprint_cells": null,
+      "height_metres": 2.4,
+      "max_straight_run_metres": 1.1,
+      "floor_slot": "-",
+      "material_slots": [
+        "Door_Leaf",
+        "Trim_Steel"
+      ],
+      "triangles": 792,
+      "vertices": 432,
+      "docks": [],
+      "note": "PROP, not a grid tile. Hinge on origin. Two leaves fill one Doorway_Frame."
+    },
+    {
+      "name": "WallPanel_Electrical",
+      "file": "WallPanel_Electrical.fbx",
+      "kind": "prop",
+      "grid_snapped": false,
+      "footprint_metres": [
+        0.62,
+        0.26
+      ],
+      "footprint_cells": null,
+      "height_metres": 1.9,
+      "max_straight_run_metres": 0.62,
+      "floor_slot": "-",
+      "material_slots": [
+        "Trim_Steel",
+        "Wall_Structure"
+      ],
+      "triangles": 440,
+      "vertices": 240,
+      "docks": [],
+      "note": "PROP. §12 전기 패널 구역당 1개 — §04's Engineer lights the clue."
+    },
+    {
+      "name": "FloorTile_Wood",
+      "file": "FloorTile_Wood.fbx",
+      "kind": "floor",
+      "grid_snapped": true,
+      "footprint_metres": [
+        5.0,
+        5.0
+      ],
+      "footprint_cells": [
+        2,
+        2
+      ],
+      "height_metres": 0.15,
+      "max_straight_run_metres": 5.0,
+      "floor_slot": "Floor_Wood",
+      "material_slots": [
+        "Floor_Wood"
+      ],
+      "triangles": 132,
+      "vertices": 88,
+      "docks": [],
+      "note": "§12 구역 A — 삐걱. Plank relief."
+    },
+    {
+      "name": "FloorTile_Tile",
+      "file": "FloorTile_Tile.fbx",
+      "kind": "floor",
+      "grid_snapped": true,
+      "footprint_metres": [
+        5.0,
+        5.0
+      ],
+      "footprint_cells": [
+        2,
+        2
+      ],
+      "height_metres": 0.15,
+      "max_straight_run_metres": 5.0,
+      "floor_slot": "Floor_Tile",
+      "material_slots": [
+        "Floor_Tile"
+      ],
+      "triangles": 1212,
+      "vertices": 808,
+      "docks": [],
+      "note": "§12 구역 B — 딱딱, 반향. 0.5 m grid, grout lines."
+    },
+    {
+      "name": "FloorTile_Gravel",
+      "file": "FloorTile_Gravel.fbx",
+      "kind": "floor",
+      "grid_snapped": true,
+      "footprint_metres": [
+        5.0,
+        5.0
+      ],
+      "footprint_cells": [
+        2,
+        2
+      ],
+      "height_metres": 0.15,
+      "max_straight_run_metres": 5.0,
+      "floor_slot": "Floor_Gravel",
+      "material_slots": [
+        "Floor_Gravel"
+      ],
+      "triangles": 1038,
+      "vertices": 521,
+      "docks": [],
+      "note": "§12 구역 C — 부스럭. Jittered surface, seeded."
+    },
+    {
+      "name": "FloorTile_Concrete",
+      "file": "FloorTile_Concrete.fbx",
+      "kind": "floor",
+      "grid_snapped": true,
+      "footprint_metres": [
+        5.0,
+        5.0
+      ],
+      "footprint_cells": [
+        2,
+        2
+      ],
+      "height_metres": 0.15,
+      "max_straight_run_metres": 5.0,
+      "floor_slot": "Floor_Concrete",
+      "material_slots": [
+        "Floor_Concrete"
+      ],
+      "triangles": 60,
+      "vertices": 40,
+      "docks": [],
+      "note": "§12 구역 D — 둔탁. Poured slabs, flat on purpose."
+    },
+    {
+      "name": "FloorTile_Metal",
+      "file": "FloorTile_Metal.fbx",
+      "kind": "floor",
+      "grid_snapped": true,
+      "footprint_metres": [
+        5.0,
+        5.0
+      ],
+      "footprint_cells": [
+        2,
+        2
+      ],
+      "height_metres": 0.15,
+      "max_straight_run_metres": 5.0,
+      "floor_slot": "Floor_Metal",
+      "material_slots": [
+        "Floor_Metal"
+      ],
+      "triangles": 348,
+      "vertices": 232,
+      "docks": [],
+      "note": "§12 계단 — 울림. Checker plate, cross-hatched ribs."
+    },
+    {
+      "name": "FloorBoundary_Split",
+      "file": "FloorBoundary_Split.fbx",
+      "kind": "floor",
+      "grid_snapped": true,
+      "footprint_metres": [
+        5.0,
+        2.5
+      ],
+      "footprint_cells": [
+        2,
+        1
+      ],
+      "height_metres": 0.15,
+      "max_straight_run_metres": 5.0,
+      "floor_slot": "Floor_Concrete + Floor_Wood",
+      "material_slots": [
+        "Floor_Concrete",
+        "Floor_Wood"
+      ],
+      "triangles": 36,
+      "vertices": 24,
+      "docks": [],
+      "note": "§12 재질 경계를 명확히 할 것. 0.20 m x 0.03 m recessed channel between two slots."
+    }
+  ]
+}

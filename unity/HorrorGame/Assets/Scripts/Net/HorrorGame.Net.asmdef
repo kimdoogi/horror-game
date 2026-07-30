@@ -1,0 +1,20 @@
+{
+    "name": "HorrorGame.Net",
+    "rootNamespace": "HorrorGame.Net",
+    "references": [
+        "HorrorGame.Core",
+        "HorrorGame.Steam",
+        "Mirror",
+        "Mirror.Components",
+        "Mirror.Transports"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

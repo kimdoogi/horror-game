@@ -1,0 +1,31 @@
+{
+    "name": "HorrorGame.Steam.SteamworksBackend",
+    "rootNamespace": "HorrorGame.Steam.SteamworksBackend",
+    "references": [
+        "HorrorGame.Core",
+        "HorrorGame.Steam",
+        "com.rlabrecque.steamworks.net"
+    ],
+    "includePlatforms": [
+        "Editor",
+        "macOSStandalone",
+        "WindowsStandalone64",
+        "LinuxStandalone64"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [
+        "HORRORGAME_STEAMWORKS"
+    ],
+    "versionDefines": [
+        {
+            "name": "com.rlabrecque.steamworks.net",
+            "expression": "",
+            "define": "HORRORGAME_STEAMWORKS"
+        }
+    ],
+    "noEngineReferences": false
+}

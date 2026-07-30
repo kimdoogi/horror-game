@@ -1,0 +1,17 @@
+{
+    "name": "HorrorGame.Gameplay.Player",
+    "rootNamespace": "HorrorGame.Gameplay.Player",
+    "references": [
+        "HorrorGame.Core",
+        "Unity.InputSystem"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

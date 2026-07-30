@@ -1,0 +1,24 @@
+<Project>
+
+  <!--
+    Shared build settings for every project in the HorrorGame solution.
+
+    LangVersion is pinned to 9.0 on purpose: Unity 6 LTS compiles C# 9. If a
+    project here accepted C# 10+, code could pass `dotnet build` and then fail
+    inside Unity, which defeats the whole point of sharing the sources.
+  -->
+
+  <PropertyGroup>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <DebugType>portable</DebugType>
+    <Deterministic>true</Deterministic>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+</Project>

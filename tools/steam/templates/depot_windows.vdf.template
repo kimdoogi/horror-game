@@ -1,0 +1,36 @@
+// ═══════════════════════════════════════════════════════════════════════════
+//  Windows depot. GENERATED — do not edit.
+//  Source tools/steam/templates/depot_windows.vdf.template, rendered to
+//  ${OUTPUT_ROOT}/vdf/depot_windows.vdf.
+//
+//  Partner site (Depots page) must have this depot set to
+//      OS: Windows      Architecture: 64-bit      Language: (all)
+//  Those three fields do not exist in a build script and cannot be set here.
+// ═══════════════════════════════════════════════════════════════════════════
+"DepotBuild"
+{
+    "DepotID" "${DEPOT_WINDOWS}"
+
+    // Relative to the AppBuild's ContentRoot. The staging tree is
+    //     <ContentRoot>/windows/   <- Mono or IL2CPP player, cleaned
+    //     <ContentRoot>/macos/
+    // so one ContentRoot serves both depots and neither can accidentally pick
+    // up the other platform's files.
+    "FileMapping"
+    {
+        "LocalPath" "windows/*"
+        "DepotPath" "."
+        "recursive" "1"
+    }
+
+    // Belt and braces. The stager already refuses to copy these (see
+    // EXCLUSIONS in tools/steam/lib/steampipe.py), so if one of these ever
+    // matches something, the stager has a bug — but SteamPipe is the last gate
+    // before content is public, and duplicating the rule here costs nothing.
+    "FileExclusion" "*.pdb"
+    "FileExclusion" "*.mdb"
+    "FileExclusion" "*_BurstDebugInformation_DoNotShip*"
+    "FileExclusion" "*_BackUpThisFolder_ButDontShipItWithYourGame*"
+    "FileExclusion" "*.DS_Store"
+    "FileExclusion" "*.log"
+}

@@ -1,0 +1,159 @@
+# Everything that can be checked without a game engine.
+#
+# Nothing in this file needs Unity, a Unity licence, a GPU or a Windows machine, so
+# it runs on every push from the first commit onward. The Unity half of CI — the
+# Windows IL2CPP player and the EditMode/PlayMode suites — lives in unity.yml and is
+# gated off until a licence is configured. See docs/CI.md.
+#
+# Deliberately no `paths:` filters. It is tempting to run the audio audit only when
+# Assets/Audio changes, but tools/audio/verify_audio.py parses
+# Assets/Scripts/Core/GameConstants.cs to compare the Listener's clarity table
+# against the measured clips (§04 × §12, finding F-002). A one-line edit to a core
+# constant can therefore break the audio gate, and a filter would hide exactly that.
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+# A second push to the same branch makes the first run's answer irrelevant.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+  # The runner's locale decides the language of dotnet's own output. Pinning it keeps
+  # log greps and pasted failures readable for everyone reviewing a run.
+  DOTNET_CLI_UI_LANGUAGE: en
+
+jobs:
+  # ───────────────────────────────────────────────────────────────────────────────
+  # The gate that matters. Fast, no licence, covers every rule and tuned number.
+  #
+  # docs/ARCHITECTURE.md §1 puts the core sources inside the Unity project and
+  # compiles them a second time through core/HorrorGame.Core.csproj, so this job
+  # tests the exact files Unity ships. §5 says these are the tests that must always
+  # be green; make this the required status check on main (docs/CI.md explains how).
+  # ───────────────────────────────────────────────────────────────────────────────
+  core-tests:
+    name: core tests (dotnet)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          # HorrorGame.Core.Tests targets net9.0; HorrorGame.Core targets
+          # netstandard2.1 for Unity, which the 9.x SDK builds fine. Floating the
+          # patch is intentional — a pinned patch rots into a download failure.
+          dotnet-version: "9.0.x"
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('core/**/*.csproj', 'core/Directory.Build.props') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      # The command from docs/ARCHITECTURE.md §5, verbatim, so a red run is
+      # reproducible by copy-paste.
+      - name: dotnet test
+        run: dotnet test core/HorrorGame.Core.Tests/HorrorGame.Core.Tests.csproj
+
+      # The test project does not reference HorrorGame.Sim, so the balance simulator
+      # (§16-2's loot-value question) can stop compiling without a single test
+      # failing. Building the solution costs a couple of seconds and closes that gap.
+      - name: dotnet build (whole solution, Release)
+        run: dotnet build core/HorrorGame.sln --configuration Release
+
+  # ───────────────────────────────────────────────────────────────────────────────
+  # §12's five-material alphabet. See tools/ci/check_audio_baseline.py for why a
+  # known blocking defect (F-002) is baselined rather than failing or ignored.
+  # ───────────────────────────────────────────────────────────────────────────────
+  asset-audit:
+    name: asset audit (§12 audio)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          # Pinned to the newest interpreter with wheels for the numpy and scipy
+          # versions in tools/ci/requirements-audio.txt. On a newer interpreter pip
+          # falls back to building scipy from source, which needs a Fortran compiler
+          # and turns a 40-second job into a 20-minute one before failing.
+          python-version: "3.12"
+
+      - name: Cache the audio venv
+        uses: actions/cache@v4
+        with:
+          path: tools/audio/.venv
+          key: audio-venv-${{ runner.os }}-py3.12-${{ hashFiles('tools/ci/requirements-audio.txt') }}
+
+      - name: Audit and gate
+        run: tools/ci/verify_audio.sh --json audit.json
+
+      # Attached whether the gate passed or failed: the full 5x5 separation matrix
+      # and the per-clip measurements are what a retune actually needs to look at,
+      # and they are far too long to read in a log.
+      - name: Upload the audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audio-audit
+          path: audit.json
+          if-no-files-found: warn
+
+  # ───────────────────────────────────────────────────────────────────────────────
+  # Proof that the model generators still run. The .fbx/.glb files are committed
+  # (docs/ASSETS.md), so nothing else would notice if the only way to regenerate
+  # them stopped working.
+  # ───────────────────────────────────────────────────────────────────────────────
+  blender-generators:
+    name: blender generators
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # One place. tools/ci/install_blender_linux.sh reads this and pins a matching
+      # sha256; bumping the version without the digest fails loudly rather than
+      # installing something unverified.
+      BLENDER_VERSION: "5.2.0"
+    steps:
+      - uses: actions/checkout@v4
+
+      # Keyed on the version alone: the tarball for a given version never changes,
+      # and tools/ci/install_blender_linux.sh verifies its sha256 either way.
+      - name: Cache Blender
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/blender
+          key: blender-${{ runner.os }}-${{ env.BLENDER_VERSION }}
+
+      - name: Install Blender
+        run: |
+          BLENDER="$(tools/ci/install_blender_linux.sh)"
+          echo "BLENDER=${BLENDER}" >> "$GITHUB_ENV"
+
+      # Exits non-zero on ASSET_FAILED, on a Python traceback, or when a generator
+      # writes nothing — because --background exits 0 after a Python exception and
+      # the exit code alone would call a dead generator a success.
+      - name: Regenerate every asset
+        run: tools/ci/run_blender_generators.sh
+
+      - name: Upload the generator logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: blender-logs
+          path: artifacts/blender/*.log
+          if-no-files-found: warn

@@ -1,0 +1,15 @@
+# Python dependencies for tools/audio/*.py, pinned.
+#
+# Pinned rather than floated because the audit produces *numbers that are quoted
+# elsewhere*. docs/BALANCE-FINDINGS.md states F-002 as "gravel measures 32.4 dB
+# quieter than concrete" and F-003 as "wood versus metal at 1.396x", one decimal
+# place from a 1.400x threshold (§12). Those values come out of scipy's filter
+# design and numpy's FFT. A minor upgrade that shifts a filter's group delay by a
+# sample can move 1.396 across 1.4 and either invent a defect or hide one, and the
+# commit that "caused" it would be an unrelated dependency resolution.
+#
+# These are the versions the findings in docs/BALANCE-FINDINGS.md were measured
+# with. When they move, expect the audit's numbers to move too: re-read the
+# findings against the new output instead of silently re-baselining.
+numpy==2.0.2
+scipy==1.13.1

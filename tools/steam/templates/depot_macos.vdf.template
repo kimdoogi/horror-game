@@ -1,0 +1,34 @@
+// ═══════════════════════════════════════════════════════════════════════════
+//  macOS depot. GENERATED — do not edit.
+//  Source tools/steam/templates/depot_macos.vdf.template, rendered to
+//  ${OUTPUT_ROOT}/vdf/depot_macos.vdf.
+//
+//  Partner site (Depots page) must have this depot set to
+//      OS: macOS        Architecture: 64-bit      Language: (all)
+//
+//  Upload this depot FROM macOS. SteamPipe records the POSIX permission bits it
+//  sees, so the executable bit on <App>.app/Contents/MacOS/<binary> survives
+//  only if the machine running steamcmd has it. Uploaded from Windows, the app
+//  bundle installs and refuses to launch with no useful error.
+// ═══════════════════════════════════════════════════════════════════════════
+"DepotBuild"
+{
+    "DepotID" "${DEPOT_MACOS}"
+
+    "FileMapping"
+    {
+        "LocalPath" "macos/*"
+        "DepotPath" "."
+        "recursive" "1"
+    }
+
+    // AppleDouble sidecars (._Foo) and .DS_Store are created by the Finder just
+    // by looking at a folder, so they appear in a build directory without
+    // anyone doing anything. In a shipped app bundle they are noise at best and
+    // trip Gatekeeper's bundle validation at worst.
+    "FileExclusion" "*.DS_Store"
+    "FileExclusion" "*/._*"
+    "FileExclusion" "*.dSYM*"
+    "FileExclusion" "*.pdb"
+    "FileExclusion" "*.log"
+}

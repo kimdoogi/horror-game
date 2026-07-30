@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    ============================================================================
+    HorrorGame.Core — engine-agnostic game rules
+    ============================================================================
+
+    The sources for this assembly do NOT live next to this .csproj. They live
+    inside the Unity project:
+
+        unity/HorrorGame/Assets/Scripts/Core/**/*.cs
+
+    ...and are pulled in by the glob below. That means Unity compiles the exact
+    same files that `dotnet test` compiles — one source of truth, verified two
+    ways. Never copy a core .cs file into this directory.
+
+    Hard rule enforced by NoEngineReferenceTests: no file under Scripts/Core may
+    reference UnityEngine. The matching Unity asmdef sets
+    "noEngineReferences": true so Unity enforces it too.
+    ============================================================================
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <RootNamespace>HorrorGame.Core</RootNamespace>
+    <AssemblyName>HorrorGame.Core</AssemblyName>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <CoreSourceRoot>$(MSBuildThisFileDirectory)../../unity/HorrorGame/Assets/Scripts/Core/</CoreSourceRoot>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="$(CoreSourceRoot)**/*.cs" />
+  </ItemGroup>
+
+  <!-- Fail loudly rather than silently compiling an empty assembly. -->
+  <Target Name="VerifyCoreSourcesFound" BeforeTargets="CoreCompile">
+    <Error Condition="'@(Compile)' == ''"
+           Text="No core sources matched $(CoreSourceRoot)**/*.cs — the Unity project layout moved. Fix CoreSourceRoot." />
+  </Target>
+
+</Project>

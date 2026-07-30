@@ -1,0 +1,163 @@
+{
+  "channels": 1,
+  "clips": {
+    "monster_breath_loop_01.wav": {
+      "centroid_hz": 1117.9,
+      "peak_db": -22.0,
+      "seconds": 7.2,
+      "sha256_12": "f108e49dc62c"
+    },
+    "monster_breath_loop_02.wav": {
+      "centroid_hz": 934.3,
+      "peak_db": -22.0,
+      "seconds": 8.0,
+      "sha256_12": "edbe0f1db2c5"
+    },
+    "monster_grab_01.wav": {
+      "centroid_hz": 765.9,
+      "peak_db": -4.5,
+      "seconds": 1.26,
+      "sha256_12": "b88a05288fb6"
+    },
+    "monster_grab_02.wav": {
+      "centroid_hz": 830.4,
+      "peak_db": -4.61,
+      "seconds": 1.02,
+      "sha256_12": "6ab15e8220f2"
+    },
+    "monster_growl_01.wav": {
+      "centroid_hz": 175.1,
+      "peak_db": -7.0,
+      "seconds": 1.56,
+      "sha256_12": "2733bed3e9da"
+    },
+    "monster_growl_02.wav": {
+      "centroid_hz": 148.2,
+      "peak_db": -7.0,
+      "seconds": 1.94,
+      "sha256_12": "a7e2ccc047a9"
+    },
+    "monster_growl_03.wav": {
+      "centroid_hz": 165.5,
+      "peak_db": -7.0,
+      "seconds": 1.28,
+      "sha256_12": "2096029b52ba"
+    },
+    "monster_presence_bed.wav": {
+      "centroid_hz": 32.4,
+      "peak_db": -18.0,
+      "seconds": 25.6,
+      "sha256_12": "4f7715974cd8"
+    },
+    "monster_roar_01.wav": {
+      "centroid_hz": 457.0,
+      "peak_db": -3.0,
+      "seconds": 2.1,
+      "sha256_12": "0652793cc128"
+    },
+    "monster_roar_02.wav": {
+      "centroid_hz": 590.8,
+      "peak_db": -3.0,
+      "seconds": 1.76,
+      "sha256_12": "1d876f812233"
+    },
+    "monster_roar_03.wav": {
+      "centroid_hz": 417.6,
+      "peak_db": -3.0,
+      "seconds": 2.62,
+      "sha256_12": "04e9dc3453bb"
+    },
+    "monster_search_01.wav": {
+      "centroid_hz": 506.6,
+      "peak_db": -10.5,
+      "seconds": 2.24,
+      "sha256_12": "aabad1efdc60"
+    },
+    "monster_search_02.wav": {
+      "centroid_hz": 505.7,
+      "peak_db": -10.5,
+      "seconds": 1.82,
+      "sha256_12": "4a3cfc143ea2"
+    },
+    "monster_stun_01.wav": {
+      "centroid_hz": 210.0,
+      "peak_db": -5.5,
+      "seconds": 2.5,
+      "sha256_12": "73efd9b798e2"
+    },
+    "monster_stun_02.wav": {
+      "centroid_hz": 160.3,
+      "peak_db": -5.5,
+      "seconds": 2.5,
+      "sha256_12": "4172ea5150ae"
+    }
+  },
+  "events": {
+    "FlashStun": {
+      "clips": [
+        "monster_stun_01.wav",
+        "monster_stun_02.wav"
+      ],
+      "note": "Length mirrors GameConstants.FlashStunSeconds (§04). Regenerate if it changes.",
+      "seconds": 2.5
+    },
+    "Grab": [
+      "monster_grab_01.wav",
+      "monster_grab_02.wav"
+    ]
+  },
+  "generator": "tools/audio/gen_monster_audio.py",
+  "loops": [
+    "monster_breath_loop_01.wav",
+    "monster_breath_loop_02.wav",
+    "monster_presence_bed.wav"
+  ],
+  "peak_db": {
+    "bed": -18.0,
+    "breath": -22.0,
+    "grab": -4.5,
+    "growl": -7.0,
+    "roar": -3.0,
+    "search": -10.5,
+    "stun": -5.5
+  },
+  "proximity": {
+    "bed": "monster_presence_bed.wav",
+    "breath": [
+      "monster_breath_loop_01.wav",
+      "monster_breath_loop_02.wav"
+    ],
+    "note": "Crossfade by distance only, never by monster state — a state-gated bed would leak the position §06's Standstill hides."
+  },
+  "sample_rate": 48000,
+  "states": {
+    "Alert": {
+      "clips": [
+        "monster_growl_01.wav",
+        "monster_growl_02.wav",
+        "monster_growl_03.wav"
+      ]
+    },
+    "Chase": {
+      "clips": [
+        "monster_roar_01.wav",
+        "monster_roar_02.wav",
+        "monster_roar_03.wav"
+      ]
+    },
+    "Patrol": {
+      "clips": [],
+      "note": "§06 순찰 uses footsteps only — owned by the footstep generator."
+    },
+    "Search": {
+      "clips": [
+        "monster_search_01.wav",
+        "monster_search_02.wav"
+      ]
+    },
+    "Standstill": {
+      "clips": [],
+      "note": "§06: 소리 없음. Intentionally silent — 침묵이 가장 무서운 소리다. Do not add a clip here. The Listener losing the monster is the mechanic."
+    }
+  }
+}

@@ -1,0 +1,299 @@
+# The Unity half of CI: a Windows IL2CPP player and the two Unity test suites.
+#
+# WHY A WINDOWS RUNNER IS NOT OPTIONAL
+# ════════════════════════════════════
+# This project is developed on macOS, and macOS cannot produce a Windows IL2CPP
+# player. IL2CPP transpiles C# to C++ and then needs the *target* platform's native
+# toolchain — MSVC — to compile and link it, which does not exist on a Mac. A Mac can
+# cross-compile a Windows **Mono** player, and that is all it can do.
+#
+# Mono is not a shippable answer for this game:
+#   * §13 chose Steam as the entire backend, and Steam's audience is overwhelmingly
+#     Windows, so the Windows player is the product, not a side build;
+#   * Mono ships the game as IL, which any player can decompile in seconds. §13 and
+#     docs/ARCHITECTURE.md §4 make "clue contents and the objective's location exist
+#     only on the host" a design constraint. Host-side secrets survive a decompiler,
+#     but a Mono build also hands out the entire clue table, glyph rendering and
+#     ObjectiveResolver in readable form to anyone who wants to spoil §03 for a
+#     lobby;
+#   * IL2CPP is what the platform is tuned and profiled against, so a Mono-only
+#     pipeline means the build that ships has never been built by CI at all.
+#
+# So this workflow is the only path from this repository to a shippable artifact, and
+# that is a structural fact about the project rather than CI hygiene.
+#
+# THIS WORKFLOW DOES NOT RUN YET
+# ══════════════════════════════
+# It needs a Unity licence, which cannot be committed. Until the secrets listed in
+# docs/CI.md are configured *and* the repository variable UNITY_CI_ENABLED is set to
+# "true", the preflight job below reports what is missing and every other job skips.
+# It skips rather than fails on purpose: a fork or a contributor without access to
+# the secrets should see a clear "not configured" note, not a red X they cannot fix.
+#
+# NOTHING HERE HAS EVER BEEN EXECUTED. The .NET, audio and Blender jobs in ci.yml
+# were each run locally before being committed; these steps could not be, because
+# the editor is not installed and no licence exists. Treat the Unity Hub and editor
+# invocations as a documented first attempt, not as verified.
+name: Unity
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: unity-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  UNITY_VERSION: "6000.3.21f1"
+  UNITY_PROJECT_PATH: unity/HorrorGame
+
+jobs:
+  # ───────────────────────────────────────────────────────────────────────────────
+  # The gate. The `secrets` context cannot be read from any `if:` expression, at job
+  # or step level, so presence has to be established inside a step's shell and
+  # re-published as plain outputs that the rest of the workflow branches on.
+  #
+  # `route` also decides how the editor is activated, for the same reason: a step
+  # cannot ask "is UNITY_SERIAL set?" in its own condition.
+  #
+  # No secret value is printed, compared against a literal, or written anywhere. Only
+  # the emptiness of each one is reported.
+  # ───────────────────────────────────────────────────────────────────────────────
+  preflight:
+    name: licence preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      enabled: ${{ steps.check.outputs.enabled }}
+      route: ${{ steps.check.outputs.route }}
+    steps:
+      - name: Check for a configured licence
+        id: check
+        env:
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+          UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          OPT_IN: ${{ vars.UNITY_CI_ENABLED }}
+        run: |
+          missing=""
+          [ -n "${UNITY_EMAIL}"    ] || missing="${missing} UNITY_EMAIL"
+          [ -n "${UNITY_PASSWORD}" ] || missing="${missing} UNITY_PASSWORD"
+
+          # Either activation route is acceptable: a Pro/Plus serial, or the contents
+          # of a Personal .ulf file. docs/CI.md explains how to obtain each. A serial
+          # wins when both are present, because it is the licence type Unity supports
+          # for automated builds.
+          route=none
+          if [ -n "${UNITY_SERIAL}" ]; then
+            route=serial
+          elif [ -n "${UNITY_LICENSE}" ]; then
+            route=ulf
+          else
+            missing="${missing} UNITY_SERIAL-or-UNITY_LICENSE"
+          fi
+
+          enabled=false
+          if [ -z "${missing}" ] && [ "${OPT_IN}" = "true" ]; then
+            enabled=true
+          fi
+          echo "enabled=${enabled}" >> "$GITHUB_OUTPUT"
+          echo "route=${route}" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "### Unity CI"
+            echo
+            if [ "${enabled}" = "true" ]; then
+              echo "Licence configured — building the Windows IL2CPP player."
+            else
+              echo "**Skipped.** The Unity jobs need a licence."
+              echo
+              [ -n "${missing}" ] && echo "- missing secrets:\`${missing}\`"
+              [ "${OPT_IN}" = "true" ] || echo "- repository variable \`UNITY_CI_ENABLED\` is not \`true\`"
+              echo
+              echo "See \`docs/CI.md\` for what each secret is and where it comes from."
+              echo "Everything in \`ci.yml\` — the core rules tests, the §12 audio audit"
+              echo "and the Blender generators — runs without any of this."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ───────────────────────────────────────────────────────────────────────────────
+  # The shippable artifact, and the two suites that cover what dotnet test cannot
+  # reach: docs/ARCHITECTURE.md §5 gives EditMode the adapters, prefab wiring and
+  # generated scenes, and PlayMode the movement feel, monster chases and networking.
+  # ───────────────────────────────────────────────────────────────────────────────
+  windows-player:
+    name: windows IL2CPP player + unity tests
+    needs: preflight
+    if: needs.preflight.outputs.enabled == 'true'
+    runs-on: windows-2022
+    timeout-minutes: 120
+    env:
+      UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+      UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+      UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
+      # Left empty unless the repository variable is set, so the App ID has exactly one
+      # default — the build pipeline's own (§13's Spacewar 480) — and exactly one
+      # override point. Two defaults is how a build ships pointing at the wrong app.
+      STEAM_APP_ID: ${{ vars.STEAM_APP_ID }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+
+      # Library/ is regenerated from Assets/ on open and is gitignored. Without this
+      # cache every run reimports every asset and shader from scratch, which is the
+      # difference between an eight-minute job and a forty-minute one. Keyed on the
+      # asset and package state, because that is exactly what the import cache is a
+      # function of.
+      - name: Cache the Unity Library folder
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.UNITY_PROJECT_PATH }}/Library
+          key: unity-library-${{ runner.os }}-${{ env.UNITY_VERSION }}-${{ hashFiles(format('{0}/Assets/**', env.UNITY_PROJECT_PATH), format('{0}/Packages/manifest.json', env.UNITY_PROJECT_PATH), format('{0}/ProjectSettings/**', env.UNITY_PROJECT_PATH)) }}
+          restore-keys: |
+            unity-library-${{ runner.os }}-${{ env.UNITY_VERSION }}-
+
+      - name: Install Unity Hub
+        run: choco install unity-hub -y --no-progress
+
+      # --module windows-il2cpp is the whole point of this runner. --childModules
+      # pulls the Windows Build Support dependencies with it. The editor is installed
+      # from the Hub CLI rather than from a prebuilt image so the version matches
+      # ProjectSettings/ProjectVersion.txt exactly: Unity rewrites project settings on
+      # first open, and a minor-version mismatch means CI is testing a project the
+      # developer is not running.
+      - name: Install the Unity editor
+        shell: pwsh
+        run: |
+          $hub = "C:\Program Files\Unity Hub\Unity Hub.exe"
+          & "$hub" -- --headless install `
+            --version $env:UNITY_VERSION `
+            --module windows-il2cpp --childModules
+          $editor = "C:\Program Files\Unity\Hub\Editor\$env:UNITY_VERSION\Editor\Unity.exe"
+          if (-not (Test-Path $editor)) {
+            Write-Host "Unity.exe not found at $editor after the Hub install."
+            Write-Host "Installed editors:"
+            Get-ChildItem "C:\Program Files\Unity\Hub\Editor" -ErrorAction SilentlyContinue |
+              ForEach-Object { Write-Host "  $_" }
+            Write-Host ""
+            Write-Host "If the Hub does not list $env:UNITY_VERSION, it needs the release's"
+            Write-Host "changeset: --version <v> --changeset <hash>, taken from the Unity"
+            Write-Host "download archive. ProjectVersion.txt in this repo records no"
+            Write-Host "revision hash, so it cannot be read from the project."
+            exit 1
+          }
+          # Two spellings of the same path. The activation steps below are PowerShell
+          # and want the Windows form; tools/ci/build.sh is bash and reads UNITY_PATH,
+          # where a backslash would be an escape character.
+          "UNITY_EXE=$editor" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          $msys = "/c/Program Files/Unity/Hub/Editor/$env:UNITY_VERSION/Editor/Unity.exe"
+          "UNITY_PATH=$msys" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      # A Personal licence is a file, not a serial. Written from the secret straight
+      # to the path the editor reads; the secret's value is never echoed.
+      - name: Activate (Personal licence file)
+        if: needs.preflight.outputs.route == 'ulf'
+        shell: pwsh
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+        run: |
+          New-Item -ItemType Directory -Force -Path "C:\ProgramData\Unity" | Out-Null
+          Set-Content -Path "C:\ProgramData\Unity\Unity_lic.ulf" `
+            -Value $env:UNITY_LICENSE -NoNewline
+          if (-not (Test-Path "C:\ProgramData\Unity\Unity_lic.ulf")) {
+            Write-Host "Could not write the licence file."
+            exit 1
+          }
+          Write-Host "Wrote C:\ProgramData\Unity\Unity_lic.ulf."
+
+      # A Pro/Plus serial is a floating seat. It must be returned at the end of the
+      # run (see the last step) or the seat stays checked out to a runner that no
+      # longer exists, and the next run fails with no seats available.
+      - name: Activate (Pro/Plus serial)
+        if: needs.preflight.outputs.route == 'serial'
+        shell: pwsh
+        run: |
+          & "$env:UNITY_EXE" -batchmode -quit -nographics -logFile - `
+            -username "$env:UNITY_EMAIL" -password "$env:UNITY_PASSWORD" `
+            -serial "$env:UNITY_SERIAL"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      # ── Everything below goes through tools/ci/build.sh ──────────────────────────
+      # That script is the project's batch-mode wrapper: it discovers the editor,
+      # streams the log, applies a watchdog and passes documented exit codes through,
+      # and every decision that affects the produced player is made in
+      # Assets/Scripts/Editor/BuildPipeline*.cs. CI calls it rather than assembling
+      # its own -executeMethod line so that a build started by a runner and a build
+      # started by a developer are the same build. `shell: bash` is Git Bash, which
+      # build.sh already handles (its MINGW branch).
+
+      # Third-party packages only (Mirror, Steamworks.NET, FizzySteamworks) are pinned
+      # in Packages/manifest.json; Unity's own are added by name so the editor resolves
+      # a compatible version. See Assets/Scripts/Editor/PackageBootstrap.cs.
+      - name: Install Unity packages
+        shell: bash
+        run: tools/ci/build.sh bootstrap
+
+      # EditMode and PlayMode, covering what dotnet test cannot reach. Note that
+      # --require-tests is *not* passed: Assets/Tests/EditMode and .../PlayMode are
+      # still empty, so this currently passes by running nothing. Add --require-tests
+      # in the same commit as the first suite, so "the tests silently stopped being
+      # discovered" becomes a failure.
+      #
+      # -nographics is left off deliberately (build.sh's decision, and the right one):
+      # PlayMode tests instantiate the real player loop. If the editor cannot create a
+      # graphics device on the runner, set HORROR_NOGRAPHICS=1 here rather than
+      # changing the script.
+      - name: Unity test suites
+        shell: bash
+        run: tools/ci/build.sh test
+
+      # --require-il2cpp turns a Mono fallback into a hard failure. Without it this job
+      # could quietly produce exactly the build it exists to avoid, and the artifact
+      # would look right. build.sh exits 5 in that case.
+      #
+      # The App ID needs no flag: BuildPipelineOptions resolves it from
+      # -buildSteamAppId, then $STEAM_APP_ID, then a repository-root steam_appid.txt,
+      # then §13's Spacewar default. The job env above sets the second of those from
+      # the repository variable and leaves it empty otherwise, so the App ID keeps one
+      # default and gains one override point instead of a second default here.
+      - name: Build the Windows IL2CPP player
+        shell: bash
+        run: tools/ci/build.sh windows release --require-il2cpp
+
+      - name: Upload the player
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: HorrorGame-Windows-IL2CPP
+          path: dist/windows-x64
+          if-no-files-found: warn
+
+      # The editor log is the only complete record of a failed build, and build.sh
+      # writes one per invocation under dist/logs. BuildPipelineTestRunner writes
+      # <suite>-results.xml under dist/test-results.
+      - name: Upload the editor logs and test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unity-logs
+          path: |
+            dist/logs
+            dist/test-results
+          if-no-files-found: ignore
+
+      # `always()` because a cancelled or failed run leaks the seat just as easily as
+      # a successful one. A Personal .ulf is not a floating seat and needs no return.
+      - name: Return the licence
+        if: ${{ always() && needs.preflight.outputs.route == 'serial' }}
+        shell: pwsh
+        run: |
+          & "$env:UNITY_EXE" -batchmode -quit -nographics -logFile - -returnlicense
+          exit 0

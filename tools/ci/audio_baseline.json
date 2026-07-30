@@ -1,0 +1,15 @@
+{
+  "_purpose": "Blocking defects from tools/audio/verify_audio.py that are already known, already written up in docs/BALANCE-FINDINGS.md, and waiting on a designer's decision rather than on a fix. Enforced by tools/ci/check_audio_baseline.py.",
+  "_rule": "Every entry must name a finding id in docs/BALANCE-FINDINGS.md. An entry without one is not allowed — this file records decisions the designer still owes, it is not a mute button. The gate fails both ways: a blocking defect that is not listed here fails the build, and a listed defect that has stopped reproducing also fails the build, because the finding it pins has then been resolved and the write-up has to be updated in the same commit.",
+  "_fingerprint": "A defect is matched on (check, target) only. The detail string carries measured decibels that move with a retune, so matching on it would turn every re-measurement into a new unknown defect.",
+  "accepted_blocking": [
+    {
+      "check": "consistency",
+      "target": "gravel vs concrete",
+      "finding": "F-002",
+      "summary": "GameConstants.ListenerClarityGravel (0.70) ranks gravel as giving the monster away more than concrete (0.50). Measured through a wall, gravel is ~32 dB quieter, because gravel's identity is a 6.2 kHz noise band and a wall removes it. Dry, the two agree; §04 makes hearing through walls the entire point of the role, so the constants are being applied in the one situation they were not authored for.",
+      "not_an_audio_bug": "The clips are physically right — §12's 자갈 부스럭 is broadband rustle and §12's 콘크리트 둔탁 is a low thud. Retuning the generator to pass this check would make the footsteps wrong. The disagreement is between two design sections, which is why it is a finding and not a defect ticket.",
+      "resolves_when": "F-002's option 1 lands (clarity becomes a function of occlusion) or option 2 lands (constants re-derived at the occlusion the role works through). Either way this entry gets deleted in the same commit that updates docs/BALANCE-FINDINGS.md."
+    }
+  ]
+}

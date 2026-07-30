@@ -1,0 +1,22 @@
+{
+    "name": "HorrorGame.Steam",
+    "rootNamespace": "HorrorGame.Steam",
+    "references": [
+        "HorrorGame.Core"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [
+        {
+            "name": "com.rlabrecque.steamworks.net",
+            "expression": "",
+            "define": "HORRORGAME_STEAMWORKS"
+        }
+    ],
+    "noEngineReferences": false
+}
