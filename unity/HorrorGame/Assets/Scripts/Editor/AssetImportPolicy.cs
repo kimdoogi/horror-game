@@ -856,8 +856,15 @@ namespace HorrorGame.EditorTools
                 // bones' worth of animation without a warning — the same failure mode as a
                 // stereo footstep. The monster ships its own seven clips and never needs to
                 // retarget, so Generic costs nothing. Verified against the FBX: bone names
-                // and takes read directly out of the file, and tools/blender/gen_monster_model.py
+                // and takes read directly out of the file, and tools/blender/gen_monster_ai.py
                 // says the same in as many words.
+                //
+                // Exact match, and it is the reason there is exactly one monster in
+                // Assets/Models/Characters. Anything else that landed in this folder would
+                // be graded against the *player's* humanoid policy and reported as broken on
+                // every validator run — which is what two unadopted monster variants were
+                // doing here, four failures a run, until they were retired. A generator that
+                // wants to publish a variant writes it to artifacts/, not to Assets/.
                 if (name.Equals("Monster", StringComparison.OrdinalIgnoreCase))
                 {
                     return ModelCategory.CharacterGeneric;

@@ -133,6 +133,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import bmesh  # noqa: E402
 import bpy  # noqa: E402
+import numpy as np  # noqa: E402
 from mathutils import Euler, Matrix, Vector  # noqa: E402
 
 import blendkit  # noqa: E402
@@ -167,6 +168,26 @@ BALL_Y = -0.115                     # ball of the foot, forward of the ankle
 GROUND_CONTACT_Z = 0.030            # ball height when the sole is flat
 
 MOUNTS = ("FlashlightMount", "HeadCameraAnchor", "ObjectiveMount", "BackpackMount")
+
+# ── Ring resolution ─────────────────────────────────────────────────────────
+# The triangle budget is 4000 and this model shipped using 1252 of them, so the
+# octagonal limbs were never a cost decision — they were an unspent one. An 8-sided
+# tube has a 45° facet: under §03's hard moving spot that is a band of flat shading
+# that slides along the limb as the beam sweeps, and it reads as faceted plastic on
+# the one asset three teammates look at all game.
+#
+# Twelve costs 4 extra quads per segment, which is 384 triangles across the whole
+# body. Sixteen was measured too and is not worth it: past twelve the silhouette
+# change is under a pixel at the distances §12's corridors allow, and the triangles
+# buy more as boots and fingers, which are still boxes.
+#
+# Changing these is safe for the §04 role contract. `shell` assigns materials per
+# *segment* — that is, per pair of rings — so the vest band and deltoid caps are
+# indexed by ring number and are untouched by how many sides each ring has.
+SIDES_BODY = 12
+SIDES_NECK = 10
+SIDES_LIMB = 12
+SIDES_BOOT = 8
 
 # ── Materials ───────────────────────────────────────────────────────────────
 
@@ -312,9 +333,31 @@ def ellipse(c, u, v, ru: float, rv: float, sides: int, phase: float = 0.5):
 
 
 def rect(c, u, v, hu: float, hv: float):
-    """A rectangular ring — hands, feet, panels, anything with a hard edge."""
+    """A rectangular ring — panels and anything that genuinely has a hard edge."""
     c = Vector(c)
     return [c + u * hu + v * hv, c - u * hu + v * hv, c - u * hu - v * hv, c + u * hu - v * hv]
+
+
+def flat_bottom(c, u, v, hu: float, hv: float, sides: int = SIDES_BOOT):
+    """A ring with a flat base and a rounded top — a boot cross-section.
+
+    The sole has to stay flat and exactly on the ring's lower edge: every gait key in
+    this file is ground-locked by dropping the hips until a sole contact reaches z = 0,
+    and a curved bottom would leave the boot's corners hanging in the air on every
+    frame. So the base stays a single straight span between the two corners and only
+    the upper half is swept, which is also what a boot actually looks like.
+
+    Returned in ring order: the +u sole corner, over the top to the -u corner, and the
+    closing edge between them is the sole.
+    """
+    c = Vector(c)
+    arc = max(2, sides - 2)
+    out = [c + u * hu - v * hv]
+    for i in range(1, arc + 1):
+        a = math.pi * i / (arc + 1)
+        out.append(c + u * (hu * math.cos(a)) + v * (hv * math.sin(a)))
+    out.append(c - u * hu - v * hv)
+    return out
 
 
 def mirror_x(rings):
@@ -359,7 +402,8 @@ def build_torso(b: Body) -> None:
     seg_mats = [M_COVERALL] * (len(rings) - 1)
     for seg in (4, 5, 6):
         seg_mats[seg] = M_ROLE
-    b.shell([(ellipse((0, 0, z), X, Y, rx, ry, 8), w) for z, rx, ry, w in rings], seg_mats)
+    b.shell([(ellipse((0, 0, z), X, Y, rx, ry, SIDES_BODY), w)
+             for z, rx, ry, w in rings], seg_mats)
 
 
 def build_neck_head(b: Body) -> None:
@@ -371,7 +415,7 @@ def build_neck_head(b: Body) -> None:
         (1.545, 0.050, 0.048, {"Neck": 1.0}),
         (1.585, 0.055, 0.052, {"Neck": 0.45, "Head": 0.55}),
     ]
-    b.shell([(ellipse((0, -0.004 * i, z), X, Y, rx, ry, 6), w)
+    b.shell([(ellipse((0, -0.004 * i, z), X, Y, rx, ry, SIDES_NECK), w)
              for i, (z, rx, ry, w) in enumerate(neck)], M_SKIN)
 
     head = [
@@ -382,8 +426,19 @@ def build_neck_head(b: Body) -> None:
         (1.735, -0.005, 0.055, 0.062),
         (1.750, -0.005, 0.026, 0.030),
     ]
-    b.shell([(ellipse((0, y, z), X, Y, rx, ry, 8), {"Head": 1.0})
+    b.shell([(ellipse((0, y, z), X, Y, rx, ry, SIDES_BODY), {"Head": 1.0})
              for z, y, rx, ry in head], M_SKIN)
+
+    # Jaw: a short wedge under the front of the skull. Without it the head is an egg,
+    # and an egg reads as a mannequin's head no matter how many sides it has — the
+    # eye finds a jawline long before it finds a nose 12 mm across.
+    b.shell([(rect((0, -0.030, 1.622), X, Y, 0.052, 0.036), {"Head": 1.0}),
+             (rect((0, -0.040, 1.592), X, Y, 0.042, 0.030), {"Head": 1.0}),
+             (rect((0, -0.044, 1.572), X, Y, 0.028, 0.020), {"Head": 1.0})], M_SKIN)
+
+    # Brow: a shelf over the eye line, so the beam catches a hard edge above the nose.
+    b.shell([(rect((0, -0.052, 1.664), X, Y, 0.062, 0.020), {"Head": 1.0}),
+             (rect((0, -0.058, 1.650), X, Y, 0.058, 0.014), {"Head": 1.0})], M_SKIN)
 
     # Nose: a wedge off the eye line, pointing -Y (forward).
     b.shell([(rect((0, -0.074, 1.652), X, Z, 0.015, 0.017), {"Head": 1.0}),
@@ -422,14 +477,36 @@ def build_arm(b: Body, side: int) -> None:
     rings = arm_rings(side)
     arm_mats = [M_COVERALL] * (len(rings) - 1)
     arm_mats[1] = M_ROLE            # the deltoid cap, above the shoulder line
-    b.shell([(ellipse((side * x, 0, SHOULDER_Z), Y, Z, ru, rv, 8), w)
+    b.shell([(ellipse((side * x, 0, SHOULDER_Z), Y, Z, ru, rv, SIDES_LIMB), w)
              for x, ru, rv, w in rings], arm_mats)
 
     # Palm: flat slab, thickness in Z (T-pose palms face down).
     b.shell([(rect((side * 0.750, 0, SHOULDER_Z), Y, Z, 0.040, 0.021), {f"{s}Hand": 1.0}),
-             (rect((side * 0.810, 0, SHOULDER_Z), Y, Z, 0.043, 0.019), {f"{s}Hand": 1.0}),
-             (rect((side * HAND_TIP_X, 0, SHOULDER_Z), Y, Z, 0.036, 0.015),
+             (rect((side * 0.800, 0, SHOULDER_Z), Y, Z, 0.043, 0.019), {f"{s}Hand": 1.0}),
+             (rect((side * 0.828, 0, SHOULDER_Z), Y, Z, 0.040, 0.016),
               {f"{s}Hand": 1.0})], M_SKIN)
+
+    # Four fingers off the knuckle line. A single tapered slab reads as a mitten from
+    # any distance the beam reaches, and this model's whole job is to be read by three
+    # other players — the hand holding §05's pointing device should look like a hand.
+    # They also bring the T-pose span to 1.75 m, which is where a real 1.75 m person's
+    # arm span sits; the slab alone left it 60 mm short.
+    # The tips drop 9 mm below the palm plane and the fingers are cut to slightly
+    # different lengths. Straight and coplanar they read as a comb — four flat prongs
+    # with slots between them, which is worse than the plain slab this replaced. A
+    # relaxed hand curls, and the curl is what makes four separate pieces read as one.
+    for offset, length, half_w, droop in ((-0.030, 0.044, 0.0095, 0.008),
+                                          (-0.010, 0.049, 0.0100, 0.009),
+                                          (0.010, 0.046, 0.0095, 0.009),
+                                          (0.029, 0.038, 0.0085, 0.010)):
+        b.shell([(rect((side * 0.830, offset, SHOULDER_Z - 0.001), Y, Z, half_w, 0.014),
+                  {f"{s}Hand": 1.0}),
+                 (rect((side * (0.830 + length * 0.55), offset,
+                        SHOULDER_Z - droop * 0.35), Y, Z, half_w * 0.92, 0.012),
+                  {f"{s}Hand": 1.0}),
+                 (rect((side * (0.830 + length), offset, SHOULDER_Z - droop), Y, Z,
+                       half_w * 0.70, 0.009), {f"{s}Hand": 1.0})], M_SKIN)
+
     # Thumb: forward off the palm, so a fist reads as a grip on the flashlight.
     b.shell([(rect((side * 0.762, -0.036, SHOULDER_Z), X, Z, 0.014, 0.016),
               {f"{s}Hand": 1.0}),
@@ -460,16 +537,22 @@ def build_leg(b: Body, side: int) -> None:
     knee flexion has a direction to bend in without the animator specifying one.
     """
     s = "Left" if side > 0 else "Right"
-    b.shell([(ellipse((side * LEG_X, y, z), X, Y, rx, ry, 8), w)
+    b.shell([(ellipse((side * LEG_X, y, z), X, Y, rx, ry, SIDES_LIMB), w)
              for z, y, rx, ry, w in leg_rings(side)], M_COVERALL)
 
-    b.shell([(rect((side * LEG_X, 0.055, 0.045), X, Z, 0.038, 0.045), {f"{s}Foot": 1.0}),
-             (rect((side * LEG_X, -0.020, 0.038), X, Z, 0.045, 0.038), {f"{s}Foot": 1.0}),
-             (rect((side * LEG_X, BALL_Y, 0.030), X, Z, 0.044, 0.030),
-              {f"{s}Foot": 0.60, f"{s}Toes": 0.40})], M_GEAR)
-    b.shell([(rect((side * LEG_X, BALL_Y, 0.026), X, Z, 0.043, 0.026), {f"{s}Toes": 1.0}),
-             (rect((side * LEG_X, -0.185, 0.021), X, Z, 0.035, 0.021), {f"{s}Toes": 1.0})],
-            M_GEAR)
+    # One continuous boot instead of two stacked slabs. Each ring's centre sits at its
+    # own half-height, which puts the flat base of every ring on z = 0 exactly, so the
+    # sole stays a plane for the ground-lock to rest on.
+    boot = [
+        (0.088, 0.040, 0.054, {f"{s}Foot": 1.0}),      # heel, narrow and tall
+        (0.040, 0.047, 0.050, {f"{s}Foot": 1.0}),
+        (-0.025, 0.050, 0.043, {f"{s}Foot": 1.0}),     # instep
+        (BALL_Y, 0.048, 0.032, {f"{s}Foot": 0.55, f"{s}Toes": 0.45}),
+        (-0.163, 0.042, 0.025, {f"{s}Toes": 1.0}),
+        (-0.200, 0.028, 0.017, {f"{s}Toes": 1.0}),     # rounded toe cap
+    ]
+    b.shell([(flat_bottom((side * LEG_X, y, hz), X, Z, hx, hz), w)
+             for y, hx, hz, w in boot], M_GEAR)
 
 
 def build_gear(b: Body) -> None:
@@ -480,14 +563,16 @@ def build_gear(b: Body) -> None:
     """
     # Every one of these is deliberately a little LARGER than the limb it rings. A belt
     # modelled flush with the waist half-vanishes into it and the visible half z-fights.
-    b.shell([(ellipse((0, 0, 1.010), X, Y, 0.152, 0.113, 8), {"Hips": 0.5, "Spine": 0.5}),
-             (ellipse((0, 0, 1.080), X, Y, 0.148, 0.111, 8), {"Spine": 1.0})], M_GEAR)
+    b.shell([(ellipse((0, 0, 1.010), X, Y, 0.152, 0.113, SIDES_BODY),
+              {"Hips": 0.5, "Spine": 0.5}),
+             (ellipse((0, 0, 1.080), X, Y, 0.148, 0.111, SIDES_BODY),
+              {"Spine": 1.0})], M_GEAR)
 
     for side in (1, -1):
         s = "Left" if side > 0 else "Right"
-        b.shell([(ellipse((side * LEG_X, 0.008, 0.120), X, Y, 0.062, 0.069, 8),
+        b.shell([(ellipse((side * LEG_X, 0.008, 0.120), X, Y, 0.062, 0.069, SIDES_LIMB),
                   {f"{s}LowerLeg": 1.0}),
-                 (ellipse((side * LEG_X, 0.004, 0.240), X, Y, 0.059, 0.066, 8),
+                 (ellipse((side * LEG_X, 0.004, 0.240), X, Y, 0.059, 0.066, SIDES_LIMB),
                   {f"{s}LowerLeg": 1.0})], M_GEAR)
         b.shell([(rect((side * LEG_X, -0.070, 0.535), X, Z, 0.048, 0.040),
                   {f"{s}UpperLeg": 0.6, f"{s}LowerLeg": 0.4}),
@@ -1793,6 +1878,308 @@ def verify_motion(clips, stats: dict, metrics: dict, speeds: dict) -> None:
         blendkit.fail("Death is still moving on its last frames — a corpse does not breathe.")
 
 
+# ── Surfaces ────────────────────────────────────────────────────────────────
+#
+# The three neutral materials get procedural PBR maps. The five role materials do not
+# and must not: Unity swaps slot 0 per RoleId, so anything painted into it would have
+# to exist five times over, and §05 picks those colours for **value separation read at
+# distance in the dark** — a texture is the one thing that would blur that separation.
+#
+# The noise generators come from gen_monster_model rather than being copied. They are
+# general-purpose field synthesis with no monster in them, and a second copy would drift
+# from the first the moment either is tuned. (They would sit better in blendkit or a
+# texkit module; moving them means editing a generator that currently ships a shipping
+# asset, so the import is the smaller risk today and the refactor is worth doing later.)
+#
+# WHY THIS DOES NOT REUSE gen_monster_model.write_skin
+# ----------------------------------------------------
+# That function asserts that **no texel may be brighter than the darkest wall in a §12
+# corridor**. For the creature that rule is the whole point — §06 needs it to resolve
+# out of the dark too late. For a teammate it is exactly backwards: three other players
+# have to find this model, tell it from the other two, and read its role colour, and a
+# character forced under the corridor's floor value is a silhouette nobody can identify.
+# So the calibration here keeps gen_textures.py's albedo band and the roughness floor,
+# and deliberately drops the corridor ceiling.
+
+SURFACE_RES = 1024
+
+# Targets inside gen_textures.py's [0.15, 0.45] band, spread for value separation so
+# gear reads dark against coverall and skin reads light against both — the same
+# reasoning §05 applies to the role colours, applied to the neutral ones.
+SURFACE_TARGETS = {SKIN: 0.34, COVERALL: 0.25, GEAR: 0.165}
+
+
+def build_coverall_surface(res: int) -> dict:
+    """Heavy cotton work fabric: a woven grid, soft folds, and wear on the high points."""
+    import gen_monster_model as gmm  # noqa: PLC0415
+
+    # The weave: two perpendicular high-frequency bands. Stretching one field along each
+    # axis is what makes it read as woven rather than as noise — a fabric has a grain
+    # direction and a texture without one reads as concrete.
+    warp = gmm._fbm(res, 8101, beta=0.9, low_cycles=150.0, stretch=14.0)
+    weft = gmm._fbm(res, 8102, beta=0.9, low_cycles=150.0, stretch=1.0 / 14.0)
+    weave = (warp + weft) * 0.5
+
+    folds = gmm._normalise01(gmm._warp(
+        gmm._fbm(res, 8103, beta=2.5, low_cycles=3.5),
+        (gmm._fbm(res, 8104, beta=2.2, low_cycles=2.0) - 0.5) * 0.05,
+        (gmm._fbm(res, 8105, beta=2.2, low_cycles=2.0) - 0.5) * 0.05))
+    crease = gmm._smoothstep(0.34, 0.06, folds)
+    soil = gmm._fbm(res, 8106, beta=2.3, low_cycles=5.0)
+
+    height = np.clip(0.5 + (weave - 0.5) * 0.42 + (folds - 0.5) * 0.30
+                     - crease * 0.30, 0.0, 1.0).astype(np.float32)
+
+    base = np.array([0.252, 0.246, 0.232], dtype=np.float32)
+    dirt = np.array([0.150, 0.138, 0.120], dtype=np.float32)
+    colour = base.reshape(1, 1, 3) * (0.90 + 0.20 * weave)[..., None]
+    grime = (crease * 0.55 + gmm._smoothstep(0.62, 1.0, soil) * 0.30)[..., None]
+    colour = colour * (1.0 - grime) + dirt.reshape(1, 1, 3) * grime
+
+    # Cotton is matte everywhere and slightly less matte where it has been rubbed
+    # smooth — knees, seat, elbows. The fold bottoms stay dull because that is where
+    # the dust sits.
+    roughness = (0.92 - 0.10 * gmm._smoothstep(0.55, 1.0, weave)
+                 + 0.04 * crease).astype(np.float32)
+
+    return dict(albedo=colour, roughness=roughness, height=height,
+                metallic=np.zeros((res, res), dtype=np.float32),
+                world_size=0.55, height_scale=0.0035)
+
+
+def build_skin_surface(res: int) -> dict:
+    """Face and hands. Small area on screen, so pores over pattern."""
+    import gen_monster_model as gmm  # noqa: PLC0415
+
+    pore_f1, _, pore_owner = gmm._worley(res, 96, 8201, jitter=0.95)
+    pore = gmm._smoothstep(0.0075, 0.0, pore_f1)
+    tone = gmm._per_cell(pore_owner, 96, 8202, 0.90, 1.10)
+    mottle = gmm._fbm(res, 8203, beta=2.0, low_cycles=7.0)
+    grain = gmm._fbm(res, 8204, beta=1.1, low_cycles=30.0)
+
+    height = np.clip(0.5 + (mottle - 0.5) * 0.30 + (grain - 0.5) * 0.16
+                     - pore * 0.34, 0.0, 1.0).astype(np.float32)
+
+    base = np.array([0.352, 0.268, 0.226], dtype=np.float32)
+    flush = np.array([0.392, 0.246, 0.212], dtype=np.float32)
+    colour = base.reshape(1, 1, 3) * (tone * (0.92 + 0.16 * mottle))[..., None]
+    blush = gmm._smoothstep(0.58, 1.0, mottle)[..., None] * 0.22
+    colour = colour * (1.0 - blush) + flush.reshape(1, 1, 3) * blush
+
+    # Skin is the shiniest thing on the model and still not shiny. The pores are the
+    # matte part: they hold what light does not bounce straight back.
+    roughness = (0.56 + 0.22 * pore + 0.05 * (grain - 0.5)).astype(np.float32)
+
+    return dict(albedo=colour, roughness=roughness, height=height,
+                metallic=np.zeros((res, res), dtype=np.float32),
+                world_size=0.28, height_scale=0.0015)
+
+
+def build_gear_surface(res: int) -> dict:
+    """Belt, boots, pads, radio: moulded rubber and webbing, scuffed on the edges."""
+    import gen_monster_model as gmm  # noqa: PLC0415
+
+    pebble_f1, _, pebble_owner = gmm._worley(res, 40, 8301, jitter=1.0)
+    pebble = gmm._smoothstep(0.020, 0.0, pebble_f1)
+    facet = gmm._per_cell(pebble_owner, 40, 8302, 0.86, 1.14)
+    scuff = gmm._fbm(res, 8303, beta=1.7, low_cycles=9.0)
+    grain = gmm._fbm(res, 8304, beta=1.0, low_cycles=40.0)
+
+    height = np.clip(0.5 + (facet - 1.0) * 0.9 + (grain - 0.5) * 0.12
+                     - pebble * 0.40, 0.0, 1.0).astype(np.float32)
+
+    base = np.array([0.168, 0.163, 0.158], dtype=np.float32)
+    worn = np.array([0.232, 0.226, 0.214], dtype=np.float32)
+    colour = base.reshape(1, 1, 3) * (0.88 + 0.24 * facet)[..., None]
+    rub = gmm._smoothstep(0.66, 1.0, scuff)[..., None] * 0.34
+    colour = colour * (1.0 - rub) + worn.reshape(1, 1, 3) * rub
+
+    # Moulded rubber is dull; the scuffed high points are where it has been polished,
+    # and that is the only specular this model carries below the waist. Under §03's
+    # moving spot it is what stops the boots from being two dark blobs.
+    roughness = (0.72 - 0.30 * gmm._smoothstep(0.66, 1.0, scuff)
+                 + 0.10 * pebble).astype(np.float32)
+
+    return dict(albedo=colour, roughness=roughness, height=height,
+                metallic=np.zeros((res, res), dtype=np.float32),
+                world_size=0.32, height_scale=0.0028)
+
+
+SURFACES = (
+    (COVERALL, build_coverall_surface,
+     "Work coverall. The largest surface on the model, so its weave sets how the whole "
+     "figure reads under a beam. Matte, dirtied in the folds."),
+    (SKIN, build_skin_surface,
+     "Face and hands. The lightest of the three, which is what makes a head read as a "
+     "head at the range §13 puts teammates at."),
+    (GEAR, build_gear_surface,
+     "Belt, boots, pads, radio. Darkest of the three and the only one with a specular "
+     "worth the name, on the scuffed high points."),
+)
+
+
+def write_surface(name: str, build, target: float, note: str, res: int,
+                  limits: dict) -> dict:
+    """Calibrates and writes one player surface. See the section note on the ceiling."""
+    import gen_monster_model as gmm  # noqa: PLC0415
+
+    maps = build(res)
+    colour = np.clip(maps["albedo"], 1e-4, None)
+    gain = target / float(colour.mean())
+    if not (1.0 / 2.6) <= gain <= 2.6:
+        blendkit.fail(f"{name}: albedo needs a {gain:.2f}x correction to reach {target:.3f} — "
+                      "the painted values are wrong, fix them rather than widening the gain.")
+    if not limits["ALBEDO_MIN_LINEAR"] <= target <= limits["ALBEDO_MAX_LINEAR"]:
+        blendkit.fail(f"{name}: target albedo {target:.3f} is outside gen_textures.py's "
+                      f"[{limits['ALBEDO_MIN_LINEAR']}, {limits['ALBEDO_MAX_LINEAR']}] band.")
+
+    albedo = np.clip(colour * gain, 0.010, 0.90).astype(np.float32)
+    roughness = np.clip(maps["roughness"], limits["MIN_ROUGHNESS"], 1.0).astype(np.float32)
+    metallic = np.clip(maps["metallic"], 0.0, 1.0).astype(np.float32)
+    height = maps["height"]
+
+    normal = gmm._height_to_normal(height, maps["world_size"], maps["height_scale"])
+    occlusion = gmm._ambient_occlusion(height, maps["world_size"], maps["height_scale"])
+
+    folder = os.path.join(gmm.TEXTURE_DIR, name)
+    written = 0
+    written += gmm._write_png(os.path.join(folder, name + "_albedo.png"),
+                              gmm._to_u8(gmm._linear_to_srgb(albedo)))
+    written += gmm._write_png(os.path.join(folder, name + "_normal.png"),
+                              gmm._to_u8(normal * 0.5 + 0.5))
+    written += gmm._write_png(os.path.join(folder, name + "_rough.png"),
+                              gmm._to_u8(np.repeat(roughness[..., None], 3, axis=2)))
+    written += gmm._write_png(os.path.join(folder, name + "_ao.png"),
+                              gmm._to_u8(np.repeat(occlusion[..., None], 3, axis=2)))
+
+    mask = np.zeros((res, res, 4), dtype=np.float32)
+    mask[..., 0] = mask[..., 1] = mask[..., 2] = metallic
+    mask[..., 3] = 1.0 - roughness
+    written += gmm._write_png(os.path.join(folder, name + "_ms.png"), gmm._to_u8(mask))
+
+    # Measured on the 8-bit sRGB bytes the shader will actually sample, not on the
+    # float buffer: quantisation is the last thing that can push a map out of band,
+    # and the quantised mean is the only one that exists by the time it is rendered.
+    written_linear = gmm._srgb_to_linear(gmm._to_u8(gmm._linear_to_srgb(albedo)) / 255.0)
+    quantised = float(np.mean(written_linear))
+    if not limits["ALBEDO_MIN_LINEAR"] <= quantised <= limits["ALBEDO_MAX_LINEAR"]:
+        blendkit.fail(f"{name}: albedo means {quantised:.4f} linear after 8-bit encoding, "
+                      f"outside [{limits['ALBEDO_MIN_LINEAR']}, {limits['ALBEDO_MAX_LINEAR']}].")
+
+    relief_mm = float(height.max() - height.min()) * maps["height_scale"] * 1000.0
+    return dict(name=name, note=note, bytes=written,
+                albedo_mean_linear=round(quantised, 4),
+                albedo_gain=round(gain, 3),
+                world_size_metres=maps["world_size"],
+                roughness_mean=round(float(roughness.mean()), 4),
+                metallic_mean=round(float(metallic.mean()), 4),
+                relief_mm=round(relief_mm, 2),
+                ao_mean=round(float(occlusion.mean()), 4),
+                maps={
+                    "albedo": f"{name}/{name}_albedo.png",
+                    "normal": f"{name}/{name}_normal.png",
+                    "roughness": f"{name}/{name}_rough.png",
+                    "occlusion": f"{name}/{name}_ao.png",
+                    "metallic_smoothness": f"{name}/{name}_ms.png",
+                })
+
+
+def uv_units_per_metre(body: bpy.types.Object) -> float:
+    """UV density, so Unity can set a tiling that makes the world_size above real metres."""
+    import gen_monster_model as gmm  # noqa: PLC0415
+    return gmm.uv_units_per_metre(body)
+
+
+def write_surface_manifest(reports: list, uv_per_metre: float, res: int) -> None:
+    import gen_monster_model as gmm  # noqa: PLC0415
+    path = os.path.join(gmm.TEXTURE_DIR, "Player.textures.json")
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump({
+            "generated_by": "tools/blender/gen_player_model.py",
+            "resolution": res,
+            "uv_units_per_metre": round(uv_per_metre, 6),
+            "fbx": "Assets/Models/Characters/Player.fbx",
+            "note": "The five Role_* slots are flat colour by design — Unity swaps slot 0 "
+                    "per RoleId and §05 picks those values for separation in the dark. "
+                    "Only the three neutral surfaces carry maps.",
+            "materials": reports,
+        }, handle, indent=2)
+        handle.write("\n")
+
+
+def surface_tiling(world_size: float, uv_per_metre: float) -> float:
+    """How many times a map must repeat across the unwrap to land at its authored scale.
+
+    A UV unit is ``1 / uv_per_metre`` metres of surface, and a map is painted to cover
+    ``world_size`` metres, so one repeat has to span ``world_size × uv_per_metre`` UV
+    units — the tiling is the reciprocal. On this model the unwrap runs 0.52 UV units
+    per metre and the coverall is painted at 0.55 m, so it repeats 3.5×; left at 1 the
+    weave stretches over 1.9 m of cloth and the fabric reads as bare plastic with a few
+    smears on it.
+
+    Unity derives the same number from ``Player.textures.json``. It is applied here as
+    well so the .glb docs/ASSETS.md keeps for eyeballing shows what the game will.
+    """
+    return 1.0 / max(world_size * uv_per_metre, 1e-6)
+
+
+def hook_surface_maps(reports: list, uv_per_metre: float) -> None:
+    """Wires the written maps onto the three neutral materials, for the .glb preview."""
+    import gen_monster_model as gmm  # noqa: PLC0415
+
+    for report in reports:
+        name = report["name"]
+        mat = bpy.data.materials.get(name)
+        if mat is None:
+            continue
+        mat.use_nodes = True
+        nt = mat.node_tree
+        bsdf = next((n for n in nt.nodes if n.type == "BSDF_PRINCIPLED"), None)
+        if bsdf is None:
+            continue
+        folder = os.path.join(gmm.TEXTURE_DIR, name)
+
+        tiling = surface_tiling(report["world_size_metres"], uv_per_metre)
+        coords = nt.nodes.new("ShaderNodeTexCoord")
+        mapping = nt.nodes.new("ShaderNodeMapping")
+        mapping.inputs["Scale"].default_value = (tiling, tiling, 1.0)
+        nt.links.new(coords.outputs["UV"], mapping.inputs["Vector"])
+        report["tiling"] = round(tiling, 4)
+
+        def plug(suffix, socket, non_color):
+            path = os.path.join(folder, f"{name}_{suffix}.png")
+            if not os.path.exists(path):
+                return
+            node = nt.nodes.new("ShaderNodeTexImage")
+            node.image = bpy.data.images.load(path, check_existing=True)
+            if non_color:
+                node.image.colorspace_settings.name = "Non-Color"
+            nt.links.new(mapping.outputs["Vector"], node.inputs["Vector"])
+            if socket == "Normal":
+                nm = nt.nodes.new("ShaderNodeNormalMap")
+                nt.links.new(node.outputs["Color"], nm.inputs["Color"])
+                nt.links.new(nm.outputs["Normal"], bsdf.inputs["Normal"])
+            else:
+                nt.links.new(node.outputs["Color"], bsdf.inputs[socket])
+
+        plug("albedo", "Base Color", False)
+        plug("rough", "Roughness", True)
+        plug("normal", "Normal", True)
+
+
+def verify_surface_separation(reports: list) -> None:
+    """The three neutral surfaces must stay apart in value, in the order §05 implies."""
+    by_name = {r["name"]: r["albedo_mean_linear"] for r in reports}
+    order = (GEAR, COVERALL, SKIN)
+    for dark, light in zip(order, order[1:]):
+        if by_name[light] - by_name[dark] < 0.04:
+            blendkit.fail(
+                f"{dark} means {by_name[dark]:.3f} linear and {light} means "
+                f"{by_name[light]:.3f} — under 0.04 apart they are one grey mass at the "
+                "range §13 puts teammates at, and the model stops reading as a person "
+                "wearing equipment.")
+
+
 # ── Main ────────────────────────────────────────────────────────────────────
 
 
@@ -1808,6 +2195,24 @@ def main() -> None:
     blendkit.triangulate(body)
     blendkit.shade_smooth(body, angle_degrees=38.0)
     blendkit.uv_smart_project(body)
+
+    # The surfaces, before the rig: the unwrap has to exist to measure the UV density
+    # the tiling is derived from, and nothing after this point touches UVs.
+    import gen_monster_model as gmm  # noqa: PLC0415
+    limits = gmm.pipeline_constants()
+    uv_per_metre = uv_units_per_metre(body)
+    surfaces = [write_surface(name, build, SURFACE_TARGETS[name], note, SURFACE_RES, limits)
+                for name, build, note in SURFACES]
+    write_surface_manifest(surfaces, uv_per_metre, SURFACE_RES)
+    verify_surface_separation(surfaces)
+    print(f"SKIN_UV uv_units_per_metre={uv_per_metre:.4f} "
+          f"(1 tile covers {1.0 / uv_per_metre:.2f} m of surface at tiling 1)")
+    for s in surfaces:
+        print(f"SKIN_REPORT {s['name']:18s} albedo={s['albedo_mean_linear']:.4f}lin "
+              f"gain={s['albedo_gain']:.2f} rough={s['roughness_mean']:.3f} "
+              f"metal={s['metallic_mean']:.3f} relief={s['relief_mm']:5.2f}mm "
+              f"ao={s['ao_mean']:.3f} tile={s['world_size_metres']:.2f}m "
+              f"bytes={s['bytes']}")
 
     rig = blendkit.build_armature("Player_Rig", bone_specs())
     for name in MOUNTS:
@@ -1897,6 +2302,14 @@ def main() -> None:
     fbx_path = blendkit.out_path("Characters", "Player.fbx")
     glb_path = os.path.join(os.path.dirname(fbx_path), "Player.glb")
     blendkit.export_fbx(fbx_path, objects=[rig, body], with_animation=True)
+
+    # Maps go on only now. Unity finds them under Assets/Textures/<material>/ by name,
+    # the way the monster's do; hooking image nodes up before the FBX export instead
+    # makes Blender's exporter copy every PNG into a .fbm sidecar next to the model,
+    # which is a second committed copy of 15 MB of textures. The .glb that
+    # docs/ASSETS.md keeps for eyeballing does want them, so it is exported after.
+    hook_surface_maps(surfaces, uv_per_metre)
+    write_surface_manifest(surfaces, uv_per_metre, SURFACE_RES)   # re-emit, now with tiling
     blendkit.export_gltf(glb_path, with_animation=True)
 
     report = blendkit.assert_asset(

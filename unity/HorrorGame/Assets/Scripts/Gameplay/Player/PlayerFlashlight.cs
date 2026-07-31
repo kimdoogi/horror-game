@@ -50,9 +50,11 @@ namespace HorrorGame.Gameplay.Player
         private Transform? _rigRoot;
 
         [Header("Presentation")]
-        [Tooltip("Beam brightness. A look value: §03's numbers are reach, cone and battery, not lumens.")]
+        [Tooltip("Beam brightness. A look value: §03's numbers are reach, cone and battery, not lumens. "
+            + "Defaults to HorrorGame.Rendering.FlashlightBeam, which is also what the review "
+            + "screenshots render — change it here and the shots stop describing the game.")]
         [SerializeField]
-        private float _intensity = 6f;
+        private float _intensity = HorrorGame.Rendering.FlashlightBeam.Intensity;
 
         [SerializeField]
         private Color _colour = new Color(1f, 0.96f, 0.87f);

@@ -212,12 +212,50 @@ namespace HorrorGame.Gameplay.Monster
                 return false;
             }
 
-            // Corner 0 is the point being left. Aiming at corner 1 is what walks the
-            // monster around the corner instead of through it, and it is the reason a
-            // 4.8 m/s creature cannot cut the chord of §12's S-corridor.
-            next = (_cornerCount >= 2 ? _corners[1] : _memoSnappedTo).ToVec3();
+            // Corner 0 is the point being left. Aiming at the next DISTINCT corner is
+            // what walks the monster around the corner instead of through it, and it
+            // is the reason a 4.8 m/s creature cannot cut the chord of §12's
+            // S-corridor.
+            //
+            // "Distinct" is load-bearing, not defensive tidying. At the mouth of a
+            // NavMeshLink — which is how the 계단 join the three storeys —
+            // CalculatePath emits corners[0] and corners[1] at the same position.
+            // Returning corner 1 unconditionally then hands the brain a waypoint it is
+            // already standing on; MonsterBrain measures the distance as within its
+            // tolerance, "arrives" without moving, and asks again. That deadlocked the
+            // monster 95 m from the player on a path the audit reported as complete,
+            // and it produced no error of any kind — see docs/BLOCKERS.md B-001.
+            var advanced = false;
+            for (var i = 1; i < _cornerCount; i++)
+            {
+                if ((_corners[i] - origin).sqrMagnitude > MinWaypointAdvanceSqr)
+                {
+                    next = _corners[i].ToVec3();
+                    advanced = true;
+                    break;
+                }
+            }
+
+            if (!advanced)
+            {
+                // Every corner sits on top of us: either we are on the destination, or
+                // the path is degenerate. Aim at the target so the brain makes progress
+                // or fails honestly, rather than standing still forever.
+                next = (_cornerCount > 0 ? _corners[_cornerCount - 1] : _memoSnappedTo).ToVec3();
+            }
+
             return true;
         }
+
+        /// <summary>
+        /// Squared distance a waypoint must be from the mover to count as somewhere
+        /// else, in m².
+        /// <para>
+        /// Comfortably above <c>MonsterBrain</c>'s arrival tolerance: a waypoint the
+        /// brain would immediately consider reached is not a waypoint, it is a stall.
+        /// </para>
+        /// </summary>
+        private const float MinWaypointAdvanceSqr = 0.09f;
 
         /// <inheritdoc />
         public FloorMaterial SampleFloor(Vec3 position)

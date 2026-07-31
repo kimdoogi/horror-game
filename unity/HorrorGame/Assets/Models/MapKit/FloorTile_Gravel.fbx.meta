@@ -3,7 +3,12 @@ guid: 315dc8a434905496886715a13b0dea2f
 ModelImporter:
   serializedVersion: 24300
   internalIDToNameTable: []
-  externalObjects: {}
+  externalObjects:
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Floor_Gravel
+    second: {fileID: 2100000, guid: 66ed680db8c6248048d962c667d5e7b3, type: 2}
   materials:
     materialImportMode: 2
     materialName: 0

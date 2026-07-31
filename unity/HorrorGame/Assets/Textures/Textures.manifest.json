@@ -1,0 +1,224 @@
+{
+  "generated_by": "tools/textures/gen_textures.py",
+  "resolution": 1024,
+  "albedo_band_linear": [
+    0.15,
+    0.45
+  ],
+  "materials": [
+    {
+      "name": "Floor_Wood",
+      "slots": [
+        "Floor_Wood"
+      ],
+      "note": "§12 구역 A 나무 — staggered boards, deep gaps, soft traffic lane.",
+      "world_size_metres": 2.0,
+      "albedo_mean_linear": 0.2,
+      "roughness_mean": 0.7725,
+      "relief_mm": 9.68,
+      "maps": {
+        "albedo": "Floor_Wood/Floor_Wood_albedo.png",
+        "normal": "Floor_Wood/Floor_Wood_normal.png",
+        "roughness": "Floor_Wood/Floor_Wood_rough.png",
+        "occlusion": "Floor_Wood/Floor_Wood_ao.png",
+        "metallic_smoothness": "Floor_Wood/Floor_Wood_ms.png"
+      }
+    },
+    {
+      "name": "Floor_Tile",
+      "slots": [
+        "Floor_Tile"
+      ],
+      "note": "§12 구역 B 타일 — 8×8 grid, dark grout, glossiest floor so the beam streaks.",
+      "world_size_metres": 2.0,
+      "albedo_mean_linear": 0.32,
+      "roughness_mean": 0.2772,
+      "relief_mm": 7.24,
+      "maps": {
+        "albedo": "Floor_Tile/Floor_Tile_albedo.png",
+        "normal": "Floor_Tile/Floor_Tile_normal.png",
+        "roughness": "Floor_Tile/Floor_Tile_rough.png",
+        "occlusion": "Floor_Tile/Floor_Tile_ao.png",
+        "metallic_smoothness": "Floor_Tile/Floor_Tile_ms.png"
+      }
+    },
+    {
+      "name": "Floor_Gravel",
+      "slots": [
+        "Floor_Gravel"
+      ],
+      "note": "§12 구역 C 자갈 — three stone scales, 45 mm relief, deepest normals in the set.",
+      "world_size_metres": 1.5,
+      "albedo_mean_linear": 0.24,
+      "roughness_mean": 0.7877,
+      "relief_mm": 45.0,
+      "maps": {
+        "albedo": "Floor_Gravel/Floor_Gravel_albedo.png",
+        "normal": "Floor_Gravel/Floor_Gravel_normal.png",
+        "roughness": "Floor_Gravel/Floor_Gravel_rough.png",
+        "occlusion": "Floor_Gravel/Floor_Gravel_ao.png",
+        "metallic_smoothness": "Floor_Gravel/Floor_Gravel_ms.png"
+      }
+    },
+    {
+      "name": "Floor_Concrete",
+      "slots": [
+        "Floor_Concrete"
+      ],
+      "note": "§12 구역 D 콘크리트 — stains, exposed aggregate, two-scale crack network.",
+      "world_size_metres": 2.5,
+      "albedo_mean_linear": 0.28,
+      "roughness_mean": 0.8109,
+      "relief_mm": 9.57,
+      "maps": {
+        "albedo": "Floor_Concrete/Floor_Concrete_albedo.png",
+        "normal": "Floor_Concrete/Floor_Concrete_normal.png",
+        "roughness": "Floor_Concrete/Floor_Concrete_rough.png",
+        "occlusion": "Floor_Concrete/Floor_Concrete_ao.png",
+        "metallic_smoothness": "Floor_Concrete/Floor_Concrete_ms.png"
+      }
+    },
+    {
+      "name": "Floor_Metal",
+      "slots": [
+        "Floor_Metal"
+      ],
+      "note": "§12 계단 금속 — diamond tread, rivets, rust streaks, lowest roughness.",
+      "world_size_metres": 2.0,
+      "albedo_mean_linear": 0.26,
+      "roughness_mean": 0.3825,
+      "relief_mm": 10.12,
+      "maps": {
+        "albedo": "Floor_Metal/Floor_Metal_albedo.png",
+        "normal": "Floor_Metal/Floor_Metal_normal.png",
+        "roughness": "Floor_Metal/Floor_Metal_rough.png",
+        "occlusion": "Floor_Metal/Floor_Metal_ao.png",
+        "metallic_smoothness": "Floor_Metal/Floor_Metal_ms.png"
+      }
+    },
+    {
+      "name": "Wall_Brick_Painted",
+      "slots": [
+        "Wall_Structure"
+      ],
+      "note": "Painted brick, stretcher bond. Bound to the kit's single wall slot.",
+      "world_size_metres": 1.8,
+      "albedo_mean_linear": 0.22,
+      "roughness_mean": 0.7368,
+      "relief_mm": 12.95,
+      "maps": {
+        "albedo": "Wall_Brick_Painted/Wall_Brick_Painted_albedo.png",
+        "normal": "Wall_Brick_Painted/Wall_Brick_Painted_normal.png",
+        "roughness": "Wall_Brick_Painted/Wall_Brick_Painted_rough.png",
+        "occlusion": "Wall_Brick_Painted/Wall_Brick_Painted_ao.png",
+        "metallic_smoothness": "Wall_Brick_Painted/Wall_Brick_Painted_ms.png"
+      }
+    },
+    {
+      "name": "Wall_Concrete_Bare",
+      "slots": [],
+      "note": "Board-formed concrete with snap-tie holes. Generated, awaiting a per-zone wall slot.",
+      "world_size_metres": 2.5,
+      "albedo_mean_linear": 0.27,
+      "roughness_mean": 0.8133,
+      "relief_mm": 6.85,
+      "maps": {
+        "albedo": "Wall_Concrete_Bare/Wall_Concrete_Bare_albedo.png",
+        "normal": "Wall_Concrete_Bare/Wall_Concrete_Bare_normal.png",
+        "roughness": "Wall_Concrete_Bare/Wall_Concrete_Bare_rough.png",
+        "occlusion": "Wall_Concrete_Bare/Wall_Concrete_Bare_ao.png",
+        "metallic_smoothness": "Wall_Concrete_Bare/Wall_Concrete_Bare_ms.png"
+      }
+    },
+    {
+      "name": "Wall_Plaster_Stained",
+      "slots": [
+        "Wall_Dado"
+      ],
+      "note": "Water-stained plaster on the dado — the lower wall band. Rising damp is a lower-wall phenomenon, and the palest surface sits where the beam points.",
+      "world_size_metres": 2.2,
+      "albedo_mean_linear": 0.34,
+      "roughness_mean": 0.837,
+      "relief_mm": 7.63,
+      "maps": {
+        "albedo": "Wall_Plaster_Stained/Wall_Plaster_Stained_albedo.png",
+        "normal": "Wall_Plaster_Stained/Wall_Plaster_Stained_normal.png",
+        "roughness": "Wall_Plaster_Stained/Wall_Plaster_Stained_rough.png",
+        "occlusion": "Wall_Plaster_Stained/Wall_Plaster_Stained_ao.png",
+        "metallic_smoothness": "Wall_Plaster_Stained/Wall_Plaster_Stained_ms.png"
+      }
+    },
+    {
+      "name": "Ceiling_Concrete_Formed",
+      "slots": [
+        "Ceiling_Structure"
+      ],
+      "note": "Board-marked soffit — directional grain for corridors seen at grazing angles.",
+      "world_size_metres": 2.5,
+      "albedo_mean_linear": 0.21,
+      "roughness_mean": 0.8632,
+      "relief_mm": 8.7,
+      "maps": {
+        "albedo": "Ceiling_Concrete_Formed/Ceiling_Concrete_Formed_albedo.png",
+        "normal": "Ceiling_Concrete_Formed/Ceiling_Concrete_Formed_normal.png",
+        "roughness": "Ceiling_Concrete_Formed/Ceiling_Concrete_Formed_rough.png",
+        "occlusion": "Ceiling_Concrete_Formed/Ceiling_Concrete_Formed_ao.png",
+        "metallic_smoothness": "Ceiling_Concrete_Formed/Ceiling_Concrete_Formed_ms.png"
+      }
+    },
+    {
+      "name": "Trim_Steel_Rusted",
+      "slots": [
+        "Trim_Steel"
+      ],
+      "note": "Rusted ribbed steel. Sits inside the beam more often than the wall behind it.",
+      "world_size_metres": 1.0,
+      "albedo_mean_linear": 0.19,
+      "roughness_mean": 0.683,
+      "relief_mm": 9.47,
+      "maps": {
+        "albedo": "Trim_Steel_Rusted/Trim_Steel_Rusted_albedo.png",
+        "normal": "Trim_Steel_Rusted/Trim_Steel_Rusted_normal.png",
+        "roughness": "Trim_Steel_Rusted/Trim_Steel_Rusted_rough.png",
+        "occlusion": "Trim_Steel_Rusted/Trim_Steel_Rusted_ao.png",
+        "metallic_smoothness": "Trim_Steel_Rusted/Trim_Steel_Rusted_ms.png"
+      }
+    },
+    {
+      "name": "Trim_Door_Painted",
+      "slots": [
+        "Door_Leaf"
+      ],
+      "note": "Painted door leaf — palest surface, so a beam finds §04's 정비공 chokepoints first.",
+      "world_size_metres": 1.2,
+      "albedo_mean_linear": 0.31,
+      "roughness_mean": 0.5114,
+      "relief_mm": 6.04,
+      "maps": {
+        "albedo": "Trim_Door_Painted/Trim_Door_Painted_albedo.png",
+        "normal": "Trim_Door_Painted/Trim_Door_Painted_normal.png",
+        "roughness": "Trim_Door_Painted/Trim_Door_Painted_rough.png",
+        "occlusion": "Trim_Door_Painted/Trim_Door_Painted_ao.png",
+        "metallic_smoothness": "Trim_Door_Painted/Trim_Door_Painted_ms.png"
+      }
+    },
+    {
+      "name": "Trim_Skirting_Painted",
+      "slots": [
+        "Trim_Painted"
+      ],
+      "note": "Painted skirting, a cross-section profile: tiles along its length only.",
+      "world_size_metres": 1.0,
+      "albedo_mean_linear": 0.29,
+      "roughness_mean": 0.5523,
+      "relief_mm": 12.0,
+      "maps": {
+        "albedo": "Trim_Skirting_Painted/Trim_Skirting_Painted_albedo.png",
+        "normal": "Trim_Skirting_Painted/Trim_Skirting_Painted_normal.png",
+        "roughness": "Trim_Skirting_Painted/Trim_Skirting_Painted_rough.png",
+        "occlusion": "Trim_Skirting_Painted/Trim_Skirting_Painted_ao.png",
+        "metallic_smoothness": "Trim_Skirting_Painted/Trim_Skirting_Painted_ms.png"
+      }
+    }
+  ]
+}

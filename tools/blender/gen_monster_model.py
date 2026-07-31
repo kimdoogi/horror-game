@@ -6,7 +6,29 @@ Run headless::
     /Applications/Blender.app/Contents/MacOS/Blender --background --factory-startup \\
         --python tools/blender/gen_monster_model.py
 
-Outputs ``Assets/Models/Characters/Monster.fbx`` (+ ``Monster.glb`` for eyeballing).
+**This no longer writes the monster the game loads.** ``gen_monster_ai.py`` does, and
+``Monster.fbx``, ``Monster.clips.json`` and ``Monster.textures.json`` are its outputs
+now. Reason in one line: everything here is an assembly of convex hulls and tubes, and a
+hull cannot make a concave form — no sunken flank, no hollow between two ribs — so past
+a few metres the creature read as a bag of bulges. The owner's sculpt reads as a body.
+
+What this file still *is*, and why it is not deleted:
+
+* **The seven §06 clips.** ``action_patrol`` … ``action_grab``, plus ``ground_action``,
+  ``lock_stance_slide``, ``measure_ground_speed`` and ``grounding_error``, are imported
+  and run verbatim by ``gen_monster_ai.py``. They transfer because they are authored as
+  rotations about *world* axes and converted per bone through ``spec_pose``, so they
+  follow whatever rest pose a rig happens to have. Deleting this file deletes the
+  animation.
+* **The procedural texture pipeline.** ``write_skin`` and ``build_eyes`` still paint the
+  creature's lenses, through the same ``gen_textures.py`` calibration and the same
+  corridor-albedo ceiling every other surface in the game is held to.
+
+Running it directly writes the hull monster over the shipped asset, which is only ever
+wanted for a before/after comparison, so it asks::
+
+    /Applications/Blender.app/Contents/MacOS/Blender --background --factory-startup \\
+        --python tools/blender/gen_monster_model.py -- --hull
 
 WHY THIS ASSET EXISTS
 ---------------------
@@ -30,27 +52,34 @@ WHAT THE DESIGN DICTATES ABOUT ITS SHAPE
   *measured* stillness, not as an idle: no breathing, no weight shift, feet welded,
   one 4.5° head roll in three seconds. The script asserts that number.
 * §05/§12 — the game is dark and first person, so triangles buy nothing. The budget
-  here is 6000 and the mesh uses a fraction of it. Silhouette does all the work.
+  here is 6000 and the mesh uses 3,202 of them. Silhouette does all the work, which
+  is why the ones that were added went into READABLE MASS — a plated shoulder shelf,
+  a five-shard rib rack, a fan of crest blades, a keel down the chest — rather than
+  into smoothing anything.
 * §12 — corridors are the arena, so shoulder width is a hard constraint, not taste.
-  The check below keeps the span at 0.93 m while the creature stands 2.34 m tall.
+  The check below keeps the span at 0.98 m while the creature stands 2.34 m tall.
 
 HOW IT IS DELIBERATELY WRONG
 ----------------------------
 Not a person with a monster texture. The distortions are structural:
 
 * **An extra elbow.** Each arm is UpperArm → LowerArm → ForearmExtra → Hand. Four
-  segments, 1.78 m of reach from a 0.93 m shoulder span, so the fingertips hang
-  6 cm off the floor in the rest pose.
+  segments, 1.78 m of reach from a 0.98 m frame, so the fingertips hang 6 cm off the
+  floor in the rest pose.
 * **Digitigrade legs.** Femur forward, shin swept *back*, then a 0.51 m metatarsal —
   so the knee appears to bend the wrong way and the ankle rides at 0.48 m.
 * **A head that is not a head.** Two eyeless blade halves separated by a vertical
   slot, of slightly different size, plus a mandible that hangs to mid-chest and
   swings *forward* to gape. Nothing to make eye contact with.
-* **Asymmetry.** Left shoulder hiked with a scapular spur; right shoulder dropped
-  with three exposed rib shards. The skeleton stays mirror-symmetric so a Unity
-  Humanoid avatar can still be built; only the mesh is lopsided.
+* **Asymmetry.** Left shoulder hiked, carrying a scapular spur and the larger of the
+  two shoulder plates; right shoulder dropped, with five exposed rib shards. The
+  skeleton stays mirror-symmetric so a Unity Humanoid avatar can still be built; only
+  the mesh is lopsided.
 * **A dorsal crest** that lies folded on Patrol and flares on Alert — the only
   visible tell that it has heard something, which is what §06's Alert state is.
+* **Pale hide over black plate.** Set by measurement, not taste — see the albedo
+  discussion above `build_flesh`. The creature carries its own contrast, so it does
+  not depend on the beam happening to land behind it.
 
 BONE NAMES
 ----------
@@ -102,11 +131,13 @@ import re
 import struct
 import sys
 import traceback
+import zlib
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import bmesh  # noqa: E402
 import bpy  # noqa: E402
+import numpy as np  # noqa: E402
 from mathutils import Matrix, Vector  # noqa: E402
 
 import blendkit  # noqa: E402
@@ -169,26 +200,54 @@ def _ring_frame(axis: Vector) -> tuple[Vector, Vector]:
     return u, axis.cross(u).normalized()
 
 
-def tube(name, p0, p1, r0, r1, sides=8) -> bpy.types.Object:
+def tube(name, p0, p1, r0, r1, sides=8, lobes=0, lobe_depth=0.0,
+         twist=0.0, waist=None) -> bpy.types.Object:
     """A tapered tube between two points. Every limb segment is one of these.
 
-    Segments overlap their joints and a sphere sits at each major joint, so rigid
+    Segments overlap their joints and a knuckle sits at each major joint, so rigid
     weighting cannot open a gap when the bone rotates.
+
+    `lobes`, `twist` and `waist` exist because the shot review's verdict was "clean
+    cylindrical limb segments", and a circular cross-section swept linearly between
+    two radii is the definition of a manufactured part:
+
+    * **lobes / lobe_depth** flute the cross-section — `lobes=3, lobe_depth=0.2` makes
+      a rounded triangle instead of a circle. Free: same vertex count, and the flutes
+      catch §03's beam as three separate highlights running down the limb instead of
+      one, which is what reads as bundled sinew rather than as pipe.
+    * **twist** spirals those flutes from one end to the other, so no two silhouettes
+      of the same limb are the same shape.
+    * **waist** inserts a mid ring at its own radius factor, so a limb can swell into
+      a muscle belly and neck down again. A cone cannot, and a cone is what a
+      mannequin is made of.
     """
     p0v, p1v = Vector(p0), Vector(p1)
     u, v = _ring_frame(p1v - p0v)
+
+    sections = [(0.0, r0), (1.0, r1)]
+    if waist is not None:
+        at, factor = waist
+        sections.insert(1, (at, _lerp(r0, r1, at) * factor))
+
     bm = bmesh.new()
-    ring0, ring1 = [], []
-    for i in range(sides):
-        a = 2.0 * math.pi * i / sides
-        d = u * math.cos(a) + v * math.sin(a)
-        ring0.append(bm.verts.new(p0v + d * r0))
-        ring1.append(bm.verts.new(p1v + d * r1))
-    for i in range(sides):
-        j = (i + 1) % sides
-        bm.faces.new((ring0[i], ring0[j], ring1[j], ring1[i]))
-    bm.faces.new(ring0)
-    bm.faces.new(ring1)
+    rings = []
+    for t, radius in sections:
+        centre = p0v + (p1v - p0v) * t
+        spin = math.radians(twist) * t
+        ring = []
+        for i in range(sides):
+            a = 2.0 * math.pi * i / sides + spin
+            r = radius * (1.0 + lobe_depth * math.cos(lobes * a)) if lobes else radius
+            d = u * math.cos(a) + v * math.sin(a)
+            ring.append(bm.verts.new(centre + d * r))
+        rings.append(ring)
+
+    for k in range(len(rings) - 1):
+        for i in range(sides):
+            j = (i + 1) % sides
+            bm.faces.new((rings[k][i], rings[k][j], rings[k + 1][j], rings[k + 1][i]))
+    bm.faces.new(rings[0])
+    bm.faces.new(rings[-1])
     return _mesh_object(name, bm)
 
 
@@ -210,6 +269,108 @@ def hull(name, points) -> bpy.types.Object:
     return _mesh_object(name, bm)
 
 
+def _hash01(*ints) -> float:
+    """Deterministic 0–1 hash. Jitter that survives a rebuild, with no RNG to seed."""
+    x = 0.0
+    for i, n in enumerate(ints):
+        x += (n + 1) * (12.9898 + 7.233 * i)
+    return (math.sin(x) * 43758.5453) % 1.0
+
+
+# ── Joints ──────────────────────────────────────────────────────────────────
+# The shot review's most damning line: "visible ball joints at shoulders, elbows,
+# hips and knees". It was literally true — every joint was a UV sphere between two
+# cylinders, which is the construction of an artist's mannequin and reads as one from
+# any distance the beam reaches.
+#
+# A sphere is wrong for a reason worth stating, because "make it lumpier" is not the
+# fix. A ball joint reads as manufactured because it is SEPARABLE: the eye can see
+# where the limb ends and the joint begins, so it parses the creature as parts that
+# were assembled. Organic joints hide that seam under something continuous — plates
+# that overlap ACROSS the gap, tendon that spans it, skin that wrinkles over it.
+#
+# So each joint is now three things and none of them is a ball:
+#   1. a `knuckle` — faceted, lopsided, tapered along the limb, never symmetric;
+#   2. two or three `lame` plates lying ACROSS the joint line, overlapping like
+#      armour, so there is no visible boundary for the eye to find;
+#   3. a `collar` where the segment enters, flared and deeply fluted, so the limb
+#      appears to be swallowed by the joint rather than plugged into it.
+
+
+def knuckle(name, centre, radius, axis, seed, span=1.0, taper=1.0):
+    """The lump where a ball joint would be. Faceted and deliberately lopsided.
+
+    Four rings of five points along the limb axis, each ring phase-shifted and
+    radius-jittered by `_hash01`, hulled into big flat facets. Five points per ring
+    rather than sixteen is the whole point: a low facet count catches §03's beam as
+    a few hard planes, and hard planes are what a sphere cannot produce at any size.
+    """
+    c = Vector(centre)
+    a = Vector(axis).normalized()
+    u, v = _ring_frame(a)
+    pts = []
+    for k, (along, scale) in enumerate(((-0.70, 0.58), (-0.20, 1.00),
+                                        (0.30, 0.88), (0.76, 0.46))):
+        phase = _hash01(seed, k) * math.tau
+        for i in range(5):
+            ang = math.tau * i / 5.0 + phase
+            r = radius * scale * (0.82 + 0.40 * _hash01(seed, k, i))
+            pts.append(c + a * (along * radius * span * taper)
+                       + (u * math.cos(ang) + v * math.sin(ang)) * r)
+    return hull(name, pts)
+
+
+def lame(name, centre, radius, axis, around, along=0.0, reach=1.15,
+         width=0.85, thick=0.26, lift=1.0):
+    """One armour plate lying across a joint, overlapping the segments either side.
+
+    Named for the overlapping strips of a gauntlet, which is exactly the read: the
+    plate crosses the joint line, so there is no seam where a limb becomes a ball.
+
+    It is **wrapped, not flat**. The first attempt made each plate a flat tangent
+    slab and the result was worse than the sphere it replaced — a joint wearing a
+    dozen paper flags, which reads as shattered rather than as armoured. A plate that
+    follows the limb's curvature over a ±`width` arc, sitting `lift` proud of the
+    knuckle underneath, is the thing that actually hides a joint: from every angle
+    there is plate over the gap, and the eye never finds the boundary.
+    """
+    c = Vector(centre)
+    a = Vector(axis).normalized()
+    u, v = _ring_frame(a)
+
+    def at(angle, r, slide):
+        return (c + a * slide + (u * math.cos(angle) + v * math.sin(angle)) * r)
+
+    arc = math.radians(46.0 * width)
+    base = along * radius
+    pts = []
+    for slide, spread, out in ((base - radius * reach * 0.58, 1.0, 1.0),
+                               (base + radius * reach * 0.66, 0.62, 0.93)):
+        for k in (-1.0, -0.35, 0.35, 1.0):
+            angle = around + arc * spread * k
+            pts.append(at(angle, radius * lift * out, slide))
+            pts.append(at(angle * 1.0, radius * (lift * out - thick), slide))
+    return hull(name, pts)
+
+
+def joint(prefix, bone, mat, centre, radius, axis, seed, plates=(0.0, 2.2, 4.3),
+          span=1.0, lift=1.0):
+    """A whole joint: one knuckle plus its overlapping plates. Registers every piece.
+
+    The plate angles default to three roughly-thirds around the limb but deliberately
+    not exactly — 0, 126°, 246° rather than 0, 120, 240, because three-fold symmetry
+    is itself a manufactured cue.
+    """
+    part(knuckle(f"{prefix}Knuckle", centre, radius, axis, seed, span=span), bone, mat)
+    for i, around in enumerate(plates):
+        part(lame(f"{prefix}Lame{i}", centre, radius, axis, around,
+                  along=(_hash01(seed, 90 + i) - 0.5) * 0.55,
+                  reach=1.05 + 0.35 * _hash01(seed, 70 + i),
+                  width=0.72 + 0.30 * _hash01(seed, 50 + i),
+                  lift=lift),
+             bone, CARAPACE)
+
+
 def mirrored(points, y_scale=1.0, z_shift=0.0):
     """Mirrors a point list in X, optionally distorting it.
 
@@ -224,6 +385,7 @@ def mirrored(points, y_scale=1.0, z_shift=0.0):
 FLESH = "Monster_Flesh"
 CARAPACE = "Monster_Carapace"
 MAW = "Monster_Maw"
+EYES = "Monster_Eyes"
 
 
 def build_torso() -> None:
@@ -239,10 +401,12 @@ def build_torso() -> None:
         (0.13, 0.02, 1.19), (-0.13, 0.02, 1.19),
     ]), "Hips", FLESH)
 
-    part(tube("Spine_Seg", (0.0, 0.02, 1.38), (0.0, -0.01, 1.66), 0.165, 0.150, 10), "Spine", FLESH)
-    part(tube("Chest_Seg", (0.0, -0.01, 1.63), (0.0, 0.0, 1.88), 0.150, 0.185, 10), "Chest", FLESH)
-    part(tube("UpperChest_Seg", (0.0, 0.0, 1.85), (0.0, 0.01, 2.00), 0.185, 0.140, 10),
-         "UpperChest", FLESH)
+    part(tube("Spine_Seg", (0.0, 0.02, 1.38), (0.0, -0.01, 1.66), 0.190, 0.185, 12,
+              lobes=5, lobe_depth=0.13, twist=14.0, waist=(0.45, 0.93)), "Spine", FLESH)
+    part(tube("Chest_Seg", (0.0, -0.01, 1.63), (0.0, 0.0, 1.88), 0.185, 0.235, 12,
+              lobes=5, lobe_depth=0.11, twist=-10.0, waist=(0.5, 1.05)), "Chest", FLESH)
+    part(tube("UpperChest_Seg", (0.0, 0.0, 1.85), (0.0, 0.01, 2.00), 0.235, 0.165, 12,
+              lobes=5, lobe_depth=0.10, twist=8.0), "UpperChest", FLESH)
 
     # Shoulder yoke — a fixed bar of bone across the top of the chest, weighted to
     # UpperChest. The clavicles (build_arm) carry the span out from here, so the
@@ -255,31 +419,73 @@ def build_torso() -> None:
         (YOKE_X - 0.06, 0.0, SHOULDER_Z - 0.11), (-(YOKE_X - 0.06), 0.0, SHOULDER_Z - 0.11),
     ]), "UpperChest", FLESH)
 
-    # Right side only: three rib shards pushing out through the skin. The left side
-    # gets the scapular spur instead. Asymmetry without touching the skeleton.
-    for i, z in enumerate((1.62, 1.73, 1.83)):
+    # Right side only: five rib shards pushing out through the skin, longest at the
+    # middle of the arc. The left side gets the scapular spur and the shoulder shelf
+    # instead. Asymmetry without touching the skeleton.
+    #
+    # Five rather than the original three, and 6 cm longer: at 15 m in a 44° beam the
+    # individual shards are below a pixel, but the RACK is not — it turns one side of
+    # the ribcage into a serrated outline while the other stays smooth, and an
+    # asymmetric outline is the cheapest "that is not a person" a silhouette can carry.
+    for i, z in enumerate((1.56, 1.655, 1.75, 1.845, 1.94)):
+        reach = 0.245 + 0.055 * math.sin(math.pi * i / 4.0)
         part(hull(f"RibShard_{i}", [
-            (-0.13, 0.04, z), (-0.13, -0.05, z), (-0.13, 0.0, z + 0.055),
-            (-0.245 - 0.012 * i, 0.01, z + 0.02), (-0.235, -0.02, z - 0.015),
+            (-0.13, 0.05, z), (-0.13, -0.06, z), (-0.13, 0.0, z + 0.058),
+            (-reach, 0.015, z + 0.028), (-reach + 0.02, -0.035, z - 0.018),
+            (-reach * 0.6, 0.01, z + 0.05),
         ]), "Chest", CARAPACE)
+
+    # Sternal keel — a blade down the front of the chest. The creature is seen head-on
+    # more than from any other angle (§06 has it coming at you), and head-on the torso
+    # was a plain cylinder. A keel gives the front a bright vertical highlight under
+    # the beam and splits the chest into two shaded halves.
+    part(hull("SternalKeel", [
+        (0.055, -0.155, 1.90), (-0.055, -0.155, 1.90),
+        (0.070, -0.130, 1.72), (-0.070, -0.130, 1.72),
+        (0.045, -0.105, 1.52), (-0.045, -0.105, 1.52),
+        (0.0, -0.235, 1.83), (0.0, -0.215, 1.66), (0.0, -0.150, 1.50),
+    ]), "Chest", CARAPACE)
 
 
 def build_head() -> None:
-    """Neck, the two head blades, the hanging mandible and the crest.
+    """Neck, the two head blades, the hanging mandible, the crest and the two lenses.
 
-    "A head that is not quite a head": two eyeless wedges of *different* size with a
-    3.6 cm slot between them, and a mandible reaching to mid-chest. There is no face
-    to read and nothing to make eye contact with — which is the point, because §06's
-    Alert state is the only moment it shows intent, and it shows it with the crest.
+    "A head that is not quite a head": two wedges of *different* size with a 3.6 cm
+    slot between them, and a mandible reaching to mid-chest.
+
+    This was authored eyeless, and the reasoning was that §06's Alert state is the
+    only moment the creature shows intent and it shows it with the crest. That was a
+    good argument about intent and the wrong answer to a different question, which the
+    shot rig then asked: at 15 m the crest is four pixels of a forty-pixel figure and
+    the creature is a smudge. §04 gives the 관측자 exactly one ability — 괴물의 시야를
+    본다 → 누가 표적인지 — and §12 obliges every zone to contain 1~2 관측 지점 that
+    make it usable at 15 m, adding that without them 관측자는 죽으러 가야 한다. A gaze
+    is the thing the role reads, and a creature with no eyes has no gaze; the crest
+    says *that* it noticed, never *whom*.
+
+    So it has two, and they are the smallest thing on it that can carry that. Two
+    separated points are what a person recognises a face and a facing from at a range
+    where nothing else survives — and they stay a pair of pinpricks rather than lamps,
+    because §03 makes darkness the lock and a creature that lights the room it walks
+    into has opened it. See MonsterSkin.EyeGlow for the brightness and why it is
+    bounded from both ends.
     """
-    part(tube("Neck_Seg", (0.0, 0.0, 1.97), (0.0, -0.04, 2.15), 0.080, 0.068, 8), "Neck", FLESH)
+    part(tube("Neck_Seg", (0.0, 0.0, 1.97), (0.0, -0.04, 2.15), 0.098, 0.082, 10,
+              lobes=4, lobe_depth=0.20, twist=18.0, waist=(0.5, 0.90)), "Neck", FLESH)
 
+    # Splayed 3 cm wider than the original wedge and given a backswept horn each.
+    # The head is the top of the silhouette and therefore the first thing a beam
+    # finds at range; a narrow wedge read as "a head" at 15 m, and a forked one that
+    # is wider than the neck it sits on does not. 2.36 m stays the apex — it is what
+    # sets the asset's height, which AssetImportPolicy.MonsterHeightMetres pins.
     blade = [
-        (0.018, 0.03, 2.04), (0.105, 0.04, 2.07),
-        (0.018, 0.00, 2.30), (0.092, 0.01, 2.27),
-        (0.018, -0.21, 2.36), (0.062, -0.20, 2.33),
-        (0.018, -0.31, 2.13), (0.048, -0.30, 2.14),
-        (0.015, -0.375, 2.24),
+        (0.020, 0.05, 1.99), (0.168, 0.06, 2.02),
+        (0.020, 0.00, 2.30), (0.148, 0.01, 2.23),
+        (0.020, -0.27, 2.36), (0.090, -0.26, 2.30),
+        (0.020, -0.40, 2.09), (0.064, -0.39, 2.09),
+        (0.016, -0.475, 2.22),
+        # the horn: sweeps back and out past the neck line
+        (0.185, 0.185, 2.17), (0.132, 0.190, 2.09), (0.156, 0.135, 2.23),
     ]
     left = hull("HeadBlade_L", blade)
     blendkit.bevel(left, width=0.006, segments=1)
@@ -289,6 +495,9 @@ def build_head() -> None:
     right = hull("HeadBlade_R", mirrored(blade, y_scale=1.07, z_shift=-0.02))
     blendkit.bevel(right, width=0.006, segments=1)
     part(right, "Head", CARAPACE)
+
+    build_eyes_on(left, 1)
+    build_eyes_on(right, -1)
 
     # The mandible hangs to mid-chest and gapes by swinging forward, so opening it
     # pulls the whole head apart vertically instead of dropping a chin.
@@ -304,29 +513,43 @@ def build_head() -> None:
 
     # Dorsal crest: three chained blades behind the shoulders. Folded on Patrol,
     # flared on Alert — the creature's only visible "I heard that".
+    #
+    # Widened from a 0.15 m fan to 0.29 m and given a third pair of side blades. The
+    # flare is the state tell §04's 관측자 is meant to read, and a tell has to be
+    # legible from further than the 15 m the Observer's ability works at
+    # (GameConstants.ObserverRange) or it is not information, it is decoration.
     crest_pts = [
-        ((0.0, 0.16, 1.90), (0.0, 0.245, 2.06), 0.055, "Crest1"),
-        ((0.0, 0.245, 2.04), (0.0, 0.305, 2.19), 0.045, "Crest2"),
-        ((0.0, 0.305, 2.17), (0.0, 0.325, 2.30), 0.032, "Crest3"),
+        ((0.0, 0.15, 1.84), (0.0, 0.275, 2.06), 0.105, "Crest1"),
+        ((0.0, 0.275, 2.04), (0.0, 0.370, 2.22), 0.080, "Crest2"),
+        ((0.0, 0.370, 2.20), (0.0, 0.415, 2.35), 0.055, "Crest3"),
     ]
     for i, (p0, p1, half, bone) in enumerate(crest_pts):
         b = hull(f"CrestBlade_{i}", [
-            (0.016, p0[1] - half, p0[2]), (-0.016, p0[1] - half, p0[2]),
-            (0.016, p0[1] + half, p0[2]), (-0.016, p0[1] + half, p0[2]),
-            (0.008, p1[1] - half * 0.5, p1[2]), (-0.008, p1[1] - half * 0.5, p1[2]),
-            (0.008, p1[1] + half * 0.4, p1[2]), (-0.008, p1[1] + half * 0.4, p1[2]),
+            (0.032, p0[1] - half, p0[2]), (-0.032, p0[1] - half, p0[2]),
+            (0.032, p0[1] + half, p0[2]), (-0.032, p0[1] + half, p0[2]),
+            (0.016, p1[1] - half * 0.5, p1[2]), (-0.016, p1[1] - half * 0.5, p1[2]),
+            (0.016, p1[1] + half * 0.4, p1[2]), (-0.016, p1[1] + half * 0.4, p1[2]),
         ])
         blendkit.bevel(b, width=0.005, segments=1)
         part(b, bone, CARAPACE)
-        # A shorter blade to each side of the first two, so the crest has volume.
-        if i < 2:
-            for s in (1, -1):
-                part(hull(f"CrestSide_{i}_{s}", [
-                    (s * 0.075, p0[1] - half * 0.8, p0[2] - 0.02),
-                    (s * 0.100, p0[1] - half * 0.6, p0[2] - 0.01),
-                    (s * 0.075, p0[1] + half * 0.8, p0[2] - 0.02),
-                    (s * 0.070, _lerp(p0[1], p1[1], 0.7), _lerp(p0[2], p1[2], 0.7)),
-                    (s * 0.095, _lerp(p0[1], p1[1], 0.5), _lerp(p0[2], p1[2], 0.4)),
+        # Two shorter blades to each side of every segment, so the crest is a fan
+        # rather than a fin: a fan keeps a recognisable outline at any yaw, and the
+        # player almost never sees the creature exactly side-on.
+        #
+        # Doubled in every dimension after the first render pass. At 0.15 m across it
+        # was invisible from the front at 3 m, which makes it useless as the Alert tell
+        # §04's 관측자 is supposed to read — a tell nobody can see is a decoration.
+        for s in (1, -1):
+            for j, (spread, drop, lean) in enumerate(((0.135, 0.02, 0.62), (0.205, 0.07, 0.38))):
+                if i == 2 and j == 1:
+                    continue  # the tip stays narrow, or the head disappears behind it
+                part(hull(f"CrestSide_{i}_{j}_{s}", [
+                    (s * spread * 0.62, p0[1] - half * 0.8, p0[2] - drop),
+                    (s * spread, p0[1] - half * 0.5, p0[2] - drop * 0.5),
+                    (s * spread * 0.62, p0[1] + half * 0.8, p0[2] - drop),
+                    (s * spread * 0.55, _lerp(p0[1], p1[1], lean + 0.16),
+                     _lerp(p0[2], p1[2], lean + 0.16)),
+                    (s * spread * 0.90, _lerp(p0[1], p1[1], lean), _lerp(p0[2], p1[2], lean * 0.6)),
                 ]), bone, CARAPACE)
 
     # Left scapular spur — a hooked blade sweeping up and back off one shoulder.
@@ -339,9 +562,92 @@ def build_head() -> None:
     part(spur, "LeftScapulaSpur", CARAPACE)
 
 
+EYE_RADIUS = 0.036
+"""Half-width of a lens, metres.
+
+Sized off the measurement rather than off the model. At GameConstants.ObserverRange
+the creature is ~40 px tall in a 1280-wide 90° frame, which is 14.2 px per degree; a
+7.2 cm lens subtends 0.27° and lands on just under 4 px, and the pair about 12 cm
+apart lands 7 px apart. Below roughly 5 cm the two merge into a single point and the
+*facing* goes with them — and the facing is the half of §04's ability that the crest
+was never able to carry.
+"""
+
+EYE_PROUD = 0.013
+"""How far a lens stands out of the blade it sits on, metres.
+
+Proud rather than socketed. A socket is a shadow at every range past a few metres,
+and at 15 m a shadow inside a 40-pixel figure is not a feature, it is noise.
+"""
+
+
+def build_eyes_on(blade: bpy.types.Object, side: int) -> None:
+    """Puts one lens on the front face of one head blade.
+
+    The placement is *found*, not typed, and that is load-bearing. The first attempt
+    put both lenses at a hand-written coordinate near where the front of the head looked
+    like it was, and the render answered plainly: the blades are 0.66 m deep in Y and
+    the hand-picked point was 15 cm inside one of them, so what shipped was two slivers
+    of glass peeping out of a solid wedge — the eyes were there, the emission was there,
+    and sweeping their brightness from 1.5 to 12 moved the measured frame by 0.0003.
+
+    So a ray is cast straight down the axis the player is on. The outermost x that
+    still hits the blade from the front is the widest a forward-facing lens can sit,
+    which maximises the separation §04 reads the facing from; the lens then sits
+    EYE_PROUD in front of whatever that ray hit. Re-shape the head and the eyes move
+    with it instead of sinking into it.
+    """
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    evaluated = blade.evaluated_get(depsgraph)
+
+    # Forward is -Y (the creature faces -Y), so the ray travels +Y from in front of it.
+    forward = Vector((0.0, -1.0, 0.0))
+    height = 2.215 + (0.0 if side > 0 else -0.02)   # the blades do not match; nor do the eyes
+
+    found = None
+    x = 0.086
+    while x >= 0.020:
+        origin = Vector((side * x, -0.95, height))
+        hit, location, normal, _ = evaluated.ray_cast(origin, -forward)
+        if hit and normal.dot(forward) > 0.15:
+            found = location
+            break
+
+        x -= 0.004
+
+    if found is None:
+        blendkit.fail(
+            "no forward-facing surface on the head blade to sit an eye on. §04's 관측자 reads "
+            "the creature's facing off the pair of lenses and §12 obliges every zone to hold "
+            "관측 지점 that make that readable at 15 m; a head with nowhere to put them is a "
+            "head that has to be re-shaped, not shipped.")
+        return
+
+    centre = found + forward * EYE_PROUD
+
+    # A lens rather than a ball: a ring in the X–Z plane, domed forward. Flattened along
+    # the view axis so it reads as glass set into a face instead of a bead glued on.
+    points = []
+    for i in range(8):
+        angle = i * math.pi / 4.0
+        points.append((centre.x + EYE_RADIUS * math.cos(angle),
+                       centre.y + EYE_PROUD * 0.35,
+                       centre.z + EYE_RADIUS * 0.86 * math.sin(angle)))
+        points.append((centre.x + EYE_RADIUS * 0.62 * math.cos(angle),
+                       centre.y - EYE_PROUD * 0.55,
+                       centre.z + EYE_RADIUS * 0.53 * math.sin(angle)))
+
+    points.append((centre.x, centre.y - EYE_PROUD * 0.95, centre.z))
+    points.append((centre.x, centre.y + EYE_PROUD * 0.9, centre.z))
+
+    lens = hull(f"Eye_{'L' if side > 0 else 'R'}", points)
+    blendkit.bevel(lens, width=0.003, segments=1)
+    part(lens, "Head", EYES)
+
+
 def build_arm(side: int) -> None:
     """One four-segment arm. §01: it cannot be killed, so it never needs to lunge —
-    it simply reaches. 1.78 m of arm on a 0.93 m frame puts the fingertips 6 cm off
+    it simply reaches. 1.78 m of arm on a 0.98 m frame puts the fingertips 6 cm off
     the floor in the rest pose — it does not have to bend down to take you."""
     s = "Left" if side > 0 else "Right"
     x = side
@@ -355,31 +661,85 @@ def build_arm(side: int) -> None:
     # Clavicle: the only geometry the Shoulder bone owns. Without it the shrug in
     # every pose (left hiked, right collapsed) would deform nothing.
     part(tube(f"{s}Clavicle", (x * 0.10, 0.0, 1.945), (x * 0.315, 0.0, SHOULDER_Z),
-              0.108, 0.100, 8), f"{s}Shoulder", FLESH)
-    part(blendkit.add_sphere(f"{s}ShoulderBall", 0.115, sh, segments=8, rings=5),
-         f"{s}Shoulder", FLESH)
-    part(tube(f"{s}UpperArm_Seg", sh, elbow, 0.098, 0.076, 8), f"{s}UpperArm", FLESH)
+              0.130, 0.122, 10), f"{s}Shoulder", FLESH)
+    joint(f"{s}Shoulder", f"{s}Shoulder", FLESH, sh, 0.138,
+          Vector(elbow) - Vector(sh), seed=11 + side, span=1.15, lift=1.02)
 
-    part(blendkit.add_sphere(f"{s}ElbowBall", 0.086, elbow, segments=8, rings=5),
+    # Shoulder shelf — a swept plate carrying the span out to ±0.50 m.
+    #
+    # This is the single biggest silhouette change and the reasoning is the brief's:
+    # what the player acts on is the OUTLINE in a narrow beam at range. The original
+    # creature was a column with sticks on it, and a column reads as a pipe. A wide
+    # plated top over a narrow waist over long dangling arms reads as a body, and as
+    # the wrong kind of one, in one glance.
+    #
+    # Width is a hard §12 constraint, not taste, and it is also where the creature's
+    # SCALE actually reads. The kit builds corridors 2.2 m wide and CLEAR_H = 3.00 m
+    # tall (gen_mapkit.py) — §12's "2.2 × 3.0 m" is width × height — so a 2.34 m
+    # creature has 0.66 m of headroom and cannot be made to scrape a ceiling without
+    # breaking AssetImportPolicy.MonsterHeightMetres. What it CAN do is fill the
+    # corridor sideways, and at 0.99 m it was taking up under half of one.
+    #
+    # The span below lands the asset at 1.18 m against the 1.2 m the corridors allow:
+    # 54% of the clear width, so a player cannot pass it in a corridor and can see
+    # that at a glance. That is where "too big for this space" comes from here.
+    # Weighted to the Shoulder bones, so the left/right shrug asymmetry in BASE tilts
+    # the two plates differently.
+    shelf_out = 0.573 if side > 0 else 0.545   # the hiked side carries the bigger plate
+    shelf_top = 2.035 if side > 0 else 1.995
+    part(hull(f"{s}ShoulderShelf", [
+        (x * 0.235, 0.075, SHOULDER_Z - 0.055), (x * 0.235, -0.075, SHOULDER_Z - 0.030),
+        (x * 0.245, 0.020, shelf_top),
+        (x * (shelf_out - 0.09), 0.130, shelf_top - 0.055),
+        (x * (shelf_out - 0.06), -0.105, shelf_top - 0.085),
+        (x * shelf_out, 0.060, shelf_top - 0.150),
+        (x * (shelf_out - 0.02), 0.115, shelf_top - 0.235),
+        (x * (shelf_out - 0.10), -0.060, shelf_top - 0.255),
+        (x * 0.300, 0.045, SHOULDER_Z - 0.185),
+    ]), f"{s}Shoulder", CARAPACE)
+
+    part(tube(f"{s}UpperArm_Seg", sh, elbow, 0.122, 0.096, 10,
+              lobes=3, lobe_depth=0.20, twist=34.0 * side, waist=(0.42, 1.13)),
+         f"{s}UpperArm", FLESH)
+
+    joint(f"{s}Elbow", f"{s}LowerArm", FLESH, elbow, 0.104,
+          Vector(elbow2) - Vector(elbow), seed=23 + side, span=1.25)
+    part(tube(f"{s}LowerArm_Seg", elbow, elbow2, 0.096, 0.078, 10,
+              lobes=3, lobe_depth=0.22, twist=-28.0 * side, waist=(0.38, 1.10)),
          f"{s}LowerArm", FLESH)
-    part(tube(f"{s}LowerArm_Seg", elbow, elbow2, 0.076, 0.062, 8), f"{s}LowerArm", FLESH)
+
+    # A blade running the length of the forearm. Straight edges are what a spot light
+    # turns into a continuous highlight, and a continuous highlight is how a limb
+    # stays visible at 15 m once the diffuse term has fallen off — a plain tube gives
+    # one moving dot instead of a line, and reads as nothing.
+    part(hull(f"{s}LowerArmFin", [
+        (x * 0.372, 0.075, 1.36), (x * 0.398, 0.055, 1.36),
+        (x * 0.386, 0.185, 1.20), (x * 0.404, 0.165, 1.20),
+        (x * 0.392, 0.130, 1.02), (x * 0.408, 0.115, 1.02),
+        (x * 0.396, 0.020, 0.88), (x * 0.408, 0.010, 0.88),
+    ]), f"{s}LowerArm", CARAPACE)
 
     # The second elbow. There is no anatomical reason for it; that is the reason.
-    part(blendkit.add_sphere(f"{s}ElbowBall2", 0.070, elbow2, segments=8, rings=5),
-         f"{s}ForearmExtra", CARAPACE)
-    part(tube(f"{s}Forearm_Seg", elbow2, wrist, 0.062, 0.048, 8), f"{s}ForearmExtra", FLESH)
+    joint(f"{s}Elbow2", f"{s}ForearmExtra", CARAPACE, elbow2, 0.090,
+          Vector(wrist) - Vector(elbow2), seed=37 + side, span=1.30, lift=1.06)
+    part(tube(f"{s}Forearm_Seg", elbow2, wrist, 0.078, 0.060, 10,
+              lobes=4, lobe_depth=0.24, twist=40.0 * side, waist=(0.45, 1.08)),
+         f"{s}ForearmExtra", FLESH)
 
-    part(blendkit.add_sphere(f"{s}WristBall", 0.054, wrist, segments=8, rings=5),
-         f"{s}Hand", FLESH)
-    part(tube(f"{s}Palm", wrist, tip, 0.048, 0.036, 8), f"{s}Hand", FLESH)
+    joint(f"{s}Wrist", f"{s}Hand", FLESH, wrist, 0.068,
+          Vector(tip) - Vector(wrist), seed=53 + side, span=1.10,
+          plates=(0.8, 3.6))
+    part(tube(f"{s}Palm", wrist, tip, 0.060, 0.044, 8,
+              lobes=3, lobe_depth=0.18), f"{s}Hand", FLESH)
 
     # Three long fingers, no thumb. They reach past the ankle to z ≈ 0.06.
     for i, dx in enumerate((-0.030, 0.0, 0.030)):
         base = (tip[0] + x * dx, tip[1] + 0.012, tip[2] + 0.01)
-        knuckle = (tip[0] + x * dx * 1.5, tip[1] - 0.035, tip[2] - 0.075)
+        mid = (tip[0] + x * dx * 1.5, tip[1] - 0.035, tip[2] - 0.075)
         end = (tip[0] + x * dx * 1.7, tip[1] - 0.075, 0.062)
-        part(tube(f"{s}Finger{i}a", base, knuckle, 0.020, 0.014, 6), f"{s}Hand", FLESH)
-        part(tube(f"{s}Finger{i}b", knuckle, end, 0.014, 0.005, 6), f"{s}Hand", CARAPACE)
+        part(tube(f"{s}Finger{i}a", base, mid, 0.026, 0.018, 6,
+                  lobes=3, lobe_depth=0.22), f"{s}Hand", FLESH)
+        part(tube(f"{s}Finger{i}b", mid, end, 0.018, 0.006, 6), f"{s}Hand", CARAPACE)
 
 
 def build_leg(side: int) -> None:
@@ -398,17 +758,45 @@ def build_leg(side: int) -> None:
     ball = (x * LEG_X, -0.15, BALL_Z)
     toe = (x * LEG_X, -0.36, TOE_Z)
 
-    part(blendkit.add_sphere(f"{s}HipBall", 0.130, hip, segments=8, rings=5),
+    joint(f"{s}Hip", f"{s}UpperLeg", FLESH, hip, 0.156,
+          Vector(knee) - Vector(hip), seed=71 + side, span=1.20, lift=0.98)
+    part(tube(f"{s}UpperLeg_Seg", hip, knee, 0.148, 0.110, 12,
+              lobes=3, lobe_depth=0.17, twist=26.0 * side, waist=(0.40, 1.12)),
          f"{s}UpperLeg", FLESH)
-    part(tube(f"{s}UpperLeg_Seg", hip, knee, 0.118, 0.088, 10), f"{s}UpperLeg", FLESH)
 
-    part(blendkit.add_sphere(f"{s}KneeBall", 0.096, knee, segments=8, rings=5),
-         f"{s}LowerLeg", CARAPACE)
-    part(tube(f"{s}LowerLeg_Seg", knee, ankle, 0.088, 0.062, 10), f"{s}LowerLeg", FLESH)
+    # Hip blade — a flat plate over the outside of the thigh. §06's gait swings the
+    # hip ±36°, so this is the piece that makes the STRIDE readable at range: a flat
+    # face rotating through the beam flashes, a smooth tube does not.
+    part(hull(f"{s}HipBlade", [
+        (x * 0.245, 0.085, 1.34), (x * 0.285, 0.055, 1.30),
+        (x * 0.250, -0.075, 1.31), (x * 0.278, -0.045, 1.27),
+        (x * 0.232, 0.030, 1.10), (x * 0.262, 0.010, 1.07),
+        (x * 0.215, -0.060, 0.95), (x * 0.238, -0.040, 0.93),
+    ]), f"{s}UpperLeg", CARAPACE)
 
-    part(blendkit.add_sphere(f"{s}AnkleBall", 0.064, ankle, segments=8, rings=5),
-         f"{s}Foot", CARAPACE)
-    part(tube(f"{s}Foot_Seg", ankle, ball, 0.062, 0.046, 8), f"{s}Foot", FLESH)
+    joint(f"{s}Knee", f"{s}LowerLeg", CARAPACE, knee, 0.120,
+          Vector(ankle) - Vector(knee), seed=89 + side, span=1.30, lift=1.05)
+    part(tube(f"{s}LowerLeg_Seg", knee, ankle, 0.110, 0.078, 12,
+              lobes=4, lobe_depth=0.19, twist=-22.0 * side, waist=(0.34, 1.14)),
+         f"{s}LowerLeg", FLESH)
+
+    # Hock fin — a blade along the BACK edge of the reversed shin (the monster faces
+    # −Y, so +Y is behind it). The digitigrade leg is the loudest "not a person" the
+    # silhouette has, and a hard edge tracing the wrong-way bend is what makes that
+    # bend visible at range instead of only in close-up.
+    part(hull(f"{s}HockFin", [
+        (x * (LEG_X - 0.014), -0.055, 0.815), (x * (LEG_X + 0.014), -0.055, 0.815),
+        (x * (LEG_X - 0.012), 0.055, 0.760), (x * (LEG_X + 0.012), 0.055, 0.760),
+        (x * (LEG_X - 0.010), 0.155, 0.615), (x * (LEG_X + 0.010), 0.155, 0.615),
+        (x * (LEG_X - 0.010), 0.190, 0.500), (x * (LEG_X + 0.010), 0.190, 0.500),
+        (x * (LEG_X - 0.012), 0.120, 0.490), (x * (LEG_X + 0.012), 0.120, 0.490),
+    ]), f"{s}LowerLeg", CARAPACE)
+
+    joint(f"{s}Ankle", f"{s}Foot", CARAPACE, ankle, 0.082,
+          Vector(ball) - Vector(ankle), seed=101 + side, span=1.15,
+          plates=(1.1, 4.0))
+    part(tube(f"{s}Foot_Seg", ankle, ball, 0.078, 0.056, 8,
+              lobes=3, lobe_depth=0.20, waist=(0.5, 1.06)), f"{s}Foot", FLESH)
 
     # Toe pad plus three claws. §12 makes footstep material a gameplay channel, so
     # the contact surface is a single flat pad — one clean impact per step.
@@ -486,12 +874,42 @@ def bone_specs() -> list[BoneSpec]:
 #   swing/pitch +  a downward bone rotates toward -Y  → forward
 #   yaw       +  the bone turns toward +X            → the monster's left
 #   roll      +  a downward bone rotates toward -X   → the monster's right
+#
+# THE TRAP, and it cost this asset its whole silhouette
+# ----------------------------------------------------
+# `pitch` is one rigid rotation about world X. It therefore reads OPPOSITE on a bone
+# that points up and a bone that points down: R tips a downward bone's tip toward −Y
+# (in front of the creature) and an upward bone's tip toward +Y (behind it).
+#
+# The limbs all hang downward, so "+swing = forward" is true for every value `limb()`
+# takes. The torso chain — Spine, Chest, UpperChest, Neck, Head, the crest, the
+# scapular spur — points UP, and for those the same positive number leans the
+# creature BACKWARDS. Every torso value in this file was authored as a positive
+# "lean", and the creature was therefore reclining: measured on the built rig, the
+# Chase pose put the head 0.469 m BEHIND the hips at −38.1° of lean, and the shot
+# review read that as "upright and neutral with no forward lean" because a backward
+# lean foreshortens to nothing when the creature is coming straight at you, which is
+# the one angle §06 guarantees.
+#
+# Rather than flip `world_rot` — which would silently invert ~200 correct limb values
+# and the measured gait with them — the up-pointing bones are authored through
+# `stoop()`, which takes the angle a human means by "bend forward".
 
 
 def world_rot(pitch: float = 0.0, yaw: float = 0.0, roll: float = 0.0) -> Matrix:
     return (Matrix.Rotation(math.radians(yaw), 3, "Z")
             @ Matrix.Rotation(math.radians(roll), 3, "Y")
             @ Matrix.Rotation(math.radians(-pitch), 3, "X"))
+
+
+def stoop(forward: float, yaw: float = 0.0, roll: float = 0.0) -> tuple[float, float, float]:
+    """A pose triple for an UP-pointing bone, where `forward` bends it toward the front.
+
+    The one place the sign of the torso chain is decided. `stoop(26)` leans the spine
+    26° over its own feet; `stoop(-26)` arches it back. Read the note above for why a
+    bare positive number does the opposite.
+    """
+    return (-forward, yaw, roll)
 
 
 def to_local_deg(arm_obj, bone_name: str, rot: Matrix) -> tuple[float, float, float]:
@@ -534,31 +952,111 @@ def merge(*dicts) -> dict:
     return out
 
 
-# The pose every action starts from: a stoop that never straightens, a head craned
-# out ahead of the body, one shoulder hiked and one dropped. §01 — it has never had
-# to hurry, and the resting shape says so.
+# ── The dorsal crest ────────────────────────────────────────────────────────
+# §06 gives the creature no eyes and no face, so the crest is the only channel it has
+# for showing state, and §04's 관측자 is the player whose whole job is reading it at
+# ObserverRange. It is therefore authored as one number — degrees of RISE off the
+# folded position — rather than as three loose columns per clip that drift apart.
+#
+# The fold is deep because the creature is stooped: a crest lies along the BACK, and
+# once the back is pitched 30° forward a crest that only folds a little stands
+# straight up. Measured, that was the tallest point on the whole creature at 2.46 m,
+# 0.26 m through §12's 2.2 m ceiling — the crest, not the head, was what stopped the
+# hunch from reading.
+CREST_FOLD = (-44.0, -17.0, -9.0)
+"""Per-segment fold that lays the crest flat along a stooped back."""
+
+
+def crest(rise: float = 0.0) -> dict:
+    """The crest, as degrees of rise off folded. 0 = flat, 60 = fully flared (Alert)."""
+    share = (0.62, 0.26, 0.12)
+    return {f"Crest{i + 1}": stoop(CREST_FOLD[i] + rise * share[i]) for i in range(3)}
+
+
+# ── The hunch ───────────────────────────────────────────────────────────────
+# The pose every action starts from. It is a permanent stoop, and the argument for it
+# had to survive a measurement that killed the obvious version.
+#
+# The obvious version: §12's corridor clear section is "2.2 × 3.0 m", so hunch the
+# 2.34 m creature until its head is at the ceiling. That is wrong — those are WIDTH ×
+# HEIGHT, and gen_mapkit.py builds CLEAR_H = 3.00 m. The creature has 0.66 m of
+# headroom standing straight and no hunch can put its head near a 3 m ceiling;
+# hunching only lowers it further. The dimension that is actually tight is the width,
+# and that is answered in `build_arm` by carrying the shoulder span out to 1.12 m of
+# the 2.2 m available.
+#
+# What the stoop is for, then, is not headroom. It is that the creature reads as
+# having ADAPTED to a space it does not fit: a thing whose neck has learned to carry
+# its head forward at the player's eye height (§05: 1.63 m) rather than a metre above
+# it, where nothing it hunts ever is. §01 says nothing in this game can make it
+# straighten, because every counter is temporary.
+#
+# The stoop is therefore geometry, not mood:
+# a deep bend at the waist, shoulders rolled up and forward around a neck that cranes
+# the head out ahead of the chest, and the head itself levelled so the eyeless blades
+# aim at a standing player instead of at the floor. It never straightens, because
+# §01 says nothing in this game can make it — every counter is temporary.
+#
+# `STOOP_TOTAL` is the sum of the four torso bends and is what actually decides the
+# head height: the head sits 0.78 m up the spine from the hips, so each degree of it
+# costs roughly 13 mm of standing height. It is measured after posing, not trusted.
+STOOP_SPINE, STOOP_CHEST, STOOP_UPPER, STOOP_NECK = 15.0, 9.0, 6.0, 13.0
+STOOP_TOTAL = STOOP_SPINE + STOOP_CHEST + STOOP_UPPER + STOOP_NECK
+
+SHOULDER_BEND = STOOP_SPINE + STOOP_CHEST + STOOP_UPPER
+"""Forward bend inherited by anything hanging off the shoulders."""
+
+ALERT_BEND = 20.0
+"""§06 경계 straightens it partway. The only state that does, which is what makes the
+rise itself a tell §04's 관측자 can read at ObserverRange before the head angle is
+legible at all."""
+
+
+def arm_hang(bend: float) -> float:
+    """Shoulder swing that re-hangs an arm vertically under `bend` degrees of stoop.
+
+    Counter-intuitive and worth stating, because getting it backwards folded the
+    creature's arms up over its own back on the first attempt: a rigid arm bolted to a
+    chest that pitches FORWARD sweeps BACKWARD in world terms, the way a diver's arms
+    trail behind them in a tuck. So the correction runs the same way as the bend, not
+    against it. `limb()`'s +swing is forward; the stoop is worth −bend of it.
+    """
+    return bend
+
+
+def spur_pitch(bend: float) -> tuple[float, float, float]:
+    """Counter-arch for the scapular spur, which points UP and therefore tips the
+    other way from the arms. Left alone it swings out level with the ground."""
+    return stoop(-bend + 8.0)
+
 BASE = merge(
     {
         "Hips": (0.0, 0.0, 3.0),
-        "Spine": (11.0, -3.0, 0.0),
-        "Chest": (8.0, 2.0, 0.0),
-        "UpperChest": (5.0, 0.0, -2.0),
-        "Neck": (17.0, 0.0, 0.0),
-        "Head": (-25.0, 0.0, 5.0),
+        "Spine": stoop(STOOP_SPINE, yaw=-3.0),
+        "Chest": stoop(STOOP_CHEST, yaw=2.0),
+        "UpperChest": stoop(STOOP_UPPER, roll=-2.0),
+        "Neck": stoop(STOOP_NECK),
+        # Arched back against the neck, so the not-a-face is aimed forward rather than
+        # down. Net head tilt is STOOP_TOTAL - 24 ≈ 19° below horizontal, which is where
+        # a player standing 3 m away at §05's 1.63 m eye height actually is.
+        "Head": stoop(-24.0, roll=5.0),
         "Jaw": (4.0, 0.0, 0.0),
-        "Crest1": (-16.0, 0.0, 0.0),
-        "Crest2": (-11.0, 0.0, 0.0),
-        "Crest3": (-8.0, 0.0, 0.0),
-        "LeftScapulaSpur": (0.0, 0.0, 0.0),
+        # Counter-pitched, or the inherited stoop swings the shoulder hook forward
+        # until it juts out of the creature's chest.
+        "LeftScapulaSpur": spur_pitch(SHOULDER_BEND),
     },
     shoulder(1, fwd=9.0, drop=-8.0),    # left hiked, carrying the spur
     shoulder(-1, fwd=13.0, drop=12.0),  # right collapsed
     # The double elbow zigzags: back, forward, back again.
-    limb("arm", 1, up=(-7.0, 5.0, 0.0), lo=(13.0, 2.0, 0.0), ex=(-19.0, 0.0, 0.0), hd=(9.0, 0.0, 0.0)),
-    limb("arm", -1, up=(-4.0, 8.0, 0.0), lo=(16.0, 3.0, 0.0), ex=(-23.0, 0.0, 0.0), hd=(12.0, 0.0, 0.0)),
+    limb("arm", 1, up=(arm_hang(SHOULDER_BEND) - 7.0, 5.0, 0.0), lo=(13.0, 2.0, 0.0),
+         ex=(-19.0, 0.0, 0.0), hd=(9.0, 0.0, 0.0)),
+    limb("arm", -1, up=(arm_hang(SHOULDER_BEND) - 4.0, 8.0, 0.0), lo=(16.0, 3.0, 0.0),
+         ex=(-23.0, 0.0, 0.0), hd=(12.0, 0.0, 0.0)),
+    crest(0.0),
     limb("leg", 1),
     limb("leg", -1),
 )
+
 
 
 def spec_pose(arm_obj, frame: int, spec: dict, hips_world=None) -> Pose:
@@ -599,13 +1097,32 @@ HIP_TO_TOE = (Vector((0.195, -0.36, TOE_Z)) - Vector((0.17, 0.0, HIP_Z))).length
 # a running human holds — while the toes still curl hard enough to read as a push-off.
 # Flexing the *stance* knee, the intuitive fix, made it worse: it only lowers the
 # trough and leaves the peak alone.
+#
+# The hip angles below were opened from ±36/−32 to ±44/−39 and the Chase cycle
+# lengthened from 20 frames to 22. Both changes buy the same thing — a LONGER stride
+# rather than a faster one — and the brief asks for it in as many words. §06's
+# creature is 0.3 m/s faster than a sprinting human and must read as *unbothered*
+# while it does that, and the difference between a predator and a jogger is entirely
+# whether the same ground speed arrives as few long strides or many short ones. The
+# ground speed itself is not set here: `lock_stance_slide` solves it from the cycle,
+# and Unity divides §07's tier speed by whatever it solved for.
 GAIT_PHASES = [
-    (0.00, (36.0, 6.0, -5.0, 14.0)),      # contact — lands on a bent digitigrade leg
+    (0.00, (44.0, 6.0, -5.0, 14.0)),      # contact — lands on a bent digitigrade leg
     (0.25, (4.0, 0.0, 8.0, 0.0)),         # mid-stance — leg under the body
-    (0.50, (-32.0, 8.0, -12.0, 30.0)),    # toe-off — toes curl and push
-    (0.75, (9.0, -38.0, 30.0, -16.0)),    # swing — knee folded high, foot tucked
-    (1.00, (36.0, 6.0, -5.0, 14.0)),
+    (0.50, (-39.0, 8.0, -12.0, 30.0)),    # toe-off — toes curl and push
+    (0.75, (11.0, -44.0, 34.0, -16.0)),   # swing — knee folded high, foot tucked
+    (1.00, (44.0, 6.0, -5.0, 14.0)),
 ]
+
+PATROL_LIMP = 0.70
+"""Right-leg amplitude as a fraction of the left, on Patrol only. §06 순찰 has to be
+unhurried AND wrong, and the same leg dragging every cycle is the cheapest wrong
+there is. Chase is symmetric — a limp that vanishes the moment it commits is a much
+better tell than one it never had."""
+
+PEAK_HIP_SWING = max(abs(v[0]) for _, v in GAIT_PHASES)
+"""Peak hip angle at amplitude 1.0. `stride_report` measures the stride against it,
+so the two cannot drift apart the way a hand-copied 36.0 did."""
 
 ARM_PHASES = [
     (0.00, (-26.0, 20.0, -12.0)),
@@ -633,31 +1150,57 @@ def gait_leg(side: int, t: float, amp: float) -> dict:
                 ankle=(ankle * amp, 0.0, 0.0), toe=(toe * amp, 0.0, 0.0))
 
 
-def gait_arm(side: int, t: float, amp: float) -> dict:
+def gait_arm(side: int, t: float, amp: float, hang: float) -> dict:
     """Patrol arms barely swing — they hang and trail, which is most of what reads as
     "does not need to hurry". Chase amplifies the same curve into a hard pump. The
-    ForearmExtra lags the LowerArm at half amplitude: a dead segment on a whip."""
+    ForearmExtra lags the LowerArm at half amplitude: a dead segment on a whip.
+
+    `hang` is the shoulder swing that leaves the arm vertical under whatever stoop
+    the clip is using; the swing curve rides on top of it. Without it a deeper lean
+    carries the arms forward with the chest and the creature runs pointing at the
+    floor.
+    """
     up, lo, ex = _sample(ARM_PHASES, t)
-    base = BASE[("Left" if side > 0 else "Right") + "UpperArm"]
+    trail = -7.0 if side > 0 else -4.0
     return limb("arm", side,
-                up=(base[0] + up * amp, 5.0 + 3.0 * amp, 0.0),
+                up=(hang + trail + up * amp, 5.0 + 3.0 * amp, 0.0),
                 lo=(13.0 + lo * amp, 2.0, 0.0),
                 ex=(-19.0 + ex * amp * 0.5, 0.0, 0.0),
                 hd=(9.0 + 6.0 * amp, 0.0, 0.0))
 
 
+def torso_hang(torso_base: dict) -> float:
+    """The shoulder counter-swing that hangs an arm vertically under a given stoop.
+
+    The arms inherit Spine + Chest + UpperChest, so the angle to cancel is whatever
+    those three add up to in *this* clip — read back out of the spec rather than
+    assumed, because Chase leans further than BASE and Alert leans less.
+    """
+    total = 0.0
+    for bone in ("Spine", "Chest", "UpperChest"):
+        total += -torso_base.get(bone, BASE[bone])[0]     # stoop() stores it negated
+    return arm_hang(total)
+
+
 def locomotion_poses(arm_obj, cycle_frames: int, key_step: int, amp: float,
-                     torso_base: dict, sway: dict) -> list:
+                     torso_base: dict, sway: dict, limp: float = 1.0) -> list:
     """Samples one full gait cycle into keyframes.
 
     The right leg runs half a cycle out of phase with the left, and each arm counters
     the opposite leg. Torso sway is sinusoidal in the cycle phase — a lateral weight
     shift plus a counter-rotating spine and a lazy head scan — so the whole cycle is
     one continuous function with no hand-placed poses to fall out of sync.
+
+    `limp` scales the RIGHT leg's amplitude only. §06's 순찰 is supposed to be
+    unhurried *and wrong*, and an asymmetric gait is the cheapest wrong there is: the
+    same leg drags every cycle, so it reads as a broken thing rather than as noise.
+    It is 1.0 — perfectly symmetric — on Chase, because a limp that vanishes the
+    moment it commits is a much better tell than one it never had.
     """
     poses = []
     spine = torso_base.get("Spine", BASE["Spine"])
     head = torso_base.get("Head", BASE["Head"])
+    hang = torso_hang(torso_base)
     for i in range(cycle_frames // key_step):
         frame = 1 + i * key_step
         t = (i * key_step) / cycle_frames
@@ -669,8 +1212,8 @@ def locomotion_poses(arm_obj, cycle_frames: int, key_step: int, amp: float,
             "Head": (head[0], -sway["head_yaw"] * math.sin(ph), head[2]),
         }
         spec = merge(BASE, torso_base, overlay,
-                     gait_leg(1, t, amp), gait_leg(-1, t + 0.5, amp),
-                     gait_arm(1, t + 0.5, amp), gait_arm(-1, t, amp))
+                     gait_leg(1, t, amp), gait_leg(-1, t + 0.5, amp * limp),
+                     gait_arm(1, t + 0.5, amp, hang), gait_arm(-1, t, amp, hang))
         # Lateral weight shift only. Height is computed by ground_action().
         poses.append(spec_pose(arm_obj, frame, spec,
                                (sway["shift"] * math.sin(ph), 0.0, 0.0)))
@@ -682,15 +1225,26 @@ def locomotion_poses(arm_obj, cycle_frames: int, key_step: int, amp: float,
 def action_patrol(arm_obj):
     """§06 순찰 — an unhurried walk, footsteps audible, the Listener's main signal.
 
-    48-frame cycle at 30 fps = 1.6 s, two steps. Hip swing 0.72 × the run amplitude
-    gives a 1.28 m step → 1.60 m/s. Slower than a walking player (§05: 2.0 m/s),
-    which is the point: it is not chasing anyone yet and it knows it does not have to.
+    56-frame cycle at 30 fps = 1.87 s for two steps, against Chase's 0.73 s. Slower
+    than a walking player (§05: 2.0 m/s), which is the point: it is not chasing anyone
+    yet and it knows it does not have to.
+
+    And *wrong*, which the brief asks for and the previous version did not deliver.
+    Two things carry it, both structural rather than decorative:
+
+    * A **limp** — the right leg swings at 0.70 of the left's amplitude, so the same
+      side drags on every cycle. A symmetric slow walk reads as a person taking their
+      time; an asymmetric one reads as something with a broken part that has not
+      slowed it down at all.
+    * A **head that lolls off the axis of travel** — the sway yaw is nearly doubled
+      and given a roll, so the not-a-face is rarely pointed where the feet are going.
+      It is not looking for anyone. It will find them anyway.
     """
     amp = 0.72
-    poses = locomotion_poses(arm_obj, cycle_frames=48, key_step=1, amp=amp,
-                             torso_base={},
-                             sway=dict(yaw=4.0, roll=5.5, spine_yaw=3.0,
-                                       head_yaw=6.5, shift=0.030))
+    poses = locomotion_poses(arm_obj, cycle_frames=56, key_step=1, amp=amp,
+                             torso_base={}, limp=PATROL_LIMP,
+                             sway=dict(yaw=5.0, roll=6.5, spine_yaw=4.5,
+                                       head_yaw=12.0, shift=0.038))
     return blendkit.make_action(arm_obj, "Patrol", poses, loop=True), amp
 
 
@@ -703,17 +1257,25 @@ def action_chase(arm_obj):
     plausible at speed instead of a fast-forwarded walk.
     """
     amp = 1.0
-    # The crest lies HARD BACK here, not flared. Two reasons: a 48deg torso lean
-    # rotates a flared crest until it juts out horizontally and reads as geometry
-    # sticking through the neck; and reserving the flare for Alert turns it into a
-    # state tell the Observer (§04 관측자) can actually read instead of decoration.
-    # LeftScapulaSpur is counter-pitched for the same reason -- inherited lean would
-    # swing the shoulder hook out level with the ground.
-    lean = {"Spine": (26.0, 0.0, 0.0), "Chest": (14.0, 0.0, 0.0), "UpperChest": (8.0, 0.0, 0.0),
-            "Neck": (22.0, 0.0, 0.0), "Head": (-38.0, 0.0, 3.0), "Jaw": (24.0, 0.0, 0.0),
-            "Crest1": (-26.0, 0.0, 0.0), "Crest2": (-18.0, 0.0, 0.0), "Crest3": (-12.0, 0.0, 0.0),
-            "LeftScapulaSpur": (-30.0, 0.0, 0.0)}
-    poses = locomotion_poses(arm_obj, cycle_frames=20, key_step=1, amp=amp,
+    # 65° of cumulative forward bend against BASE's 43°: the chest is thrown out over
+    # the leading foot and the head leads the body into the corridor. This is the pose the
+    # shot review said did not read as running, and it did not because every one of
+    # these numbers used to be POSITIVE — see the note above `world_rot`. It was
+    # leaning 38° BACKWARDS while its legs ran.
+    #
+    # The crest lies HARD BACK here, not flared. Two reasons: reserving the flare for
+    # Alert turns it into a state tell the Observer (§04 관측자) can read instead of
+    # decoration; and on a back this close to horizontal a flared crest juts straight
+    # up and turns the silhouette into a fin. LeftScapulaSpur is counter-pitched for
+    # the same reason — inherited lean would swing the shoulder hook out level with
+    # the ground.
+    lean_spine, lean_chest, lean_upper = 25.0, 14.0, 9.0
+    lean = {"Spine": stoop(lean_spine), "Chest": stoop(lean_chest),
+            "UpperChest": stoop(lean_upper), "Neck": stoop(17.0),
+            "Head": stoop(-40.0, roll=3.0), "Jaw": (24.0, 0.0, 0.0),
+            "LeftScapulaSpur": spur_pitch(lean_spine + lean_chest + lean_upper)}
+    lean.update(crest(0.0))
+    poses = locomotion_poses(arm_obj, cycle_frames=22, key_step=1, amp=amp,
                              torso_base=lean,
                              sway=dict(yaw=6.0, roll=6.0, spine_yaw=3.0,
                                        head_yaw=7.5, shift=0.020))
@@ -729,19 +1291,28 @@ def action_alert(arm_obj):
     are authored as key pairs 5-6 frames apart with long identical holds between, so
     the motion is discrete — it looks like it is deciding, not idling.
     """
+    # The one state that partly UNCOILS: hearing something is the only thing that
+    # makes it lift its head, so the stoop eases from BASE's 43° to 29° and the crest
+    # comes up. That rise is itself the tell — at 15 m (§04 관측자's ObserverRange) the
+    # creature getting taller is legible long before the head angle is.
     listening = merge(
         BASE,
-        {"Spine": (16.0, 0.0, 0.0), "Chest": (6.0, 0.0, 0.0), "Neck": (23.0, 0.0, 0.0),
-         "Jaw": (0.0, 0.0, 0.0),
-         "Crest1": (27.0, 0.0, 0.0), "Crest2": (22.0, 0.0, 0.0), "Crest3": (18.0, 0.0, 0.0)},
+        {"Spine": stoop(ALERT_BEND * 0.5), "Chest": stoop(ALERT_BEND * 0.3),
+         "UpperChest": stoop(ALERT_BEND * 0.2),
+         "Neck": stoop(9.0), "Jaw": (0.0, 0.0, 0.0)},
+        crest(rise=62.0),
         # Abandoned mid-stride: weight forward-left, right leg still behind.
         limb("leg", 1, hip=(7.0, 0.0, 0.0), knee=(2.0, 0.0, 0.0), ankle=(3.0, 0.0, 0.0)),
         limb("leg", -1, hip=(-15.0, 0.0, 0.0), knee=(13.0, 0.0, 0.0), ankle=(-9.0, 0.0, 0.0)),
+        limb("arm", 1, up=(arm_hang(ALERT_BEND) - 7.0, 5.0, 0.0), lo=(13.0, 2.0, 0.0),
+             ex=(-19.0, 0.0, 0.0), hd=(9.0, 0.0, 0.0)),
+        limb("arm", -1, up=(arm_hang(ALERT_BEND) - 4.0, 8.0, 0.0), lo=(16.0, 3.0, 0.0),
+             ex=(-23.0, 0.0, 0.0), hd=(12.0, 0.0, 0.0)),
     )
 
     def look(yaw, roll, neck_yaw=0.0):
-        return merge(listening, {"Head": (-30.0, yaw, roll),
-                                 "Neck": (23.0, neck_yaw, 0.0)})
+        return merge(listening, {"Head": stoop(-16.0, yaw, roll),
+                                 "Neck": stoop(9.0, neck_yaw, 0.0)})
 
     keys = [
         (1, look(0.0, 5.0)),
@@ -765,35 +1336,49 @@ def action_search(arm_obj):
     ~15°, and the arms — which already reach the floor — drag alternately across the
     front. A 90-frame cycle (3 s) tiles five times into the 15 s window.
     """
+    # Deeper than BASE, not shallower: it is searching the FLOOR of a corridor it
+    # cannot stand up in, and 59° of bend puts the head down at the height of the
+    # cover a player is actually behind.
+    sweep_spine, sweep_chest, sweep_upper = 21.0, 12.0, 8.0
+    bend = sweep_spine + sweep_chest + sweep_upper
+    hang = arm_hang(bend)
+
     def sweep(torso_yaw, head_yaw, head_pitch, l_arm, r_arm, l_leg, r_leg):
         return merge(
             BASE,
-            {"Spine": (13.0, torso_yaw * 0.45, 0.0),
-             "Chest": (8.0, torso_yaw * 0.35, 0.0),
-             "UpperChest": (5.0, torso_yaw * 0.2, -2.0),
-             "Neck": (18.0, head_yaw * 0.3, 0.0),
-             "Head": (head_pitch, head_yaw, 5.0),
-             "Crest1": (10.0, 0.0, 0.0), "Crest2": (7.0, 0.0, 0.0), "Crest3": (5.0, 0.0, 0.0),
+            {"Spine": stoop(sweep_spine, yaw=torso_yaw * 0.45),
+             "Chest": stoop(sweep_chest, yaw=torso_yaw * 0.35),
+             "UpperChest": stoop(sweep_upper, yaw=torso_yaw * 0.2, roll=-2.0),
+             "Neck": stoop(18.0, yaw=head_yaw * 0.3),
+             "Head": stoop(head_pitch, yaw=head_yaw, roll=5.0),
+             "LeftScapulaSpur": spur_pitch(bend),
              "Hips": (0.0, torso_yaw * 0.3, 3.0)},
-            limb("arm", 1, up=l_arm[0], lo=l_arm[1], ex=(-19.0, 0.0, 0.0), hd=(9.0, 0.0, 0.0)),
-            limb("arm", -1, up=r_arm[0], lo=r_arm[1], ex=(-23.0, 0.0, 0.0), hd=(12.0, 0.0, 0.0)),
+            crest(rise=14.0),
+            limb("arm", 1, up=(hang + l_arm[0][0],) + l_arm[0][1:], lo=l_arm[1],
+                 ex=(-19.0, 0.0, 0.0), hd=(9.0, 0.0, 0.0)),
+            limb("arm", -1, up=(hang + r_arm[0][0],) + r_arm[0][1:], lo=r_arm[1],
+                 ex=(-23.0, 0.0, 0.0), hd=(12.0, 0.0, 0.0)),
             limb("leg", 1, hip=(l_leg, 0.0, 0.0), knee=(-l_leg * 0.5, 0.0, 0.0)),
             limb("leg", -1, hip=(r_leg, 0.0, 0.0), knee=(-r_leg * 0.5, 0.0, 0.0)),
         )
 
-    # (frame, torso yaw, head yaw, head pitch, left arm, right arm, left hip, right hip)
+    # (frame, torso yaw, head yaw, head lift, left arm, right arm, left hip, right hip)
+    #
+    # Head lift is a `stoop` value against 59° of inherited bend, so it is negative
+    # throughout: -22 leaves the head 37° below horizontal, casting over the floor,
+    # and -50 lifts it to 9° to look down the corridor. The range is the search.
     keys = [
-        (1, 22.0, 34.0, -25.0, ((16.0, -24.0, 0.0), (18.0, 0.0, 0.0)),
+        (1, 22.0, 34.0, -22.0, ((16.0, -24.0, 0.0), (18.0, 0.0, 0.0)),
          ((-8.0, 27.0, 0.0), (14.0, 4.0, 0.0)), 9.0, -9.0),
-        (16, 5.0, -7.0, -22.0, ((2.0, 6.0, 0.0), (13.0, 2.0, 0.0)),
+        (16, 5.0, -7.0, -28.0, ((2.0, 6.0, 0.0), (13.0, 2.0, 0.0)),
          ((-2.0, 10.0, 0.0), (16.0, 3.0, 0.0)), 2.0, -2.0),
-        (31, -23.0, -37.0, -25.0, ((-6.0, 29.0, 0.0), (12.0, 4.0, 0.0)),
+        (31, -23.0, -37.0, -20.0, ((-6.0, 29.0, 0.0), (12.0, 4.0, 0.0)),
          ((17.0, -26.0, 0.0), (20.0, 0.0, 0.0)), -11.0, 11.0),
-        (46, -5.0, 9.0, 6.0, ((4.0, 8.0, 0.0), (15.0, 2.0, 0.0)),
+        (46, -5.0, 9.0, -50.0, ((4.0, 8.0, 0.0), (15.0, 2.0, 0.0)),
          ((0.0, 11.0, 0.0), (17.0, 3.0, 0.0)), -3.0, 3.0),
-        (61, 17.0, 27.0, -37.0, ((-9.0, 12.0, 0.0), (9.0, 2.0, 0.0)),
+        (61, 17.0, 27.0, -14.0, ((-9.0, 12.0, 0.0), (9.0, 2.0, 0.0)),
          ((-6.0, 14.0, 0.0), (11.0, 3.0, 0.0)), 6.0, -6.0),
-        (76, 2.0, -15.0, -18.0, ((10.0, -14.0, 0.0), (17.0, 2.0, 0.0)),
+        (76, 2.0, -15.0, -34.0, ((10.0, -14.0, 0.0), (17.0, 2.0, 0.0)),
          ((6.0, 16.0, 0.0), (19.0, 3.0, 0.0)), -1.0, 1.0),
     ]
     poses = []
@@ -815,15 +1400,25 @@ def action_standstill(arm_obj):
     §06 gives this state no footstep sound and a shifting foot would be a lie the
     Listener could see.
 
-    The single event is one 4.5° head roll and 3° yaw over four frames at 1.6 s in,
+    The single event is one 2.2° head roll and 1.4° yaw over SIX frames at 1.6 s in,
     held for a second, unwound before the loop closes. Every other span is two
-    identical keys, which makes those F-curve segments exactly flat. `verify_motion`
-    asserts the total excursion stays under 6° and that the legs and hips move by 0.
-    90 frames = 3.0 s; §06 holds this state for 5 s (GameConstants.StandstillSeconds).
+    identical keys, which makes those F-curve segments exactly flat.
+
+    Halved from the 4.5° it used to carry, and the brief's reasoning is the reason:
+    the line it has to produce is *"어디 갔어? 방금 여기 있었는데"*, and that line comes
+    from a player who cannot decide whether the shape at the end of the corridor moved
+    or whether they blinked. 4.5° over four frames is visible, and anything visible
+    answers the question. 2.2° over six is under the threshold at 8 m and over it at
+    3 m, so the doubt survives exactly as far as the beam does.
+
+    `verify_motion` asserts the total excursion stays under 3° and that the legs and
+    hips move by 0. 90 frames = 3.0 s; §06 holds this state for 5 s
+    (GameConstants.StandstillSeconds).
     """
     still = merge(BASE, {"Jaw": (2.0, 0.0, 0.0)})
-    tilt = merge(still, {"Head": (-25.0, 3.0, 9.5), "Neck": (17.0, 1.2, 0.0)})
-    keys = [(1, still), (46, still), (50, tilt), (52, tilt), (84, tilt), (88, still), (91, still)]
+    tilt = merge(still, {"Head": stoop(-24.0, yaw=1.4, roll=7.2),
+                         "Neck": stoop(STOOP_NECK, yaw=0.6)})
+    keys = [(1, still), (44, still), (50, tilt), (52, tilt), (82, tilt), (88, still), (91, still)]
     poses = [spec_pose(arm_obj, f, s, (0.0, 0.0, 0.0)) for f, s in keys]
     return blendkit.make_action(arm_obj, "Standstill", poses, loop=False), None
 
@@ -841,20 +1436,23 @@ def action_stunned(arm_obj):
     thing it uses instead of eyes, and the crest going down is the readable "it lost
     you" beat that tells the Flasher their window is open.
     """
-    def hit(spine, head, jaw, crest, arm_up, arm_lo, l_leg, r_leg, drop):
+    def hit(spine, head, jaw, crest_rise, arm_up, arm_lo, l_leg, r_leg, drop):
         l_hip, l_knee = l_leg
         r_hip, r_knee = r_leg
+        # Chest and upper chest hold BASE's proportions of the spine, so one number
+        # drives the whole recoil and the stoop cannot come apart mid-clip.
+        chest, upper = spine * 0.60, spine * 0.40
+        hang = arm_hang(spine + chest + upper)
         return merge(
             BASE,
-            {"Spine": (spine, 0.0, 0.0), "Chest": (spine * 0.4, 0.0, 0.0),
-             "Neck": (17.0 + spine * 0.3, 0.0, 0.0), "Head": (head, 0.0, 5.0),
-             "Jaw": (jaw, 0.0, 0.0),
-             "Crest1": (crest, 0.0, 0.0), "Crest2": (crest * 0.8, 0.0, 0.0),
-             "Crest3": (crest * 0.6, 0.0, 0.0),
-             "LeftScapulaSpur": (-spine * 0.5, 0.0, 0.0)},
-            limb("arm", 1, up=(arm_up, 24.0, 0.0), lo=(arm_lo, 3.0, 0.0),
+            {"Spine": stoop(spine), "Chest": stoop(chest), "UpperChest": stoop(upper),
+             "Neck": stoop(STOOP_NECK + (spine - STOOP_SPINE) * 0.4),
+             "Head": stoop(head, roll=5.0), "Jaw": (jaw, 0.0, 0.0),
+             "LeftScapulaSpur": spur_pitch(spine + chest + upper)},
+            crest(rise=crest_rise),
+            limb("arm", 1, up=(hang + arm_up, 24.0, 0.0), lo=(arm_lo, 3.0, 0.0),
                  ex=(-19.0 - arm_lo * 0.3, 0.0, 0.0), hd=(9.0, 0.0, 0.0)),
-            limb("arm", -1, up=(arm_up * 0.9, 30.0, 0.0), lo=(arm_lo * 1.1, 4.0, 0.0),
+            limb("arm", -1, up=(hang + arm_up * 0.9, 30.0, 0.0), lo=(arm_lo * 1.1, 4.0, 0.0),
                  ex=(-23.0 - arm_lo * 0.3, 0.0, 0.0), hd=(12.0, 0.0, 0.0)),
             # The stagger has to reach the legs — a violent recoil above welded hips
             # reads as a mannequin tipping, not as something absorbing a blow.
@@ -868,19 +1466,26 @@ def action_stunned(arm_obj):
 
     keys = [
         # frame, spine, head, jaw, crest, armUp, armLo, (Lhip,Lknee), (Rhip,Rknee), drop
-        (1, 11.0, -25.0, 4.0, -16.0, -7.0, 13.0, (0.0, 0.0), (0.0, 0.0), 0.0),
+        #
+        # `spine` is forward bend (BASE = 15) and `head` is arch against the neck
+        # (BASE = -24). The recoil therefore runs spine DOWNWARD from 15 to -8 — the
+        # creature is thrown up out of its own stoop and briefly arches backwards,
+        # which is the shape a blow to the sensory organ makes and the shape these
+        # keys were always meant to describe. They previously read 11 → -19, which
+        # under the sign trap above folded it 19° FORWARD instead.
+        (1, 15.0, -24.0, 4.0, 0.0, -7.0, 13.0, (0.0, 0.0), (0.0, 0.0), 0.0),
         # the flash lands — head thrown back, crest slammed flat, front knee braces
-        (4, -14.0, -52.0, 34.0, -44.0, 46.0, -58.0, (14.0, -8.0), (-9.0, -4.0), -0.04),
+        (4, -2.0, -50.0, 34.0, -26.0, 46.0, -58.0, (14.0, -8.0), (-9.0, -4.0), -0.04),
         # deepest recoil: the braced knee buckles and the rear leg takes the weight
-        (10, -19.0, -58.0, 30.0, -48.0, 52.0, -66.0, (21.0, -30.0), (-15.0, -12.0), -0.13),
-        (22, -10.0, -46.0, 22.0, -40.0, 38.0, -50.0, (16.0, -23.0), (-11.0, -9.0), -0.10),
+        (10, -8.0, -56.0, 30.0, -30.0, 52.0, -66.0, (21.0, -30.0), (-15.0, -12.0), -0.13),
+        (22, 0.0, -46.0, 22.0, -22.0, 38.0, -50.0, (16.0, -23.0), (-11.0, -9.0), -0.10),
         # coming back — §04's stun is weak, so recovery starts well before it ends
-        (38, 2.0, -34.0, 14.0, -30.0, 20.0, -26.0, (9.0, -13.0), (-6.0, -5.0), -0.06),
-        (56, 9.0, -27.0, 7.0, -21.0, 4.0, -2.0, (3.0, -5.0), (-2.0, -2.0), -0.02),
-        (70, 11.0, -25.0, 4.0, -16.0, -6.0, 11.0, (1.0, -1.0), (0.0, 0.0), 0.0),
+        (38, 6.0, -38.0, 14.0, -14.0, 20.0, -26.0, (9.0, -13.0), (-6.0, -5.0), -0.06),
+        (56, 12.0, -29.0, 7.0, -6.0, 4.0, -2.0, (3.0, -5.0), (-2.0, -2.0), -0.02),
+        (70, 14.0, -25.0, 4.0, -1.0, -6.0, 11.0, (1.0, -1.0), (0.0, 0.0), 0.0),
         # frame 76 = exactly BASE, so it blends back into Chase with no pop.
         # 1→76 spans 75 frame intervals = 2.500 s = GameConstants.FlashStunSeconds.
-        (76, 11.0, -25.0, 4.0, -16.0, -7.0, 13.0, (0.0, 0.0), (0.0, 0.0), 0.0),
+        (76, 15.0, -24.0, 4.0, 0.0, -7.0, 13.0, (0.0, 0.0), (0.0, 0.0), 0.0),
     ]
     poses = []
     for f, sp, hd, jw, cr, au, al, ll, rl, dz in keys:
@@ -904,52 +1509,59 @@ def action_grab(arm_obj):
     the 18deg shoulder swing here puts the arm near horizontal. Authoring the 74deg
     that "a lunge" suggests threw both arms vertically over the head instead.
     """
-    def beat(spine, head, jaw, crest, l_arm, r_arm, l_leg, r_leg, hips):
+    def beat(spine, head, jaw, crest_rise, l_arm, r_arm, l_leg, r_leg, hips):
+        chest, upper = spine * 0.60, spine * 0.40
+        hang = arm_hang(spine + chest + upper)
         return merge(
             BASE,
-            {"Spine": (spine, 0.0, 0.0), "Chest": (spine * 0.45, 0.0, 0.0),
-             "UpperChest": (spine * 0.25, 0.0, -2.0),
-             "Neck": (20.0, 0.0, 0.0), "Head": (head, 0.0, 4.0), "Jaw": (jaw, 0.0, 0.0),
-             "Crest1": (crest, 0.0, 0.0), "Crest2": (crest * 0.8, 0.0, 0.0),
-             "Crest3": (crest * 0.6, 0.0, 0.0),
+            {"Spine": stoop(spine), "Chest": stoop(chest),
+             "UpperChest": stoop(upper, roll=-2.0),
+             "Neck": stoop(16.0), "Head": stoop(head, roll=4.0), "Jaw": (jaw, 0.0, 0.0),
              # Cancel most of the inherited lean so the shoulder hook stays diagonal.
-             "LeftScapulaSpur": (-spine * 0.7, 0.0, 0.0)},
-            limb("arm", 1, up=l_arm[0], lo=l_arm[1], ex=l_arm[2], hd=l_arm[3]),
-            limb("arm", -1, up=r_arm[0], lo=r_arm[1], ex=r_arm[2], hd=r_arm[3]),
+             "LeftScapulaSpur": spur_pitch(spine + chest + upper)},
+            crest(rise=crest_rise),
+            limb("arm", 1, up=(hang + l_arm[0][0],) + l_arm[0][1:],
+                 lo=l_arm[1], ex=l_arm[2], hd=l_arm[3]),
+            limb("arm", -1, up=(hang + r_arm[0][0],) + r_arm[0][1:],
+                 lo=r_arm[1], ex=r_arm[2], hd=r_arm[3]),
             limb("leg", 1, hip=(l_leg, 0.0, 0.0), knee=(-l_leg * 0.6, 0.0, 0.0),
                  ankle=(l_leg * 0.3, 0.0, 0.0)),
             limb("leg", -1, hip=(r_leg, 0.0, 0.0), knee=(-r_leg * 0.6, 0.0, 0.0),
                  ankle=(r_leg * 0.3, 0.0, 0.0)),
         ), hips
 
+    # `spine` is forward bend and `head` is arch against the neck, per `stoop`. Beat 14
+    # runs the spine to 38° — past Chase's 25 — because the lunge is the one moment
+    # this creature is not conserving anything.
     keys = [
         # 1 — arriving, mid-chase
-        (1, 24.0, -36.0, 20.0, 18.0,
+        (1, 25.0, -40.0, 20.0, 0.0,
          ((-20.0, 10.0, 0.0), (16.0, 2.0, 0.0), (-19.0, 0.0, 0.0), (9.0, 0.0, 0.0)),
          ((22.0, 12.0, 0.0), (10.0, 3.0, 0.0), (-23.0, 0.0, 0.0), (12.0, 0.0, 0.0)),
          26.0, -22.0, (0.0, 0.0, 0.0)),
-        # 6 — coil: arms drawn back and out, torso pulled up, maw opening
-        (6, 8.0, -30.0, 34.0, 28.0,
+        # 6 — coil: arms drawn back and out, torso pulled up, maw opening. The crest
+        # flares here and nowhere else in this clip — the last thing you see.
+        (6, 8.0, -30.0, 34.0, 46.0,
          ((-38.0, 34.0, 0.0), (24.0, 6.0, 0.0), (-30.0, 0.0, 0.0), (4.0, 0.0, 0.0)),
          ((-36.0, 36.0, 0.0), (26.0, 6.0, 0.0), (-32.0, 0.0, 0.0), (6.0, 0.0, 0.0)),
          8.0, -6.0, (0.0, 0.0, 0.0)),
         # 14 — the throw: both arms out front, everything committed forward
-        (14, 36.0, -44.0, 42.0, 22.0,
+        (14, 38.0, -52.0, 42.0, 26.0,
          ((18.0, 16.0, 0.0), (-18.0, 2.0, 0.0), (-6.0, 0.0, 0.0), (34.0, 0.0, 0.0)),
          ((16.0, 18.0, 0.0), (-16.0, 2.0, 0.0), (-8.0, 0.0, 0.0), (36.0, 0.0, 0.0)),
          34.0, -14.0, (0.0, -0.05, 0.0)),
         # 20 — clamp: arms cross inward, hands close, maw comes down
-        (20, 33.0, -30.0, 12.0, 6.0,
+        (20, 34.0, -40.0, 12.0, 6.0,
          ((16.0, -26.0, 14.0), (-44.0, -10.0, 0.0), (-14.0, 0.0, 0.0), (48.0, 0.0, 0.0)),
          ((14.0, -28.0, 14.0), (-42.0, -12.0, 0.0), (-16.0, 0.0, 0.0), (50.0, 0.0, 0.0)),
          20.0, -10.0, (0.0, -0.03, 0.0)),
         # 28 — fold the catch to the chest, head down over it
-        (28, 20.0, 26.0, 16.0, -10.0,
+        (28, 25.0, -4.0, 16.0, -14.0,
          ((22.0, -22.0, 18.0), (-64.0, -12.0, 0.0), (-22.0, 0.0, 0.0), (44.0, 0.0, 0.0)),
          ((20.0, -24.0, 18.0), (-62.0, -14.0, 0.0), (-24.0, 0.0, 0.0), (46.0, 0.0, 0.0)),
          6.0, -4.0, (0.0, 0.0, 0.0)),
         # 41 — settled, holding. Loops or blends out from here. 40 intervals = 1.333 s.
-        (41, 15.0, 20.0, 9.0, -14.0,
+        (41, 22.0, -8.0, 9.0, -18.0,
          ((25.0, -20.0, 16.0), (-60.0, -10.0, 0.0), (-20.0, 0.0, 0.0), (40.0, 0.0, 0.0)),
          ((23.0, -22.0, 16.0), (-58.0, -12.0, 0.0), (-22.0, 0.0, 0.0), (42.0, 0.0, 0.0)),
          2.0, -2.0, (0.0, 0.0, 0.0)),
@@ -961,6 +1573,737 @@ def action_grab(arm_obj):
     return blendkit.make_action(arm_obj, "Grab", poses, loop=False), None
 
 
+# ── Skin: procedural PBR, on the world's own terms ──────────────────────────
+#
+# The monster shipped with three flat colours while every wall, floor and prop in
+# the game got a full PBR set out of tools/textures/gen_textures.py. Under §03's
+# beam that is not a stylistic difference, it is a lighting failure: a flat
+# surface has no normal to catch the spot's grazing edge, so the creature renders
+# as a matte cut-out pasted over a textured room and stops reading as an object
+# that is *in* the room.
+#
+# The maps below are written into Assets/Textures/ under gen_textures.py's own
+# file-name convention, which is what makes the existing importer
+# (Editor/TextureImport/ProceduralTextureImport.cs) configure them correctly with
+# no new import rule: sRGB on the albedo only, NormalMap type on the normal,
+# smoothness surviving in the mask's alpha.
+#
+# gen_textures.py itself cannot be imported here — it needs scipy and Blender's
+# bundled Python has numpy only — so its calibration constants are READ OUT OF
+# ITS SOURCE rather than copied. Duplicating 0.15 by hand would work until the
+# day someone moves the band, and then the monster would be the one surface in
+# the game outside it, silently.
+
+TEXTURE_PIPELINE = os.path.join(blendkit.REPO_ROOT, "tools", "textures", "gen_textures.py")
+
+TEXTURE_DIR = os.path.join(blendkit.UNITY_ASSETS, "Textures")
+"""Where gen_textures.py writes, and therefore where the importer is watching."""
+
+SKIN_MANIFEST = os.path.join(TEXTURE_DIR, "Monster.textures.json")
+"""Read by the Unity side so tiling and slot binding are data, not a second list."""
+
+
+def pipeline_constants() -> dict:
+    """The calibration numbers gen_textures.py enforces, parsed from its source.
+
+    Only the four that constrain a *material* rather than a floor: the albedo band
+    §03 needs the beam to land inside, the roughness floor that stops a wet
+    surface blowing out under a spot a metre away, and the resolution the rest of
+    the set is authored at.
+    """
+    try:
+        with open(TEXTURE_PIPELINE, "r", encoding="utf-8") as handle:
+            source = handle.read()
+    except OSError as exc:
+        blendkit.fail(f"cannot read {TEXTURE_PIPELINE}: {exc}. The monster's skin is calibrated "
+                      "against that pipeline; guessing its band would put the creature outside it.")
+        raise
+
+    wanted = ("ALBEDO_MIN_LINEAR", "ALBEDO_MAX_LINEAR", "MIN_ROUGHNESS", "DEFAULT_RESOLUTION")
+    found = {}
+    for name in wanted:
+        m = re.search(r"^%s\s*=\s*([0-9.]+)\s*$" % name, source, re.MULTILINE)
+        if m is None:
+            blendkit.fail(f"{name} is no longer a plain assignment in gen_textures.py — the monster's "
+                          "skin reads its calibration from there and can no longer find it.")
+        found[name] = float(m.group(1))
+    found["DEFAULT_RESOLUTION"] = int(found["DEFAULT_RESOLUTION"])
+    found["CORRIDOR_DARKEST"] = corridor_darkest_surface()
+    return found
+
+
+WORLD_MANIFEST = os.path.join(TEXTURE_DIR, "Textures.manifest.json")
+"""What gen_textures.py actually put on the walls the creature stands against."""
+
+
+def corridor_darkest_surface() -> float:
+    """Linear albedo of the darkest wall or ceiling in a §12 corridor.
+
+    The brief's requirement is relational — "albedo must be DARKER than the corridor
+    walls so the beam reveals it rather than it glowing" — so it is encoded as a
+    relation and not as a number somebody typed. `write_skin` uses this as a ceiling
+    the creature's brightest texel may not cross, which means re-grading the basement
+    darker automatically re-grades the creature darker with it, and re-grading it
+    lighter never silently leaves the monster as the pale thing in the room.
+
+    Walls and ceiling only. Floors are excluded on purpose: the creature is almost
+    never seen against one — §06 has it coming down a corridor at eye height — and
+    Floor_Tile at 0.32 would raise the ceiling by half for a surface it is standing
+    on rather than in front of.
+    """
+    try:
+        with open(WORLD_MANIFEST, "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except (OSError, ValueError) as exc:
+        blendkit.fail(f"cannot read {WORLD_MANIFEST}: {exc}. The creature's albedo ceiling is "
+                      "defined against the corridor it stands in; without the corridor there is "
+                      "nothing to be darker than. Run tools/textures/gen_textures.py first.")
+        raise
+
+    surfaces = [m for m in payload.get("materials", [])
+                if str(m.get("name", "")).startswith(("Wall_", "Ceiling_"))]
+    if not surfaces:
+        blendkit.fail(f"{WORLD_MANIFEST} lists no Wall_/Ceiling_ materials, so there is no "
+                      "corridor albedo to calibrate the creature against.")
+    return min(float(m["albedo_mean_linear"]) for m in surfaces)
+
+
+def _soft_ceiling(x: np.ndarray, ceiling: float, knee: float = 0.88) -> np.ndarray:
+    """Rolls the bright tail off toward `ceiling` asymptotically instead of clipping.
+
+    A hard clip would be simpler and is wrong: it flattens every highlight into one
+    plateau at exactly the ceiling value, and a plateau on a creature lit by a moving
+    spot reads as a blown-out patch — which is the artefact this exists to remove. An
+    exponential knee is monotone, leaves the bottom `knee` of the range untouched, and
+    never reaches the ceiling, so ordering between texels is preserved everywhere.
+
+    `knee` has to be HIGH. At 0.62 the knee sat at 0.13 linear, below the hide's own
+    median, so nearly every texel was being compressed toward the ceiling and the map
+    came out almost flat: measured p5 to p95 spanned 0.157–0.202 linear, a total range
+    of 0.045, and the creature photographed as one uniform grey mass with no structure
+    for §03's beam to find. At 0.88 only the genuine outliers — the top few per cent
+    that were brighter than the wall — are touched, and everything below is left
+    exactly as painted.
+    """
+    knee_at = ceiling * knee
+    headroom = max(ceiling - knee_at, 1e-6)
+    over = np.maximum(x - knee_at, 0.0)
+    return np.where(x <= knee_at, x,
+                    knee_at + headroom * (1.0 - np.exp(-over / headroom))).astype(np.float32)
+
+
+# ── numpy-only reimplementations of the pipeline's field operators ───────────
+# Same definitions as gen_textures.py, minus scipy. `_blur` is the only one that
+# differs in kind: an exact Gaussian multiply in the frequency domain instead of
+# ndimage's truncated kernel, which is both periodic by construction and closer
+# to the intent than `mode="wrap"` on a clipped kernel.
+
+
+def _rng(seed: int) -> np.random.Generator:
+    return np.random.default_rng(seed)
+
+
+def _normalise01(field: np.ndarray) -> np.ndarray:
+    low, high = float(field.min()), float(field.max())
+    if high - low < 1e-12:
+        return np.full_like(field, 0.5, dtype=np.float32)
+    return ((field - low) / (high - low)).astype(np.float32)
+
+
+def _blur(field: np.ndarray, sigma: float) -> np.ndarray:
+    """Periodic Gaussian blur. Exact, because a Gaussian is a Gaussian in either domain."""
+    if sigma <= 0.0:
+        return field.astype(np.float32)
+    res = field.shape[0]
+    fy = np.fft.fftfreq(res)[:, None]
+    fx = np.fft.fftfreq(res)[None, :]
+    kernel = np.exp(-2.0 * (math.pi ** 2) * (sigma ** 2) * (fy * fy + fx * fx))
+    return np.real(np.fft.ifft2(np.fft.fft2(field) * kernel)).astype(np.float32)
+
+
+def _fbm(res: int, seed: int, beta: float = 1.9, low_cycles: float = 2.0,
+         high_cycles: float | None = None, stretch: float = 1.0) -> np.ndarray:
+    """Spectral fractal noise, normalised to [0,1].
+
+    `stretch` is the one addition over gen_textures.fbm: dividing the vertical
+    frequency by it before the power law smears the noise along one axis, which is
+    how the hide gets sinew running *down* the limb instead of isotropic mottle.
+    Anisotropy is most of what makes a creature surface read as tensioned rather
+    than as rock.
+    """
+    fy = np.fft.fftfreq(res)[:, None] * res
+    fx = np.fft.fftfreq(res)[None, :] * res
+    freq = np.sqrt((fy / stretch) ** 2 + fx * fx)
+    radial = np.sqrt(fy * fy + fx * fx)
+
+    amplitude = np.zeros_like(freq)
+    np.divide(1.0, np.power(freq, beta), out=amplitude, where=freq > 0)
+
+    # Gate on the STRETCHED frequency as well as the radial one. Only gating on
+    # `radial` — which is what this did, following gen_textures.py, where `stretch` is
+    # always 1 and the two are the same thing — lets a mode with a large radial
+    # frequency but a tiny stretched one through carrying amplitude (stretch/f)^beta.
+    # At stretch 3.6 that is a factor of ~8 over everything else, and a handful of
+    # such modes dominated the field: the hide came out as horizontal banding with
+    # clipped-white blobs where the bands crossed, which photographed at 3 m as
+    # patches of disease. Bounding the amplitude at (1/low_cycles)^beta is the fix,
+    # and it is the same gate the isotropic case already applies.
+    amplitude[freq < low_cycles] = 0.0
+    amplitude[radial < low_cycles] = 0.0
+    if high_cycles is not None:
+        amplitude[radial > high_cycles] = 0.0
+
+    field = np.real(np.fft.ifft2(np.fft.fft2(_rng(seed).standard_normal((res, res))) * amplitude))
+
+    # Robust rescale rather than min/max. `_normalise01` divides by the extremes, so a
+    # single outlying texel compresses the whole field into a narrow band and then the
+    # smoothstep bands downstream land in the wrong place. Clipping to the 0.5–99.5
+    # percentiles first costs those texels and nothing else.
+    lo, hi = np.percentile(field, (0.5, 99.5))
+    if hi - lo < 1e-12:
+        return np.full_like(field, 0.5, dtype=np.float32)
+    return np.clip((field - lo) / (hi - lo), 0.0, 1.0).astype(np.float32)
+
+
+def _worley(res: int, cells: int, seed: int, jitter: float = 1.0):
+    """Periodic cellular noise. Returns (F1, F2, owner) exactly as gen_textures does."""
+    generator = _rng(seed)
+    points = (np.stack(np.meshgrid(np.arange(cells), np.arange(cells), indexing="ij"), axis=-1)
+              + 0.5 + (generator.random((cells, cells, 2)) - 0.5) * jitter) / cells
+
+    axis = (np.arange(res) + 0.5) / res
+    py, px = axis[:, None], axis[None, :]
+    cell_y = np.minimum((py * cells).astype(np.int32), cells - 1)
+    cell_x = np.minimum((px * cells).astype(np.int32), cells - 1)
+
+    best1 = np.full((res, res), 4.0, dtype=np.float32)
+    best2 = np.full((res, res), 4.0, dtype=np.float32)
+    owner = np.zeros((res, res), dtype=np.int32)
+
+    for oy in (-1, 0, 1):
+        for ox in (-1, 0, 1):
+            ny, nx = (cell_y + oy) % cells, (cell_x + ox) % cells
+            feature = points[ny, nx]
+            dy = feature[..., 0] - py
+            dx = feature[..., 1] - px
+            dy -= np.rint(dy)
+            dx -= np.rint(dx)
+            distance = np.sqrt(dy * dy + dx * dx).astype(np.float32)
+            closer = distance < best1
+            best2 = np.where(closer, best1, np.minimum(best2, distance))
+            owner = np.where(closer, ny * cells + nx, owner)
+            best1 = np.where(closer, distance, best1)
+
+    return best1, best2, owner
+
+
+def _per_cell(owner: np.ndarray, cells: int, seed: int, low: float, high: float) -> np.ndarray:
+    return _rng(seed).uniform(low, high, size=cells * cells).astype(np.float32)[owner]
+
+
+def _smoothstep(low: float, high: float, x: np.ndarray) -> np.ndarray:
+    """Hermite fade between two thresholds. `high` below `low` inverts the ramp.
+
+    The inversion is the whole point and this copy used to destroy it. It divided by
+    ``max(high - low, 1e-6)``, so a descending range — ``_smoothstep(0.30, 0.05, f)``,
+    meaning "1 in the deep creases, fading out by 0.30" — got a denominator of 1e-6
+    instead of −0.25 and collapsed into a HARD BINARY STEP, inverted: 1 everywhere
+    above 0.30 rather than a smooth ramp below 0.05.
+
+    Four call sites here are descending (creases, pores, carapace seams, maw beads),
+    so four of the creature's features were binary masks covering most of the map with
+    aliased edges. That is what the shot review was looking at when it called the
+    surface blotchy: the hard-edged pale islands were not a paint choice, they were
+    this. gen_textures.py's own smoothstep divides by ``high - low + 1e-9``, which
+    keeps the sign; this now matches it, which is what it always claimed to do.
+    """
+    span = high - low
+    t = np.clip((x - low) / (span + math.copysign(1e-9, span or 1.0)), 0.0, 1.0)
+    return (t * t * (3.0 - 2.0 * t)).astype(np.float32)
+
+
+def _warp(field: np.ndarray, dy: np.ndarray, dx: np.ndarray) -> np.ndarray:
+    """Integer domain warp with wraparound — periodic, so it cannot open a seam."""
+    res = field.shape[0]
+    iy, ix = np.meshgrid(np.arange(res), np.arange(res), indexing="ij")
+    return field[(iy + np.rint(dy * res).astype(np.int32)) % res,
+                 (ix + np.rint(dx * res).astype(np.int32)) % res]
+
+
+def _height_to_normal(height: np.ndarray, world_size: float, height_scale: float) -> np.ndarray:
+    """Tangent-space normal from the true slope, OpenGL convention. gen_textures.py's."""
+    res = height.shape[0]
+    metres_per_texel = world_size / res
+    dz_dy = (np.roll(height, -1, 0) - np.roll(height, 1, 0)) * height_scale / (2.0 * metres_per_texel)
+    dz_dx = (np.roll(height, -1, 1) - np.roll(height, 1, 1)) * height_scale / (2.0 * metres_per_texel)
+    normal = np.stack([-dz_dx, -dz_dy, np.ones_like(height)], axis=-1)
+    normal /= np.linalg.norm(normal, axis=-1, keepdims=True)
+    return normal.astype(np.float32)
+
+
+def _ambient_occlusion(height: np.ndarray, world_size: float, height_scale: float,
+                       strength: float = 1.0) -> np.ndarray:
+    """Cavity AO over four radii. gen_textures.py's, with the periodic blur above."""
+    res = height.shape[0]
+    relief = np.zeros_like(height)
+    scales = 0
+    for radius_metres in (0.004, 0.010, 0.025, 0.060):
+        sigma = radius_metres / world_size * res
+        if sigma < 0.7:
+            continue
+        drop = np.clip(_blur(height, sigma) - height, 0.0, None) * height_scale
+        relief += drop / radius_metres
+        scales += 1
+    if scales == 0:
+        return np.ones_like(height)
+    return np.clip(1.0 - (relief / scales) * strength * 3.2, 0.0, 1.0).astype(np.float32)
+
+
+def _linear_to_srgb(x: np.ndarray) -> np.ndarray:
+    x = np.clip(x, 0.0, 1.0)
+    return np.where(x <= 0.0031308, x * 12.92, 1.055 * np.power(x, 1.0 / 2.4) - 0.055)
+
+
+def _to_u8(x: np.ndarray) -> np.ndarray:
+    return np.clip(np.rint(np.asarray(x, dtype=np.float64) * 255.0), 0, 255).astype(np.uint8)
+
+
+def _png_chunk(tag: bytes, data: bytes) -> bytes:
+    return (struct.pack(">I", len(data)) + tag + data
+            + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF))
+
+
+def _write_png(path: str, image: np.ndarray) -> int:
+    """Writes an 8-bit PNG. Same hand-rolled writer as the texture pipeline, and for
+    the same reason: it keeps the dependency list at numpy."""
+    if image.dtype != np.uint8:
+        raise TypeError("write_png wants uint8; convert deliberately so rounding is visible")
+    if image.ndim == 3 and image.shape[2] == 3:
+        colour_type, channels = 2, 3
+    elif image.ndim == 3 and image.shape[2] == 4:
+        colour_type, channels = 6, 4
+    else:
+        raise ValueError("monster maps are RGB or RGBA, got shape %r" % (image.shape,))
+
+    height, width = image.shape[0], image.shape[1]
+    raw = np.zeros((height, width * channels + 1), dtype=np.uint8)
+    raw[:, 1:] = image.reshape(height, width * channels)
+
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    with open(path, "wb") as handle:
+        handle.write(b"\x89PNG\r\n\x1a\n")
+        handle.write(_png_chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, colour_type, 0, 0, 0)))
+        handle.write(_png_chunk(b"IDAT", zlib.compress(raw.tobytes(), 9)))
+        handle.write(_png_chunk(b"IEND", b""))
+    return os.path.getsize(path)
+
+
+# ── The three surfaces ──────────────────────────────────────────────────────
+#
+# The albedo targets are the single most important art decision in this file, and
+# they have now been wrong in both directions. What follows is the measurement trail,
+# because the argument is genuinely two-sided and the next person will re-litigate it.
+#
+# **Too dark (0.15–0.17).** Rendered in a §12 corridor, a creature at 8 m measured
+# 0.1106 luminance against a 0.1137 background: 0.003 of contrast, invisible.
+#
+# **Too pale (0.24 hide / 0.20 plate).** The correction argued that §03's beam is
+# mounted on the player (§05: 손전등이 포인터가 된다) and falls off with distance, so
+# the near creature out-lights the far wall and albedo multiplies that advantage.
+# True, and it overshot: the shot review measured the creature rendering **0.0964
+# brighter** than the corridor. It stopped being a thing the beam finds and became a
+# pale object that announces itself — the exact opposite of §06, where the whole
+# design is that you notice it too late.
+#
+# **What was actually wrong both times** is that contrast was being bought with the
+# MEAN. The mean is the one number that has to lose: at 8 m it fights the wall, at
+# 3 m it blows out. So the mean now goes decisively UNDER the corridor and the
+# contrast comes from somewhere else:
+#
+#   corridor, measured out of Textures.manifest.json (linear albedo means)
+#     Wall_Brick_Painted   0.22    Ceiling_Concrete_Formed  0.21
+#     Wall_Concrete_Bare   0.27    Floor_Concrete           0.28
+#     Wall_Plaster_Stained 0.34    Floor_Tile               0.32
+#
+# The hide is 0.170 — 0.05 under the darkest wall in the corridor and 0.17 under the
+# brightest — and the plates are 0.152, at gen_textures.py's floor. Against that, the
+# contrast is carried by the three channels that do not move the mean:
+#
+#   * **Range, not level.** The hide's creases go to 0.07 and its stretched sinew to
+#     0.36 around a 0.17 mean, so the beam crossing it finds structure to reveal.
+#     A wall has no such range; that is the difference the eye reads.
+#   * **Specular.** The plates are the smoothest, most metallic surface in the game
+#     (roughness 0.21, metallic 0.28). A dark gloss under a hard-shadowed spot is a
+#     moving highlight on a shape you cannot otherwise see, which is exactly the
+#     "something moved" §06 wants and no diffuse wall produces.
+#   * **Occlusion.** Relief of 15 mm on the hide with real cavity AO means the
+#     creature carries its own shadowing, so it separates from the wall even when the
+#     beam lights both equally.
+#
+# Net: it is darker than everything around it, and it resolves out of the darkness
+# when the beam lands on it instead of glowing before the beam arrives.
+
+
+def build_flesh(res: int) -> dict:
+    """Hide stretched over structure. The bulk of the silhouette.
+
+    Anisotropic sinew running along the limb, pocked with a fine cell pattern and
+    creased by a coarse warp. The creases are where the roughness drops — a body
+    is wet in its folds and dry on its stretched faces, and that contrast is what
+    makes the beam travel across it instead of flattening it.
+    """
+    # low_cycles 11, not 3. At 3 the bright "stretched" regions were 30 cm across on a
+    # 0.85 m tile, and photographed in the corridor they read as MOULD — pale continents
+    # drifting over the body, which is the single loudest "this is a texture" cue a
+    # creature can carry. At 11 the same field becomes 8 cm cords running along the
+    # limb, which is what sinew is, and `stretch` 3.6 makes them run one way instead of
+    # pooling.
+    sinew = _fbm(res, 5101, beta=1.55, low_cycles=11.0, stretch=3.6)
+    mottle = _fbm(res, 5102, beta=2.1, low_cycles=6.0)
+    grain = _fbm(res, 5103, beta=1.2, low_cycles=24.0)
+
+    # Creases: warp a coarse field by a finer one so the folds meander.
+    warp_y = (_fbm(res, 5104, beta=2.2, low_cycles=2.0) - 0.5) * 0.06
+    warp_x = (_fbm(res, 5105, beta=2.2, low_cycles=2.0) - 0.5) * 0.06
+    crease = _normalise01(_warp(_fbm(res, 5106, beta=2.4, low_cycles=4.0, stretch=1.6), warp_y, warp_x))
+    crease = _smoothstep(0.30, 0.05, crease)          # deep, narrow, dark
+
+    pore_f1, _, pore_owner = _worley(res, 64, 5107, jitter=0.95)
+    pore = _smoothstep(0.0090, 0.0, pore_f1)
+    pore_tone = _per_cell(pore_owner, 64, 5108, 0.84, 1.16)
+
+    height = np.clip(
+        0.50 + (sinew - 0.5) * 0.55 + (mottle - 0.5) * 0.34
+        + (grain - 0.5) * 0.10 - crease * 0.46 - pore * 0.20, 0.0, 1.0).astype(np.float32)
+
+    # Grey-brown, barely chromatic. §12's basement is graded cold; a creature with
+    # any real saturation reads as a prop lit by a different scene.
+    base = np.array([0.171, 0.157, 0.142], dtype=np.float32)
+    bruise = np.array([0.038, 0.030, 0.032], dtype=np.float32)   # creases go nearly black
+    pallor = np.array([0.296, 0.280, 0.257], dtype=np.float32)   # stretched sinew, barely lighter
+
+    variation = (0.88 + 0.24 * mottle) * pore_tone
+    colour = base.reshape(1, 1, 3) * variation[..., None]
+    colour = colour * (1.0 - crease[..., None] * 0.88) + bruise.reshape(1, 1, 3) * crease[..., None] * 0.88
+    # Photographed at 3 m, a strong pallor mix over a narrow smoothstep band came out
+    # as hard-edged WHITE PATCHES — the creature looked diseased rather than sinewy,
+    # and they were the brightest pixels on it, which is what was still reading as
+    # "pale object" after the mean had already gone under the corridor.
+    #
+    # A tendon under skin is not a different COLOUR, it is a different SURFACE: it
+    # stands proud and it is wetter. So the ridge signal moves almost entirely into
+    # roughness and height below, and what stays in albedo is a wide, soft, 26% lift
+    # that never resolves into a patch with an edge.
+    ridge = _smoothstep(0.62, 0.99, sinew)
+    stretched = ridge[..., None]
+    colour = colour * (1.0 - stretched * 0.26) + pallor.reshape(1, 1, 3) * stretched * 0.26
+
+    # Dry, and drier than it looks like it should be. A §12 corridor lamp hangs at
+    # 2.5 m and the creature's shoulders reach 2.0, so at close range it is lit from
+    # half a metre away — measured at 3 m its lit side reached 0.31 mean with the
+    # highlights clipped, and a clipped shoulder throws away both the hide's structure
+    # and the maw's tell underneath it. Rolling the specular off is the half of that
+    # which does not cost the 8 m read that the albedo buys.
+    # The ridges are the wet part. 0.24 of roughness swing across a cord is what makes
+    # §03's beam travel along the limb instead of sitting on it as one hotspot, and it
+    # is the half of the sinew read that survives the albedo going flat.
+    roughness = (0.87 - 0.24 * ridge - 0.30 * crease
+                 + 0.08 * (grain - 0.5)).astype(np.float32)
+
+    return dict(albedo=colour, roughness=roughness, height=height,
+                metallic=np.zeros((res, res), dtype=np.float32),
+                world_size=0.85, height_scale=0.020)
+
+
+def build_carapace(res: int) -> dict:
+    """The plates: head blades, crest, knee and elbow caps, rib shards, claws.
+
+    Near-black and the smoothest surface on the creature, on purpose. §03's beam is
+    a narrow hard-shadowed spot, and a smooth dark plate turns it into a moving
+    specular streak along the plate's edge — which is the one cue that survives at
+    15 m through fog, where albedo detail is long gone. Darkness plus a highlight
+    is a silhouette with an edge on it; darkness alone is a hole.
+    """
+    _, plate_f2, plate_owner = _worley(res, 11, 5201, jitter=0.85)
+    plate_f1, _, _ = _worley(res, 11, 5201, jitter=0.85)
+    seam = _smoothstep(0.030, 0.0, plate_f2 - plate_f1)
+    dome = _smoothstep(0.0, 0.055, plate_f1)
+    plate_tone = _per_cell(plate_owner, 11, 5202, 0.80, 1.22)
+
+    # Growth ridges: a warped stripe field, so each plate looks accreted rather
+    # than moulded.
+    warp = (_fbm(res, 5203, beta=2.0, low_cycles=2.0) - 0.5) * 0.10
+    lines = np.sin((np.arange(res)[:, None] / res + warp) * 2.0 * math.pi * 34.0)
+    ridge = ((lines * 0.5 + 0.5) ** 2).astype(np.float32)
+
+    chip_f1, _, chip_owner = _worley(res, 58, 5204, jitter=1.0)
+    chipped = (_smoothstep(0.009, 0.0, chip_f1)
+               * _smoothstep(0.55, 0.85, _per_cell(chip_owner, 58, 5205, 0.0, 1.0)))
+
+    height = np.clip(0.42 + dome * 0.40 + ridge * 0.12 - seam * 0.55 - chipped * 0.30,
+                     0.0, 1.0).astype(np.float32)
+
+    base = np.array([0.146, 0.134, 0.128], dtype=np.float32)
+    dust = np.array([0.232, 0.214, 0.189], dtype=np.float32)   # grit settled in the seams
+    colour = base.reshape(1, 1, 3) * (plate_tone * (0.86 + 0.28 * dome))[..., None]
+    grit = np.clip(seam * 0.8 + chipped * 0.5, 0.0, 1.0)[..., None]
+    colour = colour * (1.0 - grit) + dust.reshape(1, 1, 3) * grit
+
+    roughness = (0.21 + 0.36 * seam + 0.32 * chipped + 0.06 * ridge).astype(np.float32)
+
+    # A shell's sheen is a thin-film effect, not a metal, but a little metallic is
+    # how a dielectric that glossy is faked without a custom shader.
+    metallic = (0.28 * (1.0 - seam) * (1.0 - chipped)).astype(np.float32)
+
+    return dict(albedo=colour, roughness=roughness, height=height, metallic=metallic,
+                world_size=0.32, height_scale=0.009)
+
+
+def build_maw(res: int) -> dict:
+    """The inside of the mandible — the only warm surface, and only just.
+
+    §06 gives the creature no eyes to read, so the maw is the only part of it that
+    can signal anything, and MonsterAcquireTell drives its emission when the chase
+    starts. That means this map is doing double duty: albedo when it is closed, and
+    the shape of the glow when it opens. Hence the ridged, radial folds — lit from
+    within they read as a throat rather than as a lamp.
+    """
+    folds = _fbm(res, 5301, beta=2.0, low_cycles=3.0, stretch=4.0)
+    ridged = 1.0 - np.abs(folds * 2.0 - 1.0)
+    fine = _fbm(res, 5302, beta=1.5, low_cycles=18.0)
+    wet_f1, _, wet_owner = _worley(res, 40, 5303, jitter=1.0)
+    beads = _smoothstep(0.011, 0.0, wet_f1) * _per_cell(wet_owner, 40, 5304, 0.4, 1.0)
+
+    height = np.clip(0.45 + (ridged - 0.5) * 0.62 + (fine - 0.5) * 0.16 + beads * 0.22,
+                     0.0, 1.0).astype(np.float32)
+
+    deep = np.array([0.074, 0.030, 0.027], dtype=np.float32)
+    raw = np.array([0.226, 0.106, 0.091], dtype=np.float32)
+    mix = _smoothstep(0.25, 0.85, ridged)[..., None]
+    colour = (deep.reshape(1, 1, 3) * (1.0 - mix) + raw.reshape(1, 1, 3) * mix) * (0.85 + 0.30 * fine)[..., None]
+
+    roughness = (0.42 - 0.18 * _smoothstep(0.3, 0.9, ridged) - 0.16 * beads).astype(np.float32)
+
+    return dict(albedo=colour, roughness=roughness, height=height,
+                metallic=np.zeros((res, res), dtype=np.float32),
+                world_size=0.22, height_scale=0.010)
+
+
+def build_eyes(res: int) -> dict:
+    """The two lenses. Wet, near-black, and almost featureless — on purpose.
+
+    This map's real job is not albedo, it is the *shape of the light*: MonsterSkin
+    binds each material's albedo as its own emission map, so whatever is painted here
+    is what the glow looks like. A patterned iris was the obvious idea and is wrong at
+    the distance that matters — the unwrap is a smart projection, so nothing here can
+    be aimed at a particular part of a 6 cm lens, and at 15 m the lens is three pixels
+    across and any pattern averages to its mean anyway. What survives at three pixels
+    is a single even point, so that is what this is.
+
+    What the faint structure does buy is the near field. At 3 m the same lens is 250
+    pixels across and a perfectly flat one reads as a painted dot; the fine crazing and
+    the 0.16 roughness give the beam something to catch across it.
+    """
+    crazing = _fbm(res, 5401, beta=2.4, low_cycles=26.0)
+    bloom = _fbm(res, 5402, beta=1.7, low_cycles=5.0)
+
+    height = np.clip(0.55 + (crazing - 0.5) * 0.30 + (bloom - 0.5) * 0.12,
+                     0.0, 1.0).astype(np.float32)
+
+    # Barely coloured. The emission colour is authored in MonsterSkin, and a tint here
+    # would multiply into it — two places deciding one hue is how a green eye quietly
+    # becomes a yellow one when somebody adjusts the other.
+    base = np.array([0.150, 0.156, 0.146], dtype=np.float32)
+    colour = base.reshape(1, 1, 3) * (0.88 + 0.24 * bloom)[..., None]
+
+    roughness = (0.17 + 0.10 * crazing).astype(np.float32)
+
+    return dict(albedo=colour, roughness=roughness, height=height,
+                metallic=np.zeros((res, res), dtype=np.float32),
+                world_size=0.06, height_scale=0.0016)
+
+
+SKINS = (
+    (FLESH, build_flesh, 0.170,
+     "Hide. 0.05 under the darkest wall in a §12 corridor (Wall_Brick_Painted, 0.22) "
+     "and 0.17 under the brightest (Wall_Plaster_Stained, 0.34). At 0.240 the shot "
+     "review measured it rendering 0.0964 BRIGHTER than the corridor, which made it a "
+     "pale object announcing itself instead of something §06 lets you notice too "
+     "late. Contrast is bought with range and specular now, not with the mean."),
+    (CARAPACE, build_carapace, 0.152,
+     "Plates. At gen_textures.py's floor — the darkest surface in the game. Their job "
+     "is specular, not albedo: roughness 0.21 and metallic 0.28 under §03's hard spot "
+     "give a moving highlight along an edge you cannot otherwise see."),
+    (MAW, build_maw, 0.155,
+     "Mandible interior. A dark hole until MonsterAcquireTell lights it, and the "
+     "emission map is this albedo so the glow takes the shape of the folds."),
+    (EYES, build_eyes, 0.152,
+     "The two lenses. At the pipeline's albedo floor because they are unlit black "
+     "glass; everything anybody ever sees of them is MonsterSkin.EyeGlow multiplied "
+     "through this map. §04's 관측자 reads the creature's facing off the pair, which "
+     "is the only thing on it that carries that information at ObserverRange."),
+)
+
+
+def write_skin(name: str, build, target_albedo: float, note: str, res: int,
+               limits: dict) -> dict:
+    """Builds, calibrates, writes and measures one of the creature's three surfaces.
+
+    Calibration is gen_textures.finish_albedo's, restated rather than imported:
+    scale the linear albedo onto its intended mean, and fail if the paint was so far
+    off that the gain is doing the authoring.
+    """
+    maps = build(res)
+    colour = np.clip(maps["albedo"], 1e-4, None)
+    gain = target_albedo / float(colour.mean())
+    if not (1.0 / 2.6) <= gain <= 2.6:
+        blendkit.fail(f"{name}: albedo needs a {gain:.2f}x correction to reach {target_albedo:.3f} — "
+                      "the painted values are wrong, fix them rather than widening the gain.")
+    if not limits["ALBEDO_MIN_LINEAR"] <= target_albedo <= limits["ALBEDO_MAX_LINEAR"]:
+        blendkit.fail(f"{name}: target albedo {target_albedo:.3f} is outside gen_textures.py's "
+                      f"[{limits['ALBEDO_MIN_LINEAR']}, {limits['ALBEDO_MAX_LINEAR']}] band. §03 needs the "
+                      "beam to land on something that reflects it.")
+
+    # The corridor ceiling. Calibrating the MEAN under the walls is not enough and the
+    # shot review proved it: the hide's mean sat at 0.170 while its top 5% of texels
+    # ran to 0.35 linear — brighter than Wall_Plaster_Stained — and those texels were
+    # exactly the pale patches that still read as a glowing object at 3 m. A mean is
+    # not what an eye finds in a dark frame; the brightest thing in it is.
+    #
+    # So the bright tail is rolled off under the darkest wall or ceiling in the room
+    # and the whole map re-scaled to land back on its intended mean. Two passes,
+    # because the roll-off moves the mean it was scaled to; the second correction is
+    # sub-percent and the assertion below is on the value that actually gets written.
+    ceiling = limits["CORRIDOR_DARKEST"]
+    albedo = np.clip(colour * gain, 0.012, 0.90).astype(np.float32)
+    for _ in range(2):
+        albedo = _soft_ceiling(albedo, ceiling)
+        albedo = np.clip(albedo * (target_albedo / max(float(albedo.mean()), 1e-6)),
+                         0.012, ceiling).astype(np.float32)
+
+    roughness = np.clip(maps["roughness"], limits["MIN_ROUGHNESS"], 1.0).astype(np.float32)
+    metallic = np.clip(maps["metallic"], 0.0, 1.0).astype(np.float32)
+    height = maps["height"]
+
+    normal = _height_to_normal(height, maps["world_size"], maps["height_scale"])
+    occlusion = _ambient_occlusion(height, maps["world_size"], maps["height_scale"])
+
+    folder = os.path.join(TEXTURE_DIR, name)
+    written = 0
+    written += _write_png(os.path.join(folder, name + "_albedo.png"),
+                          _to_u8(_linear_to_srgb(albedo)))
+    written += _write_png(os.path.join(folder, name + "_normal.png"),
+                          _to_u8(normal * 0.5 + 0.5))
+    written += _write_png(os.path.join(folder, name + "_rough.png"),
+                          _to_u8(np.repeat(roughness[..., None], 3, axis=2)))
+    written += _write_png(os.path.join(folder, name + "_ao.png"),
+                          _to_u8(np.repeat(occlusion[..., None], 3, axis=2)))
+
+    mask = np.zeros((res, res, 4), dtype=np.float32)
+    mask[..., 0] = metallic
+    mask[..., 1] = metallic
+    mask[..., 2] = metallic
+    mask[..., 3] = 1.0 - roughness
+    written += _write_png(os.path.join(folder, name + "_ms.png"), _to_u8(mask))
+
+    # Round-trip the albedo through the 8-bit sRGB PNG the shader will actually
+    # read, and measure THAT. Asserting the float mean would pass a texture whose
+    # quantised mean has drifted out of the band, which is the only mean that exists
+    # by the time the beam hits it.
+    written_linear = _srgb_to_linear(_to_u8(_linear_to_srgb(albedo)) / 255.0)
+    quantised = float(np.mean(written_linear))
+    if not limits["ALBEDO_MIN_LINEAR"] <= quantised <= limits["ALBEDO_MAX_LINEAR"]:
+        blendkit.fail(f"{name}: albedo means {quantised:.4f} linear after 8-bit encoding, outside "
+                      f"[{limits['ALBEDO_MIN_LINEAR']}, {limits['ALBEDO_MAX_LINEAR']}].")
+
+    # The brief's actual requirement, asserted on the bytes the shader will sample: NO
+    # texel of the creature may be brighter than the darkest surface of the corridor
+    # it is standing in. §06 makes it something you notice too late, and a single
+    # patch above the wall behind it is enough to notice early.
+    brightest = float(np.max(written_linear @ np.array([0.2126, 0.7152, 0.0722],
+                                                       dtype=np.float32)))
+    if brightest > ceiling + 0.005:
+        blendkit.fail(f"{name}: its brightest texel is {brightest:.4f} linear against a corridor "
+                      f"whose darkest wall is {ceiling:.4f}. The creature would out-reflect the "
+                      "room and read as a pale object rather than resolving out of the dark.")
+
+    relief_mm = float(height.max() - height.min()) * maps["height_scale"] * 1000.0
+    return dict(name=name, note=note, bytes=written,
+                albedo_max_linear=round(brightest, 4),
+                corridor_darkest_linear=round(ceiling, 4),
+                world_size_metres=maps["world_size"],
+                albedo_mean_linear=round(quantised, 4),
+                albedo_gain=round(gain, 3),
+                roughness_mean=round(float(roughness.mean()), 4),
+                metallic_mean=round(float(metallic.mean()), 4),
+                relief_mm=round(relief_mm, 2),
+                normal_unit_error=round(float(np.abs(np.linalg.norm(normal, axis=-1) - 1.0).max()), 5),
+                ao_mean=round(float(occlusion.mean()), 4),
+                maps={
+                    "albedo": name + "/" + name + "_albedo.png",
+                    "normal": name + "/" + name + "_normal.png",
+                    "roughness": name + "/" + name + "_rough.png",
+                    "occlusion": name + "/" + name + "_ao.png",
+                    "metallic_smoothness": name + "/" + name + "_ms.png",
+                })
+
+
+def _srgb_to_linear(x: np.ndarray) -> np.ndarray:
+    x = np.clip(x, 0.0, 1.0)
+    return np.where(x <= 0.04045, x / 12.92, np.power((x + 0.055) / 1.055, 2.4))
+
+
+def uv_units_per_metre(body: bpy.types.Object) -> float:
+    """UV units the unwrap spans per metre of the creature's surface.
+
+    Smart-projecting into the 0–1 square makes the UV scale depend on how the
+    islands happened to pack, so the tiling that puts one texture tile on the
+    intended `world_size` metres cannot be a guessed constant. Measured as
+    √(ΣUV area / Σworld area) over every triangle, written into the manifest, and
+    turned into a texture scale on the Unity side.
+    """
+    mesh = body.data
+    uv_layer = mesh.uv_layers.active
+    if uv_layer is None:
+        blendkit.fail("the joined body has no UV layer — the PBR maps would sample garbage.")
+
+    world_area = 0.0
+    uv_area = 0.0
+    for poly in mesh.polygons:
+        loops = list(poly.loop_indices)
+        verts = [mesh.vertices[mesh.loops[i].vertex_index].co for i in loops]
+        uvs = [uv_layer.data[i].uv for i in loops]
+        for i in range(1, len(loops) - 1):
+            a, b, c = verts[0], verts[i], verts[i + 1]
+            world_area += (b - a).cross(c - a).length * 0.5
+            ua, ub, uc = uvs[0], uvs[i], uvs[i + 1]
+            uv_area += abs((ub - ua).x * (uc - ua).y - (ub - ua).y * (uc - ua).x) * 0.5
+
+    if world_area <= 1e-9 or uv_area <= 1e-12:
+        blendkit.fail(f"degenerate unwrap: world area {world_area:.6f} m², uv area {uv_area:.6f}.")
+    return math.sqrt(uv_area / world_area)
+
+
+def write_skin_manifest(reports: list, uv_per_metre: float, res: int) -> None:
+    """One copy of "which map goes on which slot, at what tiling", written here.
+
+    The same argument gen_textures.write_manifest makes: two copies drift the first
+    time a material is renamed, and the failure mode is a silently untextured
+    monster in a game where the monster is the only thing worth looking at.
+    """
+    payload = {
+        "generated_by": "tools/blender/gen_monster_model.py",
+        "resolution": res,
+        "uv_units_per_metre": round(uv_per_metre, 6),
+        "fbx": "Assets/Models/Characters/Monster.fbx",
+        "materials": reports,
+    }
+    os.makedirs(os.path.dirname(SKIN_MANIFEST), exist_ok=True)
+    with open(SKIN_MANIFEST, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, indent=2, ensure_ascii=False)
+        handle.write("\n")
+
+
 # ── Measurement ─────────────────────────────────────────────────────────────
 
 _BONE_RE = re.compile(r'pose\.bones\["([^"]+)"\]\.(\w+)')
@@ -968,11 +2311,27 @@ _BONE_RE = re.compile(r'pose\.bones\["([^"]+)"\]\.(\w+)')
 
 def lowest_point(body: bpy.types.Object) -> float:
     """World Z of the lowest deformed vertex at the current frame."""
+    return lowest_vertex(body).z
+
+
+def lowest_vertex(body: bpy.types.Object) -> Vector:
+    """World position of the lowest deformed vertex — the actual contact point.
+
+    Not a bone: which part of the creature is touching the floor changes through the
+    cycle (pad, then claw tip), and the bone that owns it moves relative to the
+    contact. The lowest vertex is the contact by definition, which is what a
+    foot-lock has to hold still.
+    """
     depsgraph = bpy.context.evaluated_depsgraph_get()
     evaluated = body.evaluated_get(depsgraph)
     mesh = evaluated.to_mesh()
     try:
-        return min((body.matrix_world @ v.co).z for v in mesh.vertices)
+        best = None
+        for v in mesh.vertices:
+            world = body.matrix_world @ v.co
+            if best is None or world.z < best.z:
+                best = world
+        return best.copy() if best is not None else Vector((0.0, 0.0, 0.0))
     finally:
         evaluated.to_mesh_clear()
 
@@ -1025,6 +2384,77 @@ def ground_action(rig: bpy.types.Object, body: bpy.types.Object, action) -> floa
     return worst
 
 
+def lock_stance_slide(rig: bpy.types.Object, action) -> tuple[float, float, float]:
+    """Re-keys the hips' fore-aft translation so the contact point stops skating.
+
+    The vertical twin of this is `ground_action`, and the argument is the same one:
+    a gait authored as hip/knee/ankle/toe angle curves has no constraint that keeps
+    the foot still while it bears weight, so it slides, and no playback rate can
+    remove a slide that varies *within* the cycle. Measured before this pass, the
+    contact point moved at 1.52 m/s ± 2.76 on Patrol and 5.27 ± 9.27 on Chase — the
+    ripple being larger than the mean means the foot was going backwards and
+    forwards under the creature, which is exactly what reads as skating.
+
+    The correction is exact in one pass because translating the hips moves the whole
+    rigid-weighted body. Writing `d[i]` for the weight-bearing foot's backward travel
+    over interval i (see `stance_rates`) and `o[i]` for the hips offset:
+
+        o[i+1] = o[i] + (v/FPS − d[i])
+
+    and the one free parameter, v, is then *forced* by the requirement that the clip
+    loop — the offset has to return to where it started after one cycle, which pins
+
+        v = (Σ d) · FPS / (number of intervals)
+
+    So the clip's true ground speed is not chosen here, it is solved for. That is the
+    number written into Monster.clips.json and the number Unity divides §07's tier
+    speed by. Returns (solved speed, worst residual slide, peak hip correction).
+    """
+    muted = [(t, t.mute) for t in rig.animation_data.nla_tracks]
+    for track, _ in muted:
+        track.mute = True
+
+    rates = stance_rates(rig, action)
+    if not rates:
+        for track, was in muted:
+            track.mute = was
+        return 0.0, 0.0, 0.0
+
+    speed = sum(rates) * FPS / len(rates)
+    offsets = [0.0]
+    for d in rates:
+        offsets.append(offsets[-1] + speed / FPS - d)
+
+    rig.animation_data.action = action
+    lo, hi = (int(v) for v in action.frame_range)
+
+    bpy.ops.object.select_all(action="DESELECT")
+    rig.select_set(True)
+    bpy.context.view_layer.objects.active = rig
+    bpy.ops.object.mode_set(mode="POSE")
+
+    hips = rig.pose.bones["Hips"]
+    basis = rig.data.bones["Hips"].matrix_local.to_3x3()
+    for i, frame in enumerate(range(lo, hi + 1)):
+        bpy.context.scene.frame_set(frame)
+        bpy.context.view_layer.update()
+        world = basis @ Vector(hips.location) + Vector((0.0, offsets[i], 0.0))
+        hips.location = basis.inverted() @ world
+        hips.keyframe_insert(data_path="location", frame=frame)
+    bpy.ops.object.mode_set(mode="OBJECT")
+
+    rig.animation_data.action = None
+    for track, was in muted:
+        track.mute = was
+
+    # Re-measure against the corrected clip rather than trusting the arithmetic. The
+    # keys were written through the pose channel and read back through the evaluated
+    # armature, so this catches a basis or sign mistake that the algebra cannot.
+    after = stance_rates(rig, action)
+    residual_slide = max(abs(r * FPS - speed) for r in after) if after else 0.0
+    return speed, residual_slide, max(abs(o) for o in offsets)
+
+
 def grounding_error(rig: bpy.types.Object, body: bpy.types.Object,
                     action) -> tuple[float, float, float]:
     """Floor error and hip travel across EVERY frame, not just the keys.
@@ -1051,6 +2481,76 @@ def grounding_error(rig: bpy.types.Object, body: bpy.types.Object,
     for track, was in muted:
         track.mute = was
     return min(lows), max(lows), max(hips) - min(hips)
+
+
+def sample_contacts(rig: bpy.types.Object, action) -> list:
+    """Per-frame world position of both toe-pad pivots (the Toes bone heads).
+
+    The pivot rather than the toe TIP, because the tip swings through 30° of curl at
+    toe-off (GAIT_PHASES) and a point that rotates is not a point that is planted.
+    """
+    muted = [(t, t.mute) for t in rig.animation_data.nla_tracks]
+    for track, _ in muted:
+        track.mute = True
+    rig.animation_data.action = action
+
+    lo, hi = (int(v) for v in action.frame_range)
+    frames = []
+    for frame in range(lo, hi + 1):
+        bpy.context.scene.frame_set(frame)
+        bpy.context.view_layer.update()
+        frames.append({side: (rig.matrix_world @ rig.pose.bones[side + "Toes"].head).copy()
+                       for side in ("Left", "Right")})
+
+    rig.animation_data.action = None
+    for track, was in muted:
+        track.mute = was
+    return frames
+
+
+def stance_rates(rig: bpy.types.Object, action) -> list:
+    """Per-interval backward travel of the weight-bearing foot, in metres per frame.
+
+    <b>Stance is identified by direction of travel, not by height.</b> That is not the
+    obvious choice and it was arrived at by measurement: probing the Chase cycle frame
+    by frame showed the *swing* foot skimming within 2 cm of the floor for four frames
+    after toe-off, low enough that the grounding pass anchored the body to it while it
+    was sweeping forward at 4 m/s. Any height-based test calls that frame a contact
+    and reads the gait's speed as negative.
+
+    The physical definition has no such failure mode. With no root motion the planted
+    foot is the one moving backwards through rig space, and it is moving backwards at
+    exactly the speed the creature is travelling forwards; a swinging foot moves the
+    other way. So: whichever foot has the greater +Y velocity is bearing weight, and
+    that velocity is the answer. (The monster faces −Y.)
+    """
+    frames = sample_contacts(rig, action)
+    rates = []
+    for i in range(len(frames) - 1):
+        rates.append(max(frames[i + 1][side].y - frames[i][side].y for side in ("Left", "Right")))
+    return rates
+
+
+def measure_ground_speed(rig: bpy.types.Object, action) -> tuple[float, float]:
+    """The ground speed the clip's own stride produces, m/s, measured not derived.
+
+    Unity plays these clips against a transform driven by §07's tier speed, so the
+    only way the feet stay planted is if playback runs at `tierSpeed ÷ this`.
+
+    `stride_report` computes the same quantity from 2·L·sin θ, but that is an
+    idealised strut and the real cycle has an ankle, a 0.51 m metatarsal and a
+    grounding pass moving the hips every frame. Both are printed so a divergence
+    between the model of the gait and the gait is visible rather than assumed away.
+
+    Returns (mean, worst single-frame departure). The second number is the honest one:
+    it is the foot slide *inside* the clip, which no playback rate can remove and
+    which `lock_stance_slide` exists to take out at the source.
+    """
+    rates = stance_rates(rig, action)
+    if not rates:
+        return 0.0, 0.0
+    mean = sum(rates) / len(rates) * FPS
+    return mean, max(abs(r * FPS - mean) for r in rates)
 
 
 def measure_action(action) -> dict:
@@ -1096,16 +2596,63 @@ def measure_action(action) -> dict:
     }
 
 
-def stride_report(amp: float, cycle_frames: int) -> tuple[float, float]:
+def stride_report(amp: float, cycle_frames: int, limp: float = 1.0) -> tuple[float, float]:
     """Step length and resulting ground speed for a gait amplitude.
 
     step = 2 · L · sin(θ), L = hip-to-toe strut (1.38 m), θ = peak hip swing.
     speed = 2 steps / cycle duration.
+
+    `limp` matters because this number is the independent check on `lock_stance_slide`
+    — the two must agree or the contact detection is misreading which foot bears
+    weight. Patrol's right leg swings at 0.70 of the left's on purpose (§06 순찰 is
+    unhurried *and wrong*), so its two steps are not the same length and a symmetric
+    model of the gait reports a stride the clip never takes. Averaging the two
+    amplitudes keeps the check honest about a gait that is deliberately not.
     """
-    theta = math.radians(36.0 * amp)
+    theta = math.radians(PEAK_HIP_SWING * amp * (1.0 + limp) * 0.5)
     step = 2.0 * HIP_TO_TOE * math.sin(theta)
     speed = 2.0 * step / (cycle_frames / FPS)
     return step, speed
+
+
+CLIP_MANIFEST = os.path.join(blendkit.MODELS_DIR, "Characters", "Monster.clips.json")
+"""What each clip is worth, measured. Read by the Unity animator builder."""
+
+
+def write_clip_manifest(order: list, stats: dict, travel: dict, locks: dict) -> None:
+    """Publishes each clip's length and its own ground speed.
+
+    This exists so the Unity side never guesses. `MonsterAnimationDriver` used to
+    scale playback by `speed ÷ GameConstants.MonsterBaseSpeed`, which is right only
+    for Chase — it assumed every clip was authored at 4.8 m/s, so a Patrol authored
+    at a fifth of that ran at a fifth of the correct cadence and the feet skated
+    through §12's floors. Numbers measured here, consumed there, one copy.
+    """
+    payload = {
+        "generated_by": "tools/blender/gen_monster_model.py",
+        "fps": FPS,
+        "note": "ground_speed_mps is measured from the weight-bearing foot, not derived. "
+                "Playback rate for a §07 tier speed is tierSpeed / ground_speed_mps.",
+        "clips": [
+            {
+                "name": name,
+                "frames": stats[name]["frames"],
+                "seconds": round(stats[name]["seconds"], 4),
+                "loops": name in ("Patrol", "Alert", "Chase", "Search", "Standstill"),
+                "locomotion": name in locks,
+                # The solved speed when the clip was stance-locked, else the measured
+                # median. Locked clips are the ones Unity speed-matches against.
+                "ground_speed_mps": round(locks[name][0] if name in locks else travel[name][0], 4),
+                "residual_slide_mps": round(locks[name][1], 4) if name in locks else None,
+                "stance_speed_spread_mps": round(travel[name][1], 4),
+            }
+            for name in order
+        ],
+    }
+    os.makedirs(os.path.dirname(CLIP_MANIFEST), exist_ok=True)
+    with open(CLIP_MANIFEST, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, indent=2, ensure_ascii=False)
+        handle.write("\n")
 
 
 def fbx_takes(path: str) -> list[str]:
@@ -1156,10 +2703,11 @@ def verify_motion(stats: dict) -> None:
                  for p in ("UpperLeg", "LowerLeg", "Foot", "Toes")]
 
     still = stats["Standstill"]
-    if still["max_deg"] > 6.0:
+    if still["max_deg"] > 3.0:
         blendkit.fail(
             f"Standstill moves {still['max_deg']:.2f}° — §06 makes this the silent state "
-            "and the game's weapon. It must not read as an idle."
+            "and the game's weapon. The player is supposed to be unable to tell whether "
+            "it moved at all; anything they can be sure they saw answers the question."
         )
     leg_motion = max(still["per_bone"].get(b, 0.0) for b in leg_bones)
     hip_motion = still["per_bone"].get("Hips", 0.0)
@@ -1203,6 +2751,20 @@ def verify_motion(stats: dict) -> None:
 # ── Main ────────────────────────────────────────────────────────────────────
 
 def main() -> None:
+    # The hull monster is no longer what ships, and every path below writes to the names
+    # that do — Monster.fbx, Monster.clips.json, Monster.textures.json. Running this by
+    # habit would silently replace the sculpt with the asset it replaced, and nothing
+    # downstream would notice: the file names match, the rig matches, the clip count
+    # matches. So it has to be asked for.
+    tail = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
+    if "--hull" not in tail:
+        print("SKIP gen_monster_model no longer writes the shipped monster — "
+              "tools/blender/gen_monster_ai.py does. This file is kept for the seven §06 "
+              "clip authors and the procedural skin pipeline, both of which gen_monster_ai "
+              "imports. Pass `-- --hull` to rebuild the hull creature over Monster.fbx for "
+              "a before/after comparison.")
+        return None
+
     blendkit.reset_scene()
     blendkit.set_frame_range(1, 91)
     PARTS.clear()
@@ -1211,6 +2773,7 @@ def main() -> None:
         MaterialSpec(FLESH, (0.255, 0.232, 0.212), roughness=0.88),
         MaterialSpec(CARAPACE, (0.072, 0.068, 0.066), roughness=0.52),
         MaterialSpec(MAW, (0.185, 0.052, 0.048), roughness=0.38),
+        MaterialSpec(EYES, (0.150, 0.156, 0.146), roughness=0.18),
     ):
         blendkit.make_material(spec)
 
@@ -1232,6 +2795,25 @@ def main() -> None:
     blendkit.shade_smooth(body, angle_degrees=34.0)
     blendkit.uv_smart_project(body)
 
+    # The skin, before the rig: the unwrap has to exist to measure the UV density
+    # the tiling is derived from, and nothing after this point touches UVs.
+    limits = pipeline_constants()
+    res = limits["DEFAULT_RESOLUTION"]
+    uv_per_metre = uv_units_per_metre(body)
+    skins = [write_skin(name, build, target, note, res, limits)
+             for name, build, target, note in SKINS]
+    write_skin_manifest(skins, uv_per_metre, res)
+    print(f"SKIN_UV uv_units_per_metre={uv_per_metre:.4f} "
+          f"(1 tile of a {SKINS[0][0]} map covers "
+          f"{1.0 / uv_per_metre:.2f} m of surface at tiling 1)")
+    for s in skins:
+        print(f"SKIN_REPORT {s['name']:18s} albedo={s['albedo_mean_linear']:.4f}lin "
+              f"max={s['albedo_max_linear']:.4f} (corridor {s['corridor_darkest_linear']:.4f}) "
+              f"gain={s['albedo_gain']:.2f} rough={s['roughness_mean']:.3f} "
+              f"metal={s['metallic_mean']:.3f} relief={s['relief_mm']:6.2f}mm "
+              f"ao={s['ao_mean']:.3f} n_err={s['normal_unit_error']:.4f} "
+              f"tile={s['world_size_metres']:.2f}m bytes={s['bytes']}")
+
     rig = blendkit.build_armature("Monster_Rig", bone_specs())
     blendkit.bind_skin(body, rig, auto_weights=False)
 
@@ -1244,13 +2826,22 @@ def main() -> None:
     stats: dict[str, dict] = {}
     gaits: dict[str, float] = {}
     ground: dict[str, tuple[float, float]] = {}
+    travel: dict[str, tuple[float, float]] = {}
+    locks: dict[str, tuple[float, float, float]] = {}
     for build in builders:
         action, amp = build(rig)
         ground_action(rig, body, action)
+        if amp is not None:
+            # Locomotion only. Search, Grab and Stunned are *meant* to drift — a
+            # creature casting about or recoiling is not holding a stride — and
+            # locking them would freeze motion the design asked for.
+            locks[action.name] = lock_stance_slide(rig, action)
+            gaits[action.name] = amp
         ground[action.name] = grounding_error(rig, body, action)
         stats[action.name] = measure_action(action)
-        if amp is not None:
-            gaits[action.name] = amp
+        # After both correction passes, because they move the hips every frame and
+        # therefore move the foot this measures.
+        travel[action.name] = measure_ground_speed(rig, action)
         blendkit.stash_action(rig, action)
 
     # Each clip must stand alone in Unity, and NOTHING extrapolation means frame 0 is
@@ -1290,17 +2881,47 @@ def main() -> None:
     verify_motion(stats)
 
     order = ["Patrol", "Alert", "Chase", "Search", "Standstill", "Stunned", "Grab"]
+    # The gait asymmetry each locomotion clip was authored with, so `stride_report`
+    # models the clip rather than an idealised symmetric one.
+    LIMPS = {"Patrol": PATROL_LIMP, "Chase": 1.0}
     for name in order:
         s = stats[name]
         extra = ""
         if name in gaits:
-            step, speed = stride_report(gaits[name], s["frames"] - 1)
-            extra = f" amp={gaits[name]:.2f} step={step:.2f}m speed={speed:.2f}m/s"
+            step, speed = stride_report(gaits[name], s["frames"] - 1, LIMPS[name])
+            extra = f" amp={gaits[name]:.2f} step={step:.2f}m derived={speed:.2f}m/s"
+        measured, ripple = travel[name]
         print(f"ANIM_REPORT {name:11s} frames={s['start']}-{s['end']} "
               f"({s['frames']:3d}f, {s['seconds']:.2f}s) curves={s['curves']} "
               f"keys={s['keys']:4d} max_bone_motion={s['max_deg']:6.2f}deg"
               f" head={s['per_bone'].get('Head', 0.0):5.1f}deg"
-              f" hipswing={s['per_bone'].get('LeftUpperLeg', 0.0):5.1f}deg{extra}")
+              f" hipswing={s['per_bone'].get('LeftUpperLeg', 0.0):5.1f}deg"
+              f" ground={measured:5.2f}m/s ripple=±{ripple:.2f}{extra}")
+
+    # Foot slide is the failure the brief names, so it gets its own measured line.
+    # `solved` is the speed the loop constraint forced; `residual` is what still
+    # skates after the lock, and it is the number that decides whether the feet
+    # read as planted.
+    for name in ("Patrol", "Chase"):
+        solved, residual, correction = locks[name]
+        _, derived = stride_report(gaits[name], stats[name]["frames"] - 1, LIMPS[name])
+        print(f"LOCK_REPORT {name:11s} solved={solved:.3f}m/s derived={derived:.3f}m/s "
+              f"residual_slide={residual * 1000:6.1f}mm/s peak_hip_correction={correction * 1000:.1f}mm")
+        # The residual is zero by construction, so it proves nothing on its own. What
+        # can go wrong is the SOLVE: if the stance detection misreads which foot is
+        # bearing weight, it converges beautifully on a nonsense speed. The
+        # independent check is the leg geometry — 2·L·sin θ knows nothing about the
+        # contact test, so agreement between the two means both are right.
+        if not 0.75 <= solved / max(derived, 1e-6) <= 1.35:
+            blendkit.fail(f"{name}'s stance lock solved {solved:.3f} m/s against the {derived:.3f} m/s "
+                          "the leg geometry gives. The contact detection is misreading which foot "
+                          "bears weight, so the gait speed Unity divides by would be fiction.")
+        if correction > 0.30:
+            blendkit.fail(f"{name}'s stance lock had to move the hips {correction * 1000:.0f} mm "
+                          "fore-aft. That is a lurch, not a correction — the authored cycle is not "
+                          "covering its own stride.")
+
+    write_clip_manifest(order, stats, travel, locks)
 
     # Feet on the floor. Penetration is the failure that reads as broken; a little
     # float during a swing phase does not.

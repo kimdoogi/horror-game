@@ -1,0 +1,201 @@
+# Blockers
+
+Things that stop the game working, as opposed to design questions. Balance
+contradictions live in [BALANCE-FINDINGS.md](BALANCE-FINDINGS.md). Art defects that
+do not stop the game live in [ART.md](ART.md) §7.
+
+Last verified: 2026-07-31, Unity 6000.3.21f1, macOS 24.3.0.
+
+---
+
+## B-001 · The monster could not reach the player
+
+**Status:** 🟢 **CLOSED** 2026-07-31 · verified by
+`MonsterChaseTests.MonsterClosesDistanceAndReachesAPlayerAcrossTheMap`
+
+**The game has an antagonist.** The monster starts at its §12 spawn on B3 and
+arrives at a player standing two storeys above it, on the real baked surface, in
+27.52 s.
+
+### The measurement that closes it
+
+```bash
+/Applications/Unity/Hub/Editor/6000.3.21f1/Unity.app/Contents/MacOS/Unity -batchmode \
+  -projectPath /Users/doogi/horror-game/unity/HorrorGame -runTests -testPlatform PlayMode \
+  -testFilter "MonsterChaseTests" -testResults /tmp/chase.xml -logFile /tmp/chase.log
+```
+
+Exit code 0. `test-run result="Passed" total="4" passed="4" failed="0"`.
+
+```
+[ChaseTest]   t=20.00 s Alert at (25.3, 0.1, 51.9) path 37.2 m straight 21.1 m heading for (33.8, 0.2, 71.3)
+[ChaseTest] §14 Q1 — can the monster reach a player at all?
+[ChaseTest]   route            133.9 m of NavMesh path, monster spawn → (33.75, 0.18, 71.25)
+[ChaseTest]   straight line    60.1 m
+[ChaseTest]   chase entered    27.12 s
+[ChaseTest]   reached          27.52 s
+[ChaseTest]   closing speed    4.83 m/s of route, against §06's 4.8 m/s of ground speed
+[ChaseTest]   worst 1 s rise   0.0 m of route (0 is a monster that never backtracked)
+```
+
+Against the state this bug was last written up in — `chase entered never`,
+`NOT REACHED in 240.00 s`, `worst 1 s rise 0.0 m`, stalled at (26.8, −5.4, 36.5) for
+220 consecutive seconds.
+
+The climb is real and not an artifact of where the two were placed. From the scene:
+
+```
+MonsterSpawn   (36.25, -7.50, 11.25)      B3 저수조
+PlayerSpawn_2  (33.75,  0.00, 71.25)      B1
+```
+
+7.5 m of vertical, two storey boundaries, 133.9 m of walked route, covered at
+4.83 m/s — 0.6 % above §06's 4.8 m/s ground speed, which is one sub-step of
+`FixedStep` rounding. `worst 1 s rise 0.0 m` says it never once turned round.
+
+### Both halves of the fix were done
+
+The write-up offered two candidate halves and said the first was the real fix. Both
+landed, and it matters that both did.
+
+**1 · The kit's stairs are walkable geometry and the links are gone.**
+`tools/blender/gen_mapkit.py` `build_stairwell` no longer runs the dog-leg spine the
+full depth of the mid-landing — the spine stops at the head of the flights and
+continues below the landing as its support, so the landing is open and both flights
+bake as one surface. `MapSceneBuilder.ForbidStairLinks` now *deletes* any
+`NavMeshLink` it finds and `MapSceneBuilder.VerifyStairwellsAreWalkable` fails the
+generation if a shaft bakes as more than one island. From the run that wrote the
+current scene (`/tmp/mapgen.log`, 12:09):
+
+```
+[SceneGen] 7 계단 verified as single walkable surfaces, no NavMeshLink anywhere in
+the map. §06's monster steps along NavMeshPath.corners, so every storey boundary it
+crosses has to be geometry it can stand on.
+```
+
+`grep -c NavMeshLink Assets/Scenes/Map_FirstSketch.unity` → `0`.
+
+This is the half that fixes the player too. A `NavMeshLink` is a gap with nothing to
+step onto; a human being cannot use one at all. The stairs are now something both the
+player and the monster walk up. `Shots/verify_spawn2.png` is a picture of one:
+diamond-plate treads, a landing, headroom.
+
+**2 · The probe no longer deadlocks on a duplicated path corner.**
+`NavMeshWorldProbe.TryGetNextPathPoint` returned `_corners[1]` unconditionally.
+It now returns the first corner further than `MinWaypointAdvanceSqr` (0.09 m²) from
+the mover, and falls back to the last corner when every corner is coincident. Worth
+keeping even with the links gone: a coincident corner is not unique to links, and one
+of them used to freeze the antagonist for the rest of the match with no error of any
+kind.
+
+### The other three tests in the suite, all passing
+
+**§06 어그로 해제 —**
+`AggroReleaseSendsTheMonsterToTheLastSeenPositionNotThePlayer`, Passed:
+
+```
+[ChaseTest]   sighted from     (36.3, -7.4, 11.3), last seen at (34.8, -7.4, 16.7)
+[ChaseTest]   hid at           (41.3, 0.4, 73.8), 62.7 m away, no line of sight
+[ChaseTest]   separation       never below 57.4 m, against §06's 12 m
+[ChaseTest]   sight regained   no
+[ChaseTest]   released after   3.02 s, against §06's 3 s
+[ChaseTest]   headed for       (34.8, -7.4, 16.7) — 0.0 m from the last sighting, 57.4 m
+                               from where the player actually is
+```
+
+**§12 ① S자 통로 —** `AnSCorridorOfTwoTenMetreLegsBreaksAChase`, Passed:
+
+```
+[ChaseTest]   corridor         62.5 m of route, 3 corner(s), 2.5 m clear width
+[ChaseTest]   aggro started at 10.0 m (§12's endorsed row)
+[ChaseTest]   gap at corner 1  11.8 m, against §12's 14.4 m for a single corner to hold 3 s
+[ChaseTest]   released         5.50 s after aggro, at 12.0 m
+[ChaseTest]   caught           no
+[ChaseTest]   longest cover    3.02 s unbroken, against §06's 3 s
+[ChaseTest]   sight regained   0 time(s) mid-chase
+[ChaseTest]   runner covered   30.9 m, monster 22.7 m
+[ChaseTest]   monster speed    4.13 m/s of corridor, against §06's 4.8 m/s
+[ChaseTest]   gap opened at    1.47 m/s while sprinting, against §06's 0.8 m/s (5.6 − 4.8)
+```
+
+**§12 단일 모퉁이는 실패한다 —** `ASingleCornerDoesNotBreakAChase`, Passed. Same
+route length, same aggro distance, same runner, one corner instead of three:
+
+```
+[ChaseTest]   longest cover    1.98 s unbroken, against §06's 3 s
+[ChaseTest]   sight regained   1 time(s) mid-chase
+[ChaseTest]   released         NO
+[ChaseTest]   caught           12.54 s
+[ChaseTest]   runner covered   52.5 m, monster 60.1 m
+[ChaseTest]   monster speed    4.80 m/s of corridor, against §06's 4.8 m/s
+[ChaseTest]   gap opened at    0.80 m/s while sprinting, against §06's 0.8 m/s (5.6 − 4.8)
+```
+
+**4.80 against §06's 4.8, and 0.79→0.80 against §06's 0.8.** The design's most
+load-bearing claim — "괴물이 달리기보다 0.3만 빠른 것이 핵심이다" — measured on real
+geometry, correct to 1 %. And 1.98 s of cover from one corner against the 3.02 s two
+10 m legs buy is §12's arithmetic reproduced.
+
+### What this unblocks, and what it does not
+
+Unblocked: §14 Q1 「추격이 재밌는가?」 can now be *played* on `Map_FirstSketch`. The
+Runner role has a map to be a Runner on. `ObjectiveResolver`'s unreachable-site
+fallback is exercisable.
+
+**Not** unblocked: whether the chase is *fun* is still a person's judgement and no
+test in this repo claims otherwise. §14 says questions 1 and 2 decide the project and
+「직접 만져봐야 나온다」. Two instances, Discord, a human. That is the next thing.
+
+---
+
+## B-002 · The EditMode solo-match test fails on a broken Mirror package install
+
+**Status:** 🟠 open, environment · not a code regression · **re-confirmed 2026-07-31**
+
+`SoloMatchLoopTests.Solo_match_runs_the_whole_round_trip` is the one red test in the
+project. It fails on an unhandled log message rather than an assertion:
+
+```
+[TestRunner] Failed: HorrorGame.Gameplay.MatchEditor.SoloMatchLoopTests.Solo_match_runs_the_whole_round_trip
+  Unhandled log message: '[Error] Asset Packages/com.mirrornetworking.mirror/Mirror/Assets
+  has no meta file, but it's in an immutable folder. The asset will be ignored.'.
+  Use UnityEngine.TestTools.LogAssert.Expect
+  UnityEditor.AssetDatabase:Refresh ()
+  HorrorGame.EditorTools.SoloPlaytest:BuildScene () (at SoloPlaytest.cs:150)
+```
+
+**The loop it is testing works.** The same code path run outside the test harness
+passes end to end — see `SoloPlaytest.VerifyBatch` in [STATUS.md](STATUS.md) §1.4.
+What fails is the harness's zero-tolerance for unexpected `Debug.LogError`, and the
+error comes from the package cache, not from the match.
+
+Fix: reinstall `com.mirrornetworking.mirror`, or have this one test
+`LogAssert.Expect` this one message — but **not** by widening the test's log
+tolerance in general, which would hide the errors it exists to catch.
+
+---
+
+## B-003 · Two 개방 공간 are silently dropped from every map generation
+
+**Status:** 🟠 open · the map is still valid without them, but the pipeline logs two
+errors on every run and nobody has decided whether that is acceptable
+
+`MapSketch` places two `HallOpen20x20` rooms under a corridor on the storey above and
+then refuses to build them, at `LogError`, on every single generation:
+
+```
+[SceneGen] HallOpen20x20 at (4,13@L1) is 6.3 m tall on a 3.75 m storey, so its roof
+rises into the storey above and leaves 7 place(s) up there under 2 m of headroom —
+(4,20@L0), (5,20@L0), (6,20@L0), (7,20@L0), (8,20@L0), (9,20@L0). §06's monster is
+2.30 m; it cannot path through any of them, so the room is not built. Move the 개방
+공간 out from under the corridor, or move the corridor.
+[SceneGen] HallOpen20x20 at (16,14@L1) is 6.3 m tall on a 3.75 m storey … 9 place(s)
+… the room is not built.
+```
+
+`MapSketch.cs:1101`. The map still passes all 16 §12 checklist rules because other
+rooms satisfy `open-adjacent-to-maze`, and the 주자 테스트 still grades 7/10 Balanced.
+So the consequence is design intent lost quietly, not a broken build — but a
+generator that prints two `LogError`s on the happy path means nobody can use "the log
+is clean" as a gate. Either place the halls somewhere legal, or downgrade the message
+and record the compromise.

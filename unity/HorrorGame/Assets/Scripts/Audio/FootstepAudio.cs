@@ -44,6 +44,13 @@ namespace HorrorGame.Audio
     [AddComponentMenu("HorrorGame/Audio/Footstep Audio")]
     public sealed class FootstepAudio : MonoBehaviour
     {
+        /// <summary>
+        /// Time constant for the measured-speed filter, seconds. Short enough that a
+        /// player breaking into a run is heard on the next step, long enough that a
+        /// single spiked frame cannot swap the clip set — see <see cref="Update"/>.
+        /// </summary>
+        private const float SpeedSmoothingSeconds = 0.12f;
+
         [Tooltip("§12's five surfaces as clips.")]
         [SerializeField]
         private SurfaceAudioLibrary? library;
@@ -79,6 +86,16 @@ namespace HorrorGame.Audio
         /// <summary>The surface the last step was played from. §12. Useful to a HUD and to tests.</summary>
         public FloorMaterial CurrentFloor { get; private set; } = FloorMaterial.None;
 
+        /// <summary>
+        /// The clip the last step actually played, or null before the first one. §12
+        /// makes the surface a gameplay channel, so "which clip came out" is the only
+        /// honest way to check the channel is carrying the right letter.
+        /// </summary>
+        public AudioClip? LastClip { get; private set; }
+
+        /// <summary>How many steps this emitter has played. A test's proof that silence is silence.</summary>
+        public int StepCount { get; private set; }
+
         /// <summary>Measured horizontal speed, m/s, from frame-to-frame movement.</summary>
         public float Speed => _speed;
 
@@ -94,6 +111,32 @@ namespace HorrorGame.Audio
 
                 return _speed >= runThresholdSpeed ? FootstepActor.PlayerRun : FootstepActor.PlayerWalk;
             }
+        }
+
+        /// <summary>
+        /// The clip library in use. Null until wired — and a null library is silence,
+        /// not a fallback surface, for the reason <see cref="SurfaceAudioLibrary.For"/>
+        /// gives.
+        /// </summary>
+        public SurfaceAudioLibrary? Library => library;
+
+        /// <summary>
+        /// Wires this emitter from code, for a scene assembled at runtime rather than
+        /// authored in the inspector.
+        /// <para>
+        /// Safe to call after <c>Awake</c>: <c>AddComponent</c> runs it synchronously,
+        /// so a rig that adds and then configures would otherwise always be one frame
+        /// too late.
+        /// </para>
+        /// </summary>
+        /// <param name="clips">§12's five surfaces.</param>
+        /// <param name="actor">Player or monster. Chooses the clip set.</param>
+        /// <param name="meter">Optional. Receives this character's speed for §04's self-noise.</param>
+        public void Configure(SurfaceAudioLibrary? clips, FootstepActor actor, NoiseMeter? meter)
+        {
+            library = clips;
+            defaultActor = actor;
+            noiseMeter = meter;
         }
 
         /// <summary>
@@ -156,7 +199,16 @@ namespace HorrorGame.Audio
             // lands on.
             delta.y = 0f;
             var travelled = delta.magnitude;
-            _speed = dt > 0f ? travelled / dt : 0f;
+
+            // Smoothed, not instantaneous. Frame-to-frame displacement divided by
+            // frame-to-frame time is extremely noisy — one long frame followed by a
+            // short one reads as three times the real speed — and this number chooses
+            // between the walk and run clip sets. §04 asks the 청음사 to read effort off
+            // that choice, so a gait that flickers with the frame rate is the role being
+            // told the monster started sprinting because the GC ran. The constant is
+            // well under a stride, so the switch is still immediate to a player.
+            var instant = dt > 0f ? travelled / dt : 0f;
+            _speed = GameAudio.Approach(_speed, instant, dt, SpeedSmoothingSeconds);
 
             if (noiseMeter != null)
             {
@@ -213,6 +265,8 @@ namespace HorrorGame.Audio
             }
 
             _timeSinceStep = 0f;
+            LastClip = clip;
+            StepCount++;
 
             _source.pitch = 1f + Random.Range(-AudioTuning.FootstepPitchJitter, AudioTuning.FootstepPitchJitter);
             var level = bank.Gain * (1f + Random.Range(-AudioTuning.FootstepVolumeJitter, AudioTuning.FootstepVolumeJitter));

@@ -7,6 +7,23 @@
     "height": 3.0
   },
   "gallery_rise_metres": 3.0,
+  "stair": {
+    "flights": 2,
+    "steps_per_flight": 8,
+    "stair_rise_metres": 0.234375,
+    "stair_going_metres": 0.3,
+    "stair_pitch_degrees": 37.999,
+    "stair_flight_clear_width_metres": 2.14,
+    "stair_landing_depth_metres": 2.05,
+    "stair_headroom_metres": 3.0,
+    "stair_needs_navmesh_link": false
+  },
+  "nav_agent": {
+    "source": "unity/HorrorGame/ProjectSettings/NavMeshAreas.asset, agent type 0",
+    "agent_radius_metres": 0.5,
+    "agent_height_metres": 2.0,
+    "agent_climb_metres": 0.75
+  },
   "design_sections": [
     "§03",
     "§04",
@@ -47,10 +64,13 @@
       "material_slots": [
         "Ceiling_Structure",
         "Wall_Structure",
-        "Floor_Concrete"
+        "Trim_Painted",
+        "Trim_Steel",
+        "Floor_Concrete",
+        "Wall_Dado"
       ],
-      "triangles": 232,
-      "vertices": 128,
+      "triangles": 1804,
+      "vertices": 1030,
       "docks": [
         {
           "edge": "-Y",
@@ -94,10 +114,13 @@
       "material_slots": [
         "Ceiling_Structure",
         "Wall_Structure",
-        "Floor_Concrete"
+        "Trim_Painted",
+        "Trim_Steel",
+        "Floor_Concrete",
+        "Wall_Dado"
       ],
-      "triangles": 320,
-      "vertices": 176,
+      "triangles": 2428,
+      "vertices": 1392,
       "docks": [
         {
           "edge": "-Y",
@@ -141,10 +164,13 @@
       "material_slots": [
         "Ceiling_Structure",
         "Wall_Structure",
-        "Floor_Concrete"
+        "Trim_Painted",
+        "Trim_Steel",
+        "Floor_Concrete",
+        "Wall_Dado"
       ],
-      "triangles": 496,
-      "vertices": 272,
+      "triangles": 3908,
+      "vertices": 2244,
       "docks": [
         {
           "edge": "-Y",
@@ -188,10 +214,13 @@
       "material_slots": [
         "Ceiling_Structure",
         "Wall_Structure",
-        "Floor_Concrete"
+        "Trim_Painted",
+        "Trim_Steel",
+        "Floor_Concrete",
+        "Wall_Dado"
       ],
-      "triangles": 232,
-      "vertices": 128,
+      "triangles": 1876,
+      "vertices": 1062,
       "docks": [
         {
           "edge": "-Y",
@@ -235,10 +264,13 @@
       "material_slots": [
         "Ceiling_Structure",
         "Wall_Structure",
-        "Floor_Concrete"
+        "Trim_Painted",
+        "Trim_Steel",
+        "Floor_Concrete",
+        "Wall_Dado"
       ],
-      "triangles": 640,
-      "vertices": 352,
+      "triangles": 7016,
+      "vertices": 4000,
       "docks": [
         {
           "edge": "-Y",
@@ -282,10 +314,13 @@
       "material_slots": [
         "Ceiling_Structure",
         "Wall_Structure",
+        "Trim_Painted",
+        "Wall_Dado",
+        "Trim_Steel",
         "Floor_Concrete"
       ],
-      "triangles": 232,
-      "vertices": 128,
+      "triangles": 1492,
+      "vertices": 834,
       "docks": [
         {
           "edge": "-Y",
@@ -339,10 +374,13 @@
       "material_slots": [
         "Ceiling_Structure",
         "Wall_Structure",
+        "Trim_Painted",
+        "Wall_Dado",
+        "Trim_Steel",
         "Floor_Concrete"
       ],
-      "triangles": 320,
-      "vertices": 176,
+      "triangles": 1428,
+      "vertices": 778,
       "docks": [
         {
           "edge": "-Y",
@@ -406,11 +444,13 @@
       "material_slots": [
         "Ceiling_Structure",
         "Wall_Structure",
+        "Trim_Painted",
         "Trim_Steel",
-        "Floor_Concrete"
+        "Floor_Concrete",
+        "Wall_Dado"
       ],
-      "triangles": 628,
-      "vertices": 344,
+      "triangles": 3436,
+      "vertices": 1960,
       "docks": [
         {
           "edge": "-Y",
@@ -442,12 +482,15 @@
       "max_straight_run_metres": 20.0,
       "floor_slot": "Floor_Tile",
       "material_slots": [
-        "Ceiling_Structure",
         "Wall_Structure",
-        "Floor_Tile"
+        "Trim_Painted",
+        "Ceiling_Structure",
+        "Floor_Tile",
+        "Wall_Dado",
+        "Trim_Steel"
       ],
-      "triangles": 1288,
-      "vertices": 704,
+      "triangles": 8554,
+      "vertices": 4763,
       "docks": [
         {
           "edge": "-Y",
@@ -551,10 +594,13 @@
       "material_slots": [
         "Ceiling_Structure",
         "Wall_Structure",
-        "Floor_Metal"
+        "Trim_Steel",
+        "Trim_Painted",
+        "Floor_Metal",
+        "Wall_Dado"
       ],
-      "triangles": 1088,
-      "vertices": 624,
+      "triangles": 3652,
+      "vertices": 2076,
       "docks": [
         {
           "edge": "-Y",
@@ -598,11 +644,13 @@
       "material_slots": [
         "Ceiling_Structure",
         "Wall_Structure",
+        "Trim_Painted",
         "Trim_Steel",
-        "Floor_Concrete"
+        "Floor_Concrete",
+        "Wall_Dado"
       ],
-      "triangles": 1156,
-      "vertices": 632,
+      "triangles": 3564,
+      "vertices": 1988,
       "docks": [
         {
           "edge": "-Y",
@@ -646,11 +694,13 @@
       "material_slots": [
         "Ceiling_Structure",
         "Wall_Structure",
+        "Trim_Painted",
         "Trim_Steel",
-        "Floor_Concrete"
+        "Floor_Concrete",
+        "Wall_Dado"
       ],
-      "triangles": 848,
-      "vertices": 464,
+      "triangles": 2296,
+      "vertices": 1270,
       "docks": [
         {
           "edge": "-Y",
@@ -684,11 +734,13 @@
       "material_slots": [
         "Ceiling_Structure",
         "Wall_Structure",
+        "Trim_Painted",
         "Trim_Steel",
-        "Floor_Concrete"
+        "Floor_Concrete",
+        "Wall_Dado"
       ],
-      "triangles": 628,
-      "vertices": 344,
+      "triangles": 1812,
+      "vertices": 1006,
       "docks": [
         {
           "edge": "-Y",
@@ -711,7 +763,7 @@
           "level": 0.0
         }
       ],
-      "note": "§12 병목. 2.20 x 2.40 m opening; 2.08 m at the hinge pintles."
+      "note": "§12 병목. 2.20 x 2.40 m structural opening, 2.14 m inside the linings; pintles are face-hung so the hardware costs no passing width."
     },
     {
       "name": "Door_Panel_Lockable",
@@ -770,14 +822,14 @@
         2,
         2
       ],
-      "height_metres": 0.15,
+      "height_metres": 0.1498,
       "max_straight_run_metres": 5.0,
       "floor_slot": "Floor_Wood",
       "material_slots": [
         "Floor_Wood"
       ],
-      "triangles": 132,
-      "vertices": 88,
+      "triangles": 324,
+      "vertices": 216,
       "docks": [],
       "note": "§12 구역 A — 삐걱. Plank relief."
     },
@@ -800,8 +852,8 @@
       "material_slots": [
         "Floor_Tile"
       ],
-      "triangles": 1212,
-      "vertices": 808,
+      "triangles": 1176,
+      "vertices": 784,
       "docks": [],
       "note": "§12 구역 B — 딱딱, 반향. 0.5 m grid, grout lines."
     },
@@ -842,14 +894,16 @@
         2,
         2
       ],
-      "height_metres": 0.15,
+      "height_metres": 0.154,
       "max_straight_run_metres": 5.0,
       "floor_slot": "Floor_Concrete",
       "material_slots": [
-        "Floor_Concrete"
+        "Floor_Concrete",
+        "Wall_Dado",
+        "Trim_Steel"
       ],
-      "triangles": 60,
-      "vertices": 40,
+      "triangles": 240,
+      "vertices": 160,
       "docks": [],
       "note": "§12 구역 D — 둔탁. Poured slabs, flat on purpose."
     },
@@ -870,10 +924,11 @@
       "max_straight_run_metres": 5.0,
       "floor_slot": "Floor_Metal",
       "material_slots": [
-        "Floor_Metal"
+        "Floor_Metal",
+        "Trim_Steel"
       ],
-      "triangles": 348,
-      "vertices": 232,
+      "triangles": 456,
+      "vertices": 304,
       "docks": [],
       "note": "§12 계단 — 울림. Checker plate, cross-hatched ribs."
     },

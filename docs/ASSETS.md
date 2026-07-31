@@ -222,13 +222,22 @@ footstep is a §12 gameplay bug rather than a taste question.
 All FBX are single-mesh, unit-scaled, UV-mapped and materialled. No object carries a
 non-unit transform, so nothing has a baked-scale hazard.
 
-### 3.1 Characters — 4 files, 5.64 MB (4.88 MB of it FBX) (`Assets/Models/Characters/`)
+### 3.1 Characters — 4 files, 20.66 MB (3.24 MB of it FBX) (`Assets/Models/Characters/`)
 
-| file | tris | bones | clips | height |
-|---|--:|--:|--:|--:|
-| `Player.fbx` | 1,252 | 26 | 9 | **1.750 m** |
-| `Monster.fbx` | 2,462 | 29 | 7 | **2.336 m** |
-| `Player.glb` / `Monster.glb` | same | same | same | preview only — do not import |
+| file | tris | bones | clips | height | materials |
+|---|--:|--:|--:|--:|---|
+| `Player.fbx` | 1,252 | 26 | 9 | **1.750 m** | `Player_Skin`, `Player_Coverall`, `Player_Gear` |
+| `Monster.fbx` | 5,704 | 29 | 7 | **2.336 m** | `Monster_Hide`, `Monster_Eyes`, `Monster_Maw` |
+| `Player.glb` / `Monster.glb` | same | same | same | preview only — do not import | |
+
+**There is exactly one monster in this folder, and that is a rule.** Its three material
+names are contracts, not labels: `MonsterSkin` puts §04's constant eye glow on whatever
+matches `Monster_Eyes` and `MonsterAcquireTell` fires §06's acquisition flare on whatever
+matches `Monster_Maw`, so a creature carrying only a hide disconnects both without
+logging anything. Anything else dropped into `Assets/Models/Characters/` is graded
+against the *player's* humanoid policy by `AssetImportValidator` and reported as broken
+on every run — two unadopted monster variants once cost four failures a run there.
+A generator publishing a variant writes it to `artifacts/`, not here.
 
 §05 corrects an earlier cost estimate in one line: "1인칭이어도 캐릭터 모델이
 필요하다. 협동 게임에서는 다른 3명이 보여야 한다." §16-1 lists these two as the
@@ -339,10 +348,15 @@ $BLENDER --background --factory-startup --python tools/blender/gen_props.py
 $BLENDER --background --factory-startup --python tools/blender/gen_player_model.py
 
 # Monster.fbx + Monster.glb, 29 bones, 7 clips (§06, §16-1)
-$BLENDER --background --factory-startup --python tools/blender/gen_monster_model.py
+$BLENDER --background --factory-startup --python tools/blender/gen_monster_ai.py
 ```
 
-`tools/blender/blendkit.py` is the shared mesh/rig library, not a generator.
+`tools/blender/blendkit.py` is the shared mesh/rig library, not a generator. So, now,
+is `tools/blender/gen_monster_model.py`: it built the monster out of convex hulls until
+the committed sculpt replaced it, and it is kept because `gen_monster_ai.py` imports its
+seven §06 clip authors and its procedural skin pipeline verbatim. It refuses to write
+`Monster.fbx` unless run with `-- --hull`, which is only wanted for a before/after
+comparison against the creature that ships.
 
 ### 4.3 Verify after any retune
 

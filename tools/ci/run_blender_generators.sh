@@ -52,8 +52,21 @@ GEN_DIR="${REPO}/tools/blender"
 LOG_DIR="${BLENDER_LOG_DIR:-${REPO}/artifacts/blender}"
 
 # The order docs/ASSETS.md §4.2 lists them in: the map kit first, because its
-# measured corridor width is what the props are then checked against.
-DEFAULT_GENERATORS="gen_mapkit gen_props gen_player_model gen_monster_model"
+# measured corridor width is what the props and the dressing are then checked
+# against.
+#
+# gen_dressing was added to this list after the fact — it shipped without being in
+# it, which is the exact rot this script exists to prevent: 1074 pieces of the map's
+# set dressing had no generator check at all. gen_mapkit_detail is deliberately
+# absent; it is a library gen_mapkit imports, not a generator, and has no main().
+#
+# gen_monster_ai replaced gen_monster_model here when the sculpt was adopted: it is
+# what writes Monster.fbx now. gen_monster_model is deliberately absent for the same
+# reason gen_mapkit_detail is — it has become a library (the seven §06 clip authors and
+# the procedural skin pipeline, both imported by gen_monster_ai) and refuses to write a
+# shipping asset unless asked with `-- --hull`. Listing it would have both generators
+# writing the same four files, with the winner decided by list order.
+DEFAULT_GENERATORS="gen_mapkit gen_dressing gen_props gen_player_model gen_monster_ai"
 GENERATORS="${*:-${DEFAULT_GENERATORS}}"
 
 resolve_blender() {

@@ -3,7 +3,17 @@ guid: 2d7d5cb95c52a4a299be9827be4255c8
 ModelImporter:
   serializedVersion: 24300
   internalIDToNameTable: []
-  externalObjects: {}
+  externalObjects:
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Floor_Metal
+    second: {fileID: 2100000, guid: 36938495f09fa4ec29f01b81340415e5, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Trim_Steel
+    second: {fileID: 2100000, guid: 8f1bbdb7ed31349aab8e2ab6250db297, type: 2}
   materials:
     materialImportMode: 2
     materialName: 0

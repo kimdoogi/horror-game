@@ -1,0 +1,22 @@
+{
+    "name": "HorrorGame.Gameplay.Monster.Editor",
+    "rootNamespace": "HorrorGame.Gameplay.MonsterEditor",
+    "references": [
+        "HorrorGame.Core",
+        "HorrorGame.Gameplay.Monster",
+        "HorrorGame.Rendering",
+        "Unity.RenderPipelines.Core.Runtime",
+        "Unity.RenderPipelines.Universal.Runtime"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

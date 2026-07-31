@@ -1,0 +1,1340 @@
+{
+  "generated_by": "tools/blender/gen_dressing.py",
+  "grid_metres": 2.5,
+  "assumptions": {
+    "eye_height_metres": 1.63,
+    "ceiling_clear_metres": 3.0,
+    "head_clearance_metres": 0.35,
+    "source": "NOT_IN_DESIGN_DOC"
+  },
+  "palettes": [
+    {
+      "name": "institutional",
+      "note": "§12 zone B 타일 — the tiled hall: lockers, cabinets, signage, meters."
+    },
+    {
+      "name": "storage",
+      "note": "§12 zone A 나무 — an old storage wing: timber, crates, sheets, cobwebs."
+    },
+    {
+      "name": "utility",
+      "note": "§12 zone D 콘크리트 — plant and services: pipes, valves, benches, tools."
+    },
+    {
+      "name": "wet",
+      "note": "§12 zone C 자갈 — the unfinished, flooded end. §03's 물이 있는 층 lives here."
+    }
+  ],
+  "materials": [
+    {
+      "name": "Clue_Face",
+      "r": 0.682,
+      "g": 0.641,
+      "b": 0.552,
+      "roughness": 0.75,
+      "metallic": 0.0,
+      "emission": 0.0
+    },
+    {
+      "name": "Dress_BrassFitting",
+      "r": 0.482,
+      "g": 0.382,
+      "b": 0.162,
+      "roughness": 0.34,
+      "metallic": 1.0,
+      "emission": 0.0
+    },
+    {
+      "name": "Dress_Brick",
+      "r": 0.322,
+      "g": 0.182,
+      "b": 0.142,
+      "roughness": 0.9,
+      "metallic": 0.0,
+      "emission": 0.0
+    },
+    {
+      "name": "Dress_BulbDead",
+      "r": 0.722,
+      "g": 0.702,
+      "b": 0.642,
+      "roughness": 0.12,
+      "metallic": 0.0,
+      "emission": 0.0
+    },
+    {
+      "name": "Dress_BulbLit",
+      "r": 1.0,
+      "g": 0.862,
+      "b": 0.622,
+      "roughness": 0.1,
+      "metallic": 0.0,
+      "emission": 2.2
+    },
+    {
+      "name": "Dress_Cardboard",
+      "r": 0.422,
+      "g": 0.322,
+      "b": 0.212,
+      "roughness": 0.95,
+      "metallic": 0.0,
+      "emission": 0.0
+    },
+    {
+      "name": "Dress_ClothDust",
+      "r": 0.622,
+      "g": 0.602,
+      "b": 0.552,
+      "roughness": 0.95,
+      "metallic": 0.0,
+      "emission": 0.0
+    },
+    {
+      "name": "Dress_ClothStained",
+      "r": 0.342,
+      "g": 0.312,
+      "b": 0.262,
+      "roughness": 0.95,
+      "metallic": 0.0,
+      "emission": 0.0
+    },
+    {
+      "name": "Dress_Cobweb",
+      "r": 0.722,
+      "g": 0.722,
+      "b": 0.702,
+      "roughness": 0.85,
+      "metallic": 0.0,
+      "emission": 0.0
+    },
+    {
+      "name": "Dress_Concrete",
+      "r": 0.302,
+      "g": 0.3,
+      "b": 0.292,
+      "roughness": 0.92,
+      "metallic": 0.0,
+      "emission": 0.0
+    },
+    {
+      "name": "Dress_ConcreteBroken",
+      "r": 0.412,
+      "g": 0.404,
+      "b": 0.382,
+      "roughness": 0.95,
+      "metallic": 0.0,
+      "emission": 0.0
+    },
+    {
+      "name": "Dress_CopperPipe",
+      "r": 0.552,
+      "g": 0.312,
+      "b": 0.182,
+      "roughness": 0.34,
+      "metallic": 1.0,
+      "emission": 0.0
+    },
+    {
+      "name": "Dress_Enamel",
+      "r": 0.702,
+      "g": 0.712,
+      "b": 0.702,
+      "roughness": 0.3,
+      "metallic": 0.0,
+      "emission": 0.0
+    },
+    {
+      "name": "Dress_EnamelRed",
+      "r": 0.422,
+      "g": 0.092,
+      "b": 0.072,
+      "roughness": 0.35,
+      "metallic": 0.0,
+      "emission": 0.0
+    },
+    {
+      "name": "Dress_Galvanised",
+      "r": 0.524,
+      "g": 0.541,
+      "b": 0.556,
+      "roughness": 0.52,
+      "metallic": 0.85,
+      "emission": 0.0
+    },
+    {
+      "name": "Dress_GaugeFace",
+      "r": 0.862,
+      "g": 0.842,
+      "b": 0.782,
+      "roughness": 0.4,
+      "metallic": 0.0,
+      "emission": 0.0
+    },
+    {
+      "name": "Dress_GlassDirty",
+      "r": 0.402,
+      "g": 0.432,
+      "b": 0.442,
+      "roughness": 0.22,
+      "metallic": 0.3,
+      "emission": 0.0
+    },
+    {
+      "name": "Dress_Grime",
+      "r": 0.092,
+      "g": 0.086,
+      "b": 0.078,
+      "roughness": 0.98,
+      "metallic": 0.0,
+      "emission": 0.0
+    },
+    {
+      "name": "Dress_Paper",
+      "r": 0.782,
+      "g": 0.752,
+      "b": 0.682,
+      "roughness": 0.9,
+      "metallic": 0.0,
+      "emission": 0.0
+    },
+    {
+      "name": "Dress_Ply",
+      "r": 0.502,
+      "g": 0.402,
+      "b": 0.262,
+      "roughness": 0.85,
+      "metallic": 0.0,
+      "emission": 0.0
+    },
+    {
+      "name": "Dress_Rubber",
+      "r": 0.062,
+      "g": 0.062,
+      "b": 0.068,
+      "roughness": 0.85,
+      "metallic": 0.0,
+      "emission": 0.0
+    },
+    {
+      "name": "Dress_RustHeavy",
+      "r": 0.262,
+      "g": 0.132,
+      "b": 0.072,
+      "roughness": 0.95,
+      "metallic": 0.0,
+      "emission": 0.0
+    },
+    {
+      "name": "Dress_SteelBare",
+      "r": 0.452,
+      "g": 0.462,
+      "b": 0.478,
+      "roughness": 0.38,
+      "metallic": 1.0,
+      "emission": 0.0
+    },
+    {
+      "name": "Dress_SteelPainted",
+      "r": 0.238,
+      "g": 0.252,
+      "b": 0.262,
+      "roughness": 0.52,
+      "metallic": 0.0,
+      "emission": 0.0
+    },
+    {
+      "name": "Dress_TimberDark",
+      "r": 0.162,
+      "g": 0.112,
+      "b": 0.072,
+      "roughness": 0.82,
+      "metallic": 0.0,
+      "emission": 0.0
+    },
+    {
+      "name": "Dress_TimberPale",
+      "r": 0.442,
+      "g": 0.342,
+      "b": 0.222,
+      "roughness": 0.8,
+      "metallic": 0.0,
+      "emission": 0.0
+    },
+    {
+      "name": "Dress_Water",
+      "r": 0.042,
+      "g": 0.052,
+      "b": 0.058,
+      "roughness": 0.22,
+      "metallic": 0.0,
+      "emission": 0.0
+    },
+    {
+      "name": "Dress_WetStain",
+      "r": 0.102,
+      "g": 0.112,
+      "b": 0.108,
+      "roughness": 0.35,
+      "metallic": 0.0,
+      "emission": 0.0
+    }
+  ],
+  "pieces": [
+    {
+      "name": "Dress_CrateStack_Tall",
+      "file": "Dress_CrateStack_Tall.fbx",
+      "group": "Bulk",
+      "mount": "FLOOR",
+      "palettes": [
+        "storage",
+        "utility"
+      ],
+      "weight": 1.2,
+      "size_x": 0.7126,
+      "size_y": 0.7126,
+      "size_z": 1.68,
+      "mount_depth": 0.7126,
+      "breaks_sightline": true,
+      "solid": true,
+      "hangs_low": false,
+      "triangles": 312,
+      "emissive_materials": 0,
+      "materials": [
+        "Dress_TimberPale",
+        "Dress_TimberDark"
+      ],
+      "clue_faces": 0,
+      "note": "sightline break just under eye height"
+    },
+    {
+      "name": "Dress_CrateStack_Low",
+      "file": "Dress_CrateStack_Low.fbx",
+      "group": "Bulk",
+      "mount": "FLOOR",
+      "palettes": [
+        "storage",
+        "wet"
+      ],
+      "weight": 1.0,
+      "size_x": 1.4918,
+      "size_y": 0.8597,
+      "size_z": 1.14,
+      "mount_depth": 0.8597,
+      "breaks_sightline": true,
+      "solid": true,
+      "hangs_low": false,
+      "triangles": 336,
+      "emissive_materials": 0,
+      "materials": [
+        "Dress_TimberPale",
+        "Dress_TimberDark",
+        "Dress_ClothDust"
+      ],
+      "clue_faces": 0,
+      "note": "crouch cover"
+    },
+    {
+      "name": "Dress_CrateBroken",
+      "file": "Dress_CrateBroken.fbx",
+      "group": "Debris",
+      "mount": "FLOOR",
+      "palettes": [
+        "storage",
+        "wet"
+      ],
+      "weight": 0.8,
+      "size_x": 1.181,
+      "size_y": 1.0716,
+      "size_z": 0.3969,
+      "mount_depth": 1.0716,
+      "breaks_sightline": false,
+      "solid": true,
+      "hangs_low": false,
+      "triangles": 140,
+      "emissive_materials": 0,
+      "materials": [
+        "Dress_TimberPale",
+        "Dress_TimberDark",
+        "Dress_Paper"
+      ],
+      "clue_faces": 0,
+      "note": ""
+    },
+    {
+      "name": "Dress_BarrelUpright",
+      "file": "Dress_BarrelUpright.fbx",
+      "group": "Bulk",
+      "mount": "FLOOR",
+      "palettes": [
+        "*"
+      ],
+      "weight": 1.3,
+      "size_x": 0.612,
+      "size_y": 0.612,
+      "size_z": 0.895,
+      "mount_depth": 0.612,
+      "breaks_sightline": false,
+      "solid": true,
+      "hangs_low": false,
+      "triangles": 336,
+      "emissive_materials": 0,
+      "materials": [
+        "Dress_RustHeavy",
+        "Dress_SteelBare",
+        "Dress_BrassFitting"
+      ],
+      "clue_faces": 0,
+      "note": ""
+    },
+    {
+      "name": "Dress_BarrelCluster",
+      "file": "Dress_BarrelCluster.fbx",
+      "group": "Bulk",
+      "mount": "FLOOR",
+      "palettes": [
+        "wet",
+        "utility"
+      ],
+      "weight": 0.9,
+      "size_x": 1.4046,
+      "size_y": 1.269,
+      "size_z": 0.895,
+      "mount_depth": 1.269,
+      "breaks_sightline": false,
+      "solid": true,
+      "hangs_low": false,
+      "triangles": 852,
+      "emissive_materials": 0,
+      "materials": [
+        "Dress_RustHeavy",
+        "Dress_SteelBare",
+        "Dress_BrassFitting",
+        "Dress_SteelPainted"
+      ],
+      "clue_faces": 0,
+      "note": ""
+    },
+    {
+      "name": "Dress_BarrelToppled",
+      "file": "Dress_BarrelToppled.fbx",
+      "group": "Bulk",
+      "mount": "FLOOR",
+      "palettes": [
+        "wet",
+        "utility",
+        "storage"
+      ],
+      "weight": 0.7,
+      "size_x": 0.8953,
+      "size_y": 0.612,
+      "size_z": 0.6239,
+      "mount_depth": 0.612,
+      "breaks_sightline": false,
+      "solid": true,
+      "hangs_low": false,
+      "triangles": 220,
+      "emissive_materials": 0,
+      "materials": [
+        "Dress_SteelPainted",
+        "Dress_SteelBare",
+        "Dress_BrassFitting",
+        "Dress_TimberDark"
+      ],
+      "clue_faces": 0,
+      "note": ""
+    },
+    {
+      "name": "Dress_ShelfStocked",
+      "file": "Dress_ShelfStocked.fbx",
+      "group": "Bulk",
+      "mount": "FLOOR",
+      "palettes": [
+        "storage",
+        "institutional",
+        "utility"
+      ],
+      "weight": 1.2,
+      "size_x": 1.1,
+      "size_y": 0.42,
+      "size_z": 1.9745,
+      "mount_depth": 0.42,
+      "breaks_sightline": true,
+      "solid": true,
+      "hangs_low": false,
+      "triangles": 952,
+      "emissive_materials": 0,
+      "materials": [
+        "Dress_SteelPainted",
+        "Dress_Ply",
+        "Dress_SteelBare",
+        "Dress_Rubber",
+        "Dress_Cardboard",
+        "Dress_GlassDirty",
+        "Dress_Paper",
+        "Dress_TimberDark",
+        "Dress_ClothDust"
+      ],
+      "clue_faces": 0,
+      "note": "§12 sightline blocker; gaps make it cover rather than wall"
+    },
+    {
+      "name": "Dress_ShelfToppled",
+      "file": "Dress_ShelfToppled.fbx",
+      "group": "Bulk",
+      "mount": "FLOOR",
+      "palettes": [
+        "storage",
+        "institutional"
+      ],
+      "weight": 0.6,
+      "size_x": 1.2058,
+      "size_y": 2.1701,
+      "size_z": 0.4391,
+      "mount_depth": 2.1701,
+      "breaks_sightline": false,
+      "solid": true,
+      "hangs_low": false,
+      "triangles": 272,
+      "emissive_materials": 0,
+      "materials": [
+        "Dress_SteelPainted",
+        "Dress_Ply",
+        "Dress_SteelBare",
+        "Dress_Paper",
+        "Dress_Cardboard"
+      ],
+      "clue_faces": 0,
+      "note": ""
+    },
+    {
+      "name": "Dress_FilingCabinet",
+      "file": "Dress_FilingCabinet.fbx",
+      "group": "Bulk",
+      "mount": "FLOOR",
+      "palettes": [
+        "institutional",
+        "utility"
+      ],
+      "weight": 1.0,
+      "size_x": 0.48,
+      "size_y": 0.995,
+      "size_z": 1.333,
+      "mount_depth": 0.995,
+      "breaks_sightline": true,
+      "solid": true,
+      "hangs_low": false,
+      "triangles": 260,
+      "emissive_materials": 0,
+      "materials": [
+        "Dress_SteelPainted",
+        "Dress_SteelBare",
+        "Dress_Paper"
+      ],
+      "clue_faces": 0,
+      "note": ""
+    },
+    {
+      "name": "Dress_LockerBank",
+      "file": "Dress_LockerBank.fbx",
+      "group": "Bulk",
+      "mount": "FLOOR",
+      "palettes": [
+        "institutional"
+      ],
+      "weight": 0.9,
+      "size_x": 1.283,
+      "size_y": 0.745,
+      "size_z": 1.86,
+      "mount_depth": 0.745,
+      "breaks_sightline": true,
+      "solid": true,
+      "hangs_low": false,
+      "triangles": 280,
+      "emissive_materials": 0,
+      "materials": [
+        "Dress_SteelPainted",
+        "Dress_Grime",
+        "Dress_SteelBare",
+        "Dress_Paper",
+        "Dress_ClothStained"
+      ],
+      "clue_faces": 0,
+      "note": ""
+    },
+    {
+      "name": "Dress_Workbench",
+      "file": "Dress_Workbench.fbx",
+      "group": "Bulk",
+      "mount": "FLOOR",
+      "palettes": [
+        "utility",
+        "storage"
+      ],
+      "weight": 0.8,
+      "size_x": 1.8395,
+      "size_y": 0.814,
+      "size_z": 1.52,
+      "mount_depth": 0.814,
+      "breaks_sightline": true,
+      "solid": true,
+      "hangs_low": false,
+      "triangles": 644,
+      "emissive_materials": 0,
+      "materials": [
+        "Dress_TimberPale",
+        "Dress_TimberDark",
+        "Dress_Ply",
+        "Dress_SteelBare",
+        "Dress_BrassFitting",
+        "Dress_SteelPainted",
+        "Dress_Paper",
+        "Dress_Cardboard"
+      ],
+      "clue_faces": 0,
+      "note": ""
+    },
+    {
+      "name": "Dress_TableBroken",
+      "file": "Dress_TableBroken.fbx",
+      "group": "Bulk",
+      "mount": "FLOOR",
+      "palettes": [
+        "storage",
+        "institutional"
+      ],
+      "weight": 0.7,
+      "size_x": 1.5008,
+      "size_y": 0.9021,
+      "size_z": 0.8314,
+      "mount_depth": 0.9021,
+      "breaks_sightline": false,
+      "solid": true,
+      "hangs_low": false,
+      "triangles": 140,
+      "emissive_materials": 0,
+      "materials": [
+        "Dress_TimberPale",
+        "Dress_TimberDark",
+        "Dress_Paper"
+      ],
+      "clue_faces": 0,
+      "note": ""
+    },
+    {
+      "name": "Dress_Chair",
+      "file": "Dress_Chair.fbx",
+      "group": "Bulk",
+      "mount": "FLOOR",
+      "palettes": [
+        "storage",
+        "institutional"
+      ],
+      "weight": 0.7,
+      "size_x": 0.42,
+      "size_y": 0.4,
+      "size_z": 0.92,
+      "mount_depth": 0.4,
+      "breaks_sightline": true,
+      "solid": true,
+      "hangs_low": false,
+      "triangles": 128,
+      "emissive_materials": 0,
+      "materials": [
+        "Dress_TimberPale",
+        "Dress_TimberDark"
+      ],
+      "clue_faces": 0,
+      "note": ""
+    },
+    {
+      "name": "Dress_ChairBroken",
+      "file": "Dress_ChairBroken.fbx",
+      "group": "Debris",
+      "mount": "FLOOR",
+      "palettes": [
+        "storage",
+        "institutional"
+      ],
+      "weight": 0.6,
+      "size_x": 0.8507,
+      "size_y": 0.8175,
+      "size_z": 0.4164,
+      "mount_depth": 0.8175,
+      "breaks_sightline": false,
+      "solid": true,
+      "hangs_low": false,
+      "triangles": 92,
+      "emissive_materials": 0,
+      "materials": [
+        "Dress_TimberPale",
+        "Dress_TimberDark"
+      ],
+      "clue_faces": 0,
+      "note": ""
+    },
+    {
+      "name": "Dress_RubblePile",
+      "file": "Dress_RubblePile.fbx",
+      "group": "Debris",
+      "mount": "FLOOR",
+      "palettes": [
+        "wet",
+        "utility",
+        "storage"
+      ],
+      "weight": 1.2,
+      "size_x": 1.1508,
+      "size_y": 0.8777,
+      "size_z": 0.3239,
+      "mount_depth": 0.8777,
+      "breaks_sightline": false,
+      "solid": true,
+      "hangs_low": false,
+      "triangles": 184,
+      "emissive_materials": 0,
+      "materials": [
+        "Dress_Concrete",
+        "Dress_ConcreteBroken",
+        "Dress_Brick",
+        "Dress_RustHeavy"
+      ],
+      "clue_faces": 0,
+      "note": ""
+    },
+    {
+      "name": "Dress_RubbleSmall",
+      "file": "Dress_RubbleSmall.fbx",
+      "group": "Debris",
+      "mount": "FLOOR",
+      "palettes": [
+        "*"
+      ],
+      "weight": 1.4,
+      "size_x": 0.56,
+      "size_y": 0.46,
+      "size_z": 0.1376,
+      "mount_depth": 0.46,
+      "breaks_sightline": false,
+      "solid": true,
+      "hangs_low": false,
+      "triangles": 72,
+      "emissive_materials": 0,
+      "materials": [
+        "Dress_Concrete",
+        "Dress_ConcreteBroken"
+      ],
+      "clue_faces": 0,
+      "note": ""
+    },
+    {
+      "name": "Dress_PlanksFallen",
+      "file": "Dress_PlanksFallen.fbx",
+      "group": "Debris",
+      "mount": "FLOOR",
+      "palettes": [
+        "storage",
+        "wet"
+      ],
+      "weight": 1.0,
+      "size_x": 1.5803,
+      "size_y": 1.1236,
+      "size_z": 0.2546,
+      "mount_depth": 1.1236,
+      "breaks_sightline": false,
+      "solid": true,
+      "hangs_low": false,
+      "triangles": 112,
+      "emissive_materials": 0,
+      "materials": [
+        "Dress_TimberPale",
+        "Dress_ConcreteBroken",
+        "Dress_RustHeavy"
+      ],
+      "clue_faces": 0,
+      "note": ""
+    },
+    {
+      "name": "Dress_PapersScatter",
+      "file": "Dress_PapersScatter.fbx",
+      "group": "Decal",
+      "mount": "FLOOR",
+      "palettes": [
+        "*"
+      ],
+      "weight": 1.3,
+      "size_x": 1.2092,
+      "size_y": 1.1644,
+      "size_z": 0.0411,
+      "mount_depth": 1.1644,
+      "breaks_sightline": false,
+      "solid": false,
+      "hangs_low": false,
+      "triangles": 132,
+      "emissive_materials": 0,
+      "materials": [
+        "Dress_Paper",
+        "Dress_Cardboard"
+      ],
+      "clue_faces": 0,
+      "note": "albedo 0.78 — the kit's brightest floor"
+    },
+    {
+      "name": "Dress_ToolScatter",
+      "file": "Dress_ToolScatter.fbx",
+      "group": "Decal",
+      "mount": "FLOOR",
+      "palettes": [
+        "utility",
+        "storage"
+      ],
+      "weight": 0.9,
+      "size_x": 0.5688,
+      "size_y": 0.4423,
+      "size_z": 0.06,
+      "mount_depth": 0.4423,
+      "breaks_sightline": false,
+      "solid": false,
+      "hangs_low": false,
+      "triangles": 180,
+      "emissive_materials": 0,
+      "materials": [
+        "Dress_SteelBare",
+        "Dress_TimberDark",
+        "Dress_RustHeavy"
+      ],
+      "clue_faces": 0,
+      "note": ""
+    },
+    {
+      "name": "Dress_PuddleLarge",
+      "file": "Dress_PuddleLarge.fbx",
+      "group": "Decal",
+      "mount": "FLOOR",
+      "palettes": [
+        "wet",
+        "institutional"
+      ],
+      "weight": 1.4,
+      "size_x": 1.8,
+      "size_y": 1.33,
+      "size_z": 0.012,
+      "mount_depth": 1.33,
+      "breaks_sightline": false,
+      "solid": false,
+      "hangs_low": false,
+      "triangles": 472,
+      "emissive_materials": 0,
+      "materials": [
+        "Dress_Water",
+        "Dress_WetStain"
+      ],
+      "clue_faces": 0,
+      "note": "§03's water clue, and the kit's only mirror"
+    },
+    {
+      "name": "Dress_PuddleSmall",
+      "file": "Dress_PuddleSmall.fbx",
+      "group": "Decal",
+      "mount": "FLOOR",
+      "palettes": [
+        "*"
+      ],
+      "weight": 1.2,
+      "size_x": 0.71,
+      "size_y": 0.66,
+      "size_z": 0.008,
+      "mount_depth": 0.66,
+      "breaks_sightline": false,
+      "solid": false,
+      "hangs_low": false,
+      "triangles": 208,
+      "emissive_materials": 0,
+      "materials": [
+        "Dress_Water",
+        "Dress_WetStain"
+      ],
+      "clue_faces": 0,
+      "note": ""
+    },
+    {
+      "name": "Dress_DrainGrate",
+      "file": "Dress_DrainGrate.fbx",
+      "group": "Decal",
+      "mount": "FLOOR",
+      "palettes": [
+        "wet",
+        "institutional",
+        "utility"
+      ],
+      "weight": 0.6,
+      "size_x": 0.96,
+      "size_y": 0.96,
+      "size_z": 0.047,
+      "mount_depth": 0.96,
+      "breaks_sightline": false,
+      "solid": false,
+      "hangs_low": false,
+      "triangles": 180,
+      "emissive_materials": 0,
+      "materials": [
+        "Dress_Concrete",
+        "Dress_Water",
+        "Dress_SteelBare",
+        "Dress_RustHeavy",
+        "Dress_WetStain"
+      ],
+      "clue_faces": 0,
+      "note": ""
+    },
+    {
+      "name": "Dress_DripStain_Wall",
+      "file": "Dress_DripStain_Wall.fbx",
+      "group": "Wall",
+      "mount": "WALL",
+      "palettes": [
+        "wet",
+        "institutional"
+      ],
+      "weight": 0.9,
+      "size_x": 0.52,
+      "size_y": 0.18,
+      "size_z": 2.478,
+      "mount_depth": 0.18,
+      "breaks_sightline": false,
+      "solid": false,
+      "hangs_low": false,
+      "triangles": 168,
+      "emissive_materials": 0,
+      "materials": [
+        "Dress_WetStain",
+        "Dress_Water",
+        "Dress_Paper",
+        "Dress_RustHeavy",
+        "Dress_SteelBare"
+      ],
+      "clue_faces": 0,
+      "note": ""
+    },
+    {
+      "name": "Dress_PipeRun_Wall",
+      "file": "Dress_PipeRun_Wall.fbx",
+      "group": "Wall",
+      "mount": "WALL",
+      "palettes": [
+        "*"
+      ],
+      "weight": 1.6,
+      "size_x": 2.5,
+      "size_y": 0.2052,
+      "size_z": 0.77,
+      "mount_depth": 0.2052,
+      "breaks_sightline": false,
+      "solid": false,
+      "hangs_low": false,
+      "triangles": 352,
+      "emissive_materials": 0,
+      "materials": [
+        "Dress_Galvanised",
+        "Dress_RustHeavy",
+        "Dress_CopperPipe",
+        "Dress_SteelPainted",
+        "Dress_SteelBare",
+        "Dress_BrassFitting"
+      ],
+      "clue_faces": 0,
+      "note": "tiles on the 2.5 m grid; galvanised = the corridor's depth cue"
+    },
+    {
+      "name": "Dress_PipeValve_Cluster",
+      "file": "Dress_PipeValve_Cluster.fbx",
+      "group": "Wall",
+      "mount": "WALL",
+      "palettes": [
+        "utility",
+        "wet"
+      ],
+      "weight": 0.8,
+      "size_x": 0.82,
+      "size_y": 0.3237,
+      "size_z": 0.4612,
+      "mount_depth": 0.3237,
+      "breaks_sightline": false,
+      "solid": false,
+      "hangs_low": false,
+      "triangles": 788,
+      "emissive_materials": 0,
+      "materials": [
+        "Dress_SteelPainted",
+        "Dress_SteelBare",
+        "Dress_EnamelRed",
+        "Dress_BrassFitting",
+        "Dress_GaugeFace",
+        "Dress_Grime"
+      ],
+      "clue_faces": 0,
+      "note": ""
+    },
+    {
+      "name": "Dress_GaugeBoard",
+      "file": "Dress_GaugeBoard.fbx",
+      "group": "Wall",
+      "mount": "WALL",
+      "palettes": [
+        "utility",
+        "institutional"
+      ],
+      "weight": 0.8,
+      "size_x": 0.68,
+      "size_y": 0.108,
+      "size_z": 0.52,
+      "mount_depth": 0.108,
+      "breaks_sightline": false,
+      "solid": false,
+      "hangs_low": false,
+      "triangles": 516,
+      "emissive_materials": 0,
+      "materials": [
+        "Dress_TimberDark",
+        "Dress_SteelPainted",
+        "Dress_BrassFitting",
+        "Dress_GaugeFace",
+        "Dress_Grime",
+        "Dress_GlassDirty",
+        "Dress_Paper",
+        "Dress_EnamelRed",
+        "Dress_SteelBare"
+      ],
+      "clue_faces": 0,
+      "note": ""
+    },
+    {
+      "name": "Dress_Conduit_Wall",
+      "file": "Dress_Conduit_Wall.fbx",
+      "group": "Wall",
+      "mount": "WALL",
+      "palettes": [
+        "*"
+      ],
+      "weight": 1.2,
+      "size_x": 2.5,
+      "size_y": 0.109,
+      "size_z": 1.2,
+      "mount_depth": 0.109,
+      "breaks_sightline": false,
+      "solid": false,
+      "hangs_low": false,
+      "triangles": 336,
+      "emissive_materials": 0,
+      "materials": [
+        "Dress_Galvanised",
+        "Dress_SteelBare",
+        "Dress_Enamel",
+        "Dress_Rubber"
+      ],
+      "clue_faces": 0,
+      "note": ""
+    },
+    {
+      "name": "Dress_VentGrille",
+      "file": "Dress_VentGrille.fbx",
+      "group": "Wall",
+      "mount": "WALL",
+      "palettes": [
+        "*"
+      ],
+      "weight": 1.0,
+      "size_x": 0.62,
+      "size_y": 0.0639,
+      "size_z": 0.42,
+      "mount_depth": 0.0639,
+      "breaks_sightline": false,
+      "solid": false,
+      "hangs_low": false,
+      "triangles": 176,
+      "emissive_materials": 0,
+      "materials": [
+        "Dress_SteelPainted",
+        "Dress_Grime",
+        "Dress_Galvanised",
+        "Dress_SteelBare"
+      ],
+      "clue_faces": 0,
+      "note": ""
+    },
+    {
+      "name": "Dress_PipeRun_Ceiling",
+      "file": "Dress_PipeRun_Ceiling.fbx",
+      "group": "Ceiling",
+      "mount": "CEILING",
+      "palettes": [
+        "*"
+      ],
+      "weight": 1.5,
+      "size_x": 2.5,
+      "size_y": 0.63,
+      "size_z": 0.37,
+      "mount_depth": 0.37,
+      "breaks_sightline": false,
+      "solid": false,
+      "hangs_low": false,
+      "triangles": 600,
+      "emissive_materials": 0,
+      "materials": [
+        "Dress_Galvanised",
+        "Dress_SteelPainted",
+        "Dress_CopperPipe",
+        "Dress_SteelBare",
+        "Dress_Rubber"
+      ],
+      "clue_faces": 0,
+      "note": ""
+    },
+    {
+      "name": "Dress_BulbCord",
+      "file": "Dress_BulbCord.fbx",
+      "group": "Ceiling",
+      "mount": "CEILING",
+      "palettes": [
+        "*"
+      ],
+      "weight": 1.4,
+      "size_x": 0.3315,
+      "size_y": 0.34,
+      "size_z": 1.015,
+      "mount_depth": 1.015,
+      "breaks_sightline": false,
+      "solid": false,
+      "hangs_low": false,
+      "triangles": 308,
+      "emissive_materials": 0,
+      "materials": [
+        "Dress_Grime",
+        "Dress_Rubber",
+        "Dress_SteelPainted",
+        "Dress_SteelBare",
+        "Dress_BrassFitting",
+        "Dress_BulbDead"
+      ],
+      "clue_faces": 0,
+      "note": "§03: a minority get a real light, ranged to one cell"
+    },
+    {
+      "name": "Dress_BulbCaged",
+      "file": "Dress_BulbCaged.fbx",
+      "group": "Ceiling",
+      "mount": "CEILING",
+      "palettes": [
+        "*"
+      ],
+      "weight": 1.0,
+      "size_x": 0.164,
+      "size_y": 0.164,
+      "size_z": 0.448,
+      "mount_depth": 0.448,
+      "breaks_sightline": false,
+      "solid": false,
+      "hangs_low": false,
+      "triangles": 484,
+      "emissive_materials": 0,
+      "materials": [
+        "Dress_Grime",
+        "Dress_Rubber",
+        "Dress_BrassFitting",
+        "Dress_BulbDead",
+        "Dress_SteelBare"
+      ],
+      "clue_faces": 0,
+      "note": ""
+    },
+    {
+      "name": "Dress_ChainHang",
+      "file": "Dress_ChainHang.fbx",
+      "group": "Ceiling",
+      "mount": "CEILING",
+      "palettes": [
+        "storage",
+        "wet",
+        "utility"
+      ],
+      "weight": 0.8,
+      "size_x": 0.12,
+      "size_y": 0.12,
+      "size_z": 0.977,
+      "mount_depth": 0.977,
+      "breaks_sightline": false,
+      "solid": false,
+      "hangs_low": false,
+      "triangles": 784,
+      "emissive_materials": 0,
+      "materials": [
+        "Dress_SteelPainted",
+        "Dress_SteelBare",
+        "Dress_RustHeavy"
+      ],
+      "clue_faces": 0,
+      "note": ""
+    },
+    {
+      "name": "Dress_SheetHanging",
+      "file": "Dress_SheetHanging.fbx",
+      "group": "Ceiling",
+      "mount": "CEILING",
+      "palettes": [
+        "storage",
+        "institutional"
+      ],
+      "weight": 0.5,
+      "size_x": 1.5315,
+      "size_y": 0.1,
+      "size_z": 1.9734,
+      "mount_depth": 1.9734,
+      "breaks_sightline": false,
+      "solid": true,
+      "hangs_low": true,
+      "triangles": 148,
+      "emissive_materials": 0,
+      "materials": [
+        "Dress_SteelBare",
+        "Dress_SteelPainted",
+        "Dress_ClothDust",
+        "Dress_ClothStained"
+      ],
+      "clue_faces": 0,
+      "note": "a §06 line-of-sight break that is not a wall; hangs into the room"
+    },
+    {
+      "name": "Dress_CobwebCorner",
+      "file": "Dress_CobwebCorner.fbx",
+      "group": "Corner",
+      "mount": "CORNER",
+      "palettes": [
+        "storage",
+        "wet"
+      ],
+      "weight": 1.0,
+      "size_x": 0.9641,
+      "size_y": 0.9641,
+      "size_z": 0.7254,
+      "mount_depth": 0.7254,
+      "breaks_sightline": false,
+      "solid": false,
+      "hangs_low": false,
+      "triangles": 144,
+      "emissive_materials": 0,
+      "materials": [
+        "Dress_Cobweb"
+      ],
+      "clue_faces": 0,
+      "note": ""
+    },
+    {
+      "name": "Dress_WallSign",
+      "file": "Dress_WallSign.fbx",
+      "group": "Sign",
+      "mount": "WALL",
+      "palettes": [
+        "*"
+      ],
+      "weight": 1.0,
+      "size_x": 0.52,
+      "size_y": 0.047,
+      "size_z": 0.36,
+      "mount_depth": 0.047,
+      "breaks_sightline": false,
+      "solid": false,
+      "hangs_low": false,
+      "triangles": 154,
+      "emissive_materials": 0,
+      "materials": [
+        "Dress_SteelPainted",
+        "Dress_SteelBare",
+        "Dress_Enamel",
+        "Clue_Face"
+      ],
+      "clue_faces": 1,
+      "note": "ㅁ↔ㅇ via a glossy field"
+    },
+    {
+      "name": "Dress_HangingSign",
+      "file": "Dress_HangingSign.fbx",
+      "group": "Sign",
+      "mount": "CEILING",
+      "palettes": [
+        "*"
+      ],
+      "weight": 0.7,
+      "size_x": 0.8,
+      "size_y": 0.09,
+      "size_z": 0.93,
+      "mount_depth": 0.93,
+      "breaks_sightline": false,
+      "solid": false,
+      "hangs_low": false,
+      "triangles": 936,
+      "emissive_materials": 0,
+      "materials": [
+        "Dress_SteelBare",
+        "Dress_SteelPainted",
+        "Dress_Enamel",
+        "Clue_Face"
+      ],
+      "clue_faces": 2,
+      "note": "좌↔우 via a mirrored back face"
+    },
+    {
+      "name": "Dress_PipeLabel",
+      "file": "Dress_PipeLabel.fbx",
+      "group": "Sign",
+      "mount": "WALL",
+      "palettes": [
+        "*"
+      ],
+      "weight": 0.9,
+      "size_x": 1.1,
+      "size_y": 0.2263,
+      "size_z": 0.192,
+      "mount_depth": 0.2263,
+      "breaks_sightline": false,
+      "solid": false,
+      "hangs_low": false,
+      "triangles": 386,
+      "emissive_materials": 0,
+      "materials": [
+        "Dress_Galvanised",
+        "Dress_SteelBare",
+        "Dress_SteelPainted",
+        "Dress_Enamel",
+        "Clue_Face"
+      ],
+      "clue_faces": 1,
+      "note": "6↔9 via a plate with no up-cue"
+    },
+    {
+      "name": "Dress_DoorPlate",
+      "file": "Dress_DoorPlate.fbx",
+      "group": "Sign",
+      "mount": "WALL",
+      "palettes": [
+        "*"
+      ],
+      "weight": 1.1,
+      "size_x": 0.2,
+      "size_y": 0.024,
+      "size_z": 0.14,
+      "mount_depth": 0.024,
+      "breaks_sightline": false,
+      "solid": false,
+      "hangs_low": false,
+      "triangles": 66,
+      "emissive_materials": 0,
+      "materials": [
+        "Dress_BrassFitting",
+        "Dress_Enamel",
+        "Clue_Face",
+        "Dress_SteelBare"
+      ],
+      "clue_faces": 1,
+      "note": "1↔7 via a small matte plate read in passing"
+    }
+  ]
+}

@@ -3,6 +3,7 @@
     "rootNamespace": "HorrorGame.Gameplay.Player",
     "references": [
         "HorrorGame.Core",
+        "HorrorGame.Rendering",
         "Unity.InputSystem"
     ],
     "includePlatforms": [],

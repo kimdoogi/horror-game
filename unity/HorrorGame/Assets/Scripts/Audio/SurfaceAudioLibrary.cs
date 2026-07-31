@@ -57,6 +57,16 @@ namespace HorrorGame.Audio
         public SurfaceEntry[] Surfaces => surfaces;
 
         /// <summary>
+        /// Replaces the surface table. Used by the wiring step, which builds it from
+        /// the shipped clip set rather than from inspector drags — see
+        /// <see cref="AudioClipCatalog"/> for why the filenames are the authority.
+        /// </summary>
+        public void SetSurfaces(SurfaceEntry[] value)
+        {
+            surfaces = value ?? Array.Empty<SurfaceEntry>();
+        }
+
+        /// <summary>
         /// The entry for a surface, or the fallback, or null.
         /// <para>
         /// Returning null rather than substituting a neighbouring surface is

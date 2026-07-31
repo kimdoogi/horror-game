@@ -385,6 +385,11 @@ namespace HorrorGame.EditorTools
                     var unityReport = UnityEditor.BuildPipeline.BuildPlayer(playerOptions);
                     var summary = unityReport.summary;
 
+                    // ReportBuildMessages runs below, after the summary fields are read.
+                    // Without it this pipeline reported "Error building Player: 2 errors"
+                    // and nothing else — the counts were recorded and the messages, which
+                    // are the only part anyone can act on, were dropped on the floor.
+
                     report.Result = summary.result.ToString();
                     report.Succeeded = summary.result == BuildResult.Succeeded;
                     report.Errors = summary.totalErrors;
@@ -398,12 +403,17 @@ namespace HorrorGame.EditorTools
                         report.Notes.Add(note);
                     }
 
-                    if (report.Succeeded && summary.totalErrors > 0)
+                    report.FatalErrors = ReportBuildMessages(unityReport, report);
+
+                    // This is the pipeline's own version of BuildOptions.StrictMode, kept
+                    // because Unity's fails without naming what failed — see
+                    // BuildPipelineSettingsScope.OptionsFor. An error that is not a named
+                    // known defect fails the build even when Unity called it a success.
+                    if (report.Succeeded && report.FatalErrors > 0)
                     {
-                        // StrictMode should have caught this. Treat it as a failure anyway rather
-                        // than shipping a player that logged errors while it was being made.
                         report.Succeeded = false;
-                        report.Result = "Succeeded with " + summary.totalErrors + " error(s) — treated as failed";
+                        report.Result = "Succeeded with " + report.FatalErrors
+                            + " error(s) — treated as failed";
                     }
                 }
             }
@@ -650,6 +660,89 @@ namespace HorrorGame.EditorTools
                 + "\n"
                 + "exit codes: 0 ok, 1 unexpected, 2 arguments, 3 scenes, 4 build failed,\n"
                 + "            5 IL2CPP required, 7 scripts do not compile, 8 target module missing";
+        }
+
+        /// <summary>
+        /// Logs the errors Unity attached to the build, keeps them in the report, and returns
+        /// how many of them are this project's problem.
+        /// <para>
+        /// <c>BuildSummary</c> carries only counts. The messages live on
+        /// <c>BuildReport.steps[].messages[]</c>, and if nobody reads them a failed
+        /// build says "Error building Player: 2 errors" and nothing else — the counts
+        /// are recorded and the only actionable part is discarded. That happened here,
+        /// and diagnosing it meant reading Unity's raw log by hand.
+        /// </para>
+        /// <para>
+        /// Errors <see cref="BuildPipelineKnownDefects.IsKnownThirdPartyDefect"/> recognises are
+        /// separated out rather than silenced: they are printed as warnings with their
+        /// explanation, listed in their own section of <c>build-report.txt</c>, and left out of
+        /// the returned count. Everything else is fatal. The split is what lets the pipeline
+        /// keep failing on real errors while a defect in a package it does not control — and
+        /// cannot patch — stops taking the build down with it.
+        /// </para>
+        /// <para>
+        /// Warnings are counted but not printed: a build routinely carries dozens and
+        /// burying two errors in sixty-five warnings is how they get missed.
+        /// </para>
+        /// </summary>
+        /// <returns>The number of errors that are not known third-party defects.</returns>
+        private static int ReportBuildMessages(BuildReport unityReport, BuildPipelineReport report)
+        {
+            if (unityReport == null)
+            {
+                return 0;
+            }
+
+            var printed = 0;
+            var fatal = 0;
+
+            foreach (var step in unityReport.steps)
+            {
+                foreach (var message in step.messages)
+                {
+                    if (message.type != LogType.Error && message.type != LogType.Exception
+                        && message.type != LogType.Assert)
+                    {
+                        continue;
+                    }
+
+                    var content = message.content.Trim();
+                    var line = "[" + message.type + "] " + step.name + ": " + content;
+
+                    if (BuildPipelineKnownDefects.IsKnownThirdPartyDefect(content))
+                    {
+                        // Recorded and shown every time. If this ever stops appearing the entry
+                        // in BuildPipelineKnownDefects should be deleted, and a build that never
+                        // mentions it again is how anyone would find out.
+                        report.KnownDefects.Add(line);
+                        Debug.LogWarning("[BuildPipeline] tolerated " + line + "\n    "
+                            + BuildPipelineKnownDefects.ExplanationFor(content));
+                        continue;
+                    }
+
+                    fatal++;
+                    report.Notes.Add(line);
+
+                    // A handful is enough to diagnose; a broken shader can emit hundreds
+                    // of identical lines and drown the console.
+                    if (printed < 20)
+                    {
+                        Debug.LogError("[BuildPipeline] " + line);
+                        printed++;
+                    }
+                }
+            }
+
+            if (printed == 0 && !report.Succeeded)
+            {
+                Debug.LogError(
+                    "[BuildPipeline] The build failed and Unity attached no message to any step. "
+                    + "Look for the cause above this line in the raw log — the usual candidates are a "
+                    + "shader that will not compile for the target, an asset the scene references but "
+                    + "cannot be included, or a script that compiles for the editor and not for the player.");
+            }
+
+            return fatal;
         }
     }
 }

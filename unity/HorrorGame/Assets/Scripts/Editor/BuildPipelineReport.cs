@@ -75,6 +75,20 @@ namespace HorrorGame.EditorTools
         public int Errors { get; set; }
         public int Warnings { get; set; }
 
+        /// <summary>
+        /// Errors that are this project's problem: <see cref="Errors"/> minus the ones
+        /// <see cref="BuildPipelineKnownDefects"/> recognises. This is the number the build
+        /// is failed on, and the difference between the two is <see cref="KnownDefects"/>.
+        /// </summary>
+        public int FatalErrors { get; set; }
+
+        /// <summary>
+        /// Errors from third-party packages that are understood, harmless and unfixable from
+        /// this repository — listed in full, with their explanation, so tolerating them stays a
+        /// visible decision rather than a silence.
+        /// </summary>
+        public List<string> KnownDefects { get; } = new List<string>();
+
         /// <summary>Unity's <c>BuildResult</c> as text: Succeeded, Failed, Cancelled or Unknown.</summary>
         public string Result { get; set; } = "Unknown";
 
@@ -170,7 +184,11 @@ namespace HorrorGame.EditorTools
                     .ToString("0.00", CultureInfo.InvariantCulture) + " MB");
             }
 
-            Line(text, "errors / warnings", Errors + " / " + Warnings);
+            Line(text, "errors / warnings", Errors + " / " + Warnings
+                + (KnownDefects.Count > 0
+                    ? "   (" + FatalErrors + " this project's, " + KnownDefects.Count
+                      + " known third-party defect(s), listed below)"
+                    : string.Empty));
             text.AppendLine();
             Line(text, "output", BuildPipelinePaths.Normalize(OutputDirectory));
             Line(text, "player", BuildPipelinePaths.Normalize(PlayerPath));
@@ -200,6 +218,19 @@ namespace HorrorGame.EditorTools
                 foreach (var note in Notes)
                 {
                     text.AppendLine("  * " + note);
+                }
+            }
+
+            if (KnownDefects.Count > 0)
+            {
+                text.AppendLine();
+                text.AppendLine("known third-party defects (reported, tolerated, did NOT fail the build)");
+                foreach (var defect in KnownDefects)
+                {
+                    // The stored line still contains the original message verbatim, so the
+                    // same predicate that classified it also finds its explanation.
+                    text.AppendLine("  * " + defect);
+                    text.AppendLine("      " + BuildPipelineKnownDefects.ExplanationFor(defect));
                 }
             }
 
@@ -240,6 +271,7 @@ namespace HorrorGame.EditorTools
             JsonNumber(json, "sizeMegabytes", BuildPipelinePaths.ToMegabytes(SizeBytes), true);
             JsonNumber(json, "unityReportedSizeBytes", (double)UnityReportedSizeBytes, true);
             JsonNumber(json, "errors", Errors, true);
+            JsonNumber(json, "fatalErrors", FatalErrors, true);
             JsonNumber(json, "warnings", Warnings, true);
             JsonLine(json, "outputDirectory", BuildPipelinePaths.Normalize(OutputDirectory), true);
             JsonLine(json, "playerPath", BuildPipelinePaths.Normalize(PlayerPath), true);
@@ -247,6 +279,7 @@ namespace HorrorGame.EditorTools
             JsonLine(json, "steamAppIdSource", SteamAppIdSource, true);
             JsonArray(json, "scenes", Scenes, true);
             JsonArray(json, "notes", Notes.ToArray(), true);
+            JsonArray(json, "knownThirdPartyDefects", KnownDefects.ToArray(), true);
             JsonLine(json, "shippingWarning", ShippingWarning, false);
             json.AppendLine("}");
             return json.ToString();

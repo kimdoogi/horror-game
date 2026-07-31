@@ -117,10 +117,37 @@ else to work with.
 Option 1 is the only one that stays true at both ends. It is also the one that turns
 a defect into a mechanic.
 
+### Update — the mix reproduces the inversion, refuses to hide it, and now holds option 1's missing input
+
+Three things the Unity side can now say about this.
+
+**The inversion arrives for free and is not being papered over.** The shipped clips
+already have those spectra, so the low-pass produces the inversion without a table.
+Re-measured at the corner the mix actually uses (800 Hz, not the finding's 600 Hz):
+자갈 **−25.8 dB**, 콘크리트 **+0.3 dB** — a **26.1 dB** inversion against the finding's
+32.4 dB. Gentler corner, same direction, same problem.
+
+**The audio layer deliberately does not apply a second clarity.**
+`AudioOcclusion.OccludedLevelChangeDb` records those numbers and drives nothing. A
+parallel clarity living in the presentation layer would produce exactly the
+HUD-disagrees-with-ears failure this finding is about, one layer further down and
+harder to see. The resolution belongs in `ListenerAbility`, and that is a Core change
+and a designer's decision.
+
+**Option 1's cost has dropped.** It reads "costs a signature change on the ability",
+and the implicit second cost was computing an occlusion term at all. That term now
+exists and is already measured per emitter, every 0.1 s, as a 0–1 fraction —
+`SoundOccluder.Occlusion`, weighted so a §12 doorway reads 0.5 and a solid wall 1.0
+(see F-003's update). Making clarity a function of occlusion is therefore a plumbing
+change plus the signature, not new physics.
+
 ### Pinned by
 
 `tools/audio/verify_audio.py` section 6 — reports every inversion between the clarity
 the code claims and measured audibility. Currently one blocking inversion.
+
+`AudioTests.OccludedAudibility_InvertsTheClarityTable_AsF002Reports` fails if anyone
+"fixes" the finding by quietly changing the mix instead of the rule.
 
 ---
 
@@ -161,10 +188,67 @@ The answer is therefore in the Unity mix rather than in synthesis:
 
 Option 2 composes with F-002's option 1 and would resolve both at once.
 
+### Update — option 1 is built, and it removes the failure condition
+
+Option 1 has now been implemented in Unity and measured against the engine's own
+filter rather than an offline model. Two things came out of it, and neither closes the
+finding on its own.
+
+**1. The corner is clamped, so the alphabet never actually reaches the failing case.**
+The finding's 1.396× was measured by sweeping the low-pass toward zero.
+`AudioOcclusion.CutoffHz` does not: it stops at
+`AudioTuning.ListenerChannelOcclusionFloorHz`, chosen as the lowest corner from which
+*every* higher corner also clears 1.4× with 5% margin. Under the engine's filter
+(one biquad, 12 dB/oct) that floor is 796 Hz and 800 is the round number above it,
+where the worst pair reads **1.476×**.
+
+**The two numbers are the same measurement through different filters.**
+`verify_audio.py` measures through `butter(order=2) + filtfilt`, which is zero-phase
+and therefore ~24 dB/oct — twice the engine's slope. The same 800 Hz corner reads
+1.396× there and 1.476× here; under the steeper model the floor would be 873 Hz.
+The engine is what the player hears, so the mix is built on the engine's curve and
+the verifier's figure is the conservative one. Neither is wrong, and the gap between
+them is the whole margin — which is why this stays 🟡 rather than closing.
+
+**2. Occlusion is a fraction, and §12's map is mostly the middle case.**
+`SoundOccluder` casts the direct ray plus a ring of four and weights them half and
+half, so the same geometry the map is specified in resolves to three situations, not
+one:
+
+| Situation | measured occlusion | resulting corner |
+|---|:--:|:--:|
+| Clear line of sight | `0.00` | 22 000 Hz |
+| §12's 구역 간 진입점 — clear down the middle, blocked at the edges | `0.50` | **4 195 Hz** |
+| Solid wall across the whole aperture | `1.00` | **800 Hz** |
+
+The corner interpolates geometrically, so the doorway case is `√(22000 × 800)`. The
+sweep's two bracketing rows — dry at 2.030 and 3 000 Hz at 1.707 — put that case
+comfortably above 1.7×. §12 connects every pair of zones through two or three entry
+points and builds the map out of S-corridors and 순환로, so **the common case has
+roughly twice the margin the finding's single "through a wall" figure suggests**, and
+the tight case is a floor slab or a long blank run of wall.
+
+That makes **option 3 a much smaller concession than it looked.** The limit a Listener
+would have to learn is not "further than N metres" but "when there is a whole wall in
+the way" — something they can see and reason about, and something §12's own geometry
+tells them is rare. Option 2 remains the only one that buys margin at `1.00` and still
+composes with F-002's option 1. The decision is unchanged and still the designer's;
+what has changed is the price of each answer.
+
+The rolloff half of option 1 is built too: `AudioTuning.RolloffExponent` is 0.6
+(3.6 dB per doubling) rather than free-field's 1, derived from requiring a footstep to
+stand above the zone bed at 25 m and fall under it by 40 m. That is the "lose
+precision, not identity" shape this finding asks for.
+
 ### Pinned by
 
 `tools/audio/verify_audio.py` sections 2 and 5 — the 5×5 separation matrix, run dry
 and at each occlusion step.
+
+`AudioTests.ADoorway_ReadsAsHalfOccluded_NotAsAWall` pins the 0.5 above, and
+`AudioSceneTests.AWallBetweenTheMonsterAndTheEars_LowersTheFilterCorner` measures the
+whole chain in a live scene: it builds a wall between an emitter and the ears and
+asserts the corner lands on the floor and not below it.
 
 ---
 

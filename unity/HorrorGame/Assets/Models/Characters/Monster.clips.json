@@ -1,0 +1,98 @@
+{
+  "generated_by": "tools/blender/gen_monster_ai.py",
+  "fps": 30,
+  "note": "ground_speed_mps is measured from the weight-bearing foot after grounding, not derived. Playback rate for a \u00a707 tier speed is tierSpeed / ground_speed_mps.",
+  "clips": [
+    {
+      "name": "Patrol",
+      "frames": 57,
+      "seconds": 1.9,
+      "loops": true,
+      "locomotion": true,
+      "ground_speed_mps": 1.196,
+      "residual_slide_mps": 0.0,
+      "ground_lift_m": 0.0432,
+      "foot_sink_m": -0.0,
+      "foot_float_m": 0.0,
+      "hip_bob_m": 0.08064
+    },
+    {
+      "name": "Chase",
+      "frames": 23,
+      "seconds": 0.7667,
+      "loops": true,
+      "locomotion": true,
+      "ground_speed_mps": 4.6729,
+      "residual_slide_mps": 0.0,
+      "ground_lift_m": 0.1525,
+      "foot_sink_m": -0.0,
+      "foot_float_m": 0.0,
+      "hip_bob_m": 0.18558
+    },
+    {
+      "name": "Alert",
+      "frames": 73,
+      "seconds": 2.4333,
+      "loops": true,
+      "locomotion": false,
+      "ground_speed_mps": 0.0,
+      "residual_slide_mps": 0.0,
+      "ground_lift_m": 0.0156,
+      "foot_sink_m": -0.0,
+      "foot_float_m": 0.0,
+      "hip_bob_m": 0.0
+    },
+    {
+      "name": "Search",
+      "frames": 91,
+      "seconds": 3.0333,
+      "loops": true,
+      "locomotion": false,
+      "ground_speed_mps": 0.2631,
+      "residual_slide_mps": 0.2811,
+      "ground_lift_m": 0.0149,
+      "foot_sink_m": -0.0,
+      "foot_float_m": 0.0,
+      "hip_bob_m": 0.00858
+    },
+    {
+      "name": "Standstill",
+      "frames": 91,
+      "seconds": 3.0333,
+      "loops": true,
+      "locomotion": false,
+      "ground_speed_mps": 0.0,
+      "residual_slide_mps": 0.0,
+      "ground_lift_m": 0.0131,
+      "foot_sink_m": -0.0,
+      "foot_float_m": 0.0,
+      "hip_bob_m": 0.0
+    },
+    {
+      "name": "Stunned",
+      "frames": 76,
+      "seconds": 2.5333,
+      "loops": false,
+      "locomotion": false,
+      "ground_speed_mps": 0.2499,
+      "residual_slide_mps": 2.9647,
+      "ground_lift_m": 0.0378,
+      "foot_sink_m": -0.0,
+      "foot_float_m": 0.0,
+      "hip_bob_m": 0.05096
+    },
+    {
+      "name": "Grab",
+      "frames": 41,
+      "seconds": 1.3667,
+      "loops": false,
+      "locomotion": false,
+      "ground_speed_mps": 0.6612,
+      "residual_slide_mps": 1.7696,
+      "ground_lift_m": 0.0153,
+      "foot_sink_m": -0.0,
+      "foot_float_m": 0.0,
+      "hip_bob_m": 0.02501
+    }
+  ]
+}

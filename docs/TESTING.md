@@ -60,20 +60,58 @@ Prints `0`. Anything else is the error count — read `/tmp/u.log`.
 > Only one Unity process may hold the project lock. Close the editor first, or
 > expect the batch run to fail with a lock message.
 
-### 4 · Unity tests — EditMode 52, PlayMode 27
+### 4 · Unity tests — EditMode and PlayMode
 
 ```bash
-/Applications/Unity/Hub/Editor/6000.3.21f1/Unity.app/Contents/MacOS/Unity -batchmode -quit -nographics -silent-crashes -projectPath /Users/doogi/horror-game/unity/HorrorGame -executeMethod HorrorGame.EditorTools.BuildPipelineTestRunner.RunFromCommandLine -logFile /tmp/t.log
+/Applications/Unity/Hub/Editor/6000.3.21f1/Unity.app/Contents/MacOS/Unity -batchmode -projectPath /Users/doogi/horror-game/unity/HorrorGame -runTests -testPlatform PlayMode -testResults /tmp/playmode.xml -logFile /tmp/t.log
 ```
 
-Results land in `dist/test-results/*.xml`:
+Swap `PlayMode` for `EditMode` for the other suite. To run one fixture, add
+`-testFilter "MonsterChaseTests"`.
 
-```
-editmode-results.xml: total=52 passed=52 failed=0 result=Passed
-playmode-results.xml: total=27 passed=27 failed=0 result=Passed
+> **Never add `-quit` to a test run.** Unity's test runner is asynchronous, and
+> `-quit` shuts the editor down before it writes results. The run then reports
+> nothing, exits 0, and looks green — which is exactly how a failing EditMode test
+> went unnoticed here for a while. This document told you to use `-quit`; that was
+> wrong, and this is the correction.
+
+Read the results properly rather than trusting the exit code:
+
+```bash
+python3 -c "import xml.etree.ElementTree as ET,sys; r=ET.parse('/tmp/playmode.xml').getroot(); print(r.get('total'),r.get('passed'),r.get('failed'))"
 ```
 
 In the editor these are `Horror ▸ Test ▸ Run EditMode + PlayMode`.
+
+The chase suite is the one to watch — it is §14's first verification question turned
+into something a machine can answer:
+
+```bash
+/Applications/Unity/Hub/Editor/6000.3.21f1/Unity.app/Contents/MacOS/Unity -batchmode -projectPath /Users/doogi/horror-game/unity/HorrorGame -runTests -testPlatform PlayMode -testFilter "MonsterChaseTests" -testResults /tmp/chase.xml -logFile /tmp/chase.log
+```
+
+```
+total=4 passed=4 failed=0 result=Passed
+```
+
+### 4b · NavMesh connectivity — the check that keeps the antagonist alive
+
+```bash
+/Applications/Unity/Hub/Editor/6000.3.21f1/Unity.app/Contents/MacOS/Unity -batchmode -quit -nographics -projectPath /Users/doogi/horror-game/unity/HorrorGame -executeMethod HorrorGame.EditorTools.NavMeshAudit.AuditBatch -auditScene Assets/Scenes/Map_FirstSketch.unity -logFile /tmp/nav.log
+```
+
+```
+complete 630 (100.0 %, need 98 %) · islands 1 · monster reach 19/19
+```
+
+The monster paths through the NavMesh. A fragmented surface produces no error — the
+agent walks to the end of a partial path and stops, which reads as bad AI. This once
+cost the game its antagonist entirely; see `docs/BLOCKERS.md` B-001.
+
+Note it is necessary and not sufficient: the audit asks `CalculatePath`, while the
+monster walks `NavMeshPath.corners` one at a time. Those are different questions, and
+a `NavMeshLink` answers the first without the second. That is why the chase test in
+§4 above exists — run both.
 
 ### 5 · Asset import settings — the check that keeps a role alive
 
@@ -103,6 +141,43 @@ Re-run it after touching any generator.
 
 Currently reports one blocking defect and two warnings — see
 [BALANCE-FINDINGS.md](BALANCE-FINDINGS.md) F-002 and F-003.
+
+### 6b · The monster is visible at 15 m — the check that keeps §04 playable
+
+```bash
+/Applications/Unity/Hub/Editor/6000.3.21f1/Unity.app/Contents/MacOS/Unity -batchmode -quit -silent-crashes -projectPath /Users/doogi/horror-game/unity/HorrorGame -executeMethod HorrorGame.Gameplay.MonsterEditor.MonsterShot.StageBatch -shotTag stage -logFile /tmp/mon.log
+```
+
+**No `-nographics`**, or every frame is black.
+
+Stands the creature against a dark §12 corridor section with every light in the scene
+switched off except §03's beam, at 8 / 12 / 15 / 20 m, and photographs each distance
+twice — once with it and once without. Three numbers per frame, each gating:
+
+| Measure | Floor | What it answers |
+|---|:--:|---|
+| `contrast` | 0.015 | Mean per-pixel luminance separation from the wall around it. ≈4 code values, which is where an observer who has not been told where to look picks a shape out of a dark field. |
+| `coverage` | 0.40 | Fraction of the silhouette that differs from the empty frame at all. Separates a creature from a glint. |
+| `peak` | 0.040 | 95th-percentile change inside the silhouette. ≈10 code values — one genuinely legible feature, which is what turns a smudge into a creature. |
+
+The silhouette is ground truth, rendered as unlit white on black with fog and grading
+off. Taking "the pixels that changed" as the silhouette is circular: a creature that
+rendered at exactly the wall's luminance would have an empty footprint and score a
+perfect coverage of nothing.
+
+This is a **gameplay invariant**. §12 requires 1~2 관측 지점 per zone giving
+"15m 거리에서 안전하게 괴물을 볼 수 있는 지점" and says without them 관측자는 죽으러
+가야 한다; §12's 주자 table marks 10 m as the first distance an aggro pull reliably
+survives a corner. Both roles need a creature that can be seen from further than
+§03's 12 m beam reaches.
+
+`-rimStrength`, `-rimPower`, `-rimFloor`, `-fogResponse` and `-eyeGlow` override the
+shader without touching an asset, and the first and last take comma lists and are
+crossed — a calibration sweep is one editor launch. `-ambientFill 0.22 -rimStrength 0
+-fogResponse 1 -eyeGlow 0` reproduces the creature as it was before this pass, so a
+before/after comparison is measured by one metric rather than quoted from an old log.
+
+`MonsterShot.Batch` is the same measurement in the real map at 15 / 8 / 3 m.
 
 ### 7 · The balance simulator
 
@@ -194,7 +269,7 @@ tools/audio/.venv/bin/python tools/audio/gen_ui.py
 
 # models (47 FBX)
 BL=/Applications/Blender.app/Contents/MacOS/Blender
-$BL --background --factory-startup --python tools/blender/gen_monster_model.py
+$BL --background --factory-startup --python tools/blender/gen_monster_ai.py
 $BL --background --factory-startup --python tools/blender/gen_player_model.py
 $BL --background --factory-startup --python tools/blender/gen_mapkit.py
 $BL --background --factory-startup --python tools/blender/gen_props.py

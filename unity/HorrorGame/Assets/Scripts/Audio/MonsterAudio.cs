@@ -113,6 +113,46 @@ namespace HorrorGame.Audio
         /// </summary>
         public bool IsAudible => _state != MonsterStateId.Standstill;
 
+        /// <summary>Current faded level of §06's presence bed, 0 to 1. Zero in 정지, by construction.</summary>
+        public float PresenceLevel => _presence != null ? _presence.Level : 0f;
+
+        /// <summary>Current faded level of the close-range breath, 0 to 1.</summary>
+        public float BreathLevel => _breath != null ? _breath.Level : 0f;
+
+        /// <summary>How many vocalisations this monster has produced. A test's proof that 정지 stays silent.</summary>
+        public int VocalisationCount { get; private set; }
+
+        /// <summary>
+        /// Wires §06's family from code, for a scene assembled at runtime.
+        /// <para>
+        /// <b>There is no 정지 parameter.</b> The state's 소리 column reads 없음, the
+        /// generator shipped no file, and adding one here would be the only way to
+        /// defeat <see cref="IsAudible"/> — so the signature does not offer the option.
+        /// </para>
+        /// </summary>
+        /// <param name="library">Everything the monster sounds like, from the wired clip set.</param>
+        /// <param name="steps">The footstep emitter whose <c>Audible</c> flag this component owns.</param>
+        public void Configure(MatchAudioLibrary? library, FootstepAudio? steps)
+        {
+            footsteps = steps;
+
+            if (library == null)
+            {
+                return;
+            }
+
+            presenceBed = library.MonsterPresenceBed;
+            breath = library.MonsterBreath;
+            growls = library.MonsterGrowls;
+            roars = library.MonsterRoars;
+            searches = library.MonsterSearches;
+            stuns = library.MonsterStuns;
+            grabs = library.MonsterGrabs;
+
+            _presence?.SetClip(presenceBed);
+            _breath?.SetClip(breath.Next());
+        }
+
         /// <summary>Plays the grab. §06 has no attack state, so this is an event rather than a state.</summary>
         public void PlayGrab()
         {
@@ -264,6 +304,7 @@ namespace HorrorGame.Audio
             }
 
             _sinceVocalisation = 0f;
+            VocalisationCount++;
             _oneShots.PlayOneShot(clip, bank.Gain);
         }
 

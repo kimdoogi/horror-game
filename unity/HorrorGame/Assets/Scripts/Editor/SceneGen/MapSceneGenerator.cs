@@ -6,6 +6,7 @@ using HorrorGame.Core.Map;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.AI;
 
 namespace HorrorGame.EditorTools.SceneGen
 {
@@ -131,6 +132,19 @@ namespace HorrorGame.EditorTools.SceneGen
 
             MapSceneBuilder.Build(map, sceneName);
 
+            // The second gate, and the one §12's checklist cannot be: MapValidator
+            // judged the graph, and a graph is joined whatever the baked surface does.
+            // B-001 is exactly that gap — thirteen islands under a map that passed
+            // 17/17 — so the scene is measured against the surface the monster will
+            // actually path on before it is allowed onto disk.
+            var connectivity = NavMeshConnectivity.Audit(scene);
+            if (!connectivity.Passed)
+            {
+                message = "The map built, but §06's monster cannot use it, so nothing was written.\n"
+                    + connectivity.Describe();
+                return false;
+            }
+
             if (!EditorSceneManager.SaveScene(scene, SceneGenPaths.MapScene))
             {
                 message = "Built the map but could not save it to " + SceneGenPaths.MapScene + ".";
@@ -142,7 +156,8 @@ namespace HorrorGame.EditorTools.SceneGen
 
             message = "Wrote " + SceneGenPaths.MapScene + " from seed " + seed + ".\n"
                 + quality.Describe()
-                + Summarise(map);
+                + Summarise(map)
+                + connectivity.Describe();
             return true;
         }
 
@@ -208,12 +223,21 @@ namespace HorrorGame.EditorTools.SceneGen
         }
 
         /// <summary>
-        /// Checks the kit manifest still agrees with <see cref="MapKitCatalogue"/>.
+        /// Checks the kit manifest still agrees with <see cref="MapKitCatalogue"/> and
+        /// with the NavMesh agent the map will be baked for.
         /// <para>
         /// A re-export that changed <c>grid_metres</c> would leave every piece placed
         /// on the old lattice: docked, validated, and 1.25 m out of line all through the
         /// building. That is the failure this catches, and it is cheap enough to run
         /// every time.
+        /// </para>
+        /// <para>
+        /// The 계단 rows are B-001's. The kit is modelled in Blender, which cannot read
+        /// <c>ProjectSettings/NavMeshAreas.asset</c>, so <c>gen_mapkit.py</c> restates
+        /// the agent it sized the stair for and publishes the stair's measured
+        /// dimensions beside it. Retuning the agent here and the stair there is exactly
+        /// how a building ends up with stairs nothing can climb, and the symptom —
+        /// an antagonist that stands still — names neither file.
         /// </para>
         /// </summary>
         private static void VerifyKitManifest()
@@ -227,28 +251,100 @@ namespace HorrorGame.EditorTools.SceneGen
                 return;
             }
 
-            var marker = "\"grid_metres\"";
-            var at = text.text.IndexOf(marker, StringComparison.Ordinal);
-            if (at < 0)
-            {
-                return;
-            }
-
-            var colon = text.text.IndexOf(':', at);
-            var comma = text.text.IndexOfAny(new[] { ',', '\n', '}' }, colon + 1);
-            if (colon < 0 || comma < 0)
-            {
-                return;
-            }
-
-            var value = text.text.Substring(colon + 1, comma - colon - 1).Trim();
-            if (float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var grid)
+            if (TryReadNumber(text.text, "grid_metres", out var grid)
                 && Mathf.Abs(grid - MapKitCatalogue.GridMetres) > 0.001f)
             {
                 Debug.LogError("[SceneGen] The MapKit manifest says grid_metres = " + grid
                     + " but MapKitCatalogue.GridMetres is " + MapKitCatalogue.GridMetres
                     + ". Every piece would be placed on the wrong lattice — fix the constant before generating.");
             }
+
+            VerifyStairFitsTheAgent(text.text);
+        }
+
+        /// <summary>
+        /// Holds the kit's 계단 against the live agent settings, which is the check
+        /// whose absence was B-001.
+        /// <para>
+        /// Three numbers decide whether a stair is a route or a wall, and all three are
+        /// about the agent rather than about the stair: a riser taller than its climb
+        /// does not bake; a landing shallower than four radii leaves less than one
+        /// agent's width once Recast erodes the walkable region in from both sides, so
+        /// the dog-leg turn either vanishes or survives on a knife edge; and a flight
+        /// narrower than two radii is not a flight at all.
+        /// </para>
+        /// </summary>
+        private static void VerifyStairFitsTheAgent(string manifest)
+        {
+            var agent = NavMesh.GetSettingsByID(0);
+
+            if (TryReadNumber(manifest, "stair_rise_metres", out var rise) && rise > agent.agentClimb)
+            {
+                Debug.LogError("[SceneGen] The kit's 계단 rises " + rise.ToString("0.000")
+                    + " m per tread against an agent climb of " + agent.agentClimb
+                    + " m. The treads will not bake, every storey will be its own island, and §06's "
+                    + "monster will never leave the floor it spawned on.");
+            }
+
+            // Four radii: one diameter is eroded away, one has to be left over, because
+            // a turn the width of a knife edge is a turn one re-export deletes.
+            var needed = 4f * agent.agentRadius;
+            if (TryReadNumber(manifest, "stair_landing_depth_metres", out var landing) && landing < needed)
+            {
+                Debug.LogError("[SceneGen] The kit's 계단 landing is " + landing.ToString("0.00")
+                    + " m deep and needs " + needed.ToString("0.00") + " m for an agent of radius "
+                    + agent.agentRadius + " m to turn on it — " + (landing - (2f * agent.agentRadius)).ToString("0.00")
+                    + " m survives the erosion. This is B-001: the flights bake, the landing does not join "
+                    + "them, and the only thing that used to hide it was a NavMeshLink the monster cannot use.");
+            }
+
+            if (TryReadNumber(manifest, "stair_flight_clear_width_metres", out var flight)
+                && flight <= 2f * agent.agentRadius)
+            {
+                Debug.LogError("[SceneGen] The kit's 계단 flights are " + flight.ToString("0.00")
+                    + " m clear, which an agent of radius " + agent.agentRadius + " m erodes to nothing.");
+            }
+
+            if (TryReadNumber(manifest, "stair_headroom_metres", out var headroom) && headroom < agent.agentHeight)
+            {
+                Debug.LogError("[SceneGen] The kit's 계단 has " + headroom.ToString("0.00")
+                    + " m of headroom at its tightest against an agent " + agent.agentHeight + " m tall.");
+            }
+        }
+
+        /// <summary>
+        /// Pulls one numeric field out of the manifest by name.
+        /// <para>
+        /// A deliberately small reader rather than a JSON dependency: the manifest is
+        /// written by this repository's own generator, every key it looks for is unique
+        /// in the document, and the alternative is a package reference in an editor
+        /// assembly for four floats.
+        /// </para>
+        /// </summary>
+        /// <returns>False when the key is absent or unparseable, which is never an error on its own.</returns>
+        private static bool TryReadNumber(string manifest, string key, out float value)
+        {
+            value = 0f;
+            var at = manifest.IndexOf("\"" + key + "\"", StringComparison.Ordinal);
+            if (at < 0)
+            {
+                return false;
+            }
+
+            var colon = manifest.IndexOf(':', at);
+            if (colon < 0)
+            {
+                return false;
+            }
+
+            var end = manifest.IndexOfAny(new[] { ',', '\n', '}' }, colon + 1);
+            if (end < 0)
+            {
+                return false;
+            }
+
+            var raw = manifest.Substring(colon + 1, end - colon - 1).Trim();
+            return float.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out value);
         }
 
         private static int ReadSeedArgument()

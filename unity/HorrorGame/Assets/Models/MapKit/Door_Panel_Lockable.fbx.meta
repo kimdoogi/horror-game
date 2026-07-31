@@ -3,7 +3,17 @@ guid: 03bbd81c38c3a4f8eae120f61b79acfe
 ModelImporter:
   serializedVersion: 24300
   internalIDToNameTable: []
-  externalObjects: {}
+  externalObjects:
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Door_Leaf
+    second: {fileID: 2100000, guid: dd28b57c84cdb4774abd9ca88ff3fd5e, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Trim_Steel
+    second: {fileID: 2100000, guid: 8f1bbdb7ed31349aab8e2ab6250db297, type: 2}
   materials:
     materialImportMode: 2
     materialName: 0

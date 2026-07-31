@@ -53,6 +53,30 @@ namespace HorrorGame.Audio
         /// <summary>Whether the heartbeat plays. Cleared above ground (§03's safe half) and on death.</summary>
         public bool Active { get; set; } = true;
 
+        /// <summary>Current faded level of the quietest layer, 0 to 1. For a test, and for a mix debug view.</summary>
+        public float LowLevel => _low != null ? _low.Level : 0f;
+
+        /// <summary>Current faded level of the middle layer, 0 to 1.</summary>
+        public float MidLevel => _mid != null ? _mid.Level : 0f;
+
+        /// <summary>Current faded level of the loudest layer, 0 to 1. Reached only in 추격 or close quarters.</summary>
+        public float HighLevel => _high != null ? _high.Level : 0f;
+
+        /// <summary>
+        /// Wires the three layers from code, for a scene assembled at runtime.
+        /// Re-applies to the live voices when called after <c>Awake</c>.
+        /// </summary>
+        public void Configure(AudioClip? lowLayer, AudioClip? midLayer, AudioClip? highLayer)
+        {
+            low = lowLayer;
+            mid = midLayer;
+            high = highLayer;
+
+            _low?.SetClip(lowLayer);
+            _mid?.SetClip(midLayer);
+            _high?.SetClip(highLayer);
+        }
+
         private void Awake()
         {
             _danger = GetComponent<DangerSense>();

@@ -248,6 +248,26 @@ def mat(name: str) -> bpy.types.Material:
     return blendkit.make_material(spec)  # type: ignore[arg-type]
 
 
+def register_materials(specs: dict[str, MaterialSpec]) -> None:
+    """Adds material specs to the shared table so `PropBuild` can resolve them.
+
+    `PropBuild` looks materials up through `mat()`, which reads `MATERIALS`. A
+    sibling generator that reuses the build scaffolding — `gen_dressing.py` does —
+    therefore has to put its own specs here before it builds anything, and this is
+    the seam it does that through rather than reaching into the dict. Re-defining a
+    name already present is refused: `Clue_Face` is §13's contractual seam and the
+    `Prop_*` names carry §08's temptation/efficiency contrast, and silently
+    re-colouring either from another file is the kind of change nobody would think
+    to look for.
+    """
+    for name, spec in specs.items():
+        existing = MATERIALS.get(name)
+        if existing is not None and existing != spec:
+            blendkit.fail(f"material '{name}' is already defined with different values; "
+                          "pick another name rather than redefining a shared one")
+        MATERIALS[name] = spec
+
+
 def rads(degrees: tuple[float, float, float]) -> tuple[float, float, float]:
     return (math.radians(degrees[0]), math.radians(degrees[1]), math.radians(degrees[2]))
 
@@ -805,6 +825,77 @@ def build_large_chest() -> PropBuild:
 # ══════════════════════════════════════════════════════════════════════════
 #  INTERACTABLES
 # ══════════════════════════════════════════════════════════════════════════
+
+
+def build_objective() -> PropBuild:
+    """§03의 목표물 — the thing the match is for. Until now a 0.45 m Unity capsule.
+
+    The design fixes its rules and says nothing about its shape, so the shape is
+    derived from the rules and from what else is in the building:
+
+    * **양손을 쓴다.** One grab handle on each end, 0.62 m apart — outside a
+      comfortable one-hand reach and inside a two-hand one, so 양손 is legible from
+      the silhouette rather than only from a UI string. It is a *one*-person
+      carry, unlike §08's chest and portrait, so the handles are deliberately close
+      enough that a single player spans them.
+    * **운반자는 앞을 보지 못한다.** 0.54 m wide and 0.40 m tall, held at chest
+      height: that is a body-width of solid object between the carrier's eyes and
+      the corridor. A capsule 0.45 m across on the floor never sold that.
+    * **The rest of §08 is an estate being stripped** — portraits, ledgers, pocket
+      watches, silver. So this is not a sci-fi container. Oak, iron strapping, a
+      brass plate, and a wax seal over the hasp.
+    * **Sealed, not openable.** The seal is the whole characterisation available to
+      a prop with no animation: whatever this is, the crew are being paid to carry
+      it out without looking inside, and the one thing a player can read off it is
+      that it has not been opened.
+
+    Deliberately NOT emissive. §03 makes darkness the lock on the objective
+    (*"어둠 = 목표의 잠금장치"*), so the brass plate and the strapping are the only
+    things that answer a beam, and they answer it by being specular rather than by
+    glowing on their own.
+    """
+    b = PropBuild("Objective")
+    L, W, H = 0.540, 0.360, 0.300      # body; the lid adds 10 cm
+    BAND = 0.030
+
+    body = b.box((L, W, H), (0.0, 0.0, H / 2), mat=WOOD_DARK, role="body")
+    b.pivot_part = body
+
+    # Lid: a shallow slab with a raised rim, so the top catches a beam as two
+    # distinct planes rather than one flat face.
+    b.box((L, W, 0.070), (0.0, 0.0, H + 0.035), mat=WOOD_DARK, role="lid")
+    b.box((L - 0.070, W - 0.070, 0.028), (0.0, 0.0, H + 0.084), mat=WOOD_DARK)
+
+    # Iron strapping: two bands over the lid and down the sides, plus a waist band.
+    for x in (-L / 4, L / 4):
+        b.box((BAND, W + 0.012, H + 0.076), (x, 0.0, (H + 0.070) / 2), mat=IRON)
+    b.box((L + 0.012, W + 0.012, BAND), (0.0, 0.0, H * 0.55), mat=RUST)
+
+    # Corner brackets on the eight verticals of the body.
+    for sx in (-1.0, 1.0):
+        for sy in (-1.0, 1.0):
+            b.box((0.058, 0.058, 0.058),
+                  (sx * (L / 2 - 0.024), sy * (W / 2 - 0.024), 0.029), mat=IRON)
+
+    # Hasp and the wax seal across it. The seal spans the lid joint, which is what
+    # makes it read as a seal and not as a decoration.
+    b.box((0.110, 0.026, 0.150), (0.0, -W / 2 - 0.010, H - 0.012), mat=IRON, role="hasp")
+    b.cyl(0.046, 0.022, (0.0, -W / 2 - 0.026, H - 0.030), rot=(90.0, 0.0, 0.0),
+          verts=12, mat=WAX, role="seal")
+
+    # Engraved plate on the lid — the same brass the §12 clue plates are cut from,
+    # so a player who has read a clue recognises the metal on the objective.
+    b.box((0.180, 0.110, 0.008), (0.0, 0.040, H + 0.100), mat=BRASS_DULL, role="plate")
+
+    # End handles. Drop handles, not fixed loops: a bail lying against the end is
+    # what a chest of this period has, and it keeps the footprint honest.
+    for role, sign in (("handle_a", -1.0), ("handle_b", 1.0)):
+        x = sign * (L / 2 + 0.016)
+        b.box((0.026, 0.170, 0.024), (x, 0.0, H * 0.72), mat=IRON, role=role)
+        for sy in (-1.0, 1.0):
+            b.box((0.026, 0.024, 0.076), (x, sy * 0.073, H * 0.72 - 0.050), mat=IRON)
+    record_handles(b)
+    return b
 
 
 SAFE_W, SAFE_D, SAFE_H = 0.720, 0.620, 0.840
@@ -1529,6 +1620,8 @@ SPECS: list[Spec] = [
          (1.276, 0.716, 0.731), bevel=0.006, note="two-person carry, §08's best moment",
          checks=("two_person",)),
     # ── Interactables ──────────────────────────────────────────────────────
+    Spec("Objective", build_objective, "Interactable", (0.598, 0.403, 0.407), bevel=0.004,
+         note="§03 목표물; one-person two-handed carry, sealed"),
     Spec("Safe_Closed", build_safe_closed, "Interactable", (0.733, 0.680, 0.840), bevel=0.005,
          note="handle stands 6 cm off the door; hinge barrel 1 cm off the side"),
     Spec("Safe_Open", build_safe_open, "Interactable", (0.893, 1.296, 0.840), bevel=0.005,

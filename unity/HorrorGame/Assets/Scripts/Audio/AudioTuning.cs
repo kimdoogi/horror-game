@@ -472,6 +472,28 @@ namespace HorrorGame.Audio
         public const float FootstepVolumeJitter = 0.12f;
 
         // ====================================================================
+        // §03's round trip.
+        // ====================================================================
+
+        /// <summary>
+        /// Light remaining, seconds, at which the low-cell warning fires.
+        /// <para>
+        /// Read straight off §07's cost table, which prices 나가서 배터리 교체 at ~1분.
+        /// The warning is only useful if it lands while the walk back is still
+        /// affordable, so the threshold <em>is</em> the walk: told with a minute left, a
+        /// player can still choose to spend it, which is the §10 dilemma §03 builds the
+        /// whole round trip out of. Told with ten seconds left they are simply informed
+        /// that they are about to be in the dark.
+        /// </para>
+        /// <para>
+        /// A gameplay threshold rather than a mix value, and it belongs in
+        /// <c>GameConstants</c> beside <c>BatterySecondsPerCell</c>; it is here only
+        /// because this layer does not own that file. §07 / §03.
+        /// </para>
+        /// </summary>
+        public const float BatteryWarningSeconds = 60f;
+
+        // ====================================================================
         // Voice.
         // ====================================================================
 

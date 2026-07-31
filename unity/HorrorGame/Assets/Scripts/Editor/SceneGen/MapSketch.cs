@@ -157,20 +157,29 @@ namespace HorrorGame.EditorTools.SceneGen
         public MapZoneRect[] ZoneRects { get; }
     }
 
-    /// <summary>A zone's footprint in grid cells, alongside the §12 surface it sounds like.</summary>
+    /// <summary>A zone's footprint in grid cells on one storey, alongside the §12 surface it sounds like.</summary>
     public readonly struct MapZoneRect
     {
         /// <summary>Builds a zone rect.</summary>
-        public MapZoneRect(int zoneId, string name, FloorMaterial floor, int cellX, int cellZ, int cellsX, int cellsZ)
+        public MapZoneRect(
+            int zoneId, string name, FloorMaterial floor, int level, int cellX, int cellZ, int cellsX, int cellsZ)
         {
             ZoneId = zoneId;
             Name = name;
             Floor = floor;
+            Level = level;
             CellX = cellX;
             CellZ = cellZ;
             CellsX = cellsX;
             CellsZ = cellsZ;
         }
+
+        /// <summary>
+        /// Storey this zone occupies. §03 narrows the objective by floor first, so a
+        /// zone belongs to exactly one — a room split across two storeys would make
+        /// "지하 3층" unanswerable.
+        /// </summary>
+        public int Level { get; }
 
         /// <summary>Index into <see cref="MapGraph.Zones"/>.</summary>
         public int ZoneId { get; }
@@ -193,21 +202,34 @@ namespace HorrorGame.EditorTools.SceneGen
         /// <summary>Depth in cells.</summary>
         public int CellsZ { get; }
 
-        /// <summary>Centre in metres.</summary>
+        /// <summary>Centre in metres, at this storey's floor.</summary>
         public Vec3 Centre => new Vec3(
             (CellX + (CellsX * 0.5f)) * MapKitCatalogue.GridMetres,
-            0f,
+            MapKitCatalogue.FloorY(Level),
             (CellZ + (CellsZ * 0.5f)) * MapKitCatalogue.GridMetres);
 
-        /// <summary>Full extent in metres. Y is zero: a single-storey map has no ceiling to guess (§12 prototype).</summary>
+        /// <summary>
+        /// Full extent in metres. Y is one whole storey, so a zone is a box with a
+        /// ceiling rather than an infinite column.
+        /// <para>
+        /// That is what lets one room sit directly under another: <c>MapZone</c>
+        /// treats a zero-height zone as covering every floor and therefore as
+        /// overlapping anything beneath it, which would fail §12's "재질 경계를 명확히
+        /// 할 것" the moment the building gained a second storey. Declaring the height
+        /// makes two stacked zones separate volumes, and a footstep still belongs to
+        /// exactly one surface.
+        /// </para>
+        /// </summary>
         public Vec3 Size => new Vec3(
             CellsX * MapKitCatalogue.GridMetres,
-            0f,
+            MapKitCatalogue.StoreyMetres,
             CellsZ * MapKitCatalogue.GridMetres);
 
-        /// <summary>True when a cell lies in this zone.</summary>
+        /// <summary>True when a cell lies in this zone — same storey and inside the footprint.</summary>
         public bool Contains(MapCell cell) =>
-            cell.X >= CellX && cell.X < CellX + CellsX && cell.Z >= CellZ && cell.Z < CellZ + CellsZ;
+            cell.Level == Level
+            && cell.X >= CellX && cell.X < CellX + CellsX
+            && cell.Z >= CellZ && cell.Z < CellZ + CellsZ;
     }
 
     /// <summary>
@@ -250,13 +272,34 @@ namespace HorrorGame.EditorTools.SceneGen
         private readonly Dictionary<MapCell, CellMark> _marks = new Dictionary<MapCell, CellMark>();
         private readonly List<MapCell> _doorCells = new List<MapCell>();
         private readonly List<MapPropPlacement> _extraProps = new List<MapPropPlacement>();
+        private readonly List<StairRun> _stairs = new List<StairRun>();
+        private readonly Dictionary<char, MapCell> _keyed = new Dictionary<char, MapCell>();
+        private readonly List<RoomRect> _openRooms = new List<RoomRect>();
         private string _name = "unnamed map";
         private MapNodeKind _defaultKind = MapNodeKind.None;
+        private int _level;
 
         /// <summary>Names the map. The name appears in every §12 validator message about it.</summary>
         public MapSketch Named(string name)
         {
             _name = name;
+            return this;
+        }
+
+        /// <summary>
+        /// Sets the storey that following <see cref="Plan"/>, <see cref="Corridor"/>,
+        /// <see cref="Room"/>, <see cref="Mark"/> and <see cref="Door"/> calls apply to.
+        /// <para>
+        /// A cursor rather than a parameter on every call because a floor plan is
+        /// authored one storey at a time and repeating the level on every line is where
+        /// a typo hides. <see cref="Stair"/> takes its levels explicitly for exactly
+        /// the opposite reason: it is the one call that spans two of them, so it must
+        /// not depend on which one happens to be current.
+        /// </para>
+        /// </summary>
+        public MapSketch OnLevel(int level)
+        {
+            _level = level;
             return this;
         }
 
@@ -281,24 +324,65 @@ namespace HorrorGame.EditorTools.SceneGen
         public IReadOnlyList<MapZoneRect> Zones => _zones;
 
         /// <summary>
+        /// Declares a rectangle of the current storey 개방 공간 — one volume you can
+        /// see across, rather than a set of passages.
+        /// <para>
+        /// §12 splits the map into two kinds of space and hangs the entire chase on
+        /// the difference: 개방 공간 is where aggro is taken from 15~25 m out, 미로 공간
+        /// is where it is broken. <see cref="RunnerTest"/> reads that literally — a
+        /// bend at an 개방 공간 node is not counted as cover, "because a corner drawn
+        /// inside a room you can see across hides nobody".
+        /// </para>
+        /// <para>
+        /// So this is the most consequential call in a sketch, and it is only honest
+        /// when the rectangle is the footprint of a room that is actually built: pass
+        /// the same cells as the <see cref="MapKitPiece.HallOpen20x20"/> covering them.
+        /// A path drawn through such a room bends because feet do, not because there is
+        /// a wall at the bend, and the simulator has to be told which of the two it is
+        /// looking at or its verdict stops describing the map that ships.
+        /// </para>
+        /// </summary>
+        public MapSketch OpenRoom(int cellX, int cellZ, int cellsX, int cellsZ)
+        {
+            _openRooms.Add(new RoomRect(MapKitPiece.HallOpen20x20, cellX, cellZ, cellsX, cellsZ, 0f, _level));
+            return this;
+        }
+
+        /// <summary>
         /// Declares a zone as a cell rectangle. §12 wants 4~6 of these, each 30~40 m
         /// across the diagonal and each with its own surface.
         /// </summary>
-        /// <exception cref="MapSketchException">The rect overlaps a zone already declared.</exception>
-        public int AddZone(string name, FloorMaterial floor, int cellX, int cellZ, int cellsX, int cellsZ)
+        /// <param name="name">§12's label, quoted verbatim in validator failures.</param>
+        /// <param name="floor">§12 청음사: must differ from every other zone's.</param>
+        /// <param name="level">Storey. Two zones may share a footprint only when they are on different ones.</param>
+        /// <param name="cellX">Lowest cell along X.</param>
+        /// <param name="cellZ">Lowest cell along Z.</param>
+        /// <param name="cellsX">Width in cells.</param>
+        /// <param name="cellsZ">Depth in cells.</param>
+        /// <exception cref="MapSketchException">The rect overlaps a zone already declared on the same storey.</exception>
+        public int AddZone(
+            string name, FloorMaterial floor, int level, int cellX, int cellZ, int cellsX, int cellsZ)
         {
-            var rect = new MapZoneRect(_zones.Count, name, floor, cellX, cellZ, cellsX, cellsZ);
+            var rect = new MapZoneRect(_zones.Count, name, floor, level, cellX, cellZ, cellsX, cellsZ);
             for (var i = 0; i < _zones.Count; i++)
             {
                 var other = _zones[i];
+                if (other.Level != level)
+                {
+                    // Stacking is the point: §03 asks players to learn which floor a
+                    // thing is on, which is only a question worth asking when two
+                    // different rooms can share a footprint.
+                    continue;
+                }
+
                 var overlapX = cellX < other.CellX + other.CellsX && other.CellX < cellX + cellsX;
                 var overlapZ = cellZ < other.CellZ + other.CellsZ && other.CellZ < cellZ + cellsZ;
                 if (overlapX && overlapZ)
                 {
                     throw new MapSketchException(
-                        "Zone " + name + " overlaps " + other.Name + ". §12 requires \"재질 경계를 명확히 할 것\": "
-                        + "a footstep inside an overlap would belong to two surfaces at once and the Listener "
-                        + "could not name a zone at all.");
+                        "Zone " + name + " overlaps " + other.Name + " on storey " + level
+                        + ". §12 requires \"재질 경계를 명확히 할 것\": a footstep inside an overlap would belong "
+                        + "to two surfaces at once and the Listener could not name a zone at all.");
                 }
             }
 
@@ -325,10 +409,86 @@ namespace HorrorGame.EditorTools.SceneGen
             var stepZ = System.Math.Sign(z1 - z0);
             for (var i = 0; i <= steps; i++)
             {
-                _corridor.Add(new MapCell(x0 + (stepX * i), z0 + (stepZ * i)));
+                _corridor.Add(new MapCell(x0 + (stepX * i), z0 + (stepZ * i), _level));
             }
 
             return this;
+        }
+
+        /// <summary>
+        /// Reads a storey's floor plan as a picture and turns it into corridor cells.
+        /// <para>
+        /// The rows are given north first, the way a plan is drawn, so the source
+        /// reads as the building rather than as a list of coordinates. That is not a
+        /// convenience: §12's failures are all shapes — a 22.5 m straight, a spur one
+        /// cell from another spur that silently welds into a room — and a shape is
+        /// something a designer can see in a picture and cannot see in forty
+        /// <see cref="Corridor"/> calls.
+        /// </para>
+        /// <para>
+        /// A space or '.' is solid. '#' is corridor. Any other character is corridor
+        /// <em>and</em> a key, recoverable with <see cref="Key"/>, so that the places
+        /// §12 counts — 후보 지점, 관측 지점, 계단, 출입구 — are marked on the drawing
+        /// where a reader can check them against it.
+        /// </para>
+        /// </summary>
+        /// <param name="originX">Cell X of the leftmost column.</param>
+        /// <param name="originZ">Cell Z of the <em>bottom</em> row, since Z grows north and the rows are drawn top-down.</param>
+        /// <param name="rows">One string per cell row, northernmost first.</param>
+        /// <exception cref="MapSketchException">A key character is used twice.</exception>
+        public MapSketch Plan(int originX, int originZ, params string[] rows)
+        {
+            if (rows == null || rows.Length == 0)
+            {
+                throw new MapSketchException("A floor plan with no rows describes no building.");
+            }
+
+            for (var r = 0; r < rows.Length; r++)
+            {
+                var z = originZ + (rows.Length - 1 - r);
+                var row = rows[r];
+                for (var c = 0; c < row.Length; c++)
+                {
+                    var symbol = row[c];
+                    if (symbol == ' ' || symbol == '.')
+                    {
+                        continue;
+                    }
+
+                    var cell = new MapCell(originX + c, z, _level);
+                    _corridor.Add(cell);
+                    if (symbol == '#')
+                    {
+                        continue;
+                    }
+
+                    if (_keyed.ContainsKey(symbol))
+                    {
+                        throw new MapSketchException(
+                            "Plan key '" + symbol + "' is used twice, at " + _keyed[symbol] + " and " + cell
+                            + ". A key names one place; reusing it would silently move whichever §12 requirement "
+                            + "was hung on the first one.");
+                    }
+
+                    _keyed[symbol] = cell;
+                }
+            }
+
+            return this;
+        }
+
+        /// <summary>The cell a plan key was drawn at.</summary>
+        /// <exception cref="MapSketchException">No plan used that character.</exception>
+        public MapCell Key(char symbol)
+        {
+            if (!_keyed.TryGetValue(symbol, out var cell))
+            {
+                throw new MapSketchException(
+                    "No plan drew the key '" + symbol + "'. Every §12 requirement is hung on a key, so a missing "
+                    + "one means the rule it carried is not on the map at all.");
+            }
+
+            return cell;
         }
 
         /// <summary>
@@ -337,7 +497,43 @@ namespace HorrorGame.EditorTools.SceneGen
         /// </summary>
         public MapSketch Room(MapKitPiece piece, int cellX, int cellZ, int cellsX, int cellsZ, float yawDegrees)
         {
-            _rooms.Add(new RoomRect(piece, cellX, cellZ, cellsX, cellsZ, yawDegrees));
+            _rooms.Add(new RoomRect(piece, cellX, cellZ, cellsX, cellsZ, yawDegrees, _level));
+            return this;
+        }
+
+        /// <summary>
+        /// Hangs a 계단 between two storeys and returns nothing but the obligation to
+        /// have drawn both landings.
+        /// <para>
+        /// <see cref="MapKitPiece.StairwellMetal"/> is a 2 × 2-cell switchback with
+        /// both of its docks on the same edge, one at floor level and one exactly
+        /// <see cref="MapKitCatalogue.StoreyMetres"/> above it. So a stair is fixed
+        /// geometry, not a free-form connection: the lower landing is the cell south
+        /// of the shaft's west column and the upper landing is the cell south of its
+        /// east column. Those two are 2.5 m apart on the plan and one storey apart in
+        /// the world.
+        /// </para>
+        /// <para>
+        /// The graph edge this produces is the only way between the two floors, which
+        /// is what makes §03's clue chain — 층 → 구역 → 지점 — a real narrowing, and
+        /// what gives the Listener the 금속 footstep §12 reserves for stairs. The
+        /// shaft's spine wall means both landings are 90° turns, so a stair always
+        /// breaks a sight line.
+        /// </para>
+        /// </summary>
+        /// <param name="x">Cell X of the shaft's west column. The lower landing is (x, z), the upper (x + 1, z).</param>
+        /// <param name="z">Cell Z of the landings — the shaft itself occupies z + 1 and z + 2.</param>
+        /// <param name="upperLevel">Storey the upper landing is on. The lower landing is one below it.</param>
+        /// <param name="name">Label for the graph edge, so a report can say which stair.</param>
+        public MapSketch Stair(int x, int z, int upperLevel, string name)
+        {
+            _stairs.Add(new StairRun(
+                new MapCell(x, z, upperLevel + 1),
+                new MapCell(x + 1, z, upperLevel),
+                x,
+                z + 1,
+                upperLevel + 1,
+                name));
             return this;
         }
 
@@ -347,9 +543,13 @@ namespace HorrorGame.EditorTools.SceneGen
         /// with nowhere to work.
         /// </summary>
         /// <exception cref="MapSketchException">The cell is not corridor.</exception>
-        public MapSketch Mark(int x, int z, MapNodeKind kind, string name)
+        public MapSketch Mark(char key, MapNodeKind kind, string name) =>
+            Mark(Key(key), kind, name);
+
+        /// <summary>Marks what a place is for, by cell.</summary>
+        /// <exception cref="MapSketchException">The cell is not corridor.</exception>
+        public MapSketch Mark(MapCell cell, MapNodeKind kind, string name)
         {
-            var cell = new MapCell(x, z);
             if (!_corridor.Contains(cell))
             {
                 throw new MapSketchException(
@@ -376,7 +576,7 @@ namespace HorrorGame.EditorTools.SceneGen
         /// </summary>
         public MapSketch Door(int x, int z)
         {
-            _doorCells.Add(new MapCell(x, z));
+            _doorCells.Add(new MapCell(x, z, _level));
             return this;
         }
 
@@ -410,8 +610,20 @@ namespace HorrorGame.EditorTools.SceneGen
                 throw new MapSketchException("A map with no zones has nothing for §12 to count.");
             }
 
+            VerifyStairs();
+            VerifyRoomWalls();
             var zoneOf = ResolveZones();
             var nodeCells = FindNodeCells();
+
+            // A landing sits at the end of a corridor, which on its own storey looks
+            // like a straight run continuing or an end to be capped. It has to be a
+            // node either way, because the stair is an edge and an edge needs both of
+            // its ends to exist.
+            for (var i = 0; i < _stairs.Count; i++)
+            {
+                nodeCells.Add(_stairs[i].Lower);
+                nodeCells.Add(_stairs[i].Upper);
+            }
 
             // A mark on a cell the corridor runs straight through would vanish: nodes
             // exist only where the passage does something, so the flag would never
@@ -443,12 +655,16 @@ namespace HorrorGame.EditorTools.SceneGen
             {
                 _marks.TryGetValue(cell, out var mark);
                 var name = string.IsNullOrEmpty(mark.Name) ? _zones[zoneOf[cell]].Name + cell.ToString() : mark.Name;
-                nodeIdOf[cell] = builder.AddNode(zoneOf[cell], cell.Centre, KindOf(mark), name, 0);
+                nodeIdOf[cell] = builder.AddNode(zoneOf[cell], cell.Centre, KindOf(mark, cell), name, 0);
             }
 
             var edgeCells = new List<List<MapCell>>();
             var edgeEnds = new List<MapCell[]>();
             BuildEdges(nodeCells, nodeIdOf, builder, edgeCells, edgeEnds);
+            for (var i = 0; i < _stairs.Count; i++)
+            {
+                builder.Connect(nodeIdOf[_stairs[i].Lower], nodeIdOf[_stairs[i].Upper]);
+            }
 
             // Rewards can only be assigned once the degrees are known, so the graph is
             // built twice: once to learn the topology, once with the 막힌 길 보상 §12
@@ -473,7 +689,7 @@ namespace HorrorGame.EditorTools.SceneGen
                 }
 
                 var name = string.IsNullOrEmpty(mark.Name) ? _zones[zoneOf[cell]].Name + cell.ToString() : mark.Name;
-                finalBuilder.AddNode(zoneOf[cell], cell.Centre, KindOf(mark), name, reward);
+                finalBuilder.AddNode(zoneOf[cell], cell.Centre, KindOf(mark, cell), name, reward);
             }
 
             var doorEdgeCells = new HashSet<MapCell>(_doorCells);
@@ -510,6 +726,12 @@ namespace HorrorGame.EditorTools.SceneGen
                 }
             }
 
+            for (var i = 0; i < _stairs.Count; i++)
+            {
+                finalBuilder.Connect(
+                    nodeIdOf[_stairs[i].Lower], nodeIdOf[_stairs[i].Upper], false, _stairs[i].Name);
+            }
+
             var graph = finalBuilder.Build();
             var tiles = BuildTiles(zoneOf, doorEdgeCells);
             var props = BuildProps(zoneOf, doorEdgeCells);
@@ -517,14 +739,32 @@ namespace HorrorGame.EditorTools.SceneGen
             return new MapSketchResult(seed, graph, tiles, props, markers, _zones.ToArray());
         }
 
-        private MapNodeKind KindOf(CellMark mark)
+        private MapNodeKind KindOf(CellMark mark, MapCell cell)
         {
             var kind = mark.Kind;
+            for (var i = 0; i < _openRooms.Count; i++)
+            {
+                var room = _openRooms[i];
+                if (room.Level == cell.Level
+                    && cell.X >= room.CellX && cell.X < room.CellX + room.CellsX
+                    && cell.Z >= room.CellZ && cell.Z < room.CellZ + room.CellsZ)
+                {
+                    return kind | MapNodeKind.OpenSpace;
+                }
+            }
+
             return (kind & MapNodeKind.OpenSpace) != 0 ? kind : kind | _defaultKind;
         }
 
-        private static int CompareCells(MapCell a, MapCell b) =>
-            a.Z != b.Z ? a.Z.CompareTo(b.Z) : a.X.CompareTo(b.X);
+        private static int CompareCells(MapCell a, MapCell b)
+        {
+            if (a.Level != b.Level)
+            {
+                return a.Level.CompareTo(b.Level);
+            }
+
+            return a.Z != b.Z ? a.Z.CompareTo(b.Z) : a.X.CompareTo(b.X);
+        }
 
         private Dictionary<MapCell, int> ResolveZones()
         {
@@ -576,8 +816,150 @@ namespace HorrorGame.EditorTools.SceneGen
             return zoneOf;
         }
 
+        /// <summary>
+        /// Checks every 계단 against the shaft geometry before anything is built.
+        /// <para>
+        /// A stair that lands on empty space, or whose shaft runs through a corridor,
+        /// produces a graph that validates and a building whose floors do not meet.
+        /// That is the worst failure this generator can have, so it is caught here
+        /// rather than discovered in a screenshot.
+        /// </para>
+        /// </summary>
+        private void VerifyStairs()
+        {
+            for (var i = 0; i < _stairs.Count; i++)
+            {
+                var stair = _stairs[i];
+                RequireLanding(stair, stair.Lower, "lower");
+                RequireLanding(stair, stair.Upper, "upper");
+
+                // The shaft is 7.05 m tall: it stands on the lower floor and its top
+                // flight passes through the upper storey's slab. Both storeys therefore
+                // have to be clear of corridor where it stands.
+                for (var dx = 0; dx < 2; dx++)
+                {
+                    for (var dz = 0; dz < 2; dz++)
+                    {
+                        for (var level = stair.ShaftLevel - 1; level <= stair.ShaftLevel; level++)
+                        {
+                            var occupied = new MapCell(stair.ShaftX + dx, stair.ShaftZ + dz, level);
+                            if (_corridor.Contains(occupied))
+                            {
+                                throw new MapSketchException(
+                                    "Stair " + stair.Name + " has its shaft at " + occupied
+                                    + ", where a corridor already runs. The shaft is "
+                                    + MapKitCatalogue.GridMetres * 2f + " m square and reaches a whole storey up, "
+                                    + "so a corridor sharing that footprint would be a passage cut through the "
+                                    + "flights.");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Checks that no passage crosses a room's wall anywhere but a doorway.
+        /// <para>
+        /// A kit room is a closed box with openings at fixed offsets. The graph does
+        /// not know that: two adjacent corridor cells are an edge whether or not there
+        /// is a wall between them, so a layout that runs a corridor into the side of a
+        /// hall produces a map that validates against all sixteen §12 rules, bakes a
+        /// NavMesh, and cannot be walked. That is the worst failure this generator can
+        /// have — everything downstream keeps agreeing with the graph, and only a
+        /// player finds out.
+        /// </para>
+        /// <para>
+        /// The doorway offsets come from the kit manifest: a hall docks 6.25 m and
+        /// 13.75 m along each edge, which is the centre of the third and the sixth
+        /// cell. So this is not a rule invented here; it is the geometry, asserted.
+        /// </para>
+        /// </summary>
+        private void VerifyRoomWalls()
+        {
+            for (var i = 0; i < _rooms.Count; i++)
+            {
+                var room = _rooms[i];
+                if (room.Piece == MapKitPiece.StairwellMetal)
+                {
+                    continue;
+                }
+
+                var doors = new HashSet<MapCell>();
+                foreach (var dock in DockCells(room))
+                {
+                    doors.Add(dock.Cell);
+                }
+
+                foreach (var cell in _corridor)
+                {
+                    if (cell.Level != room.Level || InsideRoom(cell) || doors.Contains(cell))
+                    {
+                        continue;
+                    }
+
+                    foreach (var direction in MapDirections.All)
+                    {
+                        var neighbour = cell.Step(direction);
+                        if (!_corridor.Contains(neighbour) || !InRoom(room, neighbour))
+                        {
+                            continue;
+                        }
+
+                        throw new MapSketchException(
+                            "The passage from " + cell + " into " + neighbour + " crosses the wall of the "
+                            + room.Piece + " at (" + room.CellX + "," + room.CellZ + "). That room only opens at "
+                            + Describe(doors) + ", so the graph would carry an edge through a solid wall: §12's "
+                            + "checklist would still pass, the NavMesh would still bake, and the map would be "
+                            + "unwalkable. Move the passage onto a doorway or move the room.");
+                    }
+                }
+            }
+        }
+
+        private static bool InRoom(RoomRect room, MapCell cell) =>
+            cell.Level == room.Level
+            && cell.X >= room.CellX && cell.X < room.CellX + room.CellsX
+            && cell.Z >= room.CellZ && cell.Z < room.CellZ + room.CellsZ;
+
+        private static string Describe(HashSet<MapCell> cells)
+        {
+            var ordered = new List<MapCell>(cells);
+            ordered.Sort(CompareCells);
+            var text = new StringBuilder();
+            for (var i = 0; i < ordered.Count; i++)
+            {
+                if (i > 0)
+                {
+                    text.Append(", ");
+                }
+
+                text.Append(ordered[i]);
+            }
+
+            return text.ToString();
+        }
+
+        private void RequireLanding(StairRun stair, MapCell landing, string which)
+        {
+            if (!_corridor.Contains(landing))
+            {
+                throw new MapSketchException(
+                    "Stair " + stair.Name + " has no corridor at its " + which + " landing " + landing
+                    + ". §12 gives 계단 their own 금속 surface because the Listener has to hear a floor change; "
+                    + "a stair nobody can step off is not a floor change, it is a hole.");
+            }
+        }
+
         private HashSet<MapCell> FindNodeCells()
         {
+            var landings = new HashSet<MapCell>();
+            for (var i = 0; i < _stairs.Count; i++)
+            {
+                landings.Add(_stairs[i].Lower);
+                landings.Add(_stairs[i].Upper);
+            }
+
             var nodes = new HashSet<MapCell>();
             foreach (var cell in _corridor)
             {
@@ -592,7 +974,7 @@ namespace HorrorGame.EditorTools.SceneGen
                     }
                 }
 
-                if (count == 0)
+                if (count == 0 && !landings.Contains(cell))
                 {
                     throw new MapSketchException(
                         "Corridor cell " + cell + " touches nothing. §12's connectivity rule treats the map as "
@@ -668,16 +1050,158 @@ namespace HorrorGame.EditorTools.SceneGen
             }
         }
 
+        /// <summary>
+        /// Whether a room is taller than the storey it stands on and has somebody
+        /// walking over it.
+        /// <para>
+        /// §12's 개방 공간 is a 20 m room with a 6.3 m ceiling; a storey is
+        /// <see cref="MapKitCatalogue.StoreyMetres"/> = 3.75 m. A hall on B2 therefore
+        /// pushes 2.55 m of itself up into B1, and the corridor that runs over it is
+        /// left with 1.99 m of headroom against a 2.00 m agent. Measured on this map:
+        /// six places on B1 — including both 계단 landings on the 하역장 side and the
+        /// whole of 기록보관소's southern cross-passage — had no navigable surface at
+        /// all, which cut B1 in half and left 기계실 an island of its own.
+        /// </para>
+        /// <para>
+        /// Nothing else could see it. §12's checklist is horizontal and per-storey, the
+        /// graph says the corridor is there, and the scene looks right from every angle
+        /// because the intruding roof is above head height in the screenshot. So the
+        /// room is dropped and the conflict is stated: a 개방 공간 needs two storeys of
+        /// clearance, and the layout has to give it one — either by moving the hall out
+        /// from under the corridor or by moving the corridor.
+        /// </para>
+        /// </summary>
+        private bool IntrudesOnStoreyAbove(RoomRect room)
+        {
+            // A 계단 is the one piece whose job is to occupy two storeys.
+            if (room.Piece == MapKitPiece.StairwellMetal
+                || MapKitCatalogue.HeightMetres(room.Piece) <= MapKitCatalogue.StoreyMetres)
+            {
+                return false;
+            }
+
+            var above = new List<MapCell>();
+            for (var x = room.CellX; x < room.CellX + room.CellsX; x++)
+            {
+                for (var z = room.CellZ; z < room.CellZ + room.CellsZ; z++)
+                {
+                    var over = new MapCell(x, z, room.Level - 1);
+                    if (_corridor.Contains(over))
+                    {
+                        above.Add(over);
+                    }
+                }
+            }
+
+            if (above.Count == 0)
+            {
+                return false;
+            }
+
+            UnityEngine.Debug.LogError(
+                "[SceneGen] " + room.Piece + " at (" + room.CellX + "," + room.CellZ + "@L" + room.Level
+                + ") is " + MapKitCatalogue.HeightMetres(room.Piece) + " m tall on a "
+                + MapKitCatalogue.StoreyMetres + " m storey, so its roof rises into the storey above and leaves "
+                + above.Count + " place(s) up there under 2 m of headroom — "
+                + string.Join(", ", above.GetRange(0, System.Math.Min(6, above.Count)))
+                + ". §06's monster is 2.30 m; it cannot path through any of them, so the room is not built. "
+                + "Move the 개방 공간 out from under the corridor, or move the corridor.");
+            return true;
+        }
+
+        /// <summary>
+        /// Every cell that has to open onto a 계단, and which way the shaft is.
+        /// <para>
+        /// A landing's own storey cannot see the stair at all: <see cref="MapCell.Step"/>
+        /// never leaves a storey and the shaft's cells are not corridor, so
+        /// <see cref="NeighbourMask"/> counts a landing as having one fewer passage than
+        /// it really has. The tiler then picks a piece for that lower count and puts a
+        /// wall exactly where the flight arrives — a straight where a T belongs, a
+        /// corner where a straight belongs — and the storeys stop being connected.
+        /// </para>
+        /// <para>
+        /// Nothing reports it. §12's checklist reads the graph, and the graph has the
+        /// stair edge because <see cref="Stair"/> adds it explicitly; the geometry
+        /// disagrees silently, which is B-001's signature and the reason each floor was
+        /// its own island. §06's monster paths on the surface, not on the graph.
+        /// </para>
+        /// <para>
+        /// Always north: <see cref="MapKitPiece.StairwellMetal"/> carries both docks on
+        /// one edge and the generator places every shaft at yaw 0, so the landings are
+        /// always the cells south of it.
+        /// </para>
+        /// </summary>
+        private Dictionary<MapCell, MapDirection> StairMouths()
+        {
+            var mouths = new Dictionary<MapCell, MapDirection>();
+
+            foreach (var stair in _stairs)
+            {
+                mouths[stair.Lower] = MapDirection.North;
+                mouths[stair.Upper] = MapDirection.North;
+            }
+
+            // A 계단 dropped in as a Room rather than through Stair — the 출입구 shaft,
+            // whose upper flight leaves the building and so has no landing to declare.
+            foreach (var room in _rooms)
+            {
+                if (room.Piece != MapKitPiece.StairwellMetal)
+                {
+                    continue;
+                }
+
+                var lower = new MapCell(room.CellX, room.CellZ - 1, room.Level);
+                var upper = new MapCell(room.CellX + 1, room.CellZ - 1, room.Level - 1);
+                if (_corridor.Contains(lower))
+                {
+                    mouths[lower] = MapDirection.North;
+                }
+
+                if (_corridor.Contains(upper))
+                {
+                    mouths[upper] = MapDirection.North;
+                }
+            }
+
+            return mouths;
+        }
+
+        /// <summary>
+        /// <see cref="NeighbourMask"/> plus the 계단 a landing opens onto, which is the
+        /// mask the tiler has to choose a piece from.
+        /// </summary>
+        private int MaskWithStair(MapCell cell, Dictionary<MapCell, MapDirection> mouths) =>
+            mouths.TryGetValue(cell, out var toShaft)
+                ? NeighbourMask(cell) | (1 << (int)toShaft)
+                : NeighbourMask(cell);
+
         private MapTilePlacement[] BuildTiles(Dictionary<MapCell, int> zoneOf, HashSet<MapCell> doorCells)
         {
             var tiles = new List<MapTilePlacement>();
             var consumed = new HashSet<MapCell>();
 
+            var landings = StairMouths();
+            foreach (var stair in _stairs)
+            {
+                // The shaft is authored with both docks on its −Y edge, so yaw 0 opens
+                // it south onto the two landings the sketch already checked.
+                tiles.Add(new MapTilePlacement(
+                    MapKitPiece.StairwellMetal,
+                    new MapCell(stair.ShaftX, stair.ShaftZ, stair.ShaftLevel),
+                    0f,
+                    zoneOf.TryGetValue(stair.Lower, out var stairZone) ? stairZone : -1));
+            }
+
             foreach (var room in _rooms)
             {
+                if (IntrudesOnStoreyAbove(room))
+                {
+                    continue;
+                }
+
                 tiles.Add(new MapTilePlacement(
                     room.Piece,
-                    new MapCell(room.CellX, room.CellZ),
+                    new MapCell(room.CellX, room.CellZ, room.Level),
                     room.YawDegrees,
                     ZoneOfRoom(room, zoneOf)));
 
@@ -685,9 +1209,11 @@ namespace HorrorGame.EditorTools.SceneGen
                 {
                     for (var z = room.CellZ; z < room.CellZ + room.CellsZ; z++)
                     {
-                        consumed.Add(new MapCell(x, z));
+                        consumed.Add(new MapCell(x, z, room.Level));
                     }
                 }
+
+                PlugUnusedDocks(room, zoneOf, tiles, consumed);
             }
 
             var ordered = new List<MapCell>(_corridor);
@@ -702,8 +1228,12 @@ namespace HorrorGame.EditorTools.SceneGen
                     continue;
                 }
 
-                var mask = NeighbourMask(cell);
-                if (CountBits(mask) != 1 || doorCells.Contains(cell))
+                var mask = MaskWithStair(cell, landings);
+
+                // A landing has one corridor neighbour and looks exactly like a 막힌 길
+                // from the grid's point of view. Capping it would wall the stair off,
+                // and the map would come apart into one piece per storey.
+                if (CountBits(mask) != 1 || doorCells.Contains(cell) || landings.ContainsKey(cell))
                 {
                     continue;
                 }
@@ -747,7 +1277,7 @@ namespace HorrorGame.EditorTools.SceneGen
                     continue;
                 }
 
-                var mask = NeighbourMask(cell);
+                var mask = MaskWithStair(cell, landings);
                 var count = CountBits(mask);
 
                 if (doorCells.Contains(cell))
@@ -803,7 +1333,8 @@ namespace HorrorGame.EditorTools.SceneGen
                 var run = new List<MapCell> { cell };
                 var next = cell.Step(along);
                 while (_corridor.Contains(next) && !consumed.Contains(next) && !doorCells.Contains(next)
-                       && IsStraight(NeighbourMask(next)) && SameAxis(NeighbourMask(next), along))
+                       && IsStraight(MaskWithStair(next, landings))
+                       && SameAxis(MaskWithStair(next, landings), along))
                 {
                     run.Add(next);
                     next = next.Step(along);
@@ -846,6 +1377,108 @@ namespace HorrorGame.EditorTools.SceneGen
             return tiles.ToArray();
         }
 
+        /// <summary>
+        /// Closes the doorways of a room that no corridor arrives at.
+        /// <para>
+        /// A kit room carries a fixed set of docks and the generator only uses the ones
+        /// the layout needs, so the rest are holes straight through the outside wall.
+        /// In an unlit basement that is not a subtle defect: the skybox is the
+        /// brightest thing in the scene, so an unused dock reads as a window onto
+        /// daylight from three storeys underground and destroys the one thing §03 is
+        /// built on — that the only light down here is the one you are carrying.
+        /// </para>
+        /// <para>
+        /// The 막힌 길 cap is the piece for it: it is authored as a blind recess with a
+        /// plinth, so plugging a doorway with one leaves an alcove rather than a
+        /// patch. The 계단 is the deliberate exception — its upper flight is the way
+        /// out of the building (§02), and daylight at the top of it is the point.
+        /// </para>
+        /// </summary>
+        private void PlugUnusedDocks(
+            RoomRect room,
+            Dictionary<MapCell, int> zoneOf,
+            List<MapTilePlacement> tiles,
+            HashSet<MapCell> consumed)
+        {
+            if (room.Piece == MapKitPiece.StairwellMetal)
+            {
+                return;
+            }
+
+            foreach (var dock in DockCells(room))
+            {
+                if (_corridor.Contains(dock.Cell) || InsideRoom(dock.Cell) || consumed.Contains(dock.Cell))
+                {
+                    continue;
+                }
+
+                // The cap is two cells long and docks on one end, so it needs the cell
+                // behind the doorway as well. Where that is taken, leaving the opening
+                // is better than driving a cap through whatever owns it.
+                var beyond = dock.Cell.Step(MapDirections.Opposite(dock.Inward));
+                if (_corridor.Contains(beyond) || InsideRoom(beyond) || consumed.Contains(beyond))
+                {
+                    continue;
+                }
+
+                var zone = zoneOf.TryGetValue(dock.Cell, out var found) ? found : ZoneOfRoom(room, zoneOf);
+                tiles.Add(new MapTilePlacement(
+                    MapKitPiece.DeadEndCap,
+                    MinCell(dock.Cell, beyond),
+                    MapDirections.YawFacing(dock.Inward),
+                    zone));
+                consumed.Add(dock.Cell);
+                consumed.Add(beyond);
+            }
+        }
+
+        /// <summary>
+        /// The cells a room's doorways open onto, with the direction back into the room.
+        /// Offsets come from the kit manifest, not from guesswork: a hall docks 6.25 m
+        /// and 13.75 m along each edge, which is the centre of the third and sixth cell.
+        /// </summary>
+        private static IEnumerable<DockSite> DockCells(RoomRect room)
+        {
+            var x0 = room.CellX;
+            var z0 = room.CellZ;
+            var w = room.CellsX;
+            var d = room.CellsZ;
+
+            if (room.Piece == MapKitPiece.HallOpen20x20)
+            {
+                foreach (var offset in new[] { 2, 5 })
+                {
+                    yield return new DockSite(new MapCell(x0 + offset, z0 - 1, room.Level), MapDirection.North);
+                    yield return new DockSite(new MapCell(x0 + offset, z0 + d, room.Level), MapDirection.South);
+                    yield return new DockSite(new MapCell(x0 - 1, z0 + offset, room.Level), MapDirection.East);
+                    yield return new DockSite(new MapCell(x0 + w, z0 + offset, room.Level), MapDirection.West);
+                }
+
+                yield break;
+            }
+
+            if (room.Piece == MapKitPiece.ObservationPostGallery)
+            {
+                yield return new DockSite(new MapCell(x0, z0 - 1, room.Level), MapDirection.North);
+                yield return new DockSite(new MapCell(x0, z0 + d, room.Level), MapDirection.South);
+            }
+        }
+
+        private readonly struct DockSite
+        {
+            public DockSite(MapCell cell, MapDirection inward)
+            {
+                Cell = cell;
+                Inward = inward;
+            }
+
+            /// <summary>The cell outside the doorway.</summary>
+            public MapCell Cell { get; }
+
+            /// <summary>Direction from that cell back into the room.</summary>
+            public MapDirection Inward { get; }
+        }
+
         private MapPropPlacement[] BuildProps(Dictionary<MapCell, int> zoneOf, HashSet<MapCell> doorCells)
         {
             var props = new List<MapPropPlacement>(_extraProps);
@@ -863,7 +1496,7 @@ namespace HorrorGame.EditorTools.SceneGen
                 {
                     props.Add(new MapPropPlacement(
                         MapKitPiece.WallPanelElectrical, cell.Centre, 0f, zone,
-                        "ElectricalPanel_" + _zones[zone].Name));
+                        "ElectricalPanel_" + _zones[zone].Name + "_" + cell.X + "_" + cell.Z));
                 }
             }
 
@@ -876,7 +1509,7 @@ namespace HorrorGame.EditorTools.SceneGen
 
                 props.Add(new MapPropPlacement(
                     MapKitPiece.DoorPanelLockable, cell.Centre, 0f, zone,
-                    "DoorPanel_" + cell.X + "_" + cell.Z));
+                    "DoorPanel_" + cell.Level + "_" + cell.X + "_" + cell.Z));
             }
 
             props.Sort((a, b) => string.CompareOrdinal(a.Name, b.Name));
@@ -942,7 +1575,8 @@ namespace HorrorGame.EditorTools.SceneGen
                 var node = nodeIdOf[pair.Key];
                 markers.Add(new MapMarkerPlacement(
                     MapMarkerKind.LootSpawn, graph.Nodes[node].Position, graph.Nodes[node].ZoneId, node,
-                    "LootSpawn_" + graph.Zones[graph.Nodes[node].ZoneId].Name + "_" + pair.Key.X + "_" + pair.Key.Z));
+                    "LootSpawn_" + graph.Zones[graph.Nodes[node].ZoneId].Name
+                    + "_" + pair.Key.Level + "_" + pair.Key.X + "_" + pair.Key.Z));
             }
 
             for (var i = 0; i < graph.Nodes.Length; i++)
@@ -975,7 +1609,7 @@ namespace HorrorGame.EditorTools.SceneGen
             {
                 for (var z = room.CellZ; z < room.CellZ + room.CellsZ; z++)
                 {
-                    if (zoneOf.TryGetValue(new MapCell(x, z), out var zone))
+                    if (zoneOf.TryGetValue(new MapCell(x, z, room.Level), out var zone))
                     {
                         return zone;
                     }
@@ -990,7 +1624,8 @@ namespace HorrorGame.EditorTools.SceneGen
             for (var i = 0; i < _rooms.Count; i++)
             {
                 var room = _rooms[i];
-                if (cell.X >= room.CellX && cell.X < room.CellX + room.CellsX
+                if (room.Level == cell.Level
+                    && cell.X >= room.CellX && cell.X < room.CellX + room.CellsX
                     && cell.Z >= room.CellZ && cell.Z < room.CellZ + room.CellsZ)
                 {
                     return true;
@@ -1057,8 +1692,32 @@ namespace HorrorGame.EditorTools.SceneGen
             throw new MapSketchException("A four-way cell was treated as a T junction.");
         }
 
-        private static MapCell MinCell(MapCell a, MapCell b) =>
-            new MapCell(System.Math.Min(a.X, b.X), System.Math.Min(a.Z, b.Z));
+        /// <summary>
+        /// The origin corner of a two-cell piece — the lower X and the lower Z, on the
+        /// storey both cells are already on.
+        /// <para>
+        /// Carrying the level is not a detail. <see cref="MapCell(int, int)"/> means
+        /// "on the topmost storey", so dropping it here silently moved every 막힌 길
+        /// cap and every plugged room dock onto B1 whatever floor it belonged to. The
+        /// corridor that should have been capped stayed open on its own storey, and a
+        /// two-cell block of walls appeared in the middle of B1 — one of them standing
+        /// across the junction at (4,20), which is on the route from the 하역장 to the
+        /// 저탄장 계단. Both halves of that are invisible: §12's checklist is
+        /// per-storey and horizontal, and a stray cap looks like architecture.
+        /// </para>
+        /// </summary>
+        /// <exception cref="MapSketchException">The two cells are on different storeys.</exception>
+        private static MapCell MinCell(MapCell a, MapCell b)
+        {
+            if (a.Level != b.Level)
+            {
+                throw new MapSketchException(
+                    "A two-cell piece was asked to span " + a + " and " + b + ", which are on different storeys. "
+                    + "Nothing in the kit climbs except the 계단, and it is placed by MapSketch.Stair.");
+            }
+
+            return new MapCell(System.Math.Min(a.X, b.X), System.Math.Min(a.Z, b.Z), a.Level);
+        }
 
         private readonly struct CellMark
         {
@@ -1075,7 +1734,8 @@ namespace HorrorGame.EditorTools.SceneGen
 
         private readonly struct RoomRect
         {
-            public RoomRect(MapKitPiece piece, int cellX, int cellZ, int cellsX, int cellsZ, float yawDegrees)
+            public RoomRect(
+                MapKitPiece piece, int cellX, int cellZ, int cellsX, int cellsZ, float yawDegrees, int level)
             {
                 Piece = piece;
                 CellX = cellX;
@@ -1083,6 +1743,7 @@ namespace HorrorGame.EditorTools.SceneGen
                 CellsX = cellsX;
                 CellsZ = cellsZ;
                 YawDegrees = yawDegrees;
+                Level = level;
             }
 
             public MapKitPiece Piece { get; }
@@ -1096,6 +1757,43 @@ namespace HorrorGame.EditorTools.SceneGen
             public int CellsZ { get; }
 
             public float YawDegrees { get; }
+
+            public int Level { get; }
+        }
+
+        /// <summary>
+        /// One 계단 between two storeys: the two landings it joins and the shaft that
+        /// holds the flights.
+        /// </summary>
+        private readonly struct StairRun
+        {
+            public StairRun(MapCell lower, MapCell upper, int shaftX, int shaftZ, int shaftLevel, string name)
+            {
+                Lower = lower;
+                Upper = upper;
+                ShaftX = shaftX;
+                ShaftZ = shaftZ;
+                ShaftLevel = shaftLevel;
+                Name = name;
+            }
+
+            /// <summary>Landing on the deeper storey — the shaft's own floor.</summary>
+            public MapCell Lower { get; }
+
+            /// <summary>Landing one storey up, reached by the second flight.</summary>
+            public MapCell Upper { get; }
+
+            /// <summary>Lowest cell of the 2 × 2 shaft along X.</summary>
+            public int ShaftX { get; }
+
+            /// <summary>Lowest cell of the shaft along Z. The landings are at <c>ShaftZ − 1</c>.</summary>
+            public int ShaftZ { get; }
+
+            /// <summary>Storey the shaft stands on — the same as <see cref="Lower"/>.</summary>
+            public int ShaftLevel { get; }
+
+            /// <summary>Label carried onto the graph edge, so a §12 report can name the stair.</summary>
+            public string Name { get; }
         }
 
         private readonly struct HalfEdge : IEquatable<HalfEdge>

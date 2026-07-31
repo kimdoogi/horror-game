@@ -66,3 +66,12 @@ desktop.ini
 !.vscode/settings.json
 *.swp
 *~
+
+# ── Render artifacts ────────────────────────────────────────────────────────
+# Review renders from SceneShot / MonsterShot / GuidanceShot. Regenerated on
+# demand and hundreds of megabytes; the generators are the deliverable, not the
+# frames they produced while someone was iterating.
+unity/HorrorGame/Shots/
+
+# Blender scratch previews
+artifacts/

@@ -1,0 +1,69 @@
+{
+  "generated_by": "tools/blender/gen_player_model.py",
+  "resolution": 1024,
+  "uv_units_per_metre": 0.523064,
+  "fbx": "Assets/Models/Characters/Player.fbx",
+  "note": "The five Role_* slots are flat colour by design \u2014 Unity swaps slot 0 per RoleId and \u00a705 picks those values for separation in the dark. Only the three neutral surfaces carry maps.",
+  "materials": [
+    {
+      "name": "Player_Coverall",
+      "note": "Work coverall. The largest surface on the model, so its weave sets how the whole figure reads under a beam. Matte, dirtied in the folds.",
+      "bytes": 5380675,
+      "albedo_mean_linear": 0.25,
+      "albedo_gain": 1.069,
+      "world_size_metres": 0.55,
+      "roughness_mean": 0.9194,
+      "metallic_mean": 0.0,
+      "relief_mm": 2.95,
+      "ao_mean": 0.9689,
+      "maps": {
+        "albedo": "Player_Coverall/Player_Coverall_albedo.png",
+        "normal": "Player_Coverall/Player_Coverall_normal.png",
+        "roughness": "Player_Coverall/Player_Coverall_rough.png",
+        "occlusion": "Player_Coverall/Player_Coverall_ao.png",
+        "metallic_smoothness": "Player_Coverall/Player_Coverall_ms.png"
+      },
+      "tiling": 3.476
+    },
+    {
+      "name": "Player_Skin",
+      "note": "Face and hands. The lightest of the three, which is what makes a head read as a head at the range \u00a713 puts teammates at.",
+      "bytes": 5308103,
+      "albedo_mean_linear": 0.34,
+      "albedo_gain": 1.21,
+      "world_size_metres": 0.28,
+      "roughness_mean": 0.6488,
+      "metallic_mean": 0.0,
+      "relief_mm": 1.09,
+      "ao_mean": 0.9769,
+      "maps": {
+        "albedo": "Player_Skin/Player_Skin_albedo.png",
+        "normal": "Player_Skin/Player_Skin_normal.png",
+        "roughness": "Player_Skin/Player_Skin_rough.png",
+        "occlusion": "Player_Skin/Player_Skin_ao.png",
+        "metallic_smoothness": "Player_Skin/Player_Skin_ms.png"
+      },
+      "tiling": 6.8279
+    },
+    {
+      "name": "Player_Gear",
+      "note": "Belt, boots, pads, radio. Darkest of the three and the only one with a specular worth the name, on the scuffed high points.",
+      "bytes": 4326090,
+      "albedo_mean_linear": 0.165,
+      "albedo_gain": 0.9,
+      "world_size_metres": 0.32,
+      "roughness_mean": 0.7508,
+      "metallic_mean": 0.0,
+      "relief_mm": 1.91,
+      "ao_mean": 0.9533,
+      "maps": {
+        "albedo": "Player_Gear/Player_Gear_albedo.png",
+        "normal": "Player_Gear/Player_Gear_normal.png",
+        "roughness": "Player_Gear/Player_Gear_rough.png",
+        "occlusion": "Player_Gear/Player_Gear_ao.png",
+        "metallic_smoothness": "Player_Gear/Player_Gear_ms.png"
+      },
+      "tiling": 5.9744
+    }
+  ]
+}

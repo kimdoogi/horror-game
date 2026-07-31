@@ -141,6 +141,7 @@ namespace HorrorGame.Gameplay.PlayerEditor
             var visual = (GameObject)PrefabUtility.InstantiatePrefab(model);
             visual.name = "Visual";
             visual.transform.SetParent(body.transform, false);
+            HideOwnBodyFromOwnCamera(visual);
 
             var pivot = new GameObject("PitchPivot").transform;
             pivot.SetParent(body.transform, false);
@@ -174,6 +175,36 @@ namespace HorrorGame.Gameplay.PlayerEditor
             AssignControls(body);
 
             return body;
+        }
+
+        /// <summary>
+        /// Stops the local player's own body from being drawn into their own camera,
+        /// while keeping the shadow it casts.
+        /// <para>
+        /// §05 requires the player model to exist — the other three see it — but it is
+        /// parented under the rig, so in first person its shoulders and chest sit
+        /// directly in front of the near plane and render as a shape across the bottom
+        /// of the screen. §05 also notes the player's own body is never visible to
+        /// them ("자기 몸은 안 보이므로 손만 있으면 된다").
+        /// </para>
+        /// <para>
+        /// ShadowsOnly rather than disabling the renderer: the shadow is worth keeping.
+        /// In a game where §03 makes a narrow beam the only light, seeing your own
+        /// shadow thrown down a corridor is free atmosphere, and it is a cue for where
+        /// the beam is pointing.
+        /// </para>
+        /// <para>
+        /// When networked players are added this must become per-owner — a remote
+        /// player's body has to be drawn normally. Until then every rig built here is
+        /// the local one.
+        /// </para>
+        /// </summary>
+        private static void HideOwnBodyFromOwnCamera(GameObject visual)
+        {
+            foreach (var renderer in visual.GetComponentsInChildren<Renderer>(includeInactive: true))
+            {
+                renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.ShadowsOnly;
+            }
         }
 
         private static void Bind(PlayerFeelHarness harness, GameObject rig)

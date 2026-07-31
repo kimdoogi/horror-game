@@ -1,0 +1,78 @@
+{
+  "generated_by": "tools/blender/gen_monster_ai.py",
+  "resolution": 1024,
+  "uv_units_per_metre": 0.296811,
+  "fbx": "Assets/Models/Characters/Monster.fbx",
+  "materials": [
+    {
+      "name": "Monster_Hide",
+      "note": "The \u00a701 creature: clawed, digitigrade, nothing to make eye contact with. Albedo is graded to sit under the darkest \u00a712 corridor wall, so the creature never announces itself.",
+      "world_size_metres": 3.369146,
+      "albedo_mean_linear": 0.1699,
+      "albedo_max_linear": 0.2016,
+      "corridor_darkest_linear": 0.21,
+      "source_mean_linear": 0.1324,
+      "albedo_gain": 1.8022,
+      "roughness_source_mean": 0.4358,
+      "roughness_gain": 1.9663,
+      "metallic_source_mean": 0.4462,
+      "metallic_mean": 0.0,
+      "ao_mean": null,
+      "roughness_mean": 0.836,
+      "bytes": 238887,
+      "maps": {
+        "albedo": "Monster_Hide/Monster_Hide_albedo.png",
+        "normal": "Monster_Hide/Monster_Hide_normal.png",
+        "roughness": "Monster_Hide/Monster_Hide_rough.png",
+        "occlusion": "",
+        "metallic_smoothness": "Monster_Hide/Monster_Hide_ms.png"
+      }
+    },
+    {
+      "name": "Monster_Eyes",
+      "note": "The two lenses. At the pipeline's albedo floor because they are unlit black glass; everything anybody ever sees of them is MonsterSkin.EyeGlow multiplied through this map. \u00a704's \uad00\uce21\uc790 reads the creature's facing off the pair, which is the only thing on it that carries that information at ObserverRange.",
+      "bytes": 4329827,
+      "albedo_max_linear": 0.1749,
+      "corridor_darkest_linear": 0.21,
+      "world_size_metres": 0.06,
+      "albedo_mean_linear": 0.152,
+      "albedo_gain": 1.009,
+      "roughness_mean": 0.22,
+      "metallic_mean": 0.0,
+      "relief_mm": 0.67,
+      "normal_unit_error": 0.0,
+      "ao_mean": 0.987,
+      "maps": {
+        "albedo": "Monster_Eyes/Monster_Eyes_albedo.png",
+        "normal": "Monster_Eyes/Monster_Eyes_normal.png",
+        "roughness": "Monster_Eyes/Monster_Eyes_rough.png",
+        "occlusion": "Monster_Eyes/Monster_Eyes_ao.png",
+        "metallic_smoothness": "Monster_Eyes/Monster_Eyes_ms.png"
+      }
+    },
+    {
+      "name": "Monster_Maw",
+      "note": "The faces the Jaw bone moves, on the hide's own maps. Split off only so \u00a706's acquisition flare has a slot it owns \u2014 MonsterAcquireTell gapes the mandible and lights this together, which is one event and has to look like one.",
+      "world_size_metres": 3.369146,
+      "albedo_mean_linear": 0.1699,
+      "albedo_max_linear": 0.2016,
+      "corridor_darkest_linear": 0.21,
+      "source_mean_linear": 0.1324,
+      "albedo_gain": 1.8022,
+      "roughness_source_mean": 0.4358,
+      "roughness_gain": 1.9663,
+      "metallic_source_mean": 0.4462,
+      "metallic_mean": 0.0,
+      "ao_mean": null,
+      "roughness_mean": 0.836,
+      "bytes": 238887,
+      "maps": {
+        "albedo": "Monster_Hide/Monster_Hide_albedo.png",
+        "normal": "Monster_Hide/Monster_Hide_normal.png",
+        "roughness": "Monster_Hide/Monster_Hide_rough.png",
+        "occlusion": "",
+        "metallic_smoothness": "Monster_Hide/Monster_Hide_ms.png"
+      }
+    }
+  ]
+}

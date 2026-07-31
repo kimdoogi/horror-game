@@ -70,6 +70,27 @@ namespace HorrorGame.Audio
         /// <summary>The surface whose tone is currently playing. §12.</summary>
         public FloorMaterial CurrentFloor { get; private set; } = FloorMaterial.None;
 
+        /// <summary>
+        /// The clip being faded up right now, or null while nothing is playing. A test
+        /// reads it either side of a zone boundary to prove the crossfade happened; a
+        /// bed that never changes is a §12 material map the player cannot hear.
+        /// </summary>
+        public AudioClip? CurrentBed => _bed != null ? _bed.Current : null;
+
+        /// <summary>
+        /// Wires the director from code, for a scene assembled at runtime. Safe after
+        /// <c>Awake</c> — the bed re-selects its clip every frame.
+        /// </summary>
+        /// <param name="clips">§12's five surfaces, including each one's room tone.</param>
+        /// <param name="surface">The above-ground bed. §03's safe half.</param>
+        /// <param name="incidentalClips">Distant creaks and drips, scattered underground.</param>
+        public void Configure(SurfaceAudioLibrary? clips, AudioClip? surface, AudioClip?[]? incidentalClips)
+        {
+            library = clips;
+            surfaceBed = surface;
+            incidental.SetClips(incidentalClips ?? System.Array.Empty<AudioClip?>());
+        }
+
         private void Awake()
         {
             _bed = new CrossfadeBed(gameObject, "zone_ambience", AudioBus.Ambience, false);

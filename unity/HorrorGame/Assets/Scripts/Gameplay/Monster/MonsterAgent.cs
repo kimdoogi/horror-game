@@ -215,7 +215,10 @@ namespace HorrorGame.Gameplay.Monster
 
             if (_animation != null)
             {
-                _animation.Apply(_brain.State, _brain.IsStunned, _tier.MonsterSpeed);
+                // Nothing has moved yet, so the measured speed is zero — which puts the
+                // blend tree on its Standstill member and spawns the creature planted
+                // rather than mid-stride.
+                _animation.Apply(_brain.State, _brain.IsStunned, 0f);
             }
 
             if (_audio != null)
@@ -486,9 +489,18 @@ namespace HorrorGame.Gameplay.Monster
                 _audio.OnStateEntered(state);
             }
 
+            var travelled = Vec3.Distance(previousPosition, brain.Position);
+
             if (_animation != null)
             {
-                _animation.Apply(state, brain.IsStunned, speed);
+                // The distance it ACTUALLY covered this step, not §07's tier speed.
+                //
+                // The two are only equal while the monster is driving down a straight
+                // clear path. They diverge whenever it is turning a §12 corner, waiting
+                // on a partial path, or standing in 정지 — and it is the real one the
+                // feet have to match, because the feet are matched against the ground,
+                // which does not know what tier it is.
+                _animation.Apply(state, brain.IsStunned, travelled / GameConstants.FixedStep);
             }
 
             if (_footsteps != null)
@@ -496,7 +508,6 @@ namespace HorrorGame.Gameplay.Monster
                 // The surface under the MONSTER, not under the listener: §12 gives each
                 // zone its own floor so that 청음사 can tell where the monster is from
                 // the sound alone, and that only works if the clip follows the creature.
-                var travelled = Vec3.Distance(previousPosition, brain.Position);
                 _footsteps.Advance(travelled, probe.SampleFloor(brain.Position), brain.IsAudible);
             }
 

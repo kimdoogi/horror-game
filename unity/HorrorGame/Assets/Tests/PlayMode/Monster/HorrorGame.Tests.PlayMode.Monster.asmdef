@@ -1,0 +1,24 @@
+{
+    "name": "HorrorGame.Tests.PlayMode.Monster",
+    "rootNamespace": "HorrorGame.Tests.PlayMode.Monster",
+    "references": [
+        "UnityEngine.TestRunner",
+        "UnityEditor.TestRunner",
+        "HorrorGame.Core",
+        "HorrorGame.Gameplay.Monster",
+        "Unity.AI.Navigation"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

@@ -106,10 +106,37 @@ namespace HorrorGame.EditorTools
         /// <summary>
         /// The <see cref="BuildOptions"/> for a configuration.
         /// <para>
-        /// <see cref="BuildOptions.StrictMode"/> is on for both, and it is the requirement
-        /// that the build fails on a compile error rather than producing a player built from
-        /// the last successful compile.
+        /// <see cref="BuildOptions.StrictMode"/> is deliberately <em>not</em> set, and this is
+        /// the one setting here worth reading the reason for.
         /// </para>
+        /// <para>
+        /// StrictMode fails the build when any error was logged during it. That sounds like
+        /// exactly what a pipeline wants, and the way Unity implements it makes it worse than
+        /// useless: the failure is reported as
+        /// </para>
+        /// <code>
+        /// Failed to process scene before export: 'Assets/Scenes/Map_FirstSketch_Solo.unity'
+        /// Error building Player: 2 errors
+        /// </code>
+        /// <para>
+        /// — naming a scene that is not the problem and never naming the error that was. It
+        /// cost a day. Every scene in this project failed that way, including the near-empty
+        /// bootstrap menu, because the error being counted was Mirror's packaging defect
+        /// (see <see cref="BuildPipelineKnownDefects"/>) logged before any scene was touched.
+        /// A gate that blames an innocent scene and withholds the cause is not a safety net.
+        /// </para>
+        /// <para>
+        /// Nothing is lost by dropping it, because the pipeline enforces the same rule itself
+        /// and can say what happened:
+        /// </para>
+        /// <list type="bullet">
+        /// <item><description><c>BuildPipelineRunner.Preflight</c> refuses to build at all when
+        /// scripts do not compile, so the "player built from the last successful compile" case
+        /// never reaches <c>BuildPlayer</c>.</description></item>
+        /// <item><description><c>BuildPipelineRunner.ReportBuildMessages</c> reads every message
+        /// off the <c>BuildReport</c>, prints it, and fails the build on any error that is not a
+        /// named known defect — with the message in the log and in <c>build-report.txt</c>.</description></item>
+        /// </list>
         /// </summary>
         public static BuildOptions OptionsFor(BuildConfigurationId configuration)
         {
@@ -122,14 +149,13 @@ namespace HorrorGame.EditorTools
                 return BuildOptions.Development
                     | BuildOptions.AllowDebugging
                     | BuildOptions.ConnectWithProfiler
-                    | BuildOptions.CompressWithLz4
-                    | BuildOptions.StrictMode;
+                    | BuildOptions.CompressWithLz4;
             }
 
             // No Development flag: that single bit is what strips the debug symbols, removes
             // the profiler listener and stops the player advertising itself on the network.
             // LZ4HC costs build time and gives the smaller download and faster load.
-            return BuildOptions.CompressWithLz4HC | BuildOptions.StrictMode;
+            return BuildOptions.CompressWithLz4HC;
         }
 
         /// <summary>Puts every captured setting back, in the reverse order it was applied.</summary>

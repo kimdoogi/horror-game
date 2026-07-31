@@ -3,6 +3,7 @@
     "rootNamespace": "HorrorGame.EditorTools.SceneGen",
     "references": [
         "HorrorGame.Core",
+        "HorrorGame.Rendering",
         "Unity.AI.Navigation",
         "UnityEngine.UI"
     ],

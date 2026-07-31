@@ -6,6 +6,9 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
+    path: Assets/Scenes/Map_FirstSketch_Solo.unity
+    guid: 4cd112ae06abe4f45a3f748a6055123e
+  - enabled: 1
     path: Assets/Scenes/Bootstrap.unity
     guid: 9e5dbafd84a5a4f7296f4a391afca50b
   - enabled: 1

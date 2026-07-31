@@ -66,6 +66,49 @@ namespace HorrorGame.Audio
         public float ThreatScalar => ThreatCurve.ThreatScalar(ElapsedSeconds);
 
         /// <summary>
+        /// Current faded level of each of §07's five layers, 0 to 1. Presentation
+        /// only, and the only way to check the crossfade from outside — §07 deliberately
+        /// gives the player no number, so a test cannot read one either and has to look
+        /// at the faders.
+        /// </summary>
+        public float LevelOfTier(int tierIndex)
+        {
+            var layers = _layers;
+            if (layers == null || tierIndex < 0 || tierIndex >= layers.Length)
+            {
+                return 0f;
+            }
+
+            return layers[tierIndex].Level;
+        }
+
+        /// <summary>
+        /// Wires the beds from code, for a scene assembled at runtime.
+        /// <para>
+        /// Re-applies to the live layers when called after <c>Awake</c>, which is the
+        /// normal case for a rig that adds the component and then fills it.
+        /// </para>
+        /// </summary>
+        /// <param name="beds">amb_tension_t1..t5, in §07's escalation order.</param>
+        /// <param name="stingers">UI/threat_*, or nulls. Gated on <c>MatchClock.IsTimeReadable</c>.</param>
+        public void Configure(AudioClip?[]? beds, AudioClip?[]? stingers)
+        {
+            tierBeds = beds ?? new AudioClip?[GameConstants.ThreatTierCount];
+            tierStingers = stingers ?? new AudioClip?[GameConstants.ThreatTierCount];
+
+            var layers = _layers;
+            if (layers == null)
+            {
+                return;
+            }
+
+            for (var i = 0; i < layers.Length; i++)
+            {
+                layers[i].SetClip(i < tierBeds.Length ? tierBeds[i] : null);
+            }
+        }
+
+        /// <summary>
         /// Plays §07's tier stinger, if one is authored and the team is allowed to know
         /// the time.
         /// <para>

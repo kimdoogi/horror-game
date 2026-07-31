@@ -1,0 +1,313 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 315d5b96817204cc6a264dcb5e7d4f71, type: 3}
+  m_Name: MatchAudioLibrary
+  m_EditorClassIdentifier: HorrorGame.Audio::HorrorGame.Audio.MatchAudioLibrary
+  surfaces: {fileID: 11400000, guid: 150ed2e0a441d42e7833fdcfa9c34e2e, type: 2}
+  tensionBeds:
+  - {fileID: 8300000, guid: 239b001b98aaf43a2813b62b3be4bfab, type: 3}
+  - {fileID: 8300000, guid: 1bcf4d715d27c49afb439f2329e1d3bf, type: 3}
+  - {fileID: 8300000, guid: 4a26678ea4104487da73c9e300a57a5e, type: 3}
+  - {fileID: 8300000, guid: 8ba9b4969ca564bc08e1def8fb0a02b8, type: 3}
+  - {fileID: 8300000, guid: 52d2f971e00254d808ba8c765470d7dd, type: 3}
+  tierStingers:
+  - {fileID: 0}
+  - {fileID: 8300000, guid: 101604e48622d4006b17516a7952242e, type: 3}
+  - {fileID: 8300000, guid: 37a49bef7f39f4dd782102ee069b01f5, type: 3}
+  - {fileID: 8300000, guid: 6ee0d343a7f3b45bba041d1a19d8ad08, type: 3}
+  - {fileID: 8300000, guid: 5ff2634b986d44fc4a509c453f0aaa20, type: 3}
+  surfaceBed: {fileID: 8300000, guid: f8926f47941c54af688735a353f97b69, type: 3}
+  incidental:
+    clips:
+    - {fileID: 8300000, guid: d9852910c14e240c6bfc30cc8ac3bd53, type: 3}
+    - {fileID: 8300000, guid: 55767a3e2dd4b4f77b1b6ea4cf1ab487, type: 3}
+    - {fileID: 8300000, guid: 92f8d0c3e0106481ea02468a9a6a1883, type: 3}
+    - {fileID: 8300000, guid: 4203ba4a6f8684992b74e4a80484af87, type: 3}
+    - {fileID: 8300000, guid: fd052915e3d364c78be3fb4f16fb70ea, type: 3}
+    - {fileID: 8300000, guid: 08189d8e3604843c58a1bc6e85d5f6db, type: 3}
+    - {fileID: 8300000, guid: 8e91247e6c62b4c3a886494b9f69ff50, type: 3}
+    - {fileID: 8300000, guid: 19377d4854cde4706b31320c8f9766fa, type: 3}
+    - {fileID: 8300000, guid: 1a446ccfa373f42f1aa3be9233e780a7, type: 3}
+    gain: 1
+  generatorLoop: {fileID: 8300000, guid: 6b851ae15be7b4ac9bfb42a959834ba0, type: 3}
+  zoneHumLoop: {fileID: 8300000, guid: 561e3abe9907545a598b06fd9bea6951, type: 3}
+  flareBurnLoop: {fileID: 8300000, guid: 8e4949ab151ad4df080d6d76d3a37500, type: 3}
+  heartbeatLow: {fileID: 8300000, guid: 5d73e4b762c7347179170427c58d966f, type: 3}
+  heartbeatMid: {fileID: 8300000, guid: ca9a922eae9904187b84fcd632783e7f, type: 3}
+  heartbeatHigh: {fileID: 8300000, guid: 90c2785369fb74167bfd1f193fa970e0, type: 3}
+  monsterPresenceBed: {fileID: 8300000, guid: 9eae29ca35bdd4a79bf924f11a81d306, type: 3}
+  monsterBreath:
+    clips:
+    - {fileID: 8300000, guid: 358195f99b0a04b748001f8a831639b3, type: 3}
+    - {fileID: 8300000, guid: 011ddd402088a42ef8e53d62ccb19155, type: 3}
+    gain: 1
+  monsterGrowls:
+    clips:
+    - {fileID: 8300000, guid: 02d9d0eaf53f4412d8129b10269ef4be, type: 3}
+    - {fileID: 8300000, guid: ebb3132fd772f45beb06bbfa490523c1, type: 3}
+    - {fileID: 8300000, guid: d148fbf9632584f0ab0937464a2e79e0, type: 3}
+    gain: 1
+  monsterRoars:
+    clips:
+    - {fileID: 8300000, guid: 5b3d7e251715749b89b66e87f42d4628, type: 3}
+    - {fileID: 8300000, guid: e0d37f4ae26564969953d619e44a7a9e, type: 3}
+    - {fileID: 8300000, guid: ed33125e16dbd4eeabf35159a5934fb4, type: 3}
+    gain: 1
+  monsterSearches:
+    clips:
+    - {fileID: 8300000, guid: 18fdebee4f04e45f9b4b077578bc39dc, type: 3}
+    - {fileID: 8300000, guid: 135a319c03c77420d855bc4cc92d0a0b, type: 3}
+    gain: 1
+  monsterStuns:
+    clips:
+    - {fileID: 8300000, guid: a3d64a6f89ccb4fb1806a21efe4714cf, type: 3}
+    - {fileID: 8300000, guid: 05617bc2b2d1e41b88032b778c6d851b, type: 3}
+    gain: 1
+  monsterGrabs:
+    clips:
+    - {fileID: 8300000, guid: 7c221b5298c18488ca2b9892ba55a157, type: 3}
+    - {fileID: 8300000, guid: 1dc6b1942a4214d6fa6e24d833134398, type: 3}
+    gain: 1
+  cues:
+  - cue: 1
+    clips:
+      clips:
+      - {fileID: 8300000, guid: a9cda5b7a90fb41fbb1ecbd7a1fd4210, type: 3}
+      - {fileID: 8300000, guid: 7f0fe7495a8384717957a0da6bcb46a2, type: 3}
+      gain: 1
+  - cue: 2
+    clips:
+      clips:
+      - {fileID: 8300000, guid: 8bb5e01ad759344a594d06cee34d03ee, type: 3}
+      - {fileID: 8300000, guid: 418cff1ca8baa4b12bf7774429db150c, type: 3}
+      gain: 1
+  - cue: 3
+    clips:
+      clips:
+      - {fileID: 8300000, guid: 858f0f6caef6842d597d42a5ad22ee71, type: 3}
+      gain: 1
+  - cue: 4
+    clips:
+      clips:
+      - {fileID: 8300000, guid: d6ecbbba8c0674b3c82d02a308dd969b, type: 3}
+      gain: 1
+  - cue: 5
+    clips:
+      clips:
+      - {fileID: 8300000, guid: e346168febe4a4fc98b04b6a7e6bf9c3, type: 3}
+      - {fileID: 8300000, guid: 4f0a6be75bdaf45089595ff2e6f7a090, type: 3}
+      gain: 1
+  - cue: 6
+    clips:
+      clips:
+      - {fileID: 8300000, guid: 06b337606d05147758c1e5ab49a008c8, type: 3}
+      - {fileID: 8300000, guid: d901a3feed1a04026ab962565a0442ef, type: 3}
+      gain: 1
+  - cue: 7
+    clips:
+      clips:
+      - {fileID: 8300000, guid: d291872ce6a214ff19676c2152e09e83, type: 3}
+      - {fileID: 8300000, guid: 7e4c699d917ea47619f89080acbb3cac, type: 3}
+      gain: 1
+  - cue: 8
+    clips:
+      clips:
+      - {fileID: 8300000, guid: 89c96ea208d2b432485aa2c827c27c8c, type: 3}
+      - {fileID: 8300000, guid: 590c9dca0fded4191ba33250b6fd1dd0, type: 3}
+      gain: 1
+  - cue: 9
+    clips:
+      clips:
+      - {fileID: 8300000, guid: b98bd288c975240ea8a802560ec1027a, type: 3}
+      - {fileID: 8300000, guid: 110a70976c8a5482c9a172e48f916230, type: 3}
+      gain: 1
+  - cue: 10
+    clips:
+      clips:
+      - {fileID: 8300000, guid: d6c3e95db954a4574873fe3d8fefdf3f, type: 3}
+      - {fileID: 8300000, guid: 355e298b190b647cba11fc60597d7749, type: 3}
+      gain: 1
+  - cue: 11
+    clips:
+      clips:
+      - {fileID: 8300000, guid: 0c83fe1d1182644889462ab590eb115a, type: 3}
+      - {fileID: 8300000, guid: 178d02d5b6a6848e691dfb6e05d18b93, type: 3}
+      gain: 1
+  - cue: 12
+    clips:
+      clips:
+      - {fileID: 8300000, guid: 7f091846133874f4e9369a983ad7270f, type: 3}
+      - {fileID: 8300000, guid: 693b78d61d8944bdfac230944d99adf3, type: 3}
+      gain: 1
+  - cue: 13
+    clips:
+      clips:
+      - {fileID: 8300000, guid: 12aa1b8490af741e593306ef5558ab8f, type: 3}
+      - {fileID: 8300000, guid: 74555cded9e8d44919c0515cfa48d8a3, type: 3}
+      gain: 1
+  - cue: 14
+    clips:
+      clips:
+      - {fileID: 8300000, guid: 2a2ecdf91a0ec403b929befd5d6e95f8, type: 3}
+      - {fileID: 8300000, guid: 50a36e6b5884346ad860a5009bba290a, type: 3}
+      gain: 1
+  - cue: 15
+    clips:
+      clips:
+      - {fileID: 8300000, guid: 5c9b711cdd44f431faa0d8663a7d2282, type: 3}
+      gain: 1
+  - cue: 16
+    clips:
+      clips:
+      - {fileID: 8300000, guid: ac2cf717ec230441eb26a5ad5a41bdce, type: 3}
+      gain: 1
+  - cue: 17
+    clips:
+      clips:
+      - {fileID: 8300000, guid: 380bc22ac86124631800292572bcf559, type: 3}
+      gain: 1
+  - cue: 31
+    clips:
+      clips:
+      - {fileID: 8300000, guid: 863fdca1317b04a24b785244f646a592, type: 3}
+      gain: 1
+  - cue: 32
+    clips:
+      clips:
+      - {fileID: 8300000, guid: 9a0188884c1cb4eb580dac81e4997742, type: 3}
+      gain: 1
+  - cue: 33
+    clips:
+      clips:
+      - {fileID: 8300000, guid: 3b02d9ac6cde44c54b7ba49010164804, type: 3}
+      gain: 1
+  - cue: 34
+    clips:
+      clips:
+      - {fileID: 8300000, guid: da4a7c8c7e3f3472dad9e7f1dc43f263, type: 3}
+      gain: 1
+  - cue: 35
+    clips:
+      clips:
+      - {fileID: 8300000, guid: 0e7deaf58aaa04b0a9844da587071ae1, type: 3}
+      gain: 1
+  - cue: 36
+    clips:
+      clips:
+      - {fileID: 8300000, guid: 526eb2cbf18b740cb8c1439c98821f93, type: 3}
+      gain: 1
+  - cue: 37
+    clips:
+      clips:
+      - {fileID: 8300000, guid: 9e972b897868943eab73ceb3834260b2, type: 3}
+      - {fileID: 8300000, guid: bd92ac4c90c104a5f83d635609439c2f, type: 3}
+      - {fileID: 8300000, guid: 187587b37d564456a8cc5e93c5aab61b, type: 3}
+      gain: 1
+  - cue: 38
+    clips:
+      clips:
+      - {fileID: 8300000, guid: bd35f559ac80b4574a8e105f2f9003c6, type: 3}
+      gain: 1
+  - cue: 39
+    clips:
+      clips:
+      - {fileID: 8300000, guid: c6f4bcf37c94a43259b3ab1c9cdc24b5, type: 3}
+      gain: 1
+  - cue: 24
+    clips:
+      clips:
+      - {fileID: 8300000, guid: d88523a174b8a4a5bbf19811d194b036, type: 3}
+      gain: 1
+  - cue: 18
+    clips:
+      clips:
+      - {fileID: 8300000, guid: c6d553d2211734d44a1a5c98b380af1b, type: 3}
+      gain: 1
+  - cue: 19
+    clips:
+      clips:
+      - {fileID: 8300000, guid: c8eb71e18c0614eee94a0ae0d8ac1696, type: 3}
+      gain: 1
+  - cue: 20
+    clips:
+      clips:
+      - {fileID: 8300000, guid: fe8f945bce0394792b9c999249765ffb, type: 3}
+      gain: 1
+  - cue: 21
+    clips:
+      clips:
+      - {fileID: 8300000, guid: f50d445c342954c25a906a4654199bdc, type: 3}
+      gain: 1
+  - cue: 22
+    clips:
+      clips:
+      - {fileID: 8300000, guid: 43f91b6e51fa1462897a4e73c93e7ae4, type: 3}
+      gain: 1
+  - cue: 23
+    clips:
+      clips:
+      - {fileID: 8300000, guid: bf1f55a33c59a47b9b3670b072053f02, type: 3}
+      gain: 1
+  - cue: 25
+    clips:
+      clips:
+      - {fileID: 8300000, guid: 9d50447d603f34483854ff313c98a0d7, type: 3}
+      gain: 1
+  - cue: 26
+    clips:
+      clips:
+      - {fileID: 8300000, guid: 01c65d88ccbc349fb81228a6c8696968, type: 3}
+      gain: 1
+  - cue: 27
+    clips:
+      clips:
+      - {fileID: 8300000, guid: 559b5b60aac2547a9ad19408374c2545, type: 3}
+      gain: 1
+  - cue: 28
+    clips:
+      clips:
+      - {fileID: 8300000, guid: ee1b34c1a16a149f6a25bf0b77fe2e60, type: 3}
+      gain: 1
+  - cue: 29
+    clips:
+      clips:
+      - {fileID: 8300000, guid: bf016647e62de4ce18503ef14f1b29c2, type: 3}
+      gain: 1
+  - cue: 30
+    clips:
+      clips:
+      - {fileID: 8300000, guid: 812091a62859e466bb29ea2f3c1abe5a, type: 3}
+      - {fileID: 8300000, guid: 7029d3844cb71433f84dd022f3b768f6, type: 3}
+      gain: 1
+  - cue: 40
+    clips:
+      clips:
+      - {fileID: 8300000, guid: e730c61d1fe6448ed98b7cd12ccb91cb, type: 3}
+      - {fileID: 8300000, guid: b7f55d236a46b46958df683c57cf1eab, type: 3}
+      - {fileID: 8300000, guid: 012fac6fdad08403887fd018943ab9a6, type: 3}
+      - {fileID: 8300000, guid: 16db999abbace400089160821456fc93, type: 3}
+      gain: 1
+  - cue: 41
+    clips:
+      clips:
+      - {fileID: 8300000, guid: 679fb5b41c3874236aca827fa6342fb9, type: 3}
+      gain: 1
+  - cue: 42
+    clips:
+      clips:
+      - {fileID: 8300000, guid: 2bb8fe3d2a73044d68a6a5d926a88f3b, type: 3}
+      gain: 1
+  - cue: 43
+    clips:
+      clips:
+      - {fileID: 8300000, guid: 6a90d845d95cc406f9571cfe0d225fb6, type: 3}
+      gain: 1

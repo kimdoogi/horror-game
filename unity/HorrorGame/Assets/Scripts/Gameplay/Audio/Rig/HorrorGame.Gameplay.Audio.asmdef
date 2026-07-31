@@ -1,0 +1,17 @@
+{
+    "name": "HorrorGame.Gameplay.Audio",
+    "rootNamespace": "HorrorGame.Gameplay.Audio",
+    "references": [
+        "HorrorGame.Core",
+        "HorrorGame.Audio"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

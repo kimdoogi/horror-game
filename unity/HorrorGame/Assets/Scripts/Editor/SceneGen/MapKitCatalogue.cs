@@ -96,8 +96,41 @@ namespace HorrorGame.EditorTools.SceneGen
         /// <summary><c>grid_metres</c> in the kit manifest. Every tile snaps to this.</summary>
         public const float GridMetres = 2.5f;
 
+        /// <summary>
+        /// <c>storey_metres</c> in the kit manifest — how far one floor sits below the
+        /// one above it.
+        /// <para>
+        /// Not a tuned number and not a choice: it is what
+        /// <see cref="MapKitPiece.StairwellMetal"/> was modelled to climb. That piece
+        /// carries two docks on the same edge, one at local height 0 and one at 3.75,
+        /// so a storey of any other height would leave the upper flight opening into a
+        /// wall. §03's clue chain narrows by floor ("물이 있는 층은 지하 3층이다"), which
+        /// only means something if the floors are separated by a stair that fits.
+        /// </para>
+        /// </summary>
+        public const float StoreyMetres = 3.75f;
+
+        /// <summary>
+        /// World Y of a storey's floor. Level 0 is the 출입구 floor and larger indices
+        /// go down, so the sign matches §03's 지하 N층 wording.
+        /// </summary>
+        public static float FloorY(int level) => -level * StoreyMetres;
+
         /// <summary><c>corridor_clear.width</c>. Corridor centre lines sit at the middle of a cell.</summary>
         public const float CorridorClearWidth = 2.2f;
+
+        /// <summary>
+        /// <c>corridor_clear.height</c> — floor to soffit inside a corridor, metres.
+        /// <para>
+        /// This is where a storey stops being somewhere you can stand and starts being
+        /// structure. The NavMesh bake needs the distinction: every kit piece is one
+        /// merged mesh whose ceiling slab is as horizontal and as walkable-looking as
+        /// its floor, so a bake that is not told where the storey ends puts a second
+        /// navigation surface on the roof of the building. See
+        /// <see cref="MapSceneBuilder"/>'s bake volume.
+        /// </para>
+        /// </summary>
+        public const float CorridorClearHeight = 3.0f;
 
         /// <summary><c>gallery_rise_metres</c> — how high above the floor an <see cref="MapKitPiece.ObservationPostGallery"/> sits.</summary>
         public const float GalleryRiseMetres = 3.0f;
@@ -167,6 +200,35 @@ namespace HorrorGame.EditorTools.SceneGen
                 default:
                     throw new ArgumentOutOfRangeException(
                         nameof(piece), piece, "No MapKit file is mapped to this piece.");
+            }
+        }
+
+        /// <summary>
+        /// A piece's own height, metres — <c>height_metres</c> in the kit manifest.
+        /// <para>
+        /// Needed because two pieces are taller than a storey. §12's 20 m 개방 공간 is
+        /// 6.3 m to the roof against a <see cref="StoreyMetres"/> of 3.75, so a hall on
+        /// B2 pushes its roof 2.55 m up into B1 and leaves any corridor over it 1.99 m
+        /// of headroom — under the agent's own height, so §06's monster cannot go
+        /// there and the bake, correctly, does not pretend it can. Nothing else in the
+        /// project can see that: §12's checklist is per-storey and horizontal.
+        /// </para>
+        /// </summary>
+        public static float HeightMetres(MapKitPiece piece)
+        {
+            switch (piece)
+            {
+                case MapKitPiece.HallOpen20x20: return 6.3f;
+                case MapKitPiece.StairwellMetal: return 7.05f;
+                case MapKitPiece.FloorTileWood:
+                case MapKitPiece.FloorTileTile:
+                case MapKitPiece.FloorTileGravel:
+                case MapKitPiece.FloorTileConcrete:
+                case MapKitPiece.FloorTileMetal:
+                case MapKitPiece.FloorBoundarySplit: return 0.154f;
+                case MapKitPiece.DoorPanelLockable: return 2.4f;
+                case MapKitPiece.WallPanelElectrical: return 1.9f;
+                default: return 3.3f;
             }
         }
 
