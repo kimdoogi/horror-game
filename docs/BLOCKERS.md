@@ -199,3 +199,68 @@ So the consequence is design intent lost quietly, not a broken build — but a
 generator that prints two `LogError`s on the happy path means nobody can use "the log
 is clean" as a gate. Either place the halls somewhere legal, or downgrade the message
 and record the compromise.
+
+---
+
+## B-004 · The networking library is a stranger's repack, not Mirror
+
+**Status:** 🔴 open · supply chain · must be resolved before anything ships
+
+### What is installed
+
+`Packages/manifest.json` pulls `com.mirrornetworking.mirror` 96.6.4 from OpenUPM. Its
+own `package.json`, read from the package cache:
+
+```
+name               com.mirrornetworking.mirror
+author             Chaoyang <960208781@qq.com>
+                   https://github.com/960208781/UnityMirror.git
+documentationUrl   https://github.com/MirrorNetworking/Mirror/blob/master/README.md
+```
+
+OpenUPM's registry entry names the same author and carries no `repository` field.
+
+### Why this matters more than it looks
+
+The package **id claims Mirror Networking** and the documentation URL points at the
+official repository, so everything visible from `manifest.json` reads as official. The
+code actually being compiled comes from an individual's fork.
+
+This is the library that carries every byte of §13's P2P traffic between four players'
+machines. On a game that is going to be sold, a networking layer of unverified
+provenance is not a style question.
+
+Nothing here says the repack is malicious. It says nobody has checked, the name implies
+a provenance it does not have, and neither is acceptable at release.
+
+### What the official route is
+
+Verified against the upstream repository:
+
+- `github.com/MirrorNetworking/Mirror` has **no `package.json`** at the root or under
+  `Assets/Mirror`, so it cannot be installed as a UPM git dependency. Every
+  UPM-installable "Mirror" is therefore somebody's repack.
+- Official distribution is a `.unitypackage` from GitHub releases — currently
+  **v96.11.1**, five versions ahead of the repack's 96.6.4 — or the Asset Store.
+
+### The fix
+
+Vendor the official `.unitypackage` into `Assets/`, and delete the OpenUPM dependency
+and its scoped registry from `manifest.json`. Costs a larger repository and manual
+updates; buys a dependency whose origin can be pointed at.
+
+Do it as its own change, with the full suite run afterwards: it swaps the assembly the
+whole `Assets/Scripts/Net/` layer compiles against, and `FizzySteamworks` is built on
+top of it.
+
+### Also worth checking at the same time
+
+`com.mirror.steamworks.net` (FizzySteamworks) comes from `github.com/Chykary/FizzySteamworks`,
+which IS the project's own repository — that one is fine. `com.rlabrecque.steamworks.net`
+comes from `rlabrecque/Steamworks.NET`, also the real one. Mirror is the only dependency
+whose publisher is not the project.
+
+### Not urgent tonight, urgent before release
+
+The playable build is single-player; Mirror is compiled in but not exercised. So this
+blocks the four-player milestone and the store page, not tomorrow's playtest.
