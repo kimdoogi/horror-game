@@ -325,7 +325,7 @@ real floor.
 
 ### Also worth knowing — the checklist is necessary, not sufficient
 
-§12's 첫 맵 스케치 passes all sixteen validator rules and still grades **10/10
+§12's 첫 맵 스케치 passes all seventeen validator rules and still grades **10/10
 TooEasy** on 실전 검증. Passing the checklist means a map is not broken; it does not
 mean it is good. §12 already implies this by specifying both, but it is easy to read
 the checklist as the finish line.
@@ -334,28 +334,76 @@ Pinned by `MapTests.SketchMap_PassesTheChecklistAndStillGradesTooEasy`.
 
 ---
 
-## F-006 · Matches finish in 7.2 minutes against §01's 25~35 — and the 2.5 minutes this used to say was measured on a building the game does not have
+## F-006 · Matches finish in 7.2 minutes against §01's 25~35 — and what ends them is the battery, not the clock
 
-**Sections:** §01 (한 판의 흐름) × §07 (시간 = 위협도) × §08 (경제)
+**Sections:** §01 (한 판의 흐름) × §07 (시간 = 위협도) × §08 (경제) × §03 (배터리)
 · **Priority:** 🔴 highest — it invalidates the tuning of everything downstream
-· **Status:** open, and moved a long way for the first time
-· **Source:** 500 simulated matches, seeds 1–500, run on 요양원 지하 5층 itself
+· **Status:** open, and for the first time this entry ends in a recommendation rather than a list
+· **Source:** 500 matches on 요양원 지하 5층 itself (seeds 1–500), plus five swept axes at
+300–400 matches per point over identical seeds
+· **Measured:** 2026-08-01, 03:43–07:10
 
-> **Re-run and re-confirmed 2026-08-01 03:20**, exit 0, after the four parallel passes
-> were merged and the simulator's own build break was fixed (see
-> [STATUS.md §1.2](STATUS.md) — `HorrorGame.Sim.csproj` did not compile `RunnerCensus.cs`,
-> so `dotnet build core/HorrorGame.sln` failed on 2 errors before this pass). Every
-> figure below reproduced **byte for byte**, including the banner census, which is the
-> check this section asks you to make. Nothing here is carried forward.
+> ### ⚠ Re-run every number below once F-007's reshape lands
+>
+> These matches were run on the building the game shipped this morning — 164 places,
+> 180 passages, 217.5 m, seed 1204, verified identical in the banner of every run and
+> against [STATUS.md §1.6](STATUS.md). **At 04:11, mid-sweep, a seventeenth `MapValidator`
+> rule landed from [F-007](#f-007)'s pass and this building now fails it:**
+>
+> ```
+> dotnet run -c Release --project core/HorrorGame.Sim -- validate
+> §12 map validation: failed [sight-break-spacing]      → exit 6
+> ```
+>
+> Nothing in the numbers below moved — the graph is unchanged and
+> `replay --seed 42 --times 3` still gives `PartialVictory, 11.19 min, 1115 credits earned,
+> 11 clues read`, exactly as it did before the rule existed. But `MapSceneGenerator` will
+> now refuse to write that scene, so **the building is going to change**, and when it does
+> every figure on this page changes with it. The commands are in §8; run them, do not
+> re-read this.
 
-### Measured — 2026-08-01, on the building the game ships
+---
+
+### Read this part first: it was measured against the wrong building for weeks
+
+`core/HorrorGame.Sim/SimMap.cs` used to build **its own** four-zone ring out of
+`GameConstants` and never read the level:
 
 ```
-=== the building these matches were run in
-  요양원 지하 5층 (B1 하역장 · B2 기록보관소 · B3 기계실 · B4 저탄장 · B5 저수조)  (seed 1204)
-  5 zones · 164 places · 180 passages · 17 순환로 · 41 막힌 길 · footprint 50 m × 92.5 m
-  §12 validation PASS · 후보 지점 15 · 전리품 41 · 금고 2 · monster spawn 217.5 m from the door
+§12 첫 맵 스케치 (sim): 4 zones, 38 nodes, 47 edges, 10 loops
+sites 12  loot 9  safes 2  monster spawn 52 m from the door
+§12 validation PASS
+```
 
+Against the shipped building: **38 places against 164, 47 passages against 180, and the
+monster spawning 52 m from the door against 217.5 m.** Both maps pass §12's core
+rules. They are two different buildings that both cite §12. So when the Unity level grew
+from three storeys to five and this document reported the simulator's numbers as
+"identical to three significant figures", that was not a coincidence and not a bug — the
+grown map was never in the measurement.
+
+`SimMap` now calls `FirstMapSketch.Build(seed)`, the same call `MapSceneGenerator` makes
+before it lays a single FBX, compiled into the simulator rather than exported to it. The
+first five lines of every population report are the building's own §12 census and must
+reproduce [STATUS.md §1.6](STATUS.md), which measures the same census from the Unity
+scene with a different tool. **The day they stop agreeing, this finding is being measured
+against the wrong map again.**
+
+**That banner earned itself again tonight.** Halfway through these sweeps it flipped from
+`§12 validation PASS` to `§12 validation FAIL` while every census line stayed
+byte-identical — a seventeenth `MapValidator` rule landing from [F-007](#f-007)'s pass,
+not a change of building. Every number below is from the same 164-place, 180-passage,
+217.5-metre building; without the banner that would have been a guess.
+
+---
+
+### 1 · The zero point — 500 matches, seeds 1–500
+
+```
+dotnet run -c Release --project core/HorrorGame.Sim -- run --matches 500 --seed 1
+```
+
+```
 §01 match length — target 25~35 min
   median                                             7.2 min
   p10 / p90                                          4.2 min / 32.4 min
@@ -364,6 +412,7 @@ Pinned by `MapTests.SketchMap_PassesTheChecklistAndStillGradesTooEasy`.
   ended with every light dead                        40.6%
   median of the rest                                 17.1 min
   inside the window, of the rest                     26.6%
+  best 10-min window this population offers          2.8 min~12.8 min holds 58.2%
 
 §07 threat curve
   mean tier at end (0=초저녁 … 4=동트기 전)                 1.12
@@ -372,61 +421,403 @@ Pinned by `MapTests.SketchMap_PassesTheChecklistAndStillGradesTooEasy`.
   reached 동트기 전 (tier 4, 32 min)                     13.0%
 ```
 
-Reproduce with:
+Unchanged from the 2026-08-01 03:20 run, byte for byte, after the ledger below was added.
+The bigger map is what moved this from 2.5 min / 0.6% / 1.2%; that half of the finding is
+settled and the before-and-after table is at the end of this entry.
+
+**The one line to carry forward is the last one.** §01 asks for a 10-minute window and
+names it 25~35. The 10-minute window this population actually offers is **2.8~12.8 min**,
+and it holds 58.2%. The game is not a 25-minute game that finishes early. It is a
+7-minute game.
+
+---
+
+### 2 · A new instrument: what §07 prices, against what the simulator charges
+
+§07 is the only section that writes down what an action is supposed to *cost*:
+
+| 행동 | 비용 |
+|---|:--:|
+| 한 층 더 탐색 | ~3분 |
+| 나가서 배터리 교체 | ~1분 |
+| 전리품 하나 더 줍기 | ~40초 |
+| 상점에서 고민 | ~30초 |
+
+Nothing in this project had ever measured what the simulator charges for the same four
+things. `SimTimeLedger` now does: every fixed step of every living player lands in exactly
+one of seven buckets, and the counters underneath are the denominators.
 
 ```
-dotnet run -c Release --project core/HorrorGame.Sim -- run --matches 500 --seed 1
+§07 행동 · 비용 — what the design prices, and what these agents spent
+  후보 지점 searched / 전리품 lifted / 왕복                   13.42 / 21.06 / 4.01 per match
+  한 층 더 탐색 (§07 ~3분 → ~60s per 후보 지점)                46.54s measured   ×1.29 to reach §07
+  전리품 하나 더 줍기 (§07 ~40초)                             25.12s measured   ×1.59 to reach §07
+  나가서 + 상점, match seconds (§07 ~1분 + ~30초)           8.02s measured   ×11.23 to reach §07
+  …and the walk out to reach the door, per player    105.97s measured   ×0.57 to reach §07
+  agent-seconds: 단서 walk / stand                     573.44 / 51.17
+  agent-seconds: 전리품 walk / stand                    526.09 / 2.88
+  agent-seconds: 왕복 walk / at the vehicle            425.37 / 681.94
+  agent-seconds: fleeing (§06)                       321.43
+  §07's bill ÷ what was spent, in agent-seconds      3092.68 / 2260.89  =  ×1.37
 ```
 
-**Read the first five lines of that output before reading any of the rest.** They are the
-building, and they must reproduce [STATUS.md §1.6](STATUS.md), which measures the same
-census from the Unity scene with a different tool. The day they stop agreeing, this
-finding is being measured against the wrong map again — which is exactly what had
-happened for every measurement before this one.
+§07's 한 층 더 탐색 is converted at 3 후보 지점 per storey (§12 puts 15 across 5 storeys),
+so ~3분 per storey is ~60 s per site. The first two rows are one player's decision and are
+compared in that player's seconds; the last two are the team's and §07 prices them in
+wall-clock with everybody present, so they are compared in match seconds.
 
-Seeds 1001–1500 give 6.2 min median, 17.0% inside the window, 41.0% ending with every
-light dead, so the numbers above are the population and not the seed block.
+**Three things fall out, and the third is the whole finding.**
 
-**These numbers belong to that census and no other.** They were taken against the
-building whose §12 report is [STATUS.md §1.6](STATUS.md) — 164 places, 180 passages,
-16/16 rules, 주자 테스트 10/10. [F-007](#f-007) is a live proposal to reshape that
-building, and reshaping it will move every figure on this page. That is now a feature
-rather than a hazard: the banner records which building each run measured, so the next
-person to quote a match length can check it against the map they think they have.
-`horrorsim validate` exits 6 rather than 0 when §12 rejects the map, so a measurement
-taken mid-edit announces itself — as it did at 02:34 on 2026-08-01, when F-007's reshape
-was in flight and `validate` returned
-`failed [straight-corridor, s-corridor-per-zone, dead-ends]`. **The first thing to do
-after F-007 lands is to re-run the one command above and re-quote this section**; nothing
-here survives a change to the building, and now nothing here can silently outlive one.
+**The simulator is mildly short on the two rows it charges at all** — ×1.29 on searching a
+후보 지점, ×1.59 on lifting a 전리품. Those are the gaps a hesitating human would fill.
 
-### What the simulator used to be measuring
+**It is already over on the walk.** §07 prices 나가서 배터리 교체 at about a minute; the
+walk to the door alone measures **105.97 s per player**. §07's table was written against
+a building the game no longer has — the same mistake, one layer up, in the design document
+rather than in the simulator.
 
-`core/HorrorGame.Sim/SimMap.cs` built **its own** four-zone ring out of `GameConstants`
-and never read the level. Compiling the previous version against Core and asking it for
-its own census:
+**And the round trip §03 is built on costs eight seconds.** The team is above ground
+together for **8.02 match seconds** per round trip against §07's 90. §07's whole argument
+for a clock over a descent counter — 나가서 쉬는 것에 대가가 있다, 쇼핑이 결정이 된다 — is
+worth eight seconds. That is the largest single gap in the ledger and it is not a rounding
+error; it is a missing mechanic.
+
+---
+
+### 3 · The four options, swept
+
+Every table below is 400 matches per point on identical seeds, so the difference between
+rows is attributable to the knob. All are reproducible from the simulator's new axes.
+
+#### Option 1 — make traversal cost real time · **DONE, and it delivered**
+
+38 places → 164, 52 m → 217.5 m from the door to the monster. Median 2.5 → 7.2 min,
+inside §01's window 0.6% → 15.8%, 심야 1.2% → 33.6%. §12 leaves little room for more:
+five floor materials cap the building at five zones and a 40 m zone diagonal caps their
+area, so a sixth storey needs a sixth surface as well as a sixth zone.
+
+#### Option 2 — compress §07's threat curve
 
 ```
-§12 첫 맵 스케치 (sim): 4 zones, 38 nodes, 47 edges, 10 loops
-zones 4  places 38  passages 47  loops 10  dead ends 9  footprint 49.5 x 49.5
-sites 12  loot 9  safes 2  monster spawn 52 m from the door
-§12 validation PASS
+dotnet run -c Release --project core/HorrorGame.Sim -- sweep tier-minutes --matches 400 --seed 1
 ```
 
-Against the shipped building: **38 places against 164, 47 passages against 180, and the
-monster spawning 52 m from the door against 217.5 m.** Both maps pass §12's sixteen
-rules; they are two different buildings that both cite §12. So when the Unity level grew
-from three storeys to five on 2026-08-01 and this document reported that the simulator's
-numbers were "identical to three significant figures", that was not a coincidence and not
-a bug — the grown map was not in the measurement at all.
+```
+tier (min)    med     p10     p90     in25-35 dark%   medRest inRest  밤%     심야%   새벽%   동트기% trips   deaths  clear   surv    earned
+8             8.33    4.17    32.49   17.5    39.75   17.25   29.05   50.25   35      19      15      3.02    0.69    11.5    55      878.64
+6             8.39    4.17    24.59   2.5     39.75   16.61   4.15    52      44.5    24.75   18.25   2.77    0.61    15      57.75   872.69
+4             7.47    4.17    16.86   0       39.5    12.67   0       96      48.75   32.5    26      2.33    0.57    13.5    63.75   820.29
+3             7.1     4.17    12.85   0       39.5    12.01   0       98.5    51.5    45      30.5    2.11    0.49    14.75   66.75   802.49
+2             5.05    4.17    8.93    0       39.75   8.56    0       99.75   95.75   43.25   38.75   1.7     0.41    10.25   77.25   639.03
+1.5           4.94    4.17    7       0       38      6.56    0       100     98.75   54.5    43      1.63    0.38    12      77.75   607.15
+```
 
-`SimMap` now calls `FirstMapSketch.Build(seed)`, which is the same call
-`MapSceneGenerator.Generate` makes before it lays a single FBX. Not an export of the
-graph — the authoring sources themselves, compiled into the simulator by
-`HorrorGame.Sim.csproj`, so the two cannot drift: change the building and the next
-`dotnet run` measures the change.
+**It works on the thing it is for, and it makes match length worse.** At 4-minute bands
+심야 goes 35% → 48.75%, 새벽 19% → 32.5%, 동트기 전 15% → 26%, and 밤 becomes near-universal
+at 96%. But the median falls 8.33 → 7.47 and at 2-minute bands to 5.05, because §07's last
+tier is a **forced evacuation** — `MustSurface` fires at 동트기 전 and the shop sets
+`_evacuating` at the same row. Compressing the curve brings the exit forward. Earnings fall
+with it, 878.64 → 639.03.
 
-### Before and after, same command, same seeds
+**What it costs is not what the previous edition of this entry said.** That reading was
+"compressing throws away §07's gradualness, which was chosen deliberately". Gradualness is
+measured in tiers-a-team-lives-through, not in minutes-per-tier, and at 8-minute bands the
+*typical* match lives through **one**. Compression does not spend gradualness; it delivers
+it to the two thirds of matches that currently see one row of a five-row table. What it
+actually costs is **eight minutes off the top of the long matches and 5% of the economy.**
+
+#### Option 3 — add required dwell time
+
+`SimScenario` charges §07's four costs as dwell an agent owes to whatever it is standing
+over. Scale 0 is the shipped simulator, 1 is §07's table exactly as written.
+
+```
+dotnet run -c Release --project core/HorrorGame.Sim -- sweep dwell --matches 400 --seed 1
+```
+
+```
+§07 costs ×   med     p10     p90     in25-35 dark%   medRest inRest  밤%     심야%   새벽%   동트기% trips   deaths  clear   surv    earned
+0             8.33    4.17    32.49   17.5    39.75   17.25   29.05   50.25   35      19      15      3.02    0.69    11.5    55      878.64
+0.5           6.67    6.67    6.81    6.25    91.25   32.56   71.43   8.25    7.75    6.25    4.75    1.33    0.11    2       95.5    121.05
+1             9.41    9.41    9.6     0       100     0       0       100     0       0       0       1       0.01    0       100     0
+1.5           13.01   11.56   13.05   0       100     0       0       100     0       0       0       1       0       0       100     0
+2             14.88   14.88   14.92   0       100     0       0       100     0       0       0       1       0       0       100     0
+3             21.89   21.89   21.93   0       100     0       0       100     100     0       0       1       0       0       100     0
+```
+
+**Charging §07's own action-cost table ends the game on the first descent, every time.**
+At ×1: 100% end with every light dead, 1.00 round trips, 0 credits earned, 0% objective
+recovered, 0% 완전 승리, and p10 = p90 = the median. Every match is the same length because
+every match ends the same way.
+
+The arithmetic behind that is short, and it is a contradiction between two sections rather
+than a defect in either:
+
+```
+light the team walks in with   4 players × BatterySecondsPerCell 210 s   =   840 player-seconds
+§07's underground bill         13.42 sites × 60 s + 21.06 전리품 × 40 s  =  1 648 player-seconds
+```
+
+**§07's action costs are twice the light §03 and §08 give the team to spend, before a
+single step is walked.** §16-5 already flags `BatterySecondsPerCell` as "the value that
+sets the round-trip rhythm"; this is that flag coming due on a building 2.2× the size it
+was set for.
+
+So option 3 is not "still open and cheaper than it was". **It is unaffordable at the
+current battery, and it is the correct change once the battery is fixed** — §01 and §03
+both want time spent on tension rather than on corridors, and the ledger says the
+corridors currently take 1 100 of the 2 260 agent-seconds the priced actions consume.
+
+#### Option 4 — accept a shorter match and rewrite §01 and §07 around it
+
+This one is a documentation change, so what the simulator can contribute is the two
+numbers the rewrite would have to contain.
+
+**What §01 would have to say.** §01's window is 10 minutes wide. The 10-minute window this
+population actually offers is **2.8~12.8 min, holding 58.2%** — computed over the real
+match lengths rather than over a grid, so it is the true optimum. §01 would read
+「한 판의 흐름 (3~13분)」.
+
+**What §07 would then be forced to say, whether or not anybody meant it to.**
+`GameConstants.Validate()` asserts `ThreatTierSeconds * 3f < TargetMatchSecondsMax` —
+"§07: a match must be long enough to reach the late tiers." At a 13-minute maximum that
+caps a threat band at **4.3 minutes**, so §07's table would have to be rewritten to roughly
+2.5-minute bands. The option-2 sweep has already measured that row: at 2-minute bands the
+median falls to **5.05 min** and earnings to **639.03 from 878.64 — 27% of the economy
+gone.** Options 2 and 4 are the same decision wearing two hats, and the build fails rather
+than letting them drift apart.
+
+**And after recommendations 1 and 2 below, the same measurement gives a completely
+different answer.** With four cells' worth of light the best 10-minute window is
+**14.6~24.6 min holding 60.7%** — §01 would read 「15~25분」, which needs no change to §07
+at all because three 8-minute bands still fit inside it. **That is the argument for doing
+the recommendation before rewriting anything:** the window §01 would be rewritten to today
+is a window produced by a defect.
+
+#### The bootstrap — the population option 2 and 3 both trip over
+
+40.6% of matches end because every light is dead and the wallet cannot buy another cell.
+`round_trips_1` is **205 of 500**. The mechanism is a wallet, not a torch:
+**could afford a 소모품 after the 1st return — 59.8%**, and the 40.2% who cannot are the
+40.6% who end dark.
+
+N spare cells carried in is (N+1) × 210 s of light per player, so this axis is really
+"how long must a cell be", expressed in a knob reachable from outside Core. 300 matches,
+seeds 1–300 — the zero point is 8.9 min rather than 7.2 because it is a different seed
+block, and every row here must be read against that zero, not against §1.
+
+```
+spare cells   light/player  med     p10     in25-35 dark%   medRest inRest  best 10-min window   trips   2~5왕복 심야%   새벽%   earned
+0             3.5 min       8.9     4.2     18.3    40.0    17.6    30.6    2.8~12.8 @ 57.3%     3.07    44.7    35.3    20.0    882.87
+1             7 min         10.5    7.6     20.0    39.7    19.2    33.1    7.6~17.6 @ 59.0%     2.97    45.0    38.7    20.7    881.38
+2             10.5 min      13.2    11.1    24.3    40.3    22.2    40.8    10.2~20.2 @ 58.3%    2.73    53.7    44.0    25.7    847.95
+3             14 min        16.7    14.6    31.0    39.0    26.7    50.8    14.6~24.6 @ 60.7%    2.53    56.3    51.7    31.3    850.25
+```
+
+**This is the strongest single lever measured tonight, and it is not the lever it looks
+like.** Four cells' worth of light takes the median from 8.9 to 16.7 min, §01's window from
+18.3% to 31.0%, §03's 2~5 왕복 compliance from 44.7% to 56.3%, and 심야 from 35.3% to 51.7%.
+The median of the teams that do not end dark reaches **26.7 min — inside §01's window** —
+with 50.8% of them in it.
+
+**And the dark share does not move at all: 40.0 → 39.7 → 40.3 → 39.0%.** Earnings do not
+move either (882.87 → 850.25), nor loot sold (19.84 → 19.35). More light buys *minutes*,
+not *solvency*: the same teams still surface broke, they just take longer to get there.
+Whatever fixes the 40% has to be in §08's price table, which is §16-2's question and is
+swept separately below.
+
+#### And it is not a price problem either — those teams surface with nothing at all
+
+§16-2's own axis is what 전리품 fetches against §08's unchanged prices. Doubling it,
+300 matches, seeds 1–300, against the same zero point:
+
+| | shipped | 전리품 × 2 | 전리품 × 3 |
+|---|:--:|:--:|:--:|
+| credits after the 1st return | 312.71 | **648.02** | **976.27** |
+| could afford a 소모품 after the 1st return | 59.8% | 61.3% | 61.3% |
+| **ended with every light dead** | **40.0%** | **39.3%** | **39.0%** |
+| median match | 8.9 min | 8.7 min | 8.7 min |
+| inside §01's 25~35 | 18.3% | 18.0% | 18.3% |
+| earned per match | 882.87 | 1752.33 | 2648.55 |
+| loot sold / left behind | 19.84 / 19.67 | 19.73 / 19.75 | 19.87 / 19.58 |
+
+**The economy triples and the population moves one point.** That settles what the 40% is.
+They are not poor — they are **empty-handed**: twice nothing is still nothing. A team that
+comes back from its first descent with no 전리품 in its pockets cannot buy a battery at any
+price, and it is the same 40% at 1×, 2× and 4× the light.
+
+**Why they come back empty is a collision between two of the design's own rules.** §12 puts
+전리품 in 막힌 길 — "막힌 길에 좋은 것을 둔다" — and §03 puts 단서 on 후보 지점. On 74
+places those were the same journey. On **164 places over five storeys they are two
+different journeys**, and a first descent that follows §03's chain, which §03 makes the
+only thing that *must* happen, walks past no loot at all.
+
+---
+
+### 4 · The part no simulator can measure, with the arithmetic instead of the hope
+
+Simulated agents do not hesitate, argue, get lost or freeze. §07 is the one section that
+put a number on how long a person takes, so it is the only non-speculative estimate
+available — and the ledger in §2 is what it can now be compared against.
+
+**§07's own table says the overhead is ×1.37, not ×3.** Weighted by how often this
+population takes each action — 13.42 후보 지점, 21.06 전리품, 4.01 왕복 per match — §07
+bills **3 092.68 agent-seconds** for the four priced actions and the simulator spends
+**2 260.89**. That is the honest multiplier the design document itself implies, and it is
+2.2× smaller than a 3× guess.
+
+**Multiplied out, it says 7.2 min becomes 9.9.** `7.2 × 1.37 = 9.86`.
+
+**Simulated rather than multiplied, it says 9.41.** The dwell sweep at ×1 gives a median of
+**9.41 min** — within 5% of the 9.86 the multiplication predicts, from a different seed
+block whose own zero is 8.33.
+
+**But look at what the two disagree about.** As a *multiplier* the simulation says ×1.13
+where the arithmetic says ×1.37, and the gap is not noise: §07's bill is per action, and at
+×1 the match dies before most of the actions are taken. Round trips fall 3.02 → **1.00**.
+A team that never makes a second descent never pays for the second descent's 후보 지점.
+**The arithmetic overcharges because it assumes the match survives to be charged.**
+
+**And the 3× hypothetical is arithmetically right and directionally wrong.** `7.2 × 3 = 21.6`;
+the simulator at §07's costs × 3 measures **21.89 min**. The multiplication lands. What it
+lands on is this:
+
+```
+§07 costs × 3   med 21.89   dark% 100   trips 1.00   earned 0   objective 0%   clear 0%   새벽% 0
+```
+
+**A team three times slower than the simulator does not play a 22-minute version of this
+game. It plays the first four minutes of it for 22 minutes** — one descent, no sale, no
+second trip, no objective, and §07's clock arriving at 심야 over a team that has nothing
+left to spend there. The picture changes, and not in the direction the arithmetic
+suggests.
+
+**What §07 does not price at all is the talking**, and §01 and §03 make the talking the
+game: 단서 반출 금지 means "그 자리에서 보고, 기억해서, 말로 전달해야 한다", and §08's
+공용 지갑 makes every purchase a four-way negotiation. None of that is in §07's four rows,
+none of it is in the simulator, and the only instrument that can size it is a human at a
+mouse. What the ledger contributes is the scale to hold the answer against: **13.42 후보
+지점 per match means every 10 seconds a real team adds to searching one is 2.2 minutes of
+match length.** That is the sensitivity, and it is why measurement 4 in §6 below is the one
+worth instrumenting first.
+
+---
+
+### 5 · RECOMMENDATION
+
+**Ship these three, in this order. Do not touch §07's curve and do not rewrite §01 yet.**
+
+**1 · Put 전리품 on the first descent's route.** This is the only change that addresses the
+40.6% directly, and it is a §12 placement rule rather than a number: §12's 막힌 길 and §03's
+후보 지점 stopped being the same journey when the building doubled. Doubling what loot
+fetches moves the population **0.7 points**; quadrupling the light moves it **1.0 point**;
+nothing else tried tonight moves it at all. Until it moves, every other lever is being
+measured on a population that is already out of the game — which is exactly why option 3
+looks catastrophic below.
+
+**2 · `BatterySecondsPerCell` 210 s → 700–840 s**, or the same light delivered as 2–3 spare
+cells carried in. §16-5 already flags this constant as "the value that sets the round-trip
+rhythm"; the building has grown 2.2× since it was set, and the walk to the door alone now
+measures 105.97 s against a cell's 210. Measured, on its own, 300 matches:
+
+| | shipped (3.5 min of light) | 3 spare cells (14 min) |
+|---|:--:|:--:|
+| median match | 8.9 min | **16.7 min** |
+| inside §01's 25~35 | 18.3% | **31.0%** |
+| **median of the teams that do not end dark** | 17.6 min | **26.7 min — inside §01's window** |
+| …and the share of them inside it | 30.6% | **50.8%** |
+| §03's 2~5 왕복 | 44.7% | **56.3%** |
+| reached 심야 / 새벽 | 35.3% / 20.0% | **51.7% / 31.3%** |
+| earned per match | 882.87 | 850.25 |
+
+Adding §16-2's economy on top of it changes what the team *owns*, not how long the match
+runs — 전리품 × 2 with the same 3 cells gives median 16.9 min and 30.7% in the window
+against 16.7 and 31.0%, with 완전 승리 11.3% → **16.3%** and 강화 아이템 affordable after the
+first return to **61.0%**. **Light is the length lever; price is the §16-2 lever; neither is
+the 40%.**
+
+**Together 1 and 2 are the whole recommendation.** Fix the empty-handed descent and the
+population converges on the row this table already measures: **a 26.7-minute median, with
+half of it inside §01's window, without touching §07 at all.** That is the argument for
+doing these two and stopping to look.
+
+**3 · Then charge §07's action costs** — option 3 — because §01's remaining minutes should
+come from tension rather than from corridors, and the ledger says corridors currently take
+1 099 of the 2 261 agent-seconds the priced actions consume. It is **unaffordable today**:
+at one spare cell it produces 97.7% dark and 17.35 credits a match, at two spare cells
+97.0% and 20.18. It costs roughly **3.3 cells of light per player per sweep of the
+building**, which is the same decision as 2 and must be priced with it, not after it.
+
+**Do NOT compress §07's curve.** Option 2 delivers the tiers — 심야 35% → 48.75% at
+4-minute bands — and pays **eight minutes off the long matches and 5% of the economy** for
+them, because §07's last row is a forced evacuation and compressing the curve brings the
+exit forward. After 1 and 2 it is unnecessary: at a 26.7-minute match an 8-minute band
+gives the team three of five rows, which is §07 working as written.
+
+**Do NOT rewrite §01 yet.** The honest 10-minute window today is **2.8~12.8 min holding
+58.2%**, and rewriting §01 around that would be writing the defect into the design. After
+1 and 2 the non-broke population's median is 26.7 min, which is inside the window §01
+already has.
+
+> **One hard constraint the designer must know before choosing between options 2 and 4:
+> they are not independent, and `GameConstants` already says so.**
+> `Validate()` asserts `ThreatTierSeconds * 3f < TargetMatchSecondsMax` — "§07: a match
+> must be long enough to reach the late tiers." Shortening §01's window below 24 minutes
+> forces §07's bands below 8. Whichever is decided first decides the other, and the build
+> fails rather than drifting.
+
+---
+
+### 6 · What to measure in the first real playtest — §14 Q3, 「지금 나갈까?」
+
+Five numbers, in the order they decide things. Every one of them has a simulated value to
+be surprised by.
+
+| # | Measure | Sim says | What it settles |
+|:--:|---|:--:|---|
+| 1 | Did the first descent come back with anything to sell? | **59.8%** could afford the cheapest item | Whether the 40.6% is real or is the simulator's priority order. A human deviates 10 m for a silver spoon; the agent does not until §03's chain is exhausted. **This is the single most important thing to watch, and it is watchable without any instrumentation.** |
+| 2 | Did the descent end because you chose to leave, or because the torch died? | the torch, **40.6%** of the time | Recommendation 2. If humans surface by choice, `BatterySecondsPerCell` is fine and the simulator's agents are simply worse at leaving. |
+| 3 | Seconds from "we should go" to back underground | **8.02** — §07 says 90 | Whether §07's 왕복 rows describe anything. If four humans take 90 s, the simulator is missing a mechanic; if they take 8, §07's row is wrong. |
+| 4 | Seconds to search one 후보 지점 | **46.54** — §07 says ~60 | The whole match length. 13.42 sites a match: every 10 s of error is **2.2 minutes**. |
+| 5 | Which §07 tier were you in when you decided to leave? | 초저녁 or 밤, **66.4%** of matches | Whether §07's curve is content or decoration. If everybody answers 초저녁, compress it after all. |
+
+Numbers 1 and 4 are worth writing down by hand on the first session; 2, 3 and 5 are worth a
+line of telemetry each. **None of them needs a build.** Two instances, Discord, four people
+— §14 step 2, which every automated gate in this project now points at.
+
+---
+
+### 7 · What is honest to doubt in these numbers
+
+- **The 40.6% is partly the simulator's own policy.** `MatchSimulator.ChooseIntent` ranks
+  §03's chain above §08's 전리품, because §03 calls loot optional outright. A human walking
+  past a 은수저 picks it up. The size of the artefact is bounded from one side — doubling
+  loot value moves the population 0.7 points, so it is not a *price* problem — but only a
+  playtest separates "the loot is off the route" from "the agent is a worse player than a
+  person". Measurement 1 above is exactly that test.
+- **The simulator's graph is a plan, not a section.** `MapGraph.NearestNode` measures
+  horizontally. `horrorsim validate` reports **6 places it cannot tell apart across
+  storeys**, one of them a 후보 지점 (`C_저탄조`), whose clue marker resolves onto the
+  storey above. Self-consistent, and it *understates* traversal for one host in fifteen.
+  Pinned against by `MapTests.MapDistances_AreHorizontal`, so it is a decision, not a patch.
+- **The dwell model is a choice, not a measurement.** A chase cancels a dwell and the
+  seconds already spent buy nothing; §07's 한 층 더 탐색 is converted at 3 후보 지점 per
+  storey. Both are stated on `SimScenario` and both are arguable.
+- **Nothing ran away.** 0.0% of the zero-point population hit the simulator's 40-minute
+  cap, so the long tail is real play and not a stuck agent. Under §07's costs the *whole*
+  population collapses onto one length (p10 = p90 = median), which is a result rather than
+  a bug — every match ends the same way.
+- **These numbers belong to one census and no other.** 164 places, 180 passages, 217.5 m,
+  seed 1204. [F-007](#f-007) is a live proposal to reshape that building and a
+  seventeenth `MapValidator` rule landed during these runs; the banner records which
+  building each number came from, and re-quoting this entry after F-007 lands is the first
+  thing to do.
+
+---
+
+### 8 · Before and after the map grew — the half of this finding that is settled
+
+Same command, same seeds, the ring against the shipped building:
 
 | | on the ring (38 places) | on 요양원 지하 5층 (164 places) |
 |---|:--:|:--:|
@@ -442,88 +833,23 @@ graph — the authoring sources themselves, compiled into the simulator by
 | chases broken | 59.6% | **87.7%** |
 | loot sold / left | 4.68 / 2.34 | **19.49 / 19.94** |
 | earned ÷ cost of one of everything | 0.17 | **0.70** |
-| `purchase_upgraded_flashlight` events / 500 matches | 23 | **283** |
-| bought a 강화 아이템 at all | 63.8% | 59.2% |
+| `purchase_upgraded_flashlight` per 500 matches | 23 | **283** |
 | objective recovered | 63.8% | **43.8%** |
 
-### The verdict: a bigger map moved F-006 a long way and did not close it
+All five of §07's tiers are reached by real matches, which is the specific claim this
+finding was opened about. Seeds 1001–1500 give 6.2 min median, 17.0% inside the window and
+41.0% ending dark, so the figures above are the population and not the seed block.
 
-**Option 1 works.** It is the first thing tried against this finding that has moved it at
-all, and it moved it by a lot: the median match nearly tripled, the share landing in
-§01's window went up 26-fold, and the share that ever sees 심야 went up 28-fold. **All
-five of §07's tiers are now reached by real matches**, which is the specific claim this
-finding was opened about — 심야's −30% flashlight, 새벽's "괴물이 출입구를 안다" and
-동트기 전's 생존 불가 수준 are content now, seen by 33.6%, 17.4% and 13.0% of matches
-respectively.
+**The clue chain now fails more often than it succeeds** — it pins a site in 51.2% of
+matches against 86.4% on the ring, with clue reads 9.66 → 20.11 and misreads 1.93 → 3.34.
+Five storeys means a misread on the floor mapping costs a whole extra descent instead of a
+corridor. That is §03 working as written — "이 게임의 주된 웃음이자 사망 원인" — and it is
+also why 43.8% of matches recover the objective against 63.8%. Whether that is good is a
+design decision, and §14 Q4 is the only thing that can answer it.
 
-**And it is not enough on its own.** §01 asks for 25–35 minutes as the *normal* match, and
-7.2 minutes is the normal match. The window is reachable rather than typical. Two things
-sit between here and 25 minutes, and they are different problems:
-
-**1. Two fifths of matches end broke, not beaten.** 40.6% end because every light is dead
-and the wallet cannot buy another cell — §02 files them as 생존, the team walks out
-alive, and the run simply stops. That population did not exist at this size before
-(the ring's 생존 row was 14.6% in total, which bounds it). It is a bootstrap failure in
-§08: a first descent across a five-storey building can spend its whole battery walking to
-후보 지점 and surface with nothing to sell, and a team with nothing to sell has no second
-descent. **Excluding them, the median match is 17.1 minutes and 26.6% land inside §01's
-window** — so this one population is most of the remaining gap. It is also the most
-interesting thing the bigger map produced, because it is a real §08 tension the small map
-could not express, and §08 has a knob for it: the starting battery, `BatteryCells`, or a
-first-descent grubstake.
-
-**2. The clue chain now fails more often than it succeeds.** The chain pins a site in
-51.2% of matches, down from 86.4%. Clue reads went 9.66 → 20.11 per match and misreads
-1.93 → 3.34: five storeys means a misread on the floor mapping costs a whole extra
-descent instead of a corridor. That is §03 working as written — "이 게임의 주된 웃음이자
-사망 원인" — but at 51% it is also why 43.8% of matches recover the objective against
-63.8% before. Whether that is good is a design decision, not a defect, and §14's human
-playtest is the only thing that can answer it.
-
-Note also which way the difficulty moved: **deaths fell from 2.1 to 0.68 per match and
-wipes from 21.6% to 2.4%**, while chases broken rose from 59.6% to 87.7%. That is
-[F-007](#f-007) showing up in the match numbers rather than in the map grader — the
-five-storey building is measurably more forgiving to run away in, and the two findings are
-now measuring the same thing from two directions.
-
-### What is honest to doubt in these numbers
-
-- **The simulator's graph is a plan, not a section.** `MapGraph.NearestNode` measures
-  horizontally, which was harmless when §12's map was four zones side by side and is not
-  when the storeys are stacked. On the building measured here `horrorsim validate`
-  reports **6 places it cannot tell apart across storeys**, one of which is a 후보 지점
-  (`C_저탄조`), whose clue marker therefore resolves onto the storey above. The error is self-consistent — the simulator
-  always resolves that position the same way — and it *understates* traversal for one
-  host in fifteen. The fix belongs in Core and is pinned against by
-  `MapTests.MapDistances_AreHorizontal`, so it is a decision, not a patch.
-- **Simulated agents do not hesitate, argue, get lost, or freeze.** Unchanged from the
-  original finding, and it now cuts the other way as well: the 40.6% that end broke are
-  agents that never picked up loot they walked past, because the policy ranks §03's chain
-  above §08's 전리품. A human would grab the trinket. Treat 7.2 minutes as a floor.
-- **Nothing ran away.** 0.0% hit the simulator's 40-minute cap, so the long tail is real
-  play and not a stuck agent.
-
-### Options, revised
-
-1. ~~**Make traversal cost real time.**~~ **Done, and it delivered.** 38 places → 164,
-   52 m → 217.5 m from the door to the monster. §12 leaves little room for more: five
-   surfaces cap the building at five zones and a 40 m zone diagonal caps their area, so
-   the next storey needs a sixth floor material as well as a sixth zone.
-2. **Fix the bootstrap before anything else.** 40.6% of the population never gets to play
-   §08's growth curve at all. This is now the single biggest lever on match length and it
-   is a price-table question, which makes it §16-2's — the two are the same question.
-3. **Compress the threat curve.** Cheapest, and now clearly the wrong move: the tiers are
-   being reached. Compressing an 8-minute band that 33.6% of matches already cross would
-   throw away the thing the map growth just bought.
-4. **Add required dwell time.** Still open, and cheaper than it was: with 41 dead ends
-   carrying 전리품 and 19.94 pieces left behind per match, there is somewhere to spend it.
-5. **Accept a shorter match** and rewrite §01 and §07 around ~15 minutes rather than
-   ~7. Worth reconsidering now that the honest number is 17.1 minutes for a team that can
-   fund its second descent.
+---
 
 ### This blocks §16-2 — less absolutely than it did
-
-The same 500 matches:
 
 ```
 peak weight band reached by anyone                 0.96   (band 1 = no penalty)
@@ -534,51 +860,57 @@ credits after the 1st return                       312.71           (was 160.04)
 unspent at the end                                 245.74           (was 24.78)
 ```
 
-The economy has started. The team now earns 0.70 of one of everything against 0.17, the
-강화 손전등 §08 calls "이 목록의 대표작" is bought twelve times as often, and 245.74
-credits sit unspent at the end against 24.78 — §08's "필요한 건 다 있는데 시간이 없다" is
-visible for the first time. **So §16-2 can now be measured, and every number it was
-measured against before is void**, including the `weight-mul-light` sweep this document
-used to quote: it was run on the ring.
+The economy has started. The team earns 0.70 of one of everything against 0.17, the
+강화 손전등 §08 calls "이 목록의 대표작" is bought twelve times as often, and 245.74 credits
+sit unspent at the end against 24.78 — §08's "필요한 건 다 있는데 시간이 없다" is visible for
+the first time. So §16-2 can now be measured, and every number it was measured against
+before is void.
 
-It has been re-run on the real building — `sweep weight-mul-light --matches 400 --seed 1`,
-same seeds across every point:
-
-```
-WeightMulLight  clear   partial survive wipe    len_med trips   deaths  earned  rChaseL runEscL
-0.85            11.5    31.25   55      2.25    8.33    3.02    0.69    878.64  242     91.32
-0.86            11.25   31.5    55.5    1.75    8.03    3.05    0.71    861.36  221     92.76
-0.88            12.25   33      52.5    2.25    8.33    2.96    0.7     864.21  216     91.67
-0.90            12      31      55.25   1.75    7.19    3.02    0.68    867.48  190     88.42
-0.92            12.5    32      54.25   1.25    7.66    2.97    0.67    871.89  230     89.13
-0.95            11.75   30.75   55.5    2       9.82    3.1     0.68    883.64  204     87.75
-```
-
-**Still no trend — and the excuse for that has gone.** The old reading of this sweep was
-that teams never accumulate enough loot to leave weight band 1, so §08's cliff was
-rarely tested. On the real building it *is* tested: `rChaseL`, chases opened on a 주자
-already in band 2 or worse, is 190–242 of 400 matches, against ~16% before. The 주자 gets
-caught loaded and escapes anyway, 87.8–92.8% of the time, at every value of the
-multiplier. That points somewhere new: §07 puts the monster at 4.4 m/s until 심야 and
-F-001's arithmetic is about 4.8, so the band-2 cliff cannot bite in the tier two thirds
-of matches end in. **The sweep worth running now is
-`sweep weight-mul-light --matches 400 --seed 1 --start-minutes 16`**, which starts the
-clock at 심야 and is the only version of this experiment that tests what F-001 is about.
-
-What has *not* changed is the other half of F-001's population: peak weight band 0.96
-still means the *typical* team stays in band 1, and 19.94 pieces of 전리품 are still left
-in the building every match.
+The `weight-mul-light` sweep re-run on the real building still shows **no trend** across
+0.85–0.95, and the excuse for that has gone: `rChaseL`, chases opened on a 주자 already in
+band 2 or worse, is 190–242 of 400 matches against ~16% before. The 주자 gets caught loaded
+and escapes anyway, 87.8–92.8% of the time, at every value. §07 puts the monster at 4.4 m/s
+until 심야 and F-001's arithmetic is about 4.8, so the band-2 cliff cannot bite in the tier
+two thirds of matches end in. **The sweep worth running is
+`sweep weight-mul-light --matches 400 --seed 1 --start-minutes 16`**, which starts the clock
+at 심야 and is the only version of this experiment that tests what F-001 is about.
 
 ### Also visible in the same run
 
 - §11 holds: role picks are near-even across 500 matches (378–419 of 500 each), unchanged
   by the building, so no role is compulsory.
-- 생존 is now the modal outcome at 53.8%, against 부분 승리 53.2% before. §02 makes 생존
-  "information kept without the objective"; a game where the usual ending is walking out
-  empty-handed is a different game from the one §01 describes, and this is the first
-  number that says so.
+- 생존 is the modal outcome at 53.8%. §02 makes 생존 "information kept without the
+  objective"; a game whose usual ending is walking out empty-handed is a different game
+  from the one §01 describes.
 - Total wipes fell to 2.4%. §02 makes a wipe lose everything, and at 2.4% that threat is
-  close to theoretical.
+  close to theoretical. Read it beside [F-007](#f-007): the five-storey building is
+  measurably more forgiving to run away in.
+
+### Reproducing every number in this entry
+
+```bash
+export DOTNET_ROOT="$HOME/.dotnet"; export PATH="$HOME/.dotnet:$PATH"
+dotnet build core/HorrorGame.sln -c Release          # B-006: the only command that sees the simulator
+
+S="dotnet run -c Release --project core/HorrorGame.Sim --"
+$S run   --matches 500 --seed 1                                   # §1, §2, §8
+$S sweep tier-minutes --matches 400 --seed 1                      # option 2
+$S sweep dwell        --matches 400 --seed 1                      # option 3 · §4
+$S run   --matches 300 --seed 1 --start-cells 3                   # recommendation 2
+$S run   --matches 300 --seed 1 --loot-value 2                    # §3, the price test
+$S run   --matches 300 --seed 1 --start-cells 1 --dwell 1         # option 3 unaffordable
+```
+
+**Check the first five lines of every one of them.** They are the building, and they must
+reproduce [STATUS.md §1.6](STATUS.md). The 300-match rows are seeds 1–300 and have their own
+zero point (8.9 min, not 7.2); compare within a block, never across one.
+
+### Pinned by
+
+Nothing yet, and that is a gap. Every other finding on this page fails a test when its
+answer changes; this one is checked by re-running a command and reading it. The candidate
+is an assertion that `SimScenario.Default` reproduces the zero point — a seeded population
+whose median moves only when somebody means it to.
 
 ---
 
@@ -586,17 +918,27 @@ in the building every match.
 
 **Sections:** §12 (실전 검증 · 주자 테스트) × §06 (추격)
 · **Priority:** 🟠 high — it is the one grade §12 gives the map, and it moved the wrong way
-· **Status:** **open — still 10/10 as of 2026-08-01 03:25.** A pass was spent on it and
-the grade did not move
+· **Status:** **open — still 10/10 as of 2026-08-01 06:25.** Two passes have now been
+spent on it and the grade has not moved
 · **Source:** `MapSceneGenerator.ReportQualityMenu` and `horrorsim map`, seed 1204
 · **Found:** 2026-08-01, integrating the map-scale pass
 
-> **Read this before the numbers below.** This finding was assigned to a working pass
-> whose brief was to bring the grade back inside 5–7/10. It is still 10/10. The map
-> that shipped from that pass is the map measured here, and both tools — the Unity
-> editor menu and the headless simulator, which share no measurement code path — agree
-> exactly. Do not read the 16/16 checklist PASS as the map being fine; §12 gives two
-> verdicts and this is the other one.
+> **Read this before the numbers below.** This finding has now been assigned to two
+> working passes whose brief was to bring the grade back inside 5–7/10. It is still
+> 10/10. Both tools — the Unity editor menu and the headless simulator, which share no
+> measurement code path — agree exactly.
+>
+> **What the second pass changed is the checklist, not the map.** §12's corner-density
+> rule is now `MapValidator`'s 17th (`66ce930`), the map fails it, and the checklist
+> verdict is therefore **FAIL at 16 of 17** rather than the PASS quoted below. That is
+> progress — the checklist and the grade finally point the same way — but it also
+> means **`MapSceneGenerator` now refuses to write the map**
+> ([B-007](BLOCKERS.md#b-007)). This finding is no longer only a balance question; it
+> is what is blocking map authoring.
+>
+> **Do not close B-007 by relaxing `SightBreakPointSpanMax`.** The rule is derived from
+> §12's own arithmetic (14.4 m single-corner requirement less the 10 m head start its
+> 어그로 시작 거리 table endorses). Fix the geometry and both close together.
 
 ### Measured
 
@@ -661,8 +1003,10 @@ The growth removed exactly the weakness that was holding the grade. Going from 8
 passages to 180 raised the loop count from 12 to 17 and the dead-end share from
 21.6% to 25%, and more connectivity means more corners; a runner who can always find
 a third corner inside 15 m can always break line of sight. The checklist did not
-notice because more corners is not a rule any of the sixteen check — the map still
-passes **16 of 16**.
+notice, because at the time more corners was not a rule any of the sixteen checked —
+the map passed **16 of 16** while failing its only grade. As of `66ce930` there are
+**17** rules and the map passes **16 of 17**: the corner-density rule below was
+written, and it fails on exactly this.
 
 This is F-005's "the checklist is necessary, not sufficient" arriving in practice
 rather than in the abstract, and it is the second time the same lesson has cost
@@ -681,8 +1025,12 @@ something.
    ladder, or the aggro-release rule. This trades a §12 target for a §06 retune and
    should not be done without a human playtest.
 
-Option 2 is the one that generalises: nothing in the sixteen rules constrains corner
-*density*, which is the quantity that actually decides this grade.
+Option 2 is the one that generalises, and it is the one that was taken: nothing in the
+original sixteen rules constrained corner *density*, which is the quantity that
+actually decides this grade. **The rule now exists** — `sight-break-spacing`,
+`MapValidator`'s 17th — so option 2's diagnostic half is done. Its authoring half,
+changing the geometry so the rule passes, is not, and until it is the map cannot be
+regenerated at all ([B-007](BLOCKERS.md#b-007)).
 
 **And it now has a number to be written against.** §12 already states the rule in prose
 — 시야 차단 지점 간격 15~25 m — it is simply not in `MapValidator`. Adding it as a

@@ -169,10 +169,17 @@ and more connectivity means more corners. A runner who can always find a third c
 inside 15 m can always break line of sight.
 
 **The last line is the diagnosis.** §12's 수치 규칙 asks corners to sit 15–25 m apart;
-not one of the 79 does, and the mean spacing is 4.1 m. Nothing in §12's sixteen
-checklist rules constrains corner *density*, which is why the map still passes 16 of
-16 — this is [F-005](#f-005)'s "the checklist is necessary, not sufficient" arriving
-in practice for the second time.
+not one of the 79 does, and the mean spacing is 4.1 m. Until 2026-08-01 nothing in
+the checklist constrained corner *density*, which is why the map passed 16 of 16 while
+failing its only grade — [F-005](#f-005)'s "necessary, not sufficient" arriving in
+practice for the second time.
+
+**That hole is now closed, and it changed the diagnosis into a build failure.**
+`66ce930` added `sight-break-spacing` as the 17th rule. The map fails it, the checklist
+verdict is now FAIL, and `MapSceneGenerator` refuses to write a scene the checklist
+rejects — so the map can no longer be regenerated ([B-007](../BLOCKERS.md#b-007)).
+The rule and the grade are the same defect measured twice; one geometry fix closes
+both. **Do not relax `SightBreakPointSpanMax` to clear the blocker.**
 
 The census matters here: 10/10 is a ten-point sample and near the band a sample of ten
 is a coin flip, so "unlucky seed" was a live explanation. 164 of 164 rules it out.
@@ -314,14 +321,15 @@ minimum of three can never fail on its own. Harmless today; it matters if the pe
 rule is ever relaxed, because nothing would be underneath.
 
 Filed alongside it, and more useful than the finding itself: **§12's checklist is
-necessary, not sufficient.** Core's own fixture map passes all sixteen validator rules
-and still grades 10/10 TooEasy on 실전 검증 — pinned by
+necessary, not sufficient.** Core's own fixture map passes all seventeen validator
+rules and still grades 10/10 TooEasy on 실전 검증 — pinned by
 `MapTests.SketchMap_PassesTheChecklistAndStillGradesTooEasy`.
 
 That was an abstract point when it was written. It is not any more: the shipped Unity
 map has now done the same thing, and it cost the 5–7 band the three-storey building
-held. See [F-007](#f-007) — and note that its diagnosis is a quantity (corner spacing)
-that none of the sixteen rules measures.
+held. See [F-007](#f-007). Its diagnosis — corner spacing — is now the 17th rule, so
+the checklist has caught up with the grade on this one specific quantity. The general
+point stands: a passing checklist still cannot promise a good map.
 
 ---
 

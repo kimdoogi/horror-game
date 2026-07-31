@@ -79,7 +79,7 @@ answers its questions; `MonsterAnimationDriver`, `MonsterAudioDriver`,
 | **후보 지점** candidate site | `SiteCatalog`, `SiteLabel` · `RuleCandidateSites` | 구역당 3개, all satisfying the same conditions |
 | **은폐 지점** concealment | `Assets/Models/Props/HidingSpot_Locker.fbx` · `RuleConcealmentNearExit` | for §07's 새벽, when 괴물이 출입구를 안다 |
 | **주자 테스트** runner test | `Core/Map/RunnerTest.cs` · census in `Editor/SceneGen/RunnerCensus.cs` | the 실전 검증 grade; §12 wants 5–7/10. **Currently 10/10 TooEasy — outside the band** ([F-007](09-open-questions.md#f-007)). The census says 164/164 places, so it is not an unlucky ten |
-| **검증 체크리스트** checklist | `Core/Map/MapValidator.cs` — **16 rules** | necessary, not sufficient: `MapTests.SketchMap_PassesTheChecklistAndStillGradesTooEasy` |
+| **검증 체크리스트** checklist | `Core/Map/MapValidator.cs` — **17 rules** | necessary, not sufficient: `MapTests.SketchMap_PassesTheChecklistAndStillGradesTooEasy`. The shipped map fails the 17th, `sight-break-spacing`, which blocks map generation ([B-007](../BLOCKERS.md#b-007)) |
 
 ---
 

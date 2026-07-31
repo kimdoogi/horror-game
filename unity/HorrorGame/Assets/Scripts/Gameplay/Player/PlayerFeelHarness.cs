@@ -74,6 +74,9 @@ namespace HorrorGame.Gameplay.Player
         private PlayerFootsteps? _footsteps;
 
         [SerializeField]
+        private PlayerViewMotion? _viewMotion;
+
+        [SerializeField]
         private PlayerInputRouter? _input;
 
         [Header("Environment")]
@@ -277,6 +280,7 @@ namespace HorrorGame.Gameplay.Player
             _cameraRig = body.AddComponent<PlayerCameraRig>();
             body.AddComponent<PlayerFlashlight>();
             _footsteps = body.AddComponent<PlayerFootsteps>();
+            _viewMotion = body.AddComponent<PlayerViewMotion>();
 
             // AddComponent runs Awake immediately, so the pivot arrives through the public
             // setter rather than through the inspector field.
@@ -305,6 +309,11 @@ namespace HorrorGame.Gameplay.Player
             if (_footsteps == null)
             {
                 _footsteps = body.GetComponentInChildren<PlayerFootsteps>();
+            }
+
+            if (_viewMotion == null)
+            {
+                _viewMotion = body.GetComponent<PlayerViewMotion>();
             }
 
             if (_input == null)
@@ -364,6 +373,14 @@ namespace HorrorGame.Gameplay.Player
             _maxGapMetres = GameConstants.AggroReleaseDistance;
             _lineOfSightBrokenSeconds = 0f;
             _pacerGaveUp = false;
+
+            // The pacer is a stand-in for §06 entering 추격, so it fires the same body
+            // reaction the match layer fires on that edge. Without it §14's question 1
+            // is asked in this harness without the moment the question is about.
+            if (_viewMotion != null)
+            {
+                _viewMotion.Flinch();
+            }
         }
 
         private void StepPacer(float deltaSeconds)
@@ -396,6 +413,14 @@ namespace HorrorGame.Gameplay.Player
             {
                 _pacerGaveUp = true;
                 return;
+            }
+
+            // The blunt half of DangerSense, reproduced here because the harness has no
+            // audio rig: a 0–1 that rises as the gap closes and carries no bearing. It
+            // is the only proximity signal the camera is allowed — see PlayerViewMotion.
+            if (_viewMotion != null)
+            {
+                _viewMotion.Dread01 = 1f - Mathf.Clamp01(gap / GameConstants.MonsterSightRange);
             }
 
             if (gap > 0.01f)
@@ -473,6 +498,15 @@ namespace HorrorGame.Gameplay.Player
             if (keyboard.pKey.wasPressedThisFrame)
             {
                 _pacerPaused = !_pacerPaused;
+            }
+
+            // A/B the camera without leaving play mode. §14 says questions 1 and 2
+            // 「직접 만져봐야 나온다」, and the only honest way to judge whether view
+            // motion helps the chase is to turn it off in the middle of one. Half is
+            // on the cycle because it is the answer a nauseous tester actually wants.
+            if (keyboard.vKey.wasPressedThisFrame && _viewMotion != null)
+            {
+                _viewMotion.Scale = _viewMotion.Scale > 0.75f ? 0.5f : (_viewMotion.Scale > 0.1f ? 0f : 1f);
             }
 
             if (keyboard.tabKey.wasPressedThisFrame && _input != null)
@@ -557,6 +591,17 @@ namespace HorrorGame.Gameplay.Player
             Line("fov          " + F(_cameraRig != null ? _cameraRig.FieldOfView : GameConstants.FovDefault)
                  + "   (§05 clamp " + GameConstants.FovMin + "-" + GameConstants.FovMax + ")", Color.white);
 
+            if (_viewMotion != null)
+            {
+                Line("view motion  " + F(_viewMotion.Scale * 100f) + "%"
+                     + "   drag " + F(_viewMotion.Drag * 100f) + "%"
+                     + "   breath " + F(_viewMotion.Breath * 100f) + "%"
+                     + (_viewMotion.Flinching ? "   FLINCH" : string.Empty),
+                    _viewMotion.Scale > 0f ? Color.white : Color.grey);
+                Line("             eye " + F(_viewMotion.Translation.magnitude * 100f) + " cm off rest, "
+                     + F(Quaternion.Angle(Quaternion.identity, _viewMotion.Rotation)) + " deg", Color.grey);
+            }
+
             Line(" ", Color.white);
             Line("chase        " + F(_chaseSeconds) + " s   best gap " + F(_maxGapMetres) + " m"
                  + (_pacerGaveUp ? "   RELEASED" : string.Empty), _pacerGaveUp ? Color.green : Color.white);
@@ -572,7 +617,8 @@ namespace HorrorGame.Gameplay.Player
                 Line(" ", Color.white);
                 Line("WASD move · mouse look · Shift run · F light", Color.grey);
                 Line("[ ] fov   O objective   B bag   L loot   R reset", Color.grey);
-                Line("P pause pacer   1-5 hold §07 tier   Tab cursor   F1 help", Color.grey);
+                Line("P pause pacer   V view motion 100/50/0   1-5 hold §07 tier", Color.grey);
+                Line("Tab cursor   F1 help", Color.grey);
             }
 
             GUILayout.EndArea();

@@ -23,6 +23,13 @@ namespace HorrorGame.Sim
         /// <summary>§13's payload, as sent.</summary>
         public MatchSummary Summary;
 
+        /// <summary>
+        /// Where this match's agent-seconds went, and how many of §07's priced actions
+        /// bought them. The denominator F-006 needs to turn "simulated agents do not
+        /// hesitate" from a caveat into a ratio — see <see cref="SimTimeLedger"/>.
+        /// </summary>
+        public SimTimeLedger Ledger;
+
         /// <summary>§02's verdict.</summary>
         public MatchOutcome Outcome;
 

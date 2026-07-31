@@ -41,6 +41,7 @@ namespace HorrorGame.UI.Settings
         [SerializeField] private float _fieldOfViewDegrees = HorrorGame.Core.GameConstants.FovDefault;
         [SerializeField] private float _mouseSensitivity = SettingsLimits.MouseSensitivityDefault;
         [SerializeField] private bool _invertLookY;
+        [SerializeField] private float _viewMotion = ViewMotionTuning.ScaleDefault;
 
         [SerializeField] private float _volumeMaster = SettingsLimits.VolumeMax;
         [SerializeField] private float _volumeSfx = SettingsLimits.VolumeMax;
@@ -94,6 +95,31 @@ namespace HorrorGame.UI.Settings
         {
             get { return _invertLookY; }
             set { _invertLookY = value; }
+        }
+
+        /// <summary>
+        /// How much of <see cref="PlayerViewMotion"/>'s stride, landing, lean and
+        /// breathing reaches the camera, 0..1.
+        /// <para>
+        /// A comfort value, and the reason it exists at all is the same one §05 gives
+        /// for not fixing the field of view — "고정하면 멀미 민원이 발생하고". A
+        /// first-person camera that moves makes some people ill within minutes, and a
+        /// player who cannot look at the screen refunds the game.
+        /// </para>
+        /// <para>
+        /// <b>Zero is a fully supported way to play and that is a design property, not
+        /// a concession.</b> Nothing in <c>ViewMotionTuning</c> is load-bearing for any
+        /// rule: the offsets go to the camera transform alone, §05's speed table is
+        /// untouched, and the beam still points where <c>PlayerLook</c> says. So unlike
+        /// the field of view — which is clamped precisely because a wider one is an
+        /// advantage — this slider cannot be set to a competitive value. It is the one
+        /// row on the settings screen with no balance consequence at all.
+        /// </para>
+        /// </summary>
+        public float ViewMotion
+        {
+            get { return _viewMotion; }
+            set { _viewMotion = Mathf.Clamp01(Sane(value, ViewMotionTuning.ScaleDefault)); }
         }
 
         /// <summary>Everything, 0..1. <see cref="AudioBus.Master"/>.</summary>
@@ -239,6 +265,7 @@ namespace HorrorGame.UI.Settings
         {
             FieldOfViewDegrees = _fieldOfViewDegrees;
             MouseSensitivity = _mouseSensitivity;
+            ViewMotion = _viewMotion;
             Brightness01 = _brightness01;
 
             VolumeMaster = _volumeMaster;
@@ -282,6 +309,7 @@ namespace HorrorGame.UI.Settings
             _fieldOfViewDegrees = other._fieldOfViewDegrees;
             _mouseSensitivity = other._mouseSensitivity;
             _invertLookY = other._invertLookY;
+            _viewMotion = other._viewMotion;
             _volumeMaster = other._volumeMaster;
             _volumeSfx = other._volumeSfx;
             _volumeAmbience = other._volumeAmbience;
@@ -312,6 +340,7 @@ namespace HorrorGame.UI.Settings
             return Mathf.Approximately(_fieldOfViewDegrees, other._fieldOfViewDegrees)
                 && Mathf.Approximately(_mouseSensitivity, other._mouseSensitivity)
                 && _invertLookY == other._invertLookY
+                && Mathf.Approximately(_viewMotion, other._viewMotion)
                 && Mathf.Approximately(_volumeMaster, other._volumeMaster)
                 && Mathf.Approximately(_volumeSfx, other._volumeSfx)
                 && Mathf.Approximately(_volumeAmbience, other._volumeAmbience)

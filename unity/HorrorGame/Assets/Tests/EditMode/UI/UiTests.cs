@@ -589,6 +589,40 @@ namespace HorrorGame.Tests.EditMode.UI
             Assert.That(settings.VolumeMaster, Is.EqualTo(1f));
             Assert.That(settings.VolumeSfx, Is.EqualTo(1f));
             Assert.That(settings.InvertLookY, Is.False);
+
+            Assert.That(settings.ViewMotion, Is.EqualTo(ViewMotionTuning.ScaleDefault),
+                "A new player gets the whole camera. §14's questions 1 and 2 are about how the chase feels, "
+                + "and shipping them a still camera by default would answer them against a game nobody made.");
+        }
+
+        [Test]
+        public void ViewMotion_IsTheOneRowWithNoBalanceConsequence()
+        {
+            var settings = new GameSettings();
+
+            // Every other gameplay-adjacent row on this screen is clamped to a window a
+            // player cannot escape, because escaping it is an advantage: §05's field of
+            // view, §03's brightness. This one goes to zero and back, because nothing in
+            // ViewMotionTuning reaches a rule — the offsets land on the camera transform,
+            // §05's speed table is untouched and the beam still points where PlayerLook
+            // says. A player made ill by head bob has to be able to switch it off without
+            // switching off the game.
+            settings.ViewMotion = 0f;
+            Assert.That(settings.ViewMotion, Is.EqualTo(0f),
+                "zero has to be reachable, or the accessibility answer is 'stop playing'");
+
+            settings.ViewMotion = 1f;
+            Assert.That(settings.ViewMotion, Is.EqualTo(1f));
+
+            settings.ViewMotion = 4f;
+            Assert.That(settings.ViewMotion, Is.EqualTo(1f), "and it cannot be pushed past the authored amount");
+
+            settings.ViewMotion = -3f;
+            Assert.That(settings.ViewMotion, Is.EqualTo(0f));
+
+            settings.ViewMotion = float.NaN;
+            Assert.That(settings.ViewMotion, Is.EqualTo(ViewMotionTuning.ScaleDefault),
+                "a NaN out of a corrupt file must not be able to produce a camera that renders nowhere");
         }
 
         [Test]
@@ -643,6 +677,7 @@ namespace HorrorGame.Tests.EditMode.UI
             written.FieldOfViewDegrees = 74f;
             written.MouseSensitivity = 2.5f;
             written.InvertLookY = true;
+            written.ViewMotion = 0.35f;
             written.VolumeMaster = 0.4f;
             written.VolumeSfx = 0.9f;
             written.VolumeAmbience = 0.1f;
@@ -666,6 +701,7 @@ namespace HorrorGame.Tests.EditMode.UI
             Assert.That(read.FieldOfViewDegrees, Is.EqualTo(74f).Within(0.001f));
             Assert.That(read.MouseSensitivity, Is.EqualTo(2.5f).Within(0.001f));
             Assert.That(read.InvertLookY, Is.True);
+            Assert.That(read.ViewMotion, Is.EqualTo(0.35f).Within(0.001f));
             Assert.That(read.VolumeMaster, Is.EqualTo(0.4f).Within(0.001f));
             Assert.That(read.VolumeSfx, Is.EqualTo(0.9f).Within(0.001f));
             Assert.That(read.VolumeAmbience, Is.EqualTo(0.1f).Within(0.001f));

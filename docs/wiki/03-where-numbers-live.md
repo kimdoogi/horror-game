@@ -100,7 +100,7 @@ Both directions are guarded, and both guards must be run:
 | Guard | Command | What it would catch |
 |---|---|---|
 | `GameConstants.Validate()` | `dotnet test core/HorrorGame.Core.Tests/HorrorGame.Core.Tests.csproj` | a speed change that breaks §12's derived inequalities |
-| §12 validation, 16 rules | `MapSceneGenerator.ReportQualityMenu` — [Verifying §3](06-verifying.md) | a map that no longer satisfies the rules |
+| §12 validation, 17 rules | `MapSceneGenerator.ReportQualityMenu` — [Verifying §3](06-verifying.md) | a map that no longer satisfies the rules. **Currently failing rule 17** ([B-007](../BLOCKERS.md#b-007)) |
 | `MonsterChaseTests`, 4 tests | PlayMode, `-testFilter "MonsterChaseTests"` | a map on which two 10 m legs no longer break a chase, or one corner now does |
 
 `MonsterChaseTests` is the only one of the three that measures the arithmetic against

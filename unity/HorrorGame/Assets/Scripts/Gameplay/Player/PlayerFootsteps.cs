@@ -72,9 +72,10 @@ namespace HorrorGame.Gameplay.Player
         private LayerMask _groundMask = ~0;
 
         [Header("Fallback cadence")]
-        [Tooltip("Metres between steps when no animator is driving footfalls. Presentation fallback only.")]
+        [Tooltip("Metres between steps at §06's 걷기, when no animator is driving footfalls. Lengthened "
+            + "with speed by PlayerViewMotion.StepLengthFactor so the sound and the camera's stride agree.")]
         [SerializeField]
-        private float _fallbackStrideMetres = 0.8f;
+        private float _fallbackStrideMetres = ViewMotionTuning.StrideMetres;
 
         [Header("Variation")]
         [SerializeField]
@@ -188,10 +189,16 @@ namespace HorrorGame.Gameplay.Player
                 return;
             }
 
+            // The pace lengthens with speed rather than the cadence simply rising:
+            // at a fixed 0.8 m a 주자 sprinting at 5.6 takes seven steps a second,
+            // which is a machine and not a person. The factor is shared with the
+            // camera's stride so the sound lands on the bottom of the step.
+            var stride = _fallbackStrideMetres * PlayerViewMotion.StepLengthFactor(_motor.GroundSpeed);
+
             _distanceSinceStep += _motor.GroundSpeed * Time.deltaTime;
-            if (_fallbackStrideMetres > 0f && _distanceSinceStep >= _fallbackStrideMetres)
+            if (stride > 0f && _distanceSinceStep >= stride)
             {
-                _distanceSinceStep -= _fallbackStrideMetres;
+                _distanceSinceStep -= stride;
                 OnFootfall();
             }
         }

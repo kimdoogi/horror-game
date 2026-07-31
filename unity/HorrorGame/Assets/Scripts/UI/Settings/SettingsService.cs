@@ -122,6 +122,7 @@ namespace HorrorGame.UI.Settings
             BrightnessGrade.Apply(settings.Brightness01);
             InputBindings.Apply(settings);
             ApplyFieldOfView(settings);
+            ApplyViewMotion(settings);
 
             Changed?.Invoke(settings);
         }
@@ -156,6 +157,27 @@ namespace HorrorGame.UI.Settings
         }
 
         /// <summary>
+        /// The camera-motion comfort scale, onto every player body currently loaded.
+        /// <para>
+        /// Separate from <see cref="ApplyFieldOfView"/> even though both write to the
+        /// same rig, because they are opposite kinds of value and the settings screen
+        /// says so: field of view is §05 balance and is clamped to a window a player
+        /// cannot escape, and this one has no balance consequence and goes all the way
+        /// to zero. Merging them would invite the next person to clamp this too.
+        /// </para>
+        /// </summary>
+        public static void ApplyViewMotion(GameSettings settings)
+        {
+            var bodies = UnityEngine.Object.FindObjectsByType<PlayerViewMotion>(
+                FindObjectsInactive.Include, FindObjectsSortMode.None);
+
+            for (var i = 0; i < bodies.Length; i++)
+            {
+                bodies[i].Scale = settings.ViewMotion;
+            }
+        }
+
+        /// <summary>
         /// Loads and applies before the first scene comes up, so a player never sees one
         /// frame of somebody else's mix or a match at the wrong field of view.
         /// </summary>
@@ -184,6 +206,7 @@ namespace HorrorGame.UI.Settings
             var settings = Current;
             ApplyAudio(settings);
             ApplyFieldOfView(settings);
+            ApplyViewMotion(settings);
             BrightnessGrade.Apply(settings.Brightness01);
         }
     }

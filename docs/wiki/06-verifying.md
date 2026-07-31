@@ -49,7 +49,7 @@ them can answer it.
 ## 2. The exact commands, in the order worth running
 
 ```bash
-dotnet test  core/HorrorGame.Core.Tests/HorrorGame.Core.Tests.csproj      # 448/448, 건너뜀 0
+dotnet test  core/HorrorGame.Core.Tests/HorrorGame.Core.Tests.csproj      # 451/451, 건너뜀 0
 dotnet build core/HorrorGame.sln -c Release                               # 0 errors
 
 $U -batchmode -quit -nographics -silent-crashes -projectPath $P -logFile /tmp/u.log
@@ -149,23 +149,27 @@ fourth and weakest signal.
 
 ### 3.6 A green §12 checklist does not mean a good map
 
-`MapValidator` runs exactly **16** rules (count them:
-`grep -c 'public const string Rule' unity/HorrorGame/Assets/Scripts/Core/Map/MapValidator.cs`).
-Core's own fixture map passes all sixteen and grades **10/10 TooEasy** on the 주자
-테스트 — pinned by `MapTests.SketchMap_PassesTheChecklistAndStillGradesTooEasy`.
+`MapValidator` runs exactly **17** rules (count them:
+`grep -c 'public const string Rule' unity/HorrorGame/Assets/Scripts/Core/Map/MapValidator.cs`
+→ `17`). Core's own fixture map passes them all and grades **10/10 TooEasy** on the
+주자 테스트 — pinned by `MapTests.SketchMap_PassesTheChecklistAndStillGradesTooEasy`.
 The checklist is necessary, not sufficient; the grade is the second half. §12 wants
 5–7/10.
 
-**The shipped map is now in the same state.** 요양원 지하 5층 passes 16 of 16 and
-grades 10/10 TooEasy; the three-storey building it replaced graded 7/10. The
-`RunnerCensus` line under the grade — `164/164 escapable (100%)` — rules out an
-unlucky ten-point sample, and the line under *that* names the cause: 79 sight-breaking
-corners, mean nearest-neighbour spacing **4.1 m** against §12's 15–25 m rule, **0
-inside the band**. No checklist rule measures corner density. See
+**The shipped map is worse than that: it now fails the checklist too.** 요양원 지하 5층
+passes **16 of 17** and grades 10/10 TooEasy; the three-storey building it replaced
+graded 7/10. The 17th rule, `sight-break-spacing`, landed in `66ce930` and is the
+first one to measure corner *density* — which two passes of prose had already named as
+the cause. The `RunnerCensus` line under the grade — `164/164 escapable (100%)` —
+rules out an unlucky ten-point sample, and the line under *that* is the same geometry
+the new rule fails on: 79 sight-breaking corners, mean nearest-neighbour spacing
+**4.1 m** against §12's 15–25 m, **0 inside the band**. See
 [F-007](09-open-questions.md#f-007).
 
-> ART.md §6 says "§12 validation PASS on all 17 rules". The code has 16.
-> STATUS.md §1.6's "16 of 16" is the accurate one.
+> 🔴 **A failing checklist blocks map generation.** `MapSceneGenerator.Generate` gates
+> on it, so `HorrorGame ▸ Scene Gen ▸ Generate First Map` now exits 1 and writes
+> nothing — [B-007](../BLOCKERS.md#b-007). The committed scene predates the rule and
+> still runs; re-rolling the map is what is blocked.
 
 ### 3.7 A passing suite with skipped tests
 
@@ -197,17 +201,17 @@ match, which ends at 7.2 min in tier 1.
 ## 5. Where the existing docs are already stale
 
 Not a criticism — they are dated snapshots and they say so. But **re-measure before
-quoting**, and prefer STATUS.md over the others. Known drift as of 2026-08-01 03:40:
+quoting**, and prefer STATUS.md over the others. Known drift as of 2026-08-01 06:40:
 
 | Claim | Where | Actually |
 |---|---|---|
-| "§12 validation PASS on all 17 rules" | ART.md §6 | 16 rules in `MapValidator` |
+| "§12 validation PASS on all 17 rules" | ART.md §6 | there are now 17 rules, and the shipped map passes **16** of them — [B-007](../BLOCKERS.md#b-007) |
 | "47 FBX" | ASSETS.md header | 86 on disk |
-| "387 tests" | CI.md §2.1 | 448 |
+| "387 tests" | CI.md §2.1 | 451 |
 | "`Assets/Tests/EditMode/` and `Assets/Tests/PlayMode/` are still empty" | CI.md §4.2, §5 | six test assemblies exist and run |
 | "Nothing that needs the Unity editor has ever executed" | CI.md §5 | true of *CI*, not of this machine — STATUS.md quotes real editor runs |
-| "`dist/` contains logs and test results and **no player executable**" | STATUS.md §5 | an IL2CPP macOS player and a Mono Windows player exist as of 2026-07-31 23:39. Read `dist/last-build-summary.txt` |
-| PlayMode is 27 tests | TESTING.md | 42 ([STATUS.md §1.9](../STATUS.md)) |
+| "`dist/` contains logs and test results and **no player executable**" | STATUS.md §5 | corrected — an IL2CPP macOS player is built and verified to reach a match ([STATUS.md §1.10](../STATUS.md)). Read `dist/last-build-summary.txt` |
+| PlayMode is 27 tests, or 42 | anywhere | **53**; EditMode **71**; core **451**; 575 total ([STATUS.md §1.9](../STATUS.md)) |
 | "16–39 % crushed, 31–57 % legible" | ART.md §1 | re-measured every art pass — [STATUS.md §4.3](../STATUS.md) is the current one |
 | "matches finish in 2.5 min" / "0.6% inside the window" / "심야 1.2%" | anywhere | 7.2 min, 15.8%, 33.6% — the old figures were measured against a four-zone ring the game does not ship ([F-006](09-open-questions.md#f-006)) |
 | "주자 테스트 7/10, Balanced" | anywhere | 10/10 TooEasy on the five-storey map ([F-007](09-open-questions.md#f-007)) |

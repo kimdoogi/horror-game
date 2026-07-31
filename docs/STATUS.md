@@ -1,6 +1,9 @@
 # Project status
 
-Where this game actually stands, on 2026-08-01.
+Where this game actually stands, on 2026-08-01 06:40.
+
+> New since the last edition, and the shortest path into it:
+> **[OVERNIGHT.md](OVERNIGHT.md)** — what changed overnight, in one page.
 
 Every command below was run on this machine in one sitting, in the order shown, and
 the output quoted under it is the real output of that run. Nothing here is carried
@@ -21,9 +24,22 @@ export DOTNET_ROOT="$HOME/.dotnet"; export PATH="$HOME/.dotnet:$PATH"
 
 ## The one-line answer
 
-**Every test in the project is green for the first time — 560 of 560 — and the headline
-number the map was grown to move has now actually been measured against the map that
-grew: 2.5 min → 7.2 min.**
+**575 of 575 tests green (core 451, EditMode 71, PlayMode 53), the standalone IL2CPP
+player starts a match with no exceptions — and the one number this round was set to
+move, the 주자 테스트, did not move. It is still 10/10 TooEasy against §12's 5–7 band.**
+
+What the corner-density pass delivered was the *measurement*, not the fix. §12's
+시야 차단 지점 간격 is now `MapValidator`'s 17th rule, it is correct, and it names the
+cause exactly — **79 bends, mean nearest-neighbour spacing 4.1 m, zero inside §12's
+15–25 m band**. The geometry it judges was never changed.
+
+**That has a new cost: the map can no longer be regenerated.**
+`MapSceneGenerator.Generate` gates on the checklist, the checklist now fails, so
+`HorrorGame ▸ Scene Gen ▸ Generate First Map` exits 1 and writes nothing. The committed
+scene still runs and every runtime measurement below was taken against it — but map
+authoring is frozen until the corner density is fixed. This is
+**[B-007](BLOCKERS.md#b-007)**, opened tonight, and it is the same defect as
+[F-007](BALANCE-FINDINGS.md#f-007) seen from the other side. One fix closes both.
 
 The building is now five storeys instead of three: 164 places and 180 passages
 against 74 and 85. The monster's route to a player grew from 133.9 m to **189.6 m**
@@ -43,11 +59,11 @@ not the whole answer — §01 wants 25–35 as the *normal* match — but it is 
 tried against this finding that has moved it.
 
 **The map's §12 주자 테스트 is still outside its band — 10/10 TooEasy against 7/10
-Balanced before the map grew, and a pass aimed at it did not move it.** That is the
-one target this round was set and missed; it is [F-007](BALANCE-FINDINGS.md#f-007), and
-§1.6 has the two new measurements that say what to do about it (164/164 places escape,
-so it is not an unlucky sample; 79 corners at a mean spacing of 4.1 m against §12's
-15–25 m, so corner density is the cause).
+Balanced before the map grew, and two consecutive passes aimed at it have not moved
+it.** That is the one target this round was set and missed; it is
+[F-007](BALANCE-FINDINGS.md#f-007), and §1.6 has the measurements that say what to do
+about it (164/164 places escape, so it is not an unlucky sample; 79 corners at a mean
+spacing of 4.1 m against §12's 15–25 m, so corner density is the cause).
 
 **Two defects found by re-running everything from scratch this pass**, both of the same
 shape — a green suite hiding a broken thing:
@@ -75,15 +91,17 @@ highest-value thing anyone can do here and still cannot be automated.
 
 ## 1 · Verified green — command, and the output it produced
 
-### 1.1 The rules core — 448 tests, no engine
+### 1.1 The rules core — 451 tests, no engine
 
 ```bash
 dotnet test /Users/doogi/horror-game/core/HorrorGame.Core.Tests/HorrorGame.Core.Tests.csproj
 ```
 
 ```
-통과!  - 실패:     0, 통과:   448, 건너뜀:     0, 전체:   448, 기간: 337 ms
+통과!  - 실패:     0, 통과:   451, 건너뜀:     0, 전체:   451, 기간: 363 ms
 ```
+
+448 → 451: the three added tests pin §12's new 시야 차단 지점 간격 rule (`66ce930`).
 
 0 skipped, so the count is not inflated by disabled cases. Every tuned number and rule
 lives here — §05's speed multipliers, §06's aggro and state machine, §07's threat
@@ -99,12 +117,18 @@ dotnet build /Users/doogi/horror-game/core/HorrorGame.sln -c Release
 ```
     경고 11개
     오류 0개
-경과 시간: 00:00:02.89
+
+경과 시간: 00:00:04.27
 ```
 
 11 warnings, all `CS8625` nullable-literal plus one `CS0649`, all in the test project.
-Measured after `dotnet clean`, so this is a from-scratch build and not an incremental
-one reporting nothing.
+Measured after `dotnet clean -c Release`, so this is a from-scratch build.
+
+> **Run `dotnet clean` first or the warning count is a lie.** An incremental build of
+> an already-built solution prints `경고 0개` — nothing recompiled, so nothing
+> re-emitted a warning — and it takes 1.20 s instead of 4.27 s. That is how this line
+> read `0` during tonight's pass before it was re-measured properly. The **error**
+> count is trustworthy either way; the warning count is not.
 
 > **This command failed when this pass started, and the previous edition of this
 > document quoted the passing output anyway.** The map pass added
@@ -253,14 +277,31 @@ this audit stand in for a chase test again.
 
 ```
 === §12 map quality — seed 1204 ===
-§12 map validation — 요양원 지하 5층 (B1 하역장 · B2 기록보관소 · B3 기계실 · B4 저탄장 · B5 저수조): PASS
+§12 map validation — 요양원 지하 5층 (B1 하역장 · B2 기록보관소 · B3 기계실 · B4 저탄장 · B5 저수조): FAIL
 ```
 
-All **16 of 16** rules `[ok]`: straight-corridor, open-adjacent-to-maze,
-s-corridor-per-zone, loops, dead-ends, floor-materials, observation-posts,
-lockable-doors, candidate-sites, zone-entry-points, concealment-near-exit,
-zone-count, zone-diagonal, map-extent, connectivity, zone-membership. Selected
-measurements, verbatim:
+**16 of 17 rules `[ok]`, and the 17th fails.** The passing sixteen are
+straight-corridor, open-adjacent-to-maze, s-corridor-per-zone, loops, dead-ends,
+floor-materials, observation-posts, lockable-doors, candidate-sites,
+zone-entry-points, concealment-near-exit, zone-count, zone-diagonal, map-extent,
+connectivity, zone-membership. The seventeenth, added by `66ce930`, is the one that
+measures what §1.6 has been calling the cause for two passes:
+
+```
+[FAIL] sight-break-spacing — 시야 차단 지점 간격 15~25m (질주 60m에 3~4번의 기회)
+           3 시야 차단 지점 from 79 bend(s). One 시야 차단 지점 is 122.5 m deep …
+           The nearest other 시야 차단 지점 to #43 A 기록보관소(19,23@L1) is 62.5 m away,
+           over §12's 25 m.
+```
+
+> **A failing checklist is a build gate, not just a report.**
+> `MapSceneGenerator.Generate` refuses to write a scene the checklist rejects, so
+> `HorrorGame ▸ Scene Gen ▸ Generate First Map` now exits 1 and produces nothing —
+> **[B-007](BLOCKERS.md#b-007)**. The committed `Map_FirstSketch.unity` predates the
+> rule and still runs; §1.3, §1.5 and §1.8 were all measured on it tonight. Map
+> authoring is what is blocked, not the game.
+
+Selected passing measurements, verbatim:
 
 ```
 Longest unbroken sight line is 20 m, inside §12's 20 m limit.
@@ -290,10 +331,13 @@ three routes that used to end `CAUGHT` — the ones descending into zones C and 
 reporting *"No sight-breaking corner was ever rounded"* — are gone, and they were the
 only thing holding the grade inside the band.
 
-More passages means more corners, and nothing in the sixteen rules constrains corner
-*density*. So the map passes the entire checklist and fails the one grade §12 gives
-it. Written up as [F-007](BALANCE-FINDINGS.md#f-007) with the named node chains to
-straighten; it is the clearest open piece of map work.
+More passages means more corners. Until `66ce930` **nothing in the checklist
+constrained corner *density***, so the map passed every rule and failed the one grade
+§12 gives it. That hole is now closed — the checklist and the grade finally disagree
+with the map in the same direction — but closing it changed only the diagnosis, not
+the geometry. Written up as [F-007](BALANCE-FINDINGS.md#f-007) with the named node
+chains to straighten; it is the clearest open piece of map work, and now also the
+thing blocking map regeneration.
 
 **Two lines the report prints underneath the grade settle what to do about it**, and
 both are new this pass — `RunnerCensus` did not exist before it:
@@ -316,10 +360,12 @@ The second is the cause as a number. §12's 수치 규칙 wants sight-breaking c
 15–25 m apart; **not one of the 79 is**, and the mean is 4.1 m. That is what buys every
 sampled runner "3 s of unbroken cover".
 
-> **This is the number this pass was sent to fix, and it did not move.** It was 10/10
-> before the pass and it is 10/10 after. What the pass did produce is the census and
-> the spacing measurement above — which is why the next attempt can aim at a quantity
-> instead of at eight node chains.
+> **This is the number the last two passes were sent to fix, and it has not moved.**
+> 10/10 before, 10/10 after, 10/10 again tonight. What those passes produced is the
+> census, the spacing measurement, and now a validator rule that fails on it — so the
+> next attempt can aim at a quantity, and will know the moment it succeeds. What none
+> of them produced is a change to `FirstMapSketch`'s geometry, which is the only thing
+> that can move the grade.
 
 Reproducible from the headless simulator too, which shares no measurement code path
 with the editor menu and agrees exactly:
@@ -364,7 +410,7 @@ onto and a human cannot use one at all. And the built-scene sight-line sampler n
 reports a longest run of **21.2 m** where it used to report **100.0 m**; §3.4 covers
 what is left of that defect.
 
-### 1.9 The full Unity suite — 112 of 112, and one seam it caught
+### 1.9 The full Unity suite — 124 of 124
 
 Run the two platforms separately and read the XML rather than the exit code.
 **No `-quit`**: the runner is async and exits from its own callback, and `-quit`
@@ -381,13 +427,17 @@ python3 -c "import xml.etree.ElementTree as ET,sys; r=ET.parse(sys.argv[1]).getr
 Both exit 0.
 
 ```
-EditMode   total 70 passed 70 failed 0 result Passed
-PlayMode   total 42 passed 42 failed 0 result Passed
+EditMode   total 71 passed 71 failed 0 result Passed
+PlayMode   total 53 passed 53 failed 0 result Passed
 ```
 
-**112 of 112, against 93 of 94 last pass.** EditMode grew 52 → 70 and PlayMode
-41 → 42 as the four parallel passes added tests. Two things changed to get here and
-only one of them was work:
+**124 of 124, against 112 of 112 last pass.** EditMode 70 → 71 and PlayMode 42 → 53;
+the twelve new cases are the view-motion work — `PlayerViewMotionTests` plus the
+settings-slider coverage in `UiTests`.
+
+**With core's 451, the project total is 575 of 575 green.**
+
+Two earlier seams this suite caught, both still worth knowing about:
 
 - [B-002](BLOCKERS.md#b-002) stopped reproducing on its own.
   `SoloMatchLoopTests.Solo_match_runs_the_whole_round_trip` passes. Nothing was fixed;
@@ -404,6 +454,54 @@ only one of them was work:
 
 That is the seam worth knowing about between four agents who could not see each
 other's work: the map pass and the front-end pass were each correct alone.
+
+### 1.10 The standalone player — built, launched, and it starts a match
+
+```bash
+export CPLUS_INCLUDE_PATH=/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1
+$U -batchmode -nographics -silent-crashes -projectPath $P \
+   -executeMethod HorrorGame.EditorTools.BuildPipelineRunner.BuildFromCommandLine \
+   -buildPlatform macos-arm64 -buildConfig release -logFile /tmp/b.log; echo "exit=$?"
+```
+
+```
+exit=0
+  macOS Apple silicon                        Release     IL2CPP OK         1347.18 MB  235s
+```
+
+A real IL2CPP Release player, from scratch, in 235.6 s. **`CPLUS_INCLUDE_PATH` is
+required on this machine** — its Command Line Tools are damaged and clang otherwise
+fails on `'cmath' file not found`; [TESTING.md](TESTING.md) has the diagnosis. Never
+pass `-quit`: `BuildFromCommandLine` owns the exit code.
+
+Then launched, and read from the player's own log rather than from the fact that a
+window appeared:
+
+```bash
+open dist/macos-arm64/HorrorGame.app
+grep -E "\[Match\] seed|Exception" ~/Library/Logs/DefaultCompany/HorrorGame/Player.log
+```
+
+```
+[Match] seed 20260731 · 4 clues (§03 needs 3) · planned round trips 4 · 5 zones · local role Runner
+```
+
+**0 lines matching `Exception`.** That line is `MatchDirector.BeginMatch` completing
+inside a shipped player — §14's guidance overlay builds its canvas in the same frame
+and would throw here if it could not.
+
+> **Scene 0 is now `Bootstrap`, not `Map_FirstSketch_Solo`.** The front end took the
+> first slot, so a double-click opens the menu and 시작 loads the match
+> (`GameShell.LoadMatchRoutine`, pinned by `UiFlowTests`). TESTING.md said the player
+> "boots straight into a match" — that was true before the front end landed and is now
+> corrected there. To reproduce the log line above without clicking, run
+> `StandaloneBuild.PrepareBatch` first, which puts the solo scene at index 0; that is
+> how it was measured here, and Build Settings were restored afterwards.
+
+Two log lines are expected and harmless: `[Steam] Running offline on development App
+ID 480 (Spacewar).` and `Failed to create agent because there is no valid NavMesh` —
+a player-only load-order artefact. The warning that would prove real breakage,
+`[Monster] NavMeshAgent is off the NavMesh at …`, does not appear.
 
 ---
 
@@ -748,10 +846,9 @@ except the first.
 - **Networking.** Mirror, Steamworks.NET and FizzySteamworks are installed and the
   transport is wired; `NetTests` passes in PlayMode. No two-instance session has been
   run in this pass. §14 step 2 is `HorrorGame ▸ Play ▸ Launch Two Instances`.
-- **A player build.** `dist/` contains logs and test results and **no player
-  executable** — no build has been produced from this working copy. macOS cannot
-  produce an IL2CPP Windows player, only Mono; a shipping build needs a Windows
-  machine or `.github/workflows/unity.yml`.
+- **A Windows player.** The macOS arm64 IL2CPP player is built and verified (§1.10).
+  macOS cannot produce an IL2CPP **Windows** player, only Mono; a shipping Windows
+  build needs a Windows machine or `.github/workflows/unity.yml`.
 - **Steam upload.** `tools/steam/` dry-runs without contacting Steam and refuses to
   upload while the App ID is still 480. Never exercised for real —
   [STEAM-RELEASE.md](STEAM-RELEASE.md).
@@ -850,17 +947,18 @@ U=/Applications/Unity/Hub/Editor/6000.3.21f1/Unity.app/Contents/MacOS/Unity
 P=/Users/doogi/horror-game/unity/HorrorGame
 cd /Users/doogi/horror-game
 
-dotnet test  core/HorrorGame.Core.Tests/HorrorGame.Core.Tests.csproj      # §1.1  448/448
-dotnet build core/HorrorGame.sln -c Release                               # §1.2  0 errors
+dotnet test  core/HorrorGame.Core.Tests/HorrorGame.Core.Tests.csproj      # §1.1  451/451
+dotnet clean core/HorrorGame.sln -c Release                               # or §1.2's warning count lies
+dotnet build core/HorrorGame.sln -c Release                               # §1.2  0 errors, 11 warnings
 $U -batchmode -quit -nographics -silent-crashes -projectPath $P -logFile /tmp/u.log
 grep -cE '^Assets/.*error CS' /tmp/u.log                                  # §1.2  0
 
 # §1.9 — the full Unity suite. NEVER -quit: the runner is async and -quit shuts the
 # editor down before results are written, which reports nothing and exits 0.
 $U -batchmode -projectPath $P -runTests -testPlatform EditMode \
-   -testResults /tmp/editmode.xml -logFile /tmp/edit.log                                 # §1.9  70/70
+   -testResults /tmp/editmode.xml -logFile /tmp/edit.log                                 # §1.9  71/71
 $U -batchmode -projectPath $P -runTests -testPlatform PlayMode \
-   -testResults /tmp/playmode.xml -logFile /tmp/play.log                                 # §1.9  42/42
+   -testResults /tmp/playmode.xml -logFile /tmp/play.log                                 # §1.9  53/53
 python3 -c "import xml.etree.ElementTree as ET,sys; r=ET.parse(sys.argv[1]).getroot(); \
   print(r.get('total'), r.get('passed'), r.get('failed'), r.get('result'))" /tmp/playmode.xml
 
@@ -873,7 +971,12 @@ $U -batchmode -quit -nographics -silent-crashes -projectPath $P \
    -auditScene Assets/Scenes/Map_FirstSketch.unity -logFile /tmp/nav.log                 # §1.5
 $U -batchmode -quit -nographics -silent-crashes -projectPath $P \
    -executeMethod HorrorGame.EditorTools.SceneGen.MapSceneGenerator.ReportQualityMenu \
-   -logFile /tmp/quality.log                                                             # §1.6
+   -logFile /tmp/quality.log                                                             # §1.6  FAIL, 16/17
+
+# B-007 — the same verdict as a build gate. Expect exit=1 and no scene written.
+$U -batchmode -nographics -silent-crashes -projectPath $P \
+   -executeMethod HorrorGame.EditorTools.SceneGen.MapSceneGenerator.GenerateFromCommandLine \
+   -logFile /tmp/gen.log; echo "exit=$?"                                                 # B-007  exit=1
 $U -batchmode -quit -nographics -silent-crashes -projectPath $P \
    -executeMethod HorrorGame.EditorTools.AssetImportValidator.ValidateAllBatch -logFile /tmp/a.log   # §1.7
 

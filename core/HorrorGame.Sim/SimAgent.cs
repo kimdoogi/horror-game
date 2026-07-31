@@ -58,12 +58,21 @@ namespace HorrorGame.Sim
     /// </summary>
     public sealed class SimAgent
     {
+        /// <summary>Token value meaning "no action". No node index can collide with it.</summary>
+        private const int NoDwell = int.MinValue;
+
         private readonly SimMap _map;
         private readonly MapGraph _graph;
         private readonly IWorldProbe _world;
 
         private int[] _route = Array.Empty<int>();
         private int _routeIndex;
+
+        /// <summary>What the running dwell is being spent on. See <see cref="BeginDwell"/>.</summary>
+        private int _dwellToken = NoDwell;
+
+        /// <summary>The last action paid for in full, so it is not charged twice.</summary>
+        private int _dwellDoneToken = NoDwell;
 
         /// <summary>Builds an agent standing at the vehicle. §08: the team starts on the surface with nothing.</summary>
         /// <param name="index">Slot 0–3; also the <see cref="MonsterTarget"/> id.</param>
@@ -160,6 +169,16 @@ namespace HorrorGame.Sim
         /// <summary>Whether the last step was taken backwards. §05's 후진 telemetry bucket.</summary>
         public bool LastStepBackward { get; private set; }
 
+        /// <summary>
+        /// Seconds this agent still owes to whatever it is standing over — §07's action
+        /// costs, charged by <see cref="SimScenario"/>. Zero for the shipped simulator,
+        /// which resolves every action in one fixed step.
+        /// </summary>
+        public float DwellSeconds { get; private set; }
+
+        /// <summary>True while the agent is standing still paying <see cref="DwellSeconds"/>.</summary>
+        public bool IsDwelling => DwellSeconds > 0f;
+
         /// <summary>Whether this agent's own light is burning right now.</summary>
         public bool IsLit => Flashlight.IsLit || _world.IsAreaLit(Position);
 
@@ -229,6 +248,82 @@ namespace HorrorGame.Sim
             var hops = new int[path.Length - 1];
             Array.Copy(path, 1, hops, 0, hops.Length);
             _route = hops;
+        }
+
+        /// <summary>
+        /// Starts an action that takes real time — §07's 전리품 하나 더 줍기 and the
+        /// rest — or reports that the same action has just been paid for.
+        /// <para>
+        /// The token is what makes this callable every step from the same branch that
+        /// performs the action. Without it the caller would restart the dwell on the
+        /// step it completed and the agent would stand there for the rest of the night;
+        /// with it, the sequence is "begin, wait, complete, act" and the action's own
+        /// side effects still decide whether it ever happens again.
+        /// </para>
+        /// </summary>
+        /// <param name="token">Identifies the action. See <see cref="MatchSimulator"/>'s token helpers.</param>
+        /// <param name="seconds">What <see cref="SimScenario"/> prices this action at. Zero is a no-op.</param>
+        /// <returns>True if the agent is busy and the caller must wait.</returns>
+        public bool BeginDwell(int token, float seconds)
+        {
+            if (DwellSeconds > 0f)
+            {
+                return true;
+            }
+
+            if (_dwellDoneToken == token || !(seconds > 0f))
+            {
+                return false;
+            }
+
+            _dwellToken = token;
+            DwellSeconds = seconds;
+            return true;
+        }
+
+        /// <summary>
+        /// Pays down a running dwell and reports whether the agent is still busy.
+        /// <para>
+        /// The world is stepped around this, not paused by it: §07's clock runs and
+        /// §06's monster patrols while a player is bent over a 전리품, which is the
+        /// entire reason a dwell is a cost rather than a formality.
+        /// </para>
+        /// </summary>
+        /// <param name="deltaSeconds">The fixed step.</param>
+        /// <returns>True while seconds remain, false on the step the action completes.</returns>
+        public bool TickDwell(float deltaSeconds)
+        {
+            if (DwellSeconds <= 0f)
+            {
+                return false;
+            }
+
+            LastSpeed = 0f;
+            LastStepBackward = false;
+            DwellSeconds -= deltaSeconds;
+
+            if (DwellSeconds > 0f)
+            {
+                return true;
+            }
+
+            // Completing step: clear the debt, remember what was paid for, and let the
+            // caller act in this same step rather than losing one to bookkeeping.
+            DwellSeconds = 0f;
+            _dwellDoneToken = _dwellToken;
+            return false;
+        }
+
+        /// <summary>
+        /// Abandons a running dwell. §06's chase interrupts everything — a player being
+        /// chased drops what they were doing, and the seconds already spent buy nothing,
+        /// so coming back costs the full price again.
+        /// </summary>
+        public void CancelDwell()
+        {
+            DwellSeconds = 0f;
+            _dwellToken = NoDwell;
+            _dwellDoneToken = NoDwell;
         }
 
         /// <summary>Clears the route without moving. Used when a flee re-plans every node.</summary>

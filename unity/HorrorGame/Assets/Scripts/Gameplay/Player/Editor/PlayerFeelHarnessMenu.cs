@@ -40,8 +40,11 @@ namespace HorrorGame.Gameplay.PlayerEditor
 
         // Rig dimensions from ASSETS.md: Player.fbx stands 1.75 m. These size the collider
         // and place the eye when the harness builds a rig from scratch; they describe the
-        // model, not a tuned game value, which is why they are not in GameConstants.
-        private const float RigHeightMetres = 1.75f;
+        // model, not a tuned game value, which is why they are not in GameConstants. The
+        // height itself comes from ViewMotionTuning, which derives the landing reference
+        // from it — two copies of a body's height is exactly the kind of duplicate that
+        // drifts and then makes a fall the wrong size.
+        private const float RigHeightMetres = ViewMotionTuning.RigHeightMetres;
         private const float RigRadiusMetres = 0.3f;
         private const float EyeHeightMetres = 1.63f;
 
@@ -166,10 +169,24 @@ namespace HorrorGame.Gameplay.PlayerEditor
             var animator = body.AddComponent<PlayerAnimatorDriver>();
             var footsteps = body.AddComponent<PlayerFootsteps>();
 
+            // After the animator, so its Footfall event is already there to subscribe
+            // to: the stride the camera rides is pinned to the step the player hears,
+            // and a component that missed the subscription would drift out of phase
+            // with the sound within a few seconds.
+            var viewMotion = body.AddComponent<PlayerViewMotion>();
+
             motor.Role = RoleId.Runner;
 
             AssignSerialized(look, "_pitchPivot", pivot);
             AssignSerialized(animator, "_animator", visual.GetComponentInChildren<Animator>());
+
+            // Wired explicitly rather than left to the component's own Awake fallback:
+            // this rig is saved into Map_FirstSketch_Solo.unity, and a scene that
+            // relies on a runtime search is a scene where adding a second camera
+            // silently moves the eye.
+            AssignSerialized(viewMotion, "_motor", motor);
+            AssignSerialized(viewMotion, "_animator", animator);
+            AssignSerialized(viewMotion, "_cameraTransform", camera.transform);
             AssignClips(animator);
             AssignFootsteps(footsteps);
             AssignControls(body);

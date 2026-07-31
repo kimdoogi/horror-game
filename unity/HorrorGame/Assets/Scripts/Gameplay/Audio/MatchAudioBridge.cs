@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using HorrorGame.Audio;
 using HorrorGame.Core.Clues;
 using HorrorGame.Core.Economy;
+using HorrorGame.Core.Monster;
 using HorrorGame.Gameplay.Interaction;
 using HorrorGame.Gameplay.Match;
 using HorrorGame.Gameplay.Monster;
@@ -54,6 +55,12 @@ namespace HorrorGame.Gameplay.Audio
         [SerializeField]
         private PlayerFlashlight? _flashlight;
 
+        [Tooltip("The local player's camera body. Left empty, the one in the scene is found. Optional.")]
+        [SerializeField]
+        private PlayerViewMotion? _viewMotion;
+
+        private MonsterStateId _previousMonsterState = MonsterStateId.Patrol;
+        private bool _hasMonsterState;
         private bool _hasPrevious;
         private bool _previousLit;
         private bool _previousOnSurface;
@@ -92,6 +99,11 @@ namespace HorrorGame.Gameplay.Audio
                 _flashlight = FindFirstObjectByType<PlayerFlashlight>();
             }
 
+            if (_viewMotion == null)
+            {
+                _viewMotion = FindFirstObjectByType<PlayerViewMotion>();
+            }
+
             if (_rig != null && _monster != null)
             {
                 _rig.SetMonster(_monster.transform);
@@ -109,8 +121,57 @@ namespace HorrorGame.Gameplay.Audio
             BindFloorProbe(rig);
             PlaceLandmarks(rig);
             PushMonster(rig);
+            PushViewMotion(rig);
             PushMatch(rig);
             PushFlashlight(rig);
+        }
+
+        /// <summary>
+        /// Gives the player's body the two things §06 lets it know about the monster,
+        /// and nothing else.
+        /// <para>
+        /// <b>This lives here rather than in <c>MatchDirector</c> on purpose.</b> Both
+        /// signals already exist in this file for the mix, and routing the camera's
+        /// copy through the same objects makes it impossible for the two to disagree:
+        /// <see cref="PlayerViewMotion.Dread01"/> is literally
+        /// <c>DangerSense.Danger01</c>, the number the heartbeat is crossfaded by, so
+        /// the camera cannot become a sharper sense than the sound. <c>DangerSense</c>'s
+        /// own remarks are the argument for why a blunt proximity signal is allowed at
+        /// all — §04 sells the monster's position to the 청음사 and §11 makes the
+        /// 관측자's read unbuyable — and that argument only covers a signal this coarse.
+        /// </para>
+        /// <para>
+        /// The flinch fires on the edge into 추격, the same edge <c>MonsterAcquireTell</c>
+        /// flares the creature's crest on. §06 makes that transition the most
+        /// consequential event in a match and the person it happens to is usually
+        /// running the other way, so the announcement has to reach a surface they are
+        /// definitely looking at.
+        /// </para>
+        /// </summary>
+        private void PushViewMotion(MatchAudioRig rig)
+        {
+            var viewMotion = _viewMotion;
+            if (viewMotion == null)
+            {
+                return;
+            }
+
+            var danger = rig.Danger;
+            viewMotion.Dread01 = danger != null ? danger.Danger01 : 0f;
+
+            if (_monster == null)
+            {
+                return;
+            }
+
+            var state = _monster.State;
+            if (_hasMonsterState && state == MonsterStateId.Chase && _previousMonsterState != MonsterStateId.Chase)
+            {
+                viewMotion.Flinch();
+            }
+
+            _previousMonsterState = state;
+            _hasMonsterState = true;
         }
 
         /// <summary>

@@ -126,7 +126,34 @@ namespace HorrorGame.Gameplay.Player
         /// <summary>Standing on something. No jump exists — §05's scheme has no key for it.</summary>
         public bool IsGrounded
         {
-            get { return _controller != null && _controller.isGrounded; }
+            get
+            {
+                var controller = Controller;
+                return controller != null && controller.isGrounded;
+            }
+        }
+
+        /// <summary>
+        /// The controller, resolved on first use rather than only in <c>Awake</c>.
+        /// <para>
+        /// Editor tooling assembles a rig and steps it without ever entering play mode —
+        /// <c>SoloPlaytest.BuildScene</c> and <c>ViewMotionShot</c> both do — and Unity
+        /// does not run <c>Awake</c> for a component added outside play mode. A motor
+        /// that quietly refused to move in that case looked exactly like a broken §05
+        /// speed table, which cost an evening once already.
+        /// </para>
+        /// </summary>
+        private CharacterController? Controller
+        {
+            get
+            {
+                if (_controller == null)
+                {
+                    _controller = GetComponent<CharacterController>();
+                }
+
+                return _controller;
+            }
         }
 
         /// <summary>
@@ -227,7 +254,8 @@ namespace HorrorGame.Gameplay.Player
         /// <param name="deltaSeconds">Step length. Zero or negative does nothing.</param>
         public void Step(MoveInput input, float deltaSeconds)
         {
-            if (_controller == null || float.IsNaN(deltaSeconds) || deltaSeconds <= 0f)
+            var controller = Controller;
+            if (controller == null || float.IsNaN(deltaSeconds) || deltaSeconds <= 0f)
             {
                 return;
             }
@@ -270,7 +298,7 @@ namespace HorrorGame.Gameplay.Player
             velocity.y = _verticalVelocity;
 
             var before = transform.position;
-            _controller.Move(velocity * deltaSeconds);
+            controller.Move(velocity * deltaSeconds);
             _worldVelocity = (transform.position - before) / deltaSeconds;
         }
 
@@ -339,12 +367,13 @@ namespace HorrorGame.Gameplay.Player
 
         private void ApplyGravity(float deltaSeconds)
         {
-            if (_controller == null)
+            var controller = Controller;
+            if (controller == null)
             {
                 return;
             }
 
-            if (_controller.isGrounded && _verticalVelocity <= 0f)
+            if (controller.isGrounded && _verticalVelocity <= 0f)
             {
                 // One step of gravity rather than zero, so the controller keeps a little
                 // downward push into the floor. A hard zero makes isGrounded flicker on

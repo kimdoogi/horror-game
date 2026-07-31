@@ -176,6 +176,80 @@ namespace HorrorGame.Sim
             return total;
         }
 
+        /// <summary>A band of match lengths and the share of the population inside it.</summary>
+        public readonly struct LengthWindow
+        {
+            /// <summary>Builds a window.</summary>
+            public LengthWindow(float start, float width, float share)
+            {
+                Start = start;
+                Width = width;
+                Share = share;
+            }
+
+            /// <summary>Lower edge, in seconds.</summary>
+            public float Start { get; }
+
+            /// <summary>How wide the band is, in seconds.</summary>
+            public float Width { get; }
+
+            /// <summary>Fraction of matches inside it, 0–1.</summary>
+            public float Share { get; }
+        }
+
+        /// <summary>
+        /// The band of the given width that holds the most matches — the window §01
+        /// would have to state if the design were rewritten around what the game
+        /// actually produces (F-006's "accept a shorter match").
+        /// <para>
+        /// Anchored on match lengths that occur rather than on a grid, so the answer is
+        /// the real optimum and not an artefact of a bin size. The scan is O(n) after a
+        /// sort because both edges only ever move forward.
+        /// </para>
+        /// </summary>
+        /// <param name="widthSeconds">How wide the band is. §01's own is 10 minutes.</param>
+        public LengthWindow BestWindow(float widthSeconds)
+        {
+            if (_matches.Count == 0 || !(widthSeconds > 0f))
+            {
+                return new LengthWindow(0f, widthSeconds, 0f);
+            }
+
+            var lengths = new List<float>(_matches.Count);
+            foreach (var m in _matches)
+            {
+                lengths.Add(m.DurationSeconds);
+            }
+
+            lengths.Sort();
+
+            var bestStart = lengths[0];
+            var bestCount = 0;
+            var high = 0;
+
+            for (var low = 0; low < lengths.Count; low++)
+            {
+                if (high < low)
+                {
+                    high = low;
+                }
+
+                while (high + 1 < lengths.Count && lengths[high + 1] <= lengths[low] + widthSeconds)
+                {
+                    high++;
+                }
+
+                var count = high - low + 1;
+                if (count > bestCount)
+                {
+                    bestCount = count;
+                    bestStart = lengths[low];
+                }
+            }
+
+            return new LengthWindow(bestStart, widthSeconds, bestCount / (float)lengths.Count);
+        }
+
         /// <summary>The design's own scorecard, as text.</summary>
         /// <param name="sink">The telemetry the same matches produced, for §13's buckets.</param>
         public string Describe(InMemoryTelemetrySink? sink)
@@ -214,6 +288,15 @@ namespace HorrorGame.Sim
                     m => m.DurationSeconds >= GameConstants.TargetMatchSecondsMin
                          && m.DurationSeconds <= GameConstants.TargetMatchSecondsMax,
                     m => !m.EndedOutOfLight)));
+
+            // F-006 option 5 — "accept a shorter match and rewrite §01 around it" —
+            // cannot be judged from a median. It needs the window §01 would have to say
+            // instead, which is the 10-minute band this population most lands in, and
+            // the share it would then claim. §01's own band is 10 minutes wide.
+            var window = BestWindow(GameConstants.TargetMatchSecondsMax - GameConstants.TargetMatchSecondsMin);
+            AppendRow(text, "  best 10-min window this population offers",
+                Minutes(window.Start) + "~" + Minutes(window.Start + window.Width)
+                + " holds " + Pct(window.Share));
             text.AppendLine();
 
             text.AppendLine("§03 round trips — target 2~5");
@@ -269,6 +352,8 @@ namespace HorrorGame.Sim
                 Num(Mean(m => m.LootSold)) + " / " + Num(Mean(m => m.LootLeftBehind)));
             text.AppendLine();
 
+            AppendActionCosts(text);
+
             if (sink != null)
             {
                 text.AppendLine("§13 telemetry buckets, as the shipped build would send them");
@@ -282,6 +367,107 @@ namespace HorrorGame.Sim
             }
 
             return text.ToString();
+        }
+
+        /// <summary>
+        /// §07's 행동 · 비용 table against what this population actually spent on the
+        /// same four actions.
+        /// <para>
+        /// This block exists because F-006's largest unknown is not in any share of the
+        /// population: §07 writes down what an action costs a person, and until this was
+        /// measured nothing said what it costs a simulated agent. The right-hand ratio
+        /// is the multiplier a real playtest is expected to apply to every match length
+        /// on this page — see docs/BALANCE-FINDINGS.md F-006.
+        /// </para>
+        /// <para>
+        /// Agent-seconds, not match seconds: four players act at once, so these sum to
+        /// roughly four times the match. That is the correct unit for "what does one
+        /// player spend to pick one thing up".
+        /// </para>
+        /// </summary>
+        private void AppendActionCosts(StringBuilder text)
+        {
+            var sites = Mean(m => m.Ledger.SiteSearches);
+            var pickups = Mean(m => m.Ledger.LootPickups);
+            var trips = Mean(m => m.Ledger.ShopVisits);
+            var players = (float)GameConstants.PlayersPerMatch;
+
+            text.AppendLine("§07 행동 · 비용 — what the design prices, and what these agents spent");
+            AppendRow(text, "  후보 지점 searched / 전리품 lifted / 왕복",
+                Num(sites) + " / " + Num(pickups) + " / " + Num(trips) + " per match");
+
+            // §07's first two rows are one player's decision — the other three carry on
+            // — so they are priced in that player's seconds and measured the same way.
+            AppendCost(text, "  한 층 더 탐색 (§07 ~3분 → ~60s per 후보 지점)",
+                MeanRatio(m => m.Ledger.ClueWalkSeconds + m.Ledger.ClueStandSeconds,
+                    m => m.Ledger.SiteSearches),
+                60f);
+            AppendCost(text, "  전리품 하나 더 줍기 (§07 ~40초)",
+                MeanRatio(m => m.Ledger.LootWalkSeconds + m.Ledger.LootStandSeconds,
+                    m => m.Ledger.LootPickups),
+                40f);
+
+            // The other two are the whole team's, and §07 prices them in wall-clock with
+            // everybody present — so they are compared in match seconds. Quoting the
+            // agent-second figure here would count the same stretch four times and make
+            // the simulator look four times more generous than it is.
+            AppendCost(text, "  나가서 + 상점, match seconds (§07 ~1분 + ~30초)",
+                MeanRatio(m => m.Ledger.TeamSurfaceSeconds, m => m.Ledger.ShopVisits),
+                90f);
+            AppendCost(text, "  …and the walk out to reach the door, per player",
+                MeanRatio(m => m.Ledger.ExitWalkSeconds, m => m.Ledger.ShopVisits),
+                60f);
+
+            AppendRow(text, "  agent-seconds: 단서 walk / stand",
+                Num(Mean(m => m.Ledger.ClueWalkSeconds)) + " / " + Num(Mean(m => m.Ledger.ClueStandSeconds)));
+            AppendRow(text, "  agent-seconds: 전리품 walk / stand",
+                Num(Mean(m => m.Ledger.LootWalkSeconds)) + " / " + Num(Mean(m => m.Ledger.LootStandSeconds)));
+            AppendRow(text, "  agent-seconds: 왕복 walk / at the vehicle",
+                Num(Mean(m => m.Ledger.ExitWalkSeconds)) + " / " + Num(Mean(m => m.Ledger.VehicleSeconds)));
+            AppendRow(text, "  agent-seconds: fleeing (§06)", Num(Mean(m => m.Ledger.FleeSeconds)));
+
+            // The one number the whole block is for. Everything is converted to
+            // agent-seconds so the four rows can be added at all: §07's two team rows
+            // have all four players standing there, so they cost the party four times
+            // what the clock says.
+            var owed = (sites * 60f) + (pickups * 40f) + (trips * 90f * players);
+            var spent = Mean(m => m.Ledger.ClueWalkSeconds + m.Ledger.ClueStandSeconds)
+                        + Mean(m => m.Ledger.LootWalkSeconds + m.Ledger.LootStandSeconds)
+                        + Mean(m => m.Ledger.ExitWalkSeconds + m.Ledger.VehicleSeconds);
+
+            AppendRow(text, "  §07's bill ÷ what was spent, in agent-seconds",
+                Num(owed) + " / " + Num(spent) + "  =  ×" + Num(spent <= 0f ? 0f : owed / spent));
+            text.AppendLine();
+        }
+
+        /// <summary>
+        /// One row of the action-cost block: what this population spent, and the factor
+        /// that would take it to what §07 says the action costs. Above 1 means the
+        /// simulator is charging less than the design does.
+        /// </summary>
+        private static void AppendCost(StringBuilder text, string label, float measured, float design)
+        {
+            var ratio = measured <= 0f ? 0f : design / measured;
+            AppendRow(text, label,
+                Num(measured) + "s measured   ×" + Num(ratio) + " to reach §07");
+        }
+
+        /// <summary>
+        /// The population's total of a per-match numerator over its total of a per-match
+        /// count — not the mean of the per-match ratios, which would weight a match that
+        /// picked up one piece as heavily as one that picked up thirty.
+        /// </summary>
+        private float MeanRatio(Func<SimMatchResult, float> numerator, Func<SimMatchResult, int> count)
+        {
+            var top = 0.0;
+            long bottom = 0;
+            foreach (var m in _matches)
+            {
+                top += numerator(m);
+                bottom += count(m);
+            }
+
+            return bottom == 0 ? 0f : (float)(top / bottom);
         }
 
         private float MeanWhere(Func<SimMatchResult, float> pick, Func<SimMatchResult, bool> predicate)

@@ -232,7 +232,7 @@ namespace HorrorGame.Sim
             var seed = IntArg(args, "--seed", 1);
             var map = SimMap.Build();
             var sink = new InMemoryTelemetrySink();
-            var result = new MatchSimulator(map, seed, Overrides(args), sink, StartSeconds(args)).Run();
+            var result = new MatchSimulator(map, seed, Overrides(args), sink, Scenario(args)).Run();
 
             Console.WriteLine("seed " + result.Seed
                 + "  outcome " + result.Outcome
@@ -263,7 +263,7 @@ namespace HorrorGame.Sim
             for (var i = 0; i < repeats; i++)
             {
                 var sink = new InMemoryTelemetrySink();
-                var result = new MatchSimulator(map, seed, Overrides(args), sink, StartSeconds(args)).Run();
+                var result = new MatchSimulator(map, seed, Overrides(args), sink, Scenario(args)).Run();
 
                 if (first == null)
                 {
@@ -291,15 +291,27 @@ namespace HorrorGame.Sim
             var matches = IntArg(args, "--matches", 500);
             var seed = IntArg(args, "--seed", 1);
             var map = SimMap.Build();
+            var scenario = Scenario(args);
 
             BalanceOverrides.SelfCheck();
 
             var point = SweepRunner.RunPopulation(
                 map, seed, matches, Overrides(args), "seeds " + seed + "…" + (seed + matches - 1),
-                StartSeconds(args));
+                scenario);
 
             Console.Write(DescribeTheBuilding(map));
             Console.WriteLine();
+
+            if (!scenario.IsDefault)
+            {
+                // A run under a scenario is not the shipped game, and F-006 has already
+                // cost this project one round of numbers quoted against a thing the game
+                // does not have. Say so in the output rather than in the command line
+                // the reader no longer has.
+                Console.WriteLine("=== scenario (NOT the shipped game): " + scenario);
+                Console.WriteLine();
+            }
+
             Console.Write(point.Report.Describe(point.Sink));
             return 0;
         }
@@ -308,7 +320,8 @@ namespace HorrorGame.Sim
         {
             if (args.Length < 2)
             {
-                Console.Error.WriteLine("sweep needs an axis: weight-mul-light | loot-value");
+                Console.Error.WriteLine(
+                    "sweep needs an axis: weight-mul-light | loot-value | dwell | tier-minutes | start-cells");
                 return 1;
             }
 
@@ -316,24 +329,50 @@ namespace HorrorGame.Sim
             var seed = IntArg(args, "--seed", 1);
             var verbose = HasFlag(args, "--verbose");
             var map = SimMap.Build();
+            var scenario = Scenario(args);
 
             BalanceOverrides.SelfCheck();
 
             IReadOnlyList<SweepPoint> points;
             string axis;
 
+            // F-001's axes print F-001's columns and F-006's axes print F-006's. The
+            // two findings ask different questions of the same population and a row wide
+            // enough for both is a row nobody reads.
+            var lengthTable = true;
+
             switch (args[1])
             {
                 case "weight-mul-light":
                     axis = "WeightMulLight";
+                    lengthTable = false;
                     points = SweepRunner.WeightMulLight(
-                        map, seed, matches, Values(args, DefaultWeightValues()), StartSeconds(args));
+                        map, seed, matches, Values(args, DefaultWeightValues()), scenario);
                     break;
 
                 case "loot-value":
                     axis = "lootValue×";
+                    lengthTable = false;
                     points = SweepRunner.LootValueScale(
-                        map, seed, matches, Values(args, DefaultLootValues()), StartSeconds(args));
+                        map, seed, matches, Values(args, DefaultLootValues()), scenario);
+                    break;
+
+                case "dwell":
+                    axis = "§07 costs ×";
+                    points = SweepRunner.DwellScale(
+                        map, seed, matches, Values(args, DefaultDwellValues()), scenario);
+                    break;
+
+                case "tier-minutes":
+                    axis = "tier (min)";
+                    points = SweepRunner.TierMinutes(
+                        map, seed, matches, Values(args, DefaultTierValues()), scenario);
+                    break;
+
+                case "start-cells":
+                    axis = "spare cells";
+                    points = SweepRunner.StartingCells(
+                        map, seed, matches, Values(args, DefaultCellValues()), scenario);
                     break;
 
                 default:
@@ -345,8 +384,16 @@ namespace HorrorGame.Sim
             Console.WriteLine();
             Console.WriteLine("sweep " + args[1] + " — " + matches + " matches per point, seeds "
                 + seed + "…" + (seed + matches - 1) + ", identical across points");
+
+            if (!scenario.IsDefault)
+            {
+                Console.WriteLine("held fixed across every point: " + scenario);
+            }
+
             Console.WriteLine();
-            Console.Write(SweepRunner.Table(axis, points));
+            Console.Write(lengthTable
+                ? SweepRunner.LengthTable(axis, points)
+                : SweepRunner.Table(axis, points));
 
             if (verbose)
             {
@@ -383,14 +430,82 @@ namespace HorrorGame.Sim
         private static float[] DefaultLootValues() =>
             new[] { 0.5f, 0.75f, 1f, 1.5f, 2f, 3f };
 
+        // 0 is the simulator as F-006 measured it; 1 is §07's action-cost table charged
+        // exactly as written; the rest bracket a team slower than the designer expects,
+        // which is the whole human-overhead question.
+        private static float[] DefaultDwellValues() =>
+            new[] { 0f, 0.5f, 1f, 1.5f, 2f, 3f };
+
+        // 8 is §07's table as written. The rest compress it towards the match the game
+        // actually produces — F-006 option 2.
+        private static float[] DefaultTierValues() =>
+            new[] { 8f, 6f, 4f, 3f, 2f, 1.5f };
+
+        // §08's 맨몸 is 0. Above 3 the light stops being a constraint at all, which is
+        // worth seeing rather than assuming.
+        private static float[] DefaultCellValues() =>
+            new[] { 0f, 1f, 2f, 3f, 4f };
+
         /// <summary>
-        /// §07's clock, wound forward before the match starts. A scenario knob, not a
-        /// balance value: F-001's arithmetic is about a 4.8 m/s monster, which §07
-        /// does not produce until 심야, so a question about the weight table cannot be
-        /// answered by matches that end in 초저녁.
+        /// Everything the command line can say that is not a
+        /// <see cref="GameConstants"/> value — §07's action costs, §07's clock rate, the
+        /// bootstrap grubstake, and the hour the match starts at. Defaults to
+        /// <see cref="SimScenario.Default"/>, which is the shipped game.
         /// </summary>
-        private static float StartSeconds(string[] args) =>
-            FloatArg(args, "--start-minutes", 0f) * 60f;
+        private static SimScenario Scenario(string[] args)
+        {
+            var scenario = SimScenario.Default
+                .WithStartSeconds(FloatArg(args, "--start-minutes", 0f) * 60f)
+                .WithStartingSpareCells(IntArg(args, "--start-cells", 0));
+
+            var tier = FloatArg(args, "--tier-minutes", float.NaN);
+            if (!float.IsNaN(tier))
+            {
+                scenario = scenario.WithTierMinutes(tier);
+            }
+
+            // One flag for §07's whole table, because the four costs are one claim about
+            // how long a person takes and sweeping them independently would answer a
+            // question the design document does not ask.
+            var dwell = FloatArg(args, "--dwell", float.NaN);
+            if (!float.IsNaN(dwell))
+            {
+                var table = SimScenario.SevenTable.ScaledDwell(dwell);
+                scenario = scenario
+                    .WithSiteSearchSeconds(table.SiteSearchSeconds)
+                    .WithLootPickupSeconds(table.LootPickupSeconds)
+                    .WithSurfaceTransitSeconds(table.SurfaceTransitSeconds)
+                    .WithShopSeconds(table.ShopSeconds);
+            }
+
+            // …and then each cost individually, for the cases where a designer wants to
+            // know which row of §07's table is carrying the result.
+            var search = FloatArg(args, "--search-seconds", float.NaN);
+            if (!float.IsNaN(search))
+            {
+                scenario = scenario.WithSiteSearchSeconds(search);
+            }
+
+            var pickup = FloatArg(args, "--pickup-seconds", float.NaN);
+            if (!float.IsNaN(pickup))
+            {
+                scenario = scenario.WithLootPickupSeconds(pickup);
+            }
+
+            var climb = FloatArg(args, "--climb-seconds", float.NaN);
+            if (!float.IsNaN(climb))
+            {
+                scenario = scenario.WithSurfaceTransitSeconds(climb);
+            }
+
+            var shop = FloatArg(args, "--shop-seconds", float.NaN);
+            if (!float.IsNaN(shop))
+            {
+                scenario = scenario.WithShopSeconds(shop);
+            }
+
+            return scenario;
+        }
 
         private static BalanceOverrides Overrides(string[] args)
         {
@@ -494,11 +609,21 @@ namespace HorrorGame.Sim
             Console.WriteLine("Sweep axes:");
             Console.WriteLine("  weight-mul-light         §08's band-2 multiplier — BALANCE-FINDINGS F-001");
             Console.WriteLine("  loot-value               §16-2's 전리품 가치 ↔ 아이템 가격 ratio");
+            Console.WriteLine("  dwell                    §07's action-cost table charged as dwell — F-006 option 3");
+            Console.WriteLine("  tier-minutes             Length of one §07 threat band — F-006 option 2");
+            Console.WriteLine("  start-cells              Spare batteries carried in — F-006's bootstrap");
             Console.WriteLine();
-            Console.WriteLine("Options usable on match/replay/run:");
+            Console.WriteLine("Options usable on match/replay/run/sweep:");
             Console.WriteLine("  --weight-mul-light X     Shadow GameConstants.WeightMulLight");
             Console.WriteLine("  --loot-value X           Scale what 전리품 fetches at the vehicle");
             Console.WriteLine("  --start-minutes M        Wind §07's clock forward before the first descent");
+            Console.WriteLine("  --start-cells N          Spare battery cells each player carries in (§08 맨몸 = 0)");
+            Console.WriteLine("  --tier-minutes M         Length of one §07 threat band (§07 as written = 8)");
+            Console.WriteLine("  --dwell X                Charge §07's action costs, scaled (0 = shipped sim, 1 = §07)");
+            Console.WriteLine("  --search-seconds S       …or set one row: searching a 후보 지점");
+            Console.WriteLine("  --pickup-seconds S       …picking up one 전리품");
+            Console.WriteLine("  --climb-seconds S        …the climb out, each way");
+            Console.WriteLine("  --shop-seconds S         …상점에서 고민");
         }
     }
 }

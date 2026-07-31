@@ -19,10 +19,10 @@ dotnet test /Users/doogi/horror-game/core/HorrorGame.Core.Tests/HorrorGame.Core.
 ```
 
 ```
-통과!  - 실패: 0, 통과: 448, 건너뜀: 0, 전체: 448, 기간: 325 ms
+통과!  - 실패:     0, 통과:   451, 건너뜀:     0, 전체:   451, 기간: 363 ms
 ```
 
-**448 tests in a third of a second, and Unity never opens.** Every tuned number and
+**451 tests in a third of a second, and Unity never opens.** Every tuned number and
 every rule lives here: §05's speed multipliers, §06's aggro and state machine, §07's
 threat curve, §08's economy, §03's clues and confusion pairs, §12's map rules.
 
@@ -37,7 +37,7 @@ Run it before every commit. If it is green, the game's rules are intact.
 
 ## The full sweep, in the order worth running
 
-### 1 · Rules — 448 tests
+### 1 · Rules — 451 tests
 
 ```bash
 dotnet test /Users/doogi/horror-game/core/HorrorGame.Core.Tests/HorrorGame.Core.Tests.csproj
@@ -96,12 +96,13 @@ python3 -c "import xml.etree.ElementTree as ET,sys; r=ET.parse('/tmp/playmode.xm
 ```
 
 ```
-EditMode   total 70 passed 70 failed 0 result Passed
-PlayMode   total 42 passed 42 failed 0 result Passed
+EditMode   total 71 passed 71 failed 0 result Passed
+PlayMode   total 53 passed 53 failed 0 result Passed
 ```
 
-**112 of 112 as of 2026-08-01.** Older revisions of this file said EditMode 55 and
-PlayMode 27; both were stale.
+**124 of 124 as of 2026-08-01 06:20**, and 575 of 575 with core's 451. Older
+revisions of this file said EditMode 55 and PlayMode 27, then 70 and 42; all were
+stale. Re-read the XML rather than trusting this line.
 
 In the editor these are `Horror ▸ Test ▸ Run EditMode + PlayMode`.
 
@@ -264,15 +265,28 @@ S-corridor — then runs Core's `MapValidator` as a gate and `RunnerTest` as a g
 runner-test rate against §12's 5–7/10 target band. `horrorsim map` prints the same
 report headless, from the same sources, and the two agree exactly.
 
-> A map can pass all sixteen checklist rules and still grade 10/10 TooEasy. §12's
-> checklist is necessary, not sufficient — pinned by
-> `MapTests.SketchMap_PassesTheChecklistAndStillGradesTooEasy`.
+> 🔴 **This menu item currently fails and writes nothing — see
+> [BLOCKERS.md B-007](BLOCKERS.md#b-007).** The checklist gained a 17th rule,
+> `sight-break-spacing`, and 요양원 지하 5층 does not satisfy it, so the gate described
+> above is doing exactly what it says and refusing the map the game ships. The
+> committed `Map_FirstSketch.unity` was written while the checklist still had 16 rules
+> and still runs fine; what is blocked is re-rolling or editing the map.
 >
-> **The shipped map is in exactly that state.** 요양원 지하 5층 passes 16 of 16 and
-> grades **10/10 TooEasy**, outside the band; the three-storey building it replaced
-> graded 7/10 Balanced. Read the two lines the report prints underneath the grade:
-> `164/164 escapable` rules out an unlucky ten-point sample, and `79 corners …
-> mean 4.1 m, 0 inside the band` is the cause. See
+> Headless, the same verdict:
+>
+> ```
+> §12 map validation: failed [sight-break-spacing]
+> §12 rejects this map, so no measurement taken from it describes the shipped game.
+> ```
+>
+> A map can pass every checklist rule and still grade 10/10 TooEasy — §12's checklist
+> is necessary, not sufficient, pinned by
+> `MapTests.SketchMap_PassesTheChecklistAndStillGradesTooEasy`. 요양원 지하 5층 now
+> fails the checklist **and** grades **10/10 TooEasy**, outside the 5–7 band; the
+> three-storey building it replaced graded 7/10 Balanced. Read the two lines the report
+> prints underneath the grade: `164/164 escapable` rules out an unlucky ten-point
+> sample, and `79 corners … mean 4.1 m, 0 inside the band` is the cause — the same
+> geometry the 17th rule fails on. See
 > [BALANCE-FINDINGS F-007](BALANCE-FINDINGS.md#f-007).
 
 ### Two players on one PC — §14 step 2
@@ -369,9 +383,32 @@ Exit codes: `0` ok · `1` unexpected · `2` arguments · `3` scenes · `4` build
 open /Users/doogi/horror-game/dist/macos-arm64/HorrorGame.app
 ```
 
-It boots straight into `Map_FirstSketch_Solo` — scene 0 in the build list, put there
-by `StandaloneBuild.Prepare` — so a double-click starts a match rather than opening
-the not-yet-wired bootstrap menu.
+**It boots into the front end**, not into a match. Scene 0 is `Bootstrap`; 시작 loads
+`Map_FirstSketch_Solo` through `GameShell.LoadMatchRoutine`, and
+`UiFlowTests.Menu_ComesUp_AndStartReachesTheMatchScene` pins that path.
+
+> Earlier revisions of this file said the player "boots straight into
+> `Map_FirstSketch_Solo` … rather than opening the not-yet-wired bootstrap menu". That
+> was true until the front end landed and took slot 0. The menu is wired now.
+
+To get a player that starts a match with no clicking — useful in batch, and the only
+way to check the match path when you cannot drive a GUI — put the solo scene first
+before building:
+
+```bash
+$U -batchmode -quit -nographics -projectPath $P \
+   -executeMethod HorrorGame.EditorTools.Playtest.StandaloneBuild.PrepareBatch -logFile /tmp/prep.log
+```
+
+```
+[StandaloneBuild] Build scenes, in load order:
+  [x] Assets/Scenes/Map_FirstSketch_Solo.unity
+  [x] Assets/Scenes/Bootstrap.unity
+  [x] Assets/Scenes/Map_FirstSketch.unity
+```
+
+That edits `ProjectSettings/EditorBuildSettings.asset`, which is tracked — restore it
+with `git checkout --` when you are done, or the next build ships without its menu.
 
 To confirm it actually reached a match rather than merely opening a window, read the
 player's own log:
@@ -526,7 +563,7 @@ It dry-runs without contacting Steam, and refuses to upload while the App ID is 
 
 | Symptom | Look here first |
 |---|---|
-| Rules behaving oddly | `dotnet test` — 448 tests name the section they defend |
+| Rules behaving oddly | `dotnet test` — 451 tests name the section they defend |
 | A monster ignoring the map | `NavMeshWorldProbe` must use path length, not straight-line distance. §12's S-corridor argument dies otherwise |
 | The Listener useless | Section 5 — a positional clip imported as stereo |
 | A map that plays badly | `HorrorGame ▸ Scene Gen ▸ Report Map Quality` |

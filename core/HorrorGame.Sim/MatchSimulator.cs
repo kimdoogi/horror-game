@@ -58,6 +58,7 @@ namespace HorrorGame.Sim
         private readonly SimMap _map;
         private readonly MatchWorld _world;
         private readonly BalanceOverrides _overrides;
+        private readonly SimScenario _scenario;
         private readonly DeterministicRandom _rng;
 
         private readonly MatchState _match;
@@ -94,6 +95,21 @@ namespace HorrorGame.Sim
         private int _chaseTargetAtStart = -1;
         private bool _chaseTargetLoadedAtStart;
 
+        /// <summary>
+        /// Wall-clock seconds since the match began, which is <em>not</em>
+        /// <c>_clock.ElapsedSeconds</c> once <see cref="SimScenario.ThreatTierScale"/>
+        /// is off 1. §01's 25~35분 is a claim about how long a person sits there;
+        /// §07's clock is a claim about how fast the night gets worse. F-006 option 2
+        /// separates them, so they need two accumulators.
+        /// </summary>
+        private float _realSeconds;
+
+        /// <summary>Seconds the team still owes at the vehicle before the shop opens. §07's 상점에서 고민 and the climb.</summary>
+        private float _surfaceDwellRemaining;
+
+        /// <summary>Whether this surfacing has already been charged, so it is charged once and not every step.</summary>
+        private bool _surfaceDwellCharged;
+
         private SimMatchResult _result;
 
         /// <summary>
@@ -104,15 +120,14 @@ namespace HorrorGame.Sim
         /// <param name="overrides">The sweep's shadowed constants, or <see cref="BalanceOverrides.Default"/>.</param>
         /// <param name="sink">§13's telemetry sink. Receives one <see cref="MatchSummary"/>.</param>
         /// <exception cref="ArgumentNullException">A reference argument is null.</exception>
-        /// <param name="startSeconds">
-        /// Seconds to advance §07's clock before the first descent, so a scenario can
-        /// begin at 심야 instead of 초저녁. Zero is a normal match. This is a
-        /// designer's what-if, not a balance value: it exists because §06's numbers
-        /// only start to differ once the monster is at 4.8, and a match that ends in
-        /// 초저녁 cannot answer a question about 심야.
+        /// <param name="scenario">
+        /// The what-ifs F-006's options are stated in — §07's action costs charged as
+        /// dwell, §07's clock rate, the bootstrap grubstake, and the hour the match
+        /// starts at. <see cref="SimScenario.Default"/> is the shipped game and is what
+        /// every command runs unless the command line says otherwise.
         /// </param>
         public MatchSimulator(
-            SimMap map, int seed, BalanceOverrides overrides, ITelemetrySink sink, float startSeconds = 0f)
+            SimMap map, int seed, BalanceOverrides overrides, ITelemetrySink sink, SimScenario scenario)
         {
             _map = map ?? throw new ArgumentNullException(nameof(map));
             if (sink == null)
@@ -122,6 +137,7 @@ namespace HorrorGame.Sim
 
             _world = new MatchWorld(map.World, map.Graph);
             _overrides = overrides;
+            _scenario = scenario;
             _rng = new DeterministicRandom(seed);
 
             var lineups = RoleSelection.AllLineups();
@@ -170,9 +186,21 @@ namespace HorrorGame.Sim
 
             _monster = NewMonster();
 
-            if (startSeconds > 0f)
+            // The bootstrap grubstake. §08 puts 구매력 at 0 before the first descent and
+            // this does not spend any: a spare cell is equipment carried in, which is
+            // what makes it a legal answer to the 40.6% who surface with a dead light
+            // and an empty wallet (F-006).
+            if (_scenario.StartingSpareCells > 0)
             {
-                _clock.Tick(startSeconds);
+                foreach (var agent in _agents)
+                {
+                    agent.Battery.AddCells(_scenario.StartingSpareCells);
+                }
+            }
+
+            if (_scenario.StartSeconds > 0f)
+            {
+                _clock.Tick(_scenario.StartSeconds);
             }
 
             _result = default(SimMatchResult);
@@ -189,7 +217,14 @@ namespace HorrorGame.Sim
 
             while (true)
             {
-                _clock.Tick(dt);
+                _realSeconds += dt;
+
+                // §07's clock is the only thing scaled. Everything else — the recorder,
+                // the match state, the monster, the agents — is stepped in wall-clock
+                // seconds, so a compressed threat curve (F-006 option 2) makes the night
+                // arrive sooner without making anybody walk faster. At the shipped scale
+                // of 1 this multiplication is exact and the run is byte-identical.
+                _clock.Tick(dt * _scenario.ThreatTierScale);
                 _recorder.Tick(dt);
                 _match.Tick(dt);
 
@@ -214,15 +249,25 @@ namespace HorrorGame.Sim
 
                 StepMonster(dt);
                 StepAgents(dt);
-                TeamSurfacePhase();
+                TeamSurfacePhase(dt);
                 SettleTeamPosition();
+
+                // Match seconds, not agent-seconds: this is the unit §07 prices
+                // 나가서 배터리 교체 and 상점에서 고민 in.
+                if (_clock.IsTeamOnSurface)
+                {
+                    _result.Ledger.TeamSurfaceSeconds += dt;
+                }
 
                 if (_match.Resolution.IsFinal)
                 {
                     break;
                 }
 
-                if (_clock.ElapsedSeconds >= TimeCapSeconds)
+                // The cap is wall-clock, not §07's clock. A compressed threat curve
+                // would otherwise cut every match off at 40 ÷ scale minutes and report
+                // the truncation as a shorter game.
+                if (_realSeconds >= TimeCapSeconds)
                 {
                     _result.HitTimeCap = true;
                     _match.TryAbandon();
@@ -433,12 +478,85 @@ namespace HorrorGame.Sim
                     StepUnderground(dt, agent);
                 }
 
+                Bill(dt, agent);
                 _recorder.RecordMovement(dt, agent.LastSpeed > 0f, agent.LastStepBackward);
 
                 if (agent.Inventory.WeightBand > _result.PeakWeightBand)
                 {
                     _result.PeakWeightBand = agent.Inventory.WeightBand;
                 }
+            }
+        }
+
+        /// <summary>
+        /// Puts this agent's step into exactly one bucket of
+        /// <see cref="SimTimeLedger"/>, so the population can be asked what it spends on
+        /// each of §07's four priced actions.
+        /// <para>
+        /// Classified after the step rather than before it, from what the agent turned
+        /// out to be doing: standing still on an errand is the errand's cost, and only
+        /// movement counts as a walk. §07's table prices actions, not intentions.
+        /// </para>
+        /// </summary>
+        private void Bill(float dt, SimAgent agent)
+        {
+            if (agent.State.IsOnSurface)
+            {
+                // §08's shop, plus the climb either side of it. Walking the flat leg
+                // between door and vehicle is part of the round trip, not part of the
+                // shop, so it is billed to the exit.
+                if (agent.AtVehicle)
+                {
+                    _result.Ledger.VehicleSeconds += dt;
+                }
+                else
+                {
+                    _result.Ledger.ExitWalkSeconds += dt;
+                }
+
+                return;
+            }
+
+            // Standing still counts as working on whatever the agent came here for. The
+            // test is "did it move", which catches §03's ClueReadSeconds and a 금고 being
+            // turned without either of them needing to announce itself.
+            var stationary = agent.IsDwelling || agent.LastSpeed <= 0f;
+
+            switch (agent.Intent)
+            {
+                case AgentIntent.Fleeing:
+                    _result.Ledger.FleeSeconds += dt;
+                    return;
+
+                case AgentIntent.SeekClue:
+                case AgentIntent.SeekObjective:
+                    if (stationary)
+                    {
+                        _result.Ledger.ClueStandSeconds += dt;
+                    }
+                    else
+                    {
+                        _result.Ledger.ClueWalkSeconds += dt;
+                    }
+
+                    return;
+
+                case AgentIntent.SeekLoot:
+                case AgentIntent.WorkSafe:
+                    if (stationary)
+                    {
+                        _result.Ledger.LootStandSeconds += dt;
+                    }
+                    else
+                    {
+                        _result.Ledger.LootWalkSeconds += dt;
+                    }
+
+                    return;
+
+                default:
+                    _result.Ledger.ExitWalkSeconds += dt;
+                    return;
             }
         }
 
@@ -465,11 +583,21 @@ namespace HorrorGame.Sim
             var chased = _monster.State == MonsterStateId.Chase && _monster.ChaseTargetId == agent.Index;
             if (chased || TooCloseToTheMonster(agent))
             {
+                // §06 interrupts everything, and the seconds already spent buy nothing.
+                agent.CancelDwell();
                 Flee(dt, agent);
                 return;
             }
 
             agent.Runner?.Tick(dt, false, agent.Inventory.CarryingObjective, agent.Inventory.CanSprint);
+
+            // §07's action costs, when the scenario charges any. The agent keeps last
+            // step's intent while it pays, so the ledger bills the seconds to the errand
+            // they were spent on, and the world carries on around it.
+            if (agent.TickDwell(dt))
+            {
+                return;
+            }
 
             ChooseIntent(agent);
 
@@ -791,9 +919,18 @@ namespace HorrorGame.Sim
             agent.Advance(dt, 0f, false);
 
             var site = _siteOfNode[node];
-            if (site >= 0)
+            if (site >= 0 && !_siteInspected[site])
             {
+                // §07's 한 층 더 탐색, priced per 후보 지점. The simulator otherwise
+                // learns what is written here in the same fixed step the agent's
+                // position reaches the node — it walks to the shelf and already knows.
+                if (agent.BeginDwell(SearchToken(node), _scenario.SiteSearchSeconds))
+                {
+                    return;
+                }
+
                 _siteInspected[site] = true;
+                _result.Ledger.SiteSearches++;
             }
 
             var clueId = ClueAt(node);
@@ -840,10 +977,21 @@ namespace HorrorGame.Sim
             }
 
             _clueRead[clueId] = true;
+            _result.Ledger.ClueReads++;
             agent.Reader.Cancel();
             agent.TargetClueId = -1;
             agent.TargetNode = -1;
         }
+
+        /// <summary>
+        /// Token for "searching the 후보 지점 at this node". Distinct from
+        /// <see cref="PickupToken"/> because §12 lets a 막힌 길 be both, and an agent
+        /// that had searched one would otherwise get the pickup free.
+        /// </summary>
+        private static int SearchToken(int node) => node * 2;
+
+        /// <summary>Token for "picking the 전리품 up at this node". See <see cref="SearchToken"/>.</summary>
+        private static int PickupToken(int node) => node * 2 + 1;
 
         private void Narrow()
         {
@@ -991,6 +1139,7 @@ namespace HorrorGame.Sim
                 if (safe.IsOpen && safe.TryTakeContents(agent.Inventory))
                 {
                     _safeAt[slot] = null;
+                    _result.Ledger.LootPickups++;
                     agent.State.SetLootState(agent.Inventory.LootCount > 0, false);
                 }
                 else if (safe.IsEmptied)
@@ -1006,9 +1155,24 @@ namespace HorrorGame.Sim
             }
 
             var piece = _lootAt[slot];
-            if (piece != LootId.None && agent.Inventory.TryAdd(piece))
+            if (piece == LootId.None)
+            {
+                agent.TargetNode = -1;
+                return;
+            }
+
+            // §07: 전리품 하나 더 줍기 ~40초. The 금고 above is not charged this — it
+            // already costs real seconds through LootSafe's own work timer, which is
+            // Core's number and not a gap in the simulator.
+            if (agent.BeginDwell(PickupToken(node), _scenario.LootPickupSeconds))
+            {
+                return;
+            }
+
+            if (agent.Inventory.TryAdd(piece))
             {
                 _lootAt[slot] = LootId.None;
+                _result.Ledger.LootPickups++;
                 agent.State.SetLootState(agent.Inventory.LootCount > 0, false);
             }
 
@@ -1143,7 +1307,7 @@ namespace HorrorGame.Sim
         // The surface (§08).
         // ====================================================================
 
-        private void TeamSurfacePhase()
+        private void TeamSurfacePhase(float dt)
         {
             // Team-level and atomic. §08's 공용 지갑 means the shop is one negotiation,
             // not four, and descending one player at a time would make §03's 왕복
@@ -1152,12 +1316,32 @@ namespace HorrorGame.Sim
             {
                 if (agent.State.IsStillInPlay && (!agent.State.IsOnSurface || !agent.AtVehicle))
                 {
+                    _surfaceDwellCharged = false;
                     return;
                 }
             }
 
             if (_match.StillInPlayCount == 0)
             {
+                return;
+            }
+
+            // §07 prices 나가서 배터리 교체 at ~1분 and 상점에서 고민 at ~30초. The
+            // simulator teleports the climb (TrySurface and PlaceAtEntrance both cost
+            // nothing) and resolves the whole shop inside one fixed step, so without
+            // this the round trip §03 is built on is very nearly free. Charged once per
+            // surfacing, and §07's clock keeps running through it — "나가는 것은 숨
+            // 돌리기이지 리셋이 아니다".
+            if (!_surfaceDwellCharged)
+            {
+                _surfaceDwellCharged = true;
+                _surfaceDwellRemaining =
+                    _scenario.SurfaceTransitSeconds * 2f + _scenario.ShopSeconds;
+            }
+
+            if (_surfaceDwellRemaining > 0f)
+            {
+                _surfaceDwellRemaining -= dt;
                 return;
             }
 
@@ -1233,6 +1417,8 @@ namespace HorrorGame.Sim
                 agent.State.SetLootState(false, false);
                 agent.State.TryTreatInjury();
             }
+
+            _result.Ledger.ShopVisits++;
 
             if (_wallet.Credits > _result.PeakCredits)
             {
@@ -1550,7 +1736,11 @@ namespace HorrorGame.Sim
 
             _result.Summary = summary;
             _result.Outcome = resolution.Outcome;
-            _result.DurationSeconds = _clock.ElapsedSeconds;
+
+            // Wall clock, which is what §01's 25~35분 is a claim about. Identical to
+            // _clock.ElapsedSeconds at the shipped tier scale, and deliberately not the
+            // same number once F-006 option 2 compresses §07's curve.
+            _result.DurationSeconds = _realSeconds;
             _result.RoundTrips = _clock.SurfacingCount;
             _result.CreditsUnspent = _wallet.Credits;
             _result.CreditsEarned = _wallet.TotalEarned;

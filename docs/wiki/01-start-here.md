@@ -29,16 +29,16 @@ Put these two lines in your shell profile first — everything `.NET` needs them
 export DOTNET_ROOT="$HOME/.dotnet"; export PATH="$HOME/.dotnet:$PATH"
 ```
 
-### 1 · The rules are intact — 448 tests, no engine, under a second
+### 1 · The rules are intact — 451 tests, no engine, under a second
 
 ```bash
 dotnet test core/HorrorGame.Core.Tests/HorrorGame.Core.Tests.csproj
 ```
 
-Measured 2026-07-31 23:31 on this machine:
+Measured 2026-08-01 05:58 on this machine:
 
 ```
-통과!  - 실패:     0, 통과:   448, 건너뜀:     0, 전체:   448, 기간: 836 ms
+통과!  - 실패:     0, 통과:   451, 건너뜀:     0, 전체:   451, 기간: 363 ms
 ```
 
 `건너뜀: 0` matters as much as the total — the count is not inflated by disabled
@@ -103,14 +103,21 @@ Last run recorded in [STATUS.md §1.3](../STATUS.md) and
 [`docs/STATUS.md`](../STATUS.md) is the authority and is rewritten each pass. As of
 its 2026-08-01 edition, in one paragraph:
 
-**Every test in the project is green — 560 of 560** (core 448, EditMode 70, PlayMode
-42). Unity compiles clean and so does the core solution. The monster crosses the map
+**Every test in the project is green — 575 of 575** (core 451, EditMode 71, PlayMode
+53). Unity compiles clean and so does the core solution. The monster crosses the map
 and catches you. A solo match runs end to end — descend, read clues, take loot,
-surface, sell, buy, descend, carry the objective out. The map is a **five**-storey
-basement, 164 places against the old 74, passing all 16 §12 rules — but grading
-**10/10 TooEasy** on the 주자 테스트, *outside* §12's 5–7 band, which the three-storey
-map held at 7/10 ([F-007](09-open-questions.md#f-007)). The economy resolves a match
-in **7.2 minutes** against a 25–35 minute design target
+surface, sell, buy, descend, carry the objective out. The macOS IL2CPP player builds,
+launches and starts a match with no exceptions ([STATUS.md §1.10](../STATUS.md)).
+
+The map is a **five**-storey basement, 164 places against the old 74 — and it is where
+the bad news is. It grades **10/10 TooEasy** on the 주자 테스트, *outside* §12's 5–7
+band, which the three-storey map held at 7/10 ([F-007](09-open-questions.md#f-007)),
+and as of 2026-08-01 it also **fails §12's checklist** — 16 of 17 rules, the 17th
+being the corner-density rule that measures exactly what makes it too easy. Because
+generation gates on the checklist, **the map can no longer be regenerated**
+([B-007](../BLOCKERS.md#b-007)). The committed scene still runs; authoring is frozen.
+
+The economy resolves a match in **7.2 minutes** against a 25–35 minute design target
 ([F-006](09-open-questions.md#f-006)) — up from 2.5, and all five of §07's threat
 tiers are now reached by real matches, but 25–35 is still not the normal match.
 

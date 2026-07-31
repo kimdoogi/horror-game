@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using HorrorGame.Core;
+using HorrorGame.Gameplay.Player;
 using HorrorGame.UI.Settings;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -53,6 +54,8 @@ namespace HorrorGame.UI.Screens
         private Slider? _sensitivitySlider;
         private Text? _sensitivityValue;
         private Text? _invertValue;
+        private Slider? _viewMotionSlider;
+        private Text? _viewMotionValue;
 
         private Slider? _masterSlider;
         private Text? _masterValue;
@@ -118,6 +121,7 @@ namespace HorrorGame.UI.Screens
 
             _fovSlider?.SetValueWithoutNotify(settings.FieldOfViewDegrees);
             _sensitivitySlider?.SetValueWithoutNotify(settings.MouseSensitivity);
+            _viewMotionSlider?.SetValueWithoutNotify(settings.ViewMotion);
             _masterSlider?.SetValueWithoutNotify(settings.VolumeMaster);
             _sfxSlider?.SetValueWithoutNotify(settings.VolumeSfx);
             _ambienceSlider?.SetValueWithoutNotify(settings.VolumeAmbience);
@@ -207,6 +211,15 @@ namespace HorrorGame.UI.Screens
 
             var invertRow = UiControls.CreateRow(column, Font, "Y축 반전", "마우스를 밀면 아래를 본다.", y, ColumnWidth);
             _invertValue = UiControls.CreateSwitch(invertRow, Font, string.Empty, OnInvertToggled);
+            y -= UiControls.SettingRowHeight + UiControls.SettingRowGap;
+
+            // Full range, unlike FOV, and the subtitle says why: this one cannot buy an
+            // advantage. Zero is a supported way to play — see GameSettings.ViewMotion.
+            var viewMotionRow = UiControls.CreateRow(column, Font, "화면 흔들림",
+                "걸음 · 착지 · 후진 기울기 · 숨. 멀미가 나면 먼저 줄일 것 — 밸런스에 영향이 없는 유일한 항목이라 0%도 괜찮다.",
+                y, ColumnWidth);
+            _viewMotionSlider = UiControls.CreateSlider(viewMotionRow, 0f, 1f, ViewMotionTuning.ScaleDefault, OnViewMotionChanged);
+            _viewMotionValue = UiControls.CreateValueText(viewMotionRow, Font, string.Empty);
             y -= UiControls.SettingRowHeight + UiControls.SettingRowGap;
 
             _audioSectionY = y;
@@ -374,6 +387,13 @@ namespace HorrorGame.UI.Screens
         {
             SettingsService.Current.FieldOfViewDegrees = value;
             SettingsService.ApplyFieldOfView(SettingsService.Current);
+            DrawReadouts(SettingsService.Current);
+        }
+
+        private void OnViewMotionChanged(float value)
+        {
+            SettingsService.Current.ViewMotion = value;
+            SettingsService.ApplyViewMotion(SettingsService.Current);
             DrawReadouts(SettingsService.Current);
         }
 
@@ -580,6 +600,17 @@ namespace HorrorGame.UI.Screens
             if (_invertValue != null)
             {
                 _invertValue.text = settings.InvertLookY ? "켬" : "끔";
+            }
+
+            if (_viewMotionValue != null)
+            {
+                _viewMotionValue.text = Mathf.RoundToInt(settings.ViewMotion * 100f)
+                    .ToString(CultureInfo.InvariantCulture) + " %";
+
+                // Calm at zero rather than Spent: turning it off costs nothing, which
+                // is the opposite of the 효과음 row below and the reason both are
+                // coloured at all.
+                _viewMotionValue.color = settings.ViewMotion <= 0.001f ? UiStyle.Calm : UiStyle.Trade;
             }
 
             SetVolume(_masterValue, settings.VolumeMaster);

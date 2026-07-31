@@ -38,8 +38,8 @@ also fails loudly rather than compiling an empty assembly if the layout moves:
 
 ### What it buys
 
-- **448 tests in under a second, with no engine, no licence and no GPU.** Measured
-  2026-07-31 23:31: `실패: 0, 통과: 448, 건너뜀: 0, 기간: 836 ms`.
+- **451 tests in under a second, with no engine, no licence and no GPU.** Measured
+  2026-08-01 05:58: `실패: 0, 통과: 451, 건너뜀: 0, 기간: 363 ms`.
 - Every one of those tests is testing the file that ships. There is no "the DLL was
   rebuilt from an older branch" failure mode in this project.
 - CI can protect §05–§08 and §12 on a free Linux runner with no Unity licence

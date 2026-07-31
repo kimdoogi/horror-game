@@ -4,7 +4,60 @@ Things that stop the game working, as opposed to design questions. Balance
 contradictions live in [BALANCE-FINDINGS.md](BALANCE-FINDINGS.md). Art defects that
 do not stop the game live in [ART.md](ART.md) §7.
 
-Last verified: 2026-08-01 03:45, Unity 6000.3.21f1, macOS 24.3.0.
+Last verified: 2026-08-01 06:30, Unity 6000.3.21f1, macOS 24.3.0.
+
+---
+
+## B-007 · The map can no longer be regenerated — §12's 17th rule rejects the map that ships
+
+**Status:** 🔴 **OPEN**, opened 2026-08-01 06:25 · reproduce with the command below
+
+`66ce930` implemented 시야 차단 지점 간격 as `MapValidator`'s 17th rule. The rule is
+right and the map was never fixed to satisfy it, so **the generator now refuses to
+write the level the game ships**:
+
+```bash
+/Applications/Unity/Hub/Editor/6000.3.21f1/Unity.app/Contents/MacOS/Unity -batchmode \
+  -nographics -silent-crashes -projectPath unity/HorrorGame \
+  -executeMethod HorrorGame.EditorTools.SceneGen.MapSceneGenerator.GenerateFromCommandLine \
+  -logFile /tmp/gen.log; echo "exit=$?"
+```
+
+```
+exit=1
+[SceneGen] §12 rejected the map at seed 1204, so nothing was written.
+[FAIL] sight-break-spacing — 시야 차단 지점 간격 15~25m (질주 60m에 3~4번의 기회)
+```
+
+`MapSceneGenerator.Generate` gates on `MapQualityReport.Measure(map).Buildable`, which
+is `MapValidator.Validate`'s verdict. The gate is doing its job. The consequence is
+that `Assets/Scenes/Map_FirstSketch.unity` **is now a committed artefact its own
+generator would reject** — it was written on 2026-08-01 while the checklist still had
+16 rules.
+
+### What still works, and what does not
+
+The committed scene is intact and every measurement in
+[STATUS.md §1](STATUS.md) was taken against it: NavMesh 1830/1830 with 1 island,
+`MonsterChaseTests` 4/4, the solo loop, the standalone build. **Nothing regressed at
+runtime.** What is blocked is the authoring loop — `HorrorGame ▸ Scene Gen ▸ Generate
+First Map` now fails, so the map cannot be re-rolled, re-seeded or edited-and-rebuilt
+until the geometry satisfies the rule.
+
+### Why this is a blocker rather than a finding
+
+It is the same shape as [B-005](#b-005): a gate that correctly refuses, protecting a
+scene that is already past it. Anyone who regenerates the map to change one thing gets
+an error and no scene, and the obvious reading — "the generator is broken" — is wrong.
+The generator is fine; the map is.
+
+### The fix is [F-007](BALANCE-FINDINGS.md#f-007), not a code change
+
+Do **not** relax `SightBreakPointSpanMax` to make this go away. The rule and the
+10/10 TooEasy grade are the same defect measured twice: 79 bends at a mean spacing of
+4.1 m, none inside §12's 15–25 m band. Fixing the map's corner density closes this
+blocker and moves the 주자 테스트 into the 5–7 band in one change. Until then this
+entry and F-007 stay open together.
 
 ---
 
