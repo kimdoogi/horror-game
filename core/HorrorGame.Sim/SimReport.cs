@@ -111,6 +111,59 @@ namespace HorrorGame.Sim
             return values[index];
         }
 
+        /// <summary>
+        /// A percentile over the sub-population a filter keeps, nearest-rank. Zero when
+        /// the filter keeps nothing.
+        /// </summary>
+        /// <param name="pick">The per-match figure.</param>
+        /// <param name="fraction">0 is the smallest kept value, 1 the largest.</param>
+        /// <param name="keep">Which matches count. A population split is a claim; naming it here keeps it one line.</param>
+        public float PercentileWhere(
+            Func<SimMatchResult, float> pick, float fraction, Func<SimMatchResult, bool> keep)
+        {
+            var values = new List<float>(_matches.Count);
+            foreach (var m in _matches)
+            {
+                if (keep(m))
+                {
+                    values.Add(pick(m));
+                }
+            }
+
+            if (values.Count == 0)
+            {
+                return 0f;
+            }
+
+            values.Sort();
+            var index = (int)MathF.Round(MathF.Max(0f, MathF.Min(1f, fraction)) * (values.Count - 1));
+            return values[index];
+        }
+
+        /// <summary>Share of a sub-population satisfying a predicate. Zero when the filter keeps nothing.</summary>
+        /// <param name="predicate">What is being counted.</param>
+        /// <param name="keep">Which matches are in the denominator.</param>
+        public float ShareWhere(Func<SimMatchResult, bool> predicate, Func<SimMatchResult, bool> keep)
+        {
+            var kept = 0;
+            var hits = 0;
+            foreach (var m in _matches)
+            {
+                if (!keep(m))
+                {
+                    continue;
+                }
+
+                kept++;
+                if (predicate(m))
+                {
+                    hits++;
+                }
+            }
+
+            return kept == 0 ? 0f : hits / (float)kept;
+        }
+
         /// <summary>Total of a per-match integer across the population.</summary>
         public long Total(Func<SimMatchResult, int> pick)
         {
@@ -147,6 +200,20 @@ namespace HorrorGame.Sim
                 + " / " + Minutes(Percentile(m => m.DurationSeconds, 0.9f)));
             AppendRow(text, "  inside the window", Pct(ShareInMatchLengthWindow));
             AppendRow(text, "  hit the sim's 40-min cap", Pct(Share(m => m.HitTimeCap)));
+
+            // §03's battery is the reason to come out and §08 sells the reason to go
+            // back in — so a team that surfaces with an empty wallet and no light has
+            // no second descent. On a building this size that is a whole population of
+            // short matches, and quoting the median without it would be quoting the
+            // median of two different games (docs/BALANCE-FINDINGS.md F-006).
+            AppendRow(text, "  ended with every light dead", Pct(Share(m => m.EndedOutOfLight)));
+            AppendRow(text, "  median of the rest",
+                Minutes(PercentileWhere(m => m.DurationSeconds, 0.5f, m => !m.EndedOutOfLight)));
+            AppendRow(text, "  inside the window, of the rest",
+                Pct(ShareWhere(
+                    m => m.DurationSeconds >= GameConstants.TargetMatchSecondsMin
+                         && m.DurationSeconds <= GameConstants.TargetMatchSecondsMax,
+                    m => !m.EndedOutOfLight)));
             text.AppendLine();
 
             text.AppendLine("§03 round trips — target 2~5");
@@ -161,7 +228,12 @@ namespace HorrorGame.Sim
 
             text.AppendLine("§07 threat curve");
             AppendRow(text, "  mean tier at end (0=초저녁 … 4=동트기 전)", Num(Mean(m => m.FinalTierIndex)));
-            AppendRow(text, "  reached 심야 or later", Pct(Share(m => m.FinalTierIndex >= 2)));
+            // Each of §07's five tiers named separately, because F-006 is a claim about
+            // how many of them anybody ever sees. One "심야 or later" row cannot say
+            // whether 새벽's "괴물이 출입구를 안다" is content or decoration.
+            AppendRow(text, "  reached 심야 or later (tier 2, 16 min)", Pct(Share(m => m.FinalTierIndex >= 2)));
+            AppendRow(text, "  reached 새벽 or later (tier 3, 24 min)", Pct(Share(m => m.FinalTierIndex >= 3)));
+            AppendRow(text, "  reached 동트기 전 (tier 4, 32 min)", Pct(Share(m => m.FinalTierIndex >= 4)));
             AppendRow(text, "  chases per match", Num(Mean(m => m.Chases)));
             AppendRow(text, "  chases broken", Pct(RatioOf(m => m.ChaseEscapes, m => m.Chases)));
             AppendRow(text, "  mean aggro seconds", Num(Mean(m => m.Summary.TotalAggroSeconds)));

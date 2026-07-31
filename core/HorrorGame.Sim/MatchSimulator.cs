@@ -1259,6 +1259,7 @@ namespace HorrorGame.Sim
             // by here the shop has already done what it can.
             if (!AnyoneStillHasLight())
             {
+                _result.EndedOutOfLight = !_objectiveTaken;
                 _evacuating = true;
             }
         }

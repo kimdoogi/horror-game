@@ -157,7 +157,7 @@ in `GameConstants`. The jitter-buffer depth is a representation and does not.
 | Before you change | Read | Then run |
 |---|---|---|
 | a speed, a multiplier, a stamina figure | §06 and §05 of [game-design.md](../game-design.md) | `dotnet test`, then `MonsterChaseTests` |
-| any §12 dimension, or the map's scale | §3 above, then [F-006](09-open-questions.md) | §12 validation **and** `MonsterChaseTests` — both |
-| a weight band or a price | [F-001](09-open-questions.md) and [F-006](09-open-questions.md) — the economy cannot be tuned before match length is fixed | `dotnet run -c Release --project core/HorrorGame.Sim -- run --matches 500 --seed 1` |
+| any §12 dimension, or the map's scale | §3 above, then [F-006](09-open-questions.md#f-006) and [F-007](09-open-questions.md#f-007) | §12 validation, the **주자 테스트 band**, `MonsterChaseTests`, *and* a re-run of the 500-match simulator — the map is compiled into it, so every balance number moves with the building |
+| a weight band or a price | [F-001](09-open-questions.md) and [F-006](09-open-questions.md#f-006) — the economy now runs (0.70 of one of everything earned), so §16-2 is measurable for the first time, and every measurement taken before 2026-08-01 was taken on the wrong map | `dotnet run -c Release --project core/HorrorGame.Sim -- run --matches 500 --seed 1` |
 | a `ListenerClarity*` value | [F-002](09-open-questions.md) — the table is already known to be wrong under occlusion | `tools/audio/verify_audio.py` |
-| a threat-tier value | [F-006](09-open-questions.md) — tiers 2–4 are currently unreachable | the simulator |
+| a threat-tier value | [F-006](09-open-questions.md#f-006) — all five tiers are now reached (심야 33.6%, 새벽 17.4%, 동트기 전 13.0%), so changing one changes content players see | the simulator |

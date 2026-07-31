@@ -151,10 +151,18 @@ fourth and weakest signal.
 
 `MapValidator` runs exactly **16** rules (count them:
 `grep -c 'public const string Rule' unity/HorrorGame/Assets/Scripts/Core/Map/MapValidator.cs`).
-§12's own 첫 맵 스케치 passes all sixteen and grades **10/10 TooEasy** on the 주자
+Core's own fixture map passes all sixteen and grades **10/10 TooEasy** on the 주자
 테스트 — pinned by `MapTests.SketchMap_PassesTheChecklistAndStillGradesTooEasy`.
 The checklist is necessary, not sufficient; the grade is the second half. §12 wants
 5–7/10.
+
+**The shipped map is now in the same state.** 요양원 지하 5층 passes 16 of 16 and
+grades 10/10 TooEasy; the three-storey building it replaced graded 7/10. The
+`RunnerCensus` line under the grade — `164/164 escapable (100%)` — rules out an
+unlucky ten-point sample, and the line under *that* names the cause: 79 sight-breaking
+corners, mean nearest-neighbour spacing **4.1 m** against §12's 15–25 m rule, **0
+inside the band**. No checklist rule measures corner density. See
+[F-007](09-open-questions.md#f-007).
 
 > ART.md §6 says "§12 validation PASS on all 17 rules". The code has 16.
 > STATUS.md §1.6's "16 of 16" is the accurate one.
@@ -164,12 +172,15 @@ The checklist is necessary, not sufficient; the grade is the second half. §12 w
 `dotnet test` prints `건너뜀: N`. If N is not 0, the total is inflated by disabled
 cases. Read both numbers.
 
-### 3.8 The chase numbers are measured at a tier players rarely see
+### 3.8 The chase numbers are measured at a tier a third of matches reach
 
 `MonsterChaseTests` pins §07 to 심야 to measure against §06's 4.8 m/s. The simulator
-says a real match reaches 심야 **1.2 %** of the time ([F-006](09-open-questions.md)).
-The chase numbers are correct *for the tier they are measured at*. They become the
-numbers of the game only when F-006 is fixed.
+says a real match reaches 심야 **33.6 %** of the time
+([F-006](09-open-questions.md#f-006)) — it said 1.2 % until 2026-08-01, when the
+five-storey map landed and the simulator was pointed at it. The chase numbers are
+correct *for the tier they are measured at*, and that tier is now a third of the
+population rather than a rounding error. They still are not the numbers of the median
+match, which ends at 7.2 min in tier 1.
 
 ---
 
@@ -186,7 +197,7 @@ numbers of the game only when F-006 is fixed.
 ## 5. Where the existing docs are already stale
 
 Not a criticism — they are dated snapshots and they say so. But **re-measure before
-quoting**, and prefer STATUS.md over the others. Known drift as of 2026-07-31 23:45:
+quoting**, and prefer STATUS.md over the others. Known drift as of 2026-08-01 03:40:
 
 | Claim | Where | Actually |
 |---|---|---|
@@ -196,8 +207,15 @@ quoting**, and prefer STATUS.md over the others. Known drift as of 2026-07-31 23
 | "`Assets/Tests/EditMode/` and `Assets/Tests/PlayMode/` are still empty" | CI.md §4.2, §5 | six test assemblies exist and run |
 | "Nothing that needs the Unity editor has ever executed" | CI.md §5 | true of *CI*, not of this machine — STATUS.md quotes real editor runs |
 | "`dist/` contains logs and test results and **no player executable**" | STATUS.md §5 | an IL2CPP macOS player and a Mono Windows player exist as of 2026-07-31 23:39. Read `dist/last-build-summary.txt` |
-| PlayMode is 27 tests | TESTING.md | 41 ([STATUS.md §2.1](../STATUS.md)) |
-| "16–39 % crushed, 31–57 % legible" | ART.md §1 | 8.8–43.8 % and 29.2–58.6 % ([STATUS.md §4.2](../STATUS.md)) |
+| PlayMode is 27 tests | TESTING.md | 42 ([STATUS.md §1.9](../STATUS.md)) |
+| "16–39 % crushed, 31–57 % legible" | ART.md §1 | re-measured every art pass — [STATUS.md §4.3](../STATUS.md) is the current one |
+| "matches finish in 2.5 min" / "0.6% inside the window" / "심야 1.2%" | anywhere | 7.2 min, 15.8%, 33.6% — the old figures were measured against a four-zone ring the game does not ship ([F-006](09-open-questions.md#f-006)) |
+| "주자 테스트 7/10, Balanced" | anywhere | 10/10 TooEasy on the five-storey map ([F-007](09-open-questions.md#f-007)) |
+
+**The one that cost most.** Every "2.5 min" above was not stale prose — it was a live
+measurement of the wrong object, and it sat in `PlaytestGuidanceScreen`'s §14 overlay
+where a playtester would read it as fact. A number in a string literal is a copy; grep
+for it when the thing it copies moves.
 | audio separation 2.13× / 1.98× / 1.396× / 32.4 dB | STATUS.md §2.2, CI.md §2.2, BALANCE-FINDINGS F-002/F-003 | **2.10× / 1.89× / 1.389× / 32.5 dB**, measured twice on 2026-07-31 23:38 with the pinned toolchain. 56 footstep WAVs were regenerated in commit `4fb93cd` |
 | TESTING.md's suite command carries `-quit` | TESTING.md §4 vs its own warning box | the warning is right; the command above it is the one to use |
 

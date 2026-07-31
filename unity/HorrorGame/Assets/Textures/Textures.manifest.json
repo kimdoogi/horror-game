@@ -17,7 +17,15 @@
       "kit_uv_units_per_metre": 0.5,
       "albedo_mean_linear": 0.25,
       "roughness_mean": 0.748,
-      "relief_mm": 9.68,
+      "relief_mm": 10.07,
+      "texel_px_per_metre": 512.0,
+      "detail": {
+        "name": "Detail_Timber",
+        "normal": "Detail/Detail_Timber_normal.png",
+        "size_metres": 0.15,
+        "authored_metres_per_tile": 0.3,
+        "note": "Timber fibre — the same noise drawn along the board."
+      },
       "maps": {
         "albedo": "Floor_Wood/Floor_Wood_albedo.png",
         "normal": "Floor_Wood/Floor_Wood_normal.png",
@@ -36,8 +44,16 @@
       "authored_metres_per_tile": 2.0,
       "kit_uv_units_per_metre": 0.5,
       "albedo_mean_linear": 0.32,
-      "roughness_mean": 0.2197,
-      "relief_mm": 7.24,
+      "roughness_mean": 0.2208,
+      "relief_mm": 7.44,
+      "texel_px_per_metre": 512.0,
+      "detail": {
+        "name": "Detail_Ceramic",
+        "normal": "Detail/Detail_Ceramic_normal.png",
+        "size_metres": 0.11,
+        "authored_metres_per_tile": 0.22,
+        "note": "Glaze and gloss paint: almost flat, just enough to stop a mirror."
+      },
       "maps": {
         "albedo": "Floor_Tile/Floor_Tile_albedo.png",
         "normal": "Floor_Tile/Floor_Tile_normal.png",
@@ -57,7 +73,15 @@
       "kit_uv_units_per_metre": 0.5,
       "albedo_mean_linear": 0.44,
       "roughness_mean": 0.6792,
-      "relief_mm": 45.0,
+      "relief_mm": 45.34,
+      "texel_px_per_metre": 682.7,
+      "detail": {
+        "name": "Detail_Aggregate",
+        "normal": "Detail/Detail_Aggregate_normal.png",
+        "size_metres": 0.225,
+        "authored_metres_per_tile": 0.45,
+        "note": "Floated concrete and packed ballast fines: coarser, still sub-5 mm."
+      },
       "maps": {
         "albedo": "Floor_Gravel/Floor_Gravel_albedo.png",
         "normal": "Floor_Gravel/Floor_Gravel_normal.png",
@@ -77,7 +101,15 @@
       "kit_uv_units_per_metre": 0.5,
       "albedo_mean_linear": 0.23,
       "roughness_mean": 0.6787,
-      "relief_mm": 7.18,
+      "relief_mm": 8.83,
+      "texel_px_per_metre": 409.6,
+      "detail": {
+        "name": "Detail_Aggregate",
+        "normal": "Detail/Detail_Aggregate_normal.png",
+        "size_metres": 0.225,
+        "authored_metres_per_tile": 0.45,
+        "note": "Floated concrete and packed ballast fines: coarser, still sub-5 mm."
+      },
       "maps": {
         "albedo": "Floor_Concrete/Floor_Concrete_albedo.png",
         "normal": "Floor_Concrete/Floor_Concrete_normal.png",
@@ -96,8 +128,16 @@
       "authored_metres_per_tile": 2.0,
       "kit_uv_units_per_metre": 0.5,
       "albedo_mean_linear": 0.26,
-      "roughness_mean": 0.3551,
-      "relief_mm": 10.1,
+      "roughness_mean": 0.3556,
+      "relief_mm": 10.24,
+      "texel_px_per_metre": 512.0,
+      "detail": {
+        "name": "Detail_Brushed",
+        "normal": "Detail/Detail_Brushed_normal.png",
+        "size_metres": 0.125,
+        "authored_metres_per_tile": 0.25,
+        "note": "Rolled and brushed steel. Tiny relief, but it is what breaks the beam's specular lobe into a streak instead of a disc."
+      },
       "maps": {
         "albedo": "Floor_Metal/Floor_Metal_albedo.png",
         "normal": "Floor_Metal/Floor_Metal_normal.png",
@@ -116,8 +156,16 @@
       "authored_metres_per_tile": 1.8,
       "kit_uv_units_per_metre": 0.5,
       "albedo_mean_linear": 0.22,
-      "roughness_mean": 0.7493,
-      "relief_mm": 13.02,
+      "roughness_mean": 0.7492,
+      "relief_mm": 13.63,
+      "texel_px_per_metre": 568.9,
+      "detail": {
+        "name": "Detail_Sand",
+        "normal": "Detail/Detail_Sand_normal.png",
+        "size_metres": 0.15,
+        "authored_metres_per_tile": 0.3,
+        "note": "Cement, plaster and brick: fine isotropic tooth, the sand in the mix."
+      },
       "maps": {
         "albedo": "Wall_Brick_Painted/Wall_Brick_Painted_albedo.png",
         "normal": "Wall_Brick_Painted/Wall_Brick_Painted_normal.png",
@@ -135,7 +183,15 @@
       "kit_uv_units_per_metre": 0.5,
       "albedo_mean_linear": 0.27,
       "roughness_mean": 0.8133,
-      "relief_mm": 6.85,
+      "relief_mm": 7.36,
+      "texel_px_per_metre": 409.6,
+      "detail": {
+        "name": "Detail_Sand",
+        "normal": "Detail/Detail_Sand_normal.png",
+        "size_metres": 0.15,
+        "authored_metres_per_tile": 0.3,
+        "note": "Cement, plaster and brick: fine isotropic tooth, the sand in the mix."
+      },
       "maps": {
         "albedo": "Wall_Concrete_Bare/Wall_Concrete_Bare_albedo.png",
         "normal": "Wall_Concrete_Bare/Wall_Concrete_Bare_normal.png",
@@ -155,7 +211,15 @@
       "kit_uv_units_per_metre": 0.5,
       "albedo_mean_linear": 0.3,
       "roughness_mean": 0.7495,
-      "relief_mm": 7.86,
+      "relief_mm": 8.19,
+      "texel_px_per_metre": 512.0,
+      "detail": {
+        "name": "Detail_Sand",
+        "normal": "Detail/Detail_Sand_normal.png",
+        "size_metres": 0.15,
+        "authored_metres_per_tile": 0.3,
+        "note": "Cement, plaster and brick: fine isotropic tooth, the sand in the mix."
+      },
       "maps": {
         "albedo": "Wall_Plaster_Stained/Wall_Plaster_Stained_albedo.png",
         "normal": "Wall_Plaster_Stained/Wall_Plaster_Stained_normal.png",
@@ -175,7 +239,9 @@
       "kit_uv_units_per_metre": 0.5,
       "albedo_mean_linear": 0.21,
       "roughness_mean": 0.8632,
-      "relief_mm": 8.7,
+      "relief_mm": 8.89,
+      "texel_px_per_metre": 409.6,
+      "detail": {},
       "maps": {
         "albedo": "Ceiling_Concrete_Formed/Ceiling_Concrete_Formed_albedo.png",
         "normal": "Ceiling_Concrete_Formed/Ceiling_Concrete_Formed_normal.png",
@@ -194,8 +260,16 @@
       "authored_metres_per_tile": 1.0,
       "kit_uv_units_per_metre": 0.5,
       "albedo_mean_linear": 0.19,
-      "roughness_mean": 0.683,
-      "relief_mm": 9.47,
+      "roughness_mean": 0.6823,
+      "relief_mm": 9.91,
+      "texel_px_per_metre": 1024.0,
+      "detail": {
+        "name": "Detail_Brushed",
+        "normal": "Detail/Detail_Brushed_normal.png",
+        "size_metres": 0.125,
+        "authored_metres_per_tile": 0.25,
+        "note": "Rolled and brushed steel. Tiny relief, but it is what breaks the beam's specular lobe into a streak instead of a disc."
+      },
       "maps": {
         "albedo": "Trim_Steel_Rusted/Trim_Steel_Rusted_albedo.png",
         "normal": "Trim_Steel_Rusted/Trim_Steel_Rusted_normal.png",
@@ -215,7 +289,15 @@
       "kit_uv_units_per_metre": 0.5,
       "albedo_mean_linear": 0.31,
       "roughness_mean": 0.5114,
-      "relief_mm": 6.04,
+      "relief_mm": 6.22,
+      "texel_px_per_metre": 853.3,
+      "detail": {
+        "name": "Detail_Ceramic",
+        "normal": "Detail/Detail_Ceramic_normal.png",
+        "size_metres": 0.11,
+        "authored_metres_per_tile": 0.22,
+        "note": "Glaze and gloss paint: almost flat, just enough to stop a mirror."
+      },
       "maps": {
         "albedo": "Trim_Door_Painted/Trim_Door_Painted_albedo.png",
         "normal": "Trim_Door_Painted/Trim_Door_Painted_normal.png",
@@ -235,7 +317,15 @@
       "kit_uv_units_per_metre": 0.5,
       "albedo_mean_linear": 0.29,
       "roughness_mean": 0.5665,
-      "relief_mm": 12.0,
+      "relief_mm": 12.19,
+      "texel_px_per_metre": 4654.5,
+      "detail": {
+        "name": "Detail_Ceramic",
+        "normal": "Detail/Detail_Ceramic_normal.png",
+        "size_metres": 0.11,
+        "authored_metres_per_tile": 0.22,
+        "note": "Glaze and gloss paint: almost flat, just enough to stop a mirror."
+      },
       "maps": {
         "albedo": "Trim_Skirting_Painted/Trim_Skirting_Painted_albedo.png",
         "normal": "Trim_Skirting_Painted/Trim_Skirting_Painted_normal.png",

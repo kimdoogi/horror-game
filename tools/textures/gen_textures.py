@@ -471,6 +471,100 @@ def warped_fbm(res: int, seed: int, beta: float, strength: float, low_cycles: fl
     return normalise01(warp(base, push_y, push_x))
 
 
+def micro_grain(res: int, world_size: float, seed: int, feature_metres: float,
+                anisotropy: float = 0.0, beta: float = 1.15) -> np.ndarray:
+    """Zero-mean fine relief at a stated *physical* size, in units of its own σ.
+
+    The scale correction (`KIT_UV_UNITS_PER_METRE`) halved the world size of
+    every tile, which doubled texel density and left the whole set with nothing
+    up there to resolve: measured, the albedo of concrete carried 7.9 % of its
+    contrast above 25 cycles/metre and metal 9.7 %. A surface with no energy in
+    that band has nothing left to show once the player is closer than about four
+    metres, and in a §12 corridor 2.2 m wide that is the entire game.
+
+    Authored in metres rather than in texels so the same call gives the same
+    physical grain on a 1.5 m gravel tile and a 2.5 m concrete slab. Above the
+    map's Nyquist there is nothing to synthesise, so the band is clamped and the
+    caller gets whatever the resolution can actually carry — that clamp is the
+    reason the very fine stuff lives in the detail normal instead (`DETAILS`).
+
+    `anisotropy` stretches the grain along U, which is what separates timber
+    fibre and rolled steel from sand: both are the same noise, drawn out.
+    """
+    cycles = world_size / max(feature_metres, 1e-4)
+    nyquist = res / 2.0
+    field = fbm(res, seed, beta=beta, low_cycles=min(cycles, nyquist * 0.6))
+
+    if anisotropy > 0.0:
+        # Blurring across U leaves the along-U detail intact, so the features
+        # come out drawn in one direction rather than merely softened.
+        sigma = anisotropy * res / max(cycles, 1.0) * 2.0
+        field = ndimage.gaussian_filter1d(field, sigma=sigma, axis=1, mode="wrap").astype(np.float32)
+
+    field = field - float(field.mean())
+    deviation = float(field.std())
+    if deviation < 1e-9:
+        return np.zeros_like(field)
+
+    # ±3σ: one freak texel from the tail must not set the amplitude of a term
+    # that is then scaled in millimetres.
+    return np.clip(field / deviation, -3.0, 3.0).astype(np.float32)
+
+
+@dataclass(frozen=True)
+class Grain:
+    """The sub-centimetre layer every real surface has and none of these had.
+
+    Applied once, in `generate`, rather than inside twelve builders — it is the
+    same physics every time (fine relief that also scatters light and holds
+    dirt), and stating it as data means the whole set can be re-judged against
+    the corrected texel density by reading one table.
+    """
+
+    feature_mm: float
+    """Characteristic size of one grain, in millimetres of world."""
+
+    relief_mm: float
+    """Peak-to-peak height it adds, in millimetres. Feeds the normal and the AO."""
+
+    albedo: float = 0.0
+    """Fraction the grain modulates albedo by. Dirt collects in the low bits."""
+
+    roughness: float = 0.0
+    """How much the grain breaks up the specular lobe. Small numbers do a lot."""
+
+    anisotropy: float = 0.0
+    """0 = sand, 1 = drawn out along U. Timber fibre and rolled plate want this."""
+
+
+def apply_grain(maps: "MapSet", grain: "Grain", seed: int) -> None:
+    """Adds `grain` to a finished map set, in place, preserving physical scale.
+
+    The height field is converted back to metres, the grain is added there, and
+    `height_scale` is re-derived from the result — so the relief the normal map
+    encodes stays a true slope and the reported `relief_mm` stays honest. Doing
+    it by clipping into [0, 1] instead would have quietly flattened the peaks of
+    every deep surface in the set, gravel worst of all.
+    """
+    res = maps.height.shape[0]
+    field = micro_grain(res, maps.world_size, seed, grain.feature_mm / 1000.0,
+                        anisotropy=grain.anisotropy)
+
+    metres = maps.height * maps.height_scale + field * (grain.relief_mm / 1000.0 / 6.0)
+    low, high = float(metres.min()), float(metres.max())
+    maps.height = ((metres - low) / max(high - low, 1e-9)).astype(np.float32)
+    maps.height_scale = max(high - low, 1e-9)
+
+    if grain.albedo > 0.0:
+        # Value only, never hue: grain changes how much light comes back, not
+        # what colour the material is.
+        maps.albedo = (maps.albedo * (1.0 + field[..., None] * (grain.albedo / 3.0))).astype(np.float32)
+
+    if grain.roughness > 0.0:
+        maps.roughness = np.clip(
+            maps.roughness + field * (grain.roughness / 3.0), 0.0, 1.0).astype(np.float32)
+
+
 def stain(
     res: int,
     seed: int,
@@ -795,6 +889,25 @@ class MaterialSpec:
     would flattening gravel's relief, which is §12's whole reason for choosing
     it: 자갈 is the floor you cannot mistake for another because every stone
     throws its own shadow.
+    """
+
+    grain: "Grain | None" = None
+    """The sub-centimetre layer, or None for a surface that genuinely has none.
+
+    Every material in the shipped set carries one. It is declared here rather
+    than built into each builder so that the whole set's near-field detail can
+    be read, compared and re-tuned from a single table — which is exactly what
+    the scale correction made necessary, since it doubled the texel density
+    available to all of them at once.
+    """
+
+    detail: str = ""
+    """Which shared micro-normal from `DETAILS` this surface wears, or "" for none.
+
+    Below about 4 mm there is no room left in a 410–683 px/m base map, and that
+    is the band a player standing on a floor is actually looking at. A second,
+    much finer normal tiled at its own rate is the only way to put anything
+    there; see `DETAILS`.
     """
 
     tiling_axes: Tuple[int, ...] = (0, 1)
@@ -1843,11 +1956,15 @@ MATERIALS: Tuple[MaterialSpec, ...] = (
     MaterialSpec(
         "Floor_Wood", build_wood, seed=1201, target_albedo=0.25,
         slots=("Floor_Wood",),
+        grain=Grain(feature_mm=11.0, relief_mm=0.45, albedo=0.10, roughness=0.05, anisotropy=0.85),
+        detail="Detail_Timber",
         note="§12 구역 A 나무 — staggered boards, deep gaps, soft traffic lane.",
     ),
     MaterialSpec(
         "Floor_Tile", build_tile, seed=1301, target_albedo=0.32,
         slots=("Floor_Tile",),
+        grain=Grain(feature_mm=9.0, relief_mm=0.20, albedo=0.05, roughness=0.04),
+        detail="Detail_Ceramic",
         note="§12 구역 B 타일 — 8×8 grid, dark grout, glossiest floor so the beam streaks.",
     ),
     # 0.24 → 0.31 → 0.35 → 0.40, in three measured steps, and it is the highest
@@ -1863,6 +1980,8 @@ MATERIALS: Tuple[MaterialSpec, ...] = (
         "Floor_Gravel", build_gravel, seed=1401, target_albedo=0.44,
         slots=("Floor_Gravel",),
         ao_strength=0.55,
+        grain=Grain(feature_mm=13.0, relief_mm=1.1, albedo=0.09, roughness=0.05),
+        detail="Detail_Aggregate",
         note="§12 구역 C 자갈 — three stone scales, 45 mm relief, standing water in the voids.",
     ),
     # 0.28 → 0.23. Zone D measured 8.8% crushed, below ART.md's 10% floor: not
@@ -1871,20 +1990,28 @@ MATERIALS: Tuple[MaterialSpec, ...] = (
     MaterialSpec(
         "Floor_Concrete", build_concrete_floor, seed=1501, target_albedo=0.23,
         slots=("Floor_Concrete",),
+        grain=Grain(feature_mm=17.0, relief_mm=2.0, albedo=0.15, roughness=0.07),
+        detail="Detail_Aggregate",
         note="§12 구역 D 콘크리트 — stains, exposed aggregate, cracks that hold water.",
     ),
     MaterialSpec(
         "Floor_Metal", build_metal_floor, seed=1601, target_albedo=0.26,
         slots=("Floor_Metal",),
+        grain=Grain(feature_mm=8.0, relief_mm=0.25, albedo=0.07, roughness=0.06, anisotropy=0.9),
+        detail="Detail_Brushed",
         note="§12 계단 금속 — diamond tread, rivets, rust streaks, lowest roughness.",
     ),
     MaterialSpec(
         "Wall_Brick_Painted", build_wall_brick, seed=2101, target_albedo=0.22,
         slots=("Wall_Structure",),
+        grain=Grain(feature_mm=9.0, relief_mm=0.75, albedo=0.12, roughness=0.06),
+        detail="Detail_Sand",
         note="Painted brick, stretcher bond. Bound to the kit's single wall slot.",
     ),
     MaterialSpec(
         "Wall_Concrete_Bare", build_wall_concrete, seed=2201, target_albedo=0.27,
+        grain=Grain(feature_mm=15.0, relief_mm=1.0, albedo=0.11, roughness=0.06),
+        detail="Detail_Sand",
         note="Board-formed concrete with snap-tie holes. Generated, awaiting a per-zone wall slot.",
     ),
     # 0.34 → 0.30. Still the brightest wall in the set and still the surface that
@@ -1893,6 +2020,8 @@ MATERIALS: Tuple[MaterialSpec, ...] = (
     MaterialSpec(
         "Wall_Plaster_Stained", build_wall_plaster, seed=2301, target_albedo=0.30,
         slots=("Wall_Dado",),
+        grain=Grain(feature_mm=8.0, relief_mm=0.45, albedo=0.08, roughness=0.05),
+        detail="Detail_Sand",
         tiling_axes=(1,),
         note="Water-stained plaster on the 0.20–1.02 m tanking band. Rising damp, its "
              "tide line, salt bloom and the junction dirt are all keyed to the floor, "
@@ -1901,25 +2030,553 @@ MATERIALS: Tuple[MaterialSpec, ...] = (
     MaterialSpec(
         "Ceiling_Concrete_Formed", build_ceiling_concrete, seed=3101, target_albedo=0.21,
         slots=("Ceiling_Structure",),
+        grain=Grain(feature_mm=15.0, relief_mm=0.9, albedo=0.10, roughness=0.05),
+        # No detail normal, and it is the only surface in the set without one.
+        # A detail map exists to serve the near field, and nothing is ever near a
+        # soffit: §05 puts the eye at 1.63 m under a 3 m ceiling, so the closest a
+        # player gets to it is 1.4 m and that is straight up. It is also a large
+        # share of the screen in every corridor, so it was the most expensive place
+        # in the game to sample two extra textures for detail nobody can reach.
         note="Board-marked soffit — directional grain for corridors seen at grazing angles.",
     ),
     MaterialSpec(
         "Trim_Steel_Rusted", build_trim_steel, seed=4101, target_albedo=0.19,
         slots=("Trim_Steel",),
+        grain=Grain(feature_mm=7.0, relief_mm=0.55, albedo=0.12, roughness=0.07),
+        detail="Detail_Brushed",
         note="Rusted ribbed steel. Sits inside the beam more often than the wall behind it.",
     ),
     MaterialSpec(
         "Trim_Door_Painted", build_trim_door, seed=4201, target_albedo=0.31,
         slots=("Door_Leaf",),
+        grain=Grain(feature_mm=6.0, relief_mm=0.22, albedo=0.05, roughness=0.04),
+        detail="Detail_Ceramic",
         note="Painted door leaf — palest surface, so a beam finds §04's 정비공 chokepoints first.",
     ),
     MaterialSpec(
         "Trim_Skirting_Painted", build_trim_skirting, seed=4301, target_albedo=0.29,
         slots=("Trim_Painted",),
+        grain=Grain(feature_mm=5.0, relief_mm=0.22, albedo=0.05, roughness=0.04),
+        detail="Detail_Ceramic",
         tiling_axes=(1,),
         note="Painted skirting, a cross-section profile: tiles along its length only.",
     ),
 )
+
+
+# ── Detail normals ──────────────────────────────────────────────────────────
+#
+# ART.md §7.9 listed these as unreachable, because the engine-side binder sets
+# four maps and `_DetailNormalMap` is not one of them. It is reachable: the
+# binder is one file and the *materials* are a generated artefact, so a second
+# pass can enrich them (`Assets/Scripts/Editor/Rendering/MaterialDetailPass.cs`).
+#
+# What they are for, stated once. The base maps run 410–683 px/m, so their
+# finest honest feature is 3–5 mm. §05 puts the camera 1.63 m above a floor it
+# is looking at from about a metre away, and at one metre a 1920-wide frame at
+# 90° resolves roughly 1220 px/m — twice what the base map carries. Everything
+# in the 0.3–4 mm band is therefore missing from the exact surface the player
+# spends the match staring at. One 512² normal tiled every 30 cm supplies
+# 1700 px/m for 0.3 MB, which is the cheapest legible detail in the project.
+#
+# They are pure grain on purpose: grain has no landmark, so a 30 cm repeat of it
+# is invisible where a 30 cm repeat of anything recognisable would be unbearable.
+
+
+@dataclass(frozen=True)
+class DetailSpec:
+    """One shared micro-normal: what it is made of and how big it is in the world."""
+
+    name: str
+    seed: int
+    tile_metres: float
+    """Metres one detail tile spans. Small — this is grain, not a pattern."""
+
+    feature_mm: float
+    relief_mm: float
+    anisotropy: float = 0.0
+    resolution: int = 512
+    note: str = ""
+
+
+DETAILS: Tuple[DetailSpec, ...] = (
+    DetailSpec(
+        "Detail_Sand", seed=9101, tile_metres=0.30, feature_mm=1.6, relief_mm=0.30,
+        note="Cement, plaster and brick: fine isotropic tooth, the sand in the mix.",
+    ),
+    DetailSpec(
+        "Detail_Aggregate", seed=9201, tile_metres=0.45, feature_mm=3.2, relief_mm=0.55,
+        note="Floated concrete and packed ballast fines: coarser, still sub-5 mm.",
+    ),
+    DetailSpec(
+        "Detail_Timber", seed=9301, tile_metres=0.30, feature_mm=1.1, relief_mm=0.22,
+        anisotropy=0.9,
+        note="Timber fibre — the same noise drawn along the board.",
+    ),
+    DetailSpec(
+        "Detail_Brushed", seed=9401, tile_metres=0.25, feature_mm=0.7, relief_mm=0.12,
+        anisotropy=0.95,
+        note="Rolled and brushed steel. Tiny relief, but it is what breaks the beam's "
+             "specular lobe into a streak instead of a disc.",
+    ),
+    DetailSpec(
+        "Detail_Ceramic", seed=9501, tile_metres=0.22, feature_mm=0.9, relief_mm=0.08,
+        note="Glaze and gloss paint: almost flat, just enough to stop a mirror.",
+    ),
+)
+
+
+def generate_detail(spec: DetailSpec, out_dir: str) -> Tuple[str, float]:
+    """Writes one shared micro-normal. Returns its relative path and measured slope."""
+    field = micro_grain(spec.resolution, spec.tile_metres, spec.seed,
+                        spec.feature_mm / 1000.0, anisotropy=spec.anisotropy)
+    height = normalise01(field)
+    normal = height_to_normal(height, spec.tile_metres, spec.relief_mm / 1000.0)
+
+    relative = "Detail/" + spec.name + "_normal.png"
+    write_png(os.path.join(out_dir, relative), to_u8(normal * 0.5 + 0.5))
+
+    # The mean tilt off vertical, in degrees. A detail normal that measures 0°
+    # is a flat blue image that imports, binds, renders and does nothing — the
+    # same silent failure the AO map had.
+    tilt = float(np.degrees(np.arccos(np.clip(normal[..., 2], -1.0, 1.0))).mean())
+    return relative, tilt
+
+
+# ── Decals ──────────────────────────────────────────────────────────────────
+#
+# The tiling set above can say what a surface is made of and cannot say anything
+# about what has happened to it *here*. Everything in a real basement that tells
+# you a room has been used is a one-off registered to a position: the dirt that
+# collects where a crate has stood for years, the stain under the joint that
+# drips, the pale patch where the slab was cut and made good, the polish worn
+# through a doorway. Baking any of that into a tiling material puts it
+# everywhere at once, which is worse than not having it — it turns into pattern.
+#
+# ART.md §7.9 called decals unreachable because "a decal needs a projector placed
+# where a prop meets a floor, and prop placement is the dressing pass". The
+# placement is done here instead, at the end of the pipeline, from the geometry
+# the dressing pass left behind — see
+# `Assets/Scripts/Editor/Rendering/ContactDecals.cs`.
+#
+# ONE RULE ABOUT THE COLOUR CHANNELS
+# ----------------------------------
+# Every decal's RGB is painted over the *whole* texture and only its alpha is
+# shaped. A decal drawn as "colour where it is opaque, black where it is not"
+# bleeds that black into the colour channels at every mip level, and the decal
+# then wears a dark halo that gets worse with distance — which is the one place
+# a decal must not draw attention to itself. Colour everywhere, shape in alpha.
+
+
+@dataclass(frozen=True)
+class DecalSpec:
+    """One placed surface event: its maps, its physical size, and what it is for."""
+
+    name: str
+    build: Callable[[int, int], Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]]
+    """Returns (linear RGB, alpha, roughness, height), all (res, res[, 3])."""
+
+    seed: int
+    size_metres: float
+    """Metres the decal spans at scale 1. The placer varies this per instance."""
+
+    metallic: float = 0.0
+    note: str = ""
+
+
+def _radial(res: int) -> np.ndarray:
+    """Distance from the centre in units of the half-width. 1.0 at the edge midpoint."""
+    axis = (np.arange(res, dtype=np.float32) + 0.5) / res * 2.0 - 1.0
+    return np.sqrt(axis[:, None] ** 2 + axis[None, :] ** 2)
+
+
+def _fade_border(alpha: np.ndarray, width: float = 0.06) -> np.ndarray:
+    """Forces alpha to zero at the texture border.
+
+    A decal is clamped, not tiled, so whatever sits on its last texel is
+    stretched along the whole edge of the quad. Anything but zero there draws a
+    hard rectangle on the floor, which is the single most recognisable way a
+    decal system announces itself.
+    """
+    res = alpha.shape[0]
+    axis = np.minimum(np.arange(res), np.arange(res)[::-1]).astype(np.float32) / res
+    edge = np.minimum(axis[:, None], axis[None, :])
+    return (alpha * smoothstep(0.0, width, edge)).astype(np.float32)
+
+
+def build_decal_contact(res: int, seed: int):
+    """Ground-in dirt where something has stood on a floor for years.
+
+    Densest against the object's own footprint and thinning outwards, because
+    that is where the sweeping never reached. The edge is broken by noise at two
+    scales so it does not read as an airbrushed oval — the give-away of every
+    contact decal that was drawn with a gradient tool.
+    """
+    r = _radial(res)
+    noise = fbm(res, seed, beta=2.0, low_cycles=3.0)
+    fine = fbm(res, seed + 1, beta=1.4, low_cycles=14.0)
+
+    edge = 0.62 + (noise - 0.5) * 0.42
+    alpha = smoothstep(1.0, 0.0, (r - 0.10) / np.maximum(edge, 0.05))
+    alpha = np.clip(alpha * (0.55 + 0.75 * (1.0 - r)) * (0.65 + 0.7 * fine), 0.0, 1.0)
+
+    colour = tint((0.055, 0.049, 0.041), np.ones_like(noise),
+                  (0.030, 0.026, 0.022), noise * 0.8)
+    roughness = 0.86 + fine * 0.10
+    height = np.clip(alpha * 0.35 + fine * 0.25, 0.0, 1.0)
+    return colour, _fade_border(alpha), roughness, height
+
+
+def build_decal_water_stain(res: int, seed: int):
+    """The dark tongue under a joint that has been dripping since it was built.
+
+    Runs *down* the texture, which is what registers it to gravity: the placer
+    puts +V downhill on a wall and along the run of the floor under a pipe.
+    Damp, so it is darker and smoother than what it sits on rather than tinted —
+    §3.8c of ART.md derives that from where the light actually goes.
+    """
+    seeds = fbm(res, seed, beta=1.2, low_cycles=6.0, high_cycles=40.0)
+
+    # The source is a soft patch at the top centre, not a band across the whole
+    # width: the streaks have to read as coming out of one joint, and a full-width
+    # source draws a solid bar along the top edge of the quad instead.
+    down = np.linspace(0.0, 1.0, res, dtype=np.float32)
+    across = np.abs(np.linspace(-1.0, 1.0, res, dtype=np.float32))
+    from_above = (smoothstep(0.42, 0.02, down)[:, None]
+                  * smoothstep(0.95, 0.10, across)[None, :]).astype(np.float32)
+    streak = runs(np.clip((seeds - 0.55) * 6.0, 0.0, 1.0) * from_above,
+                  length=res // 2, falloff=1.35, axis=0)
+
+    body = blur(streak, res * 0.012)
+    salt = fbm(res, seed + 3, beta=1.7, low_cycles=9.0)
+
+    alpha = np.clip(body * 2.2 + from_above * 0.55, 0.0, 0.92)
+    colour = tint((0.038, 0.040, 0.043), np.ones_like(salt),
+                  (0.086, 0.082, 0.070), np.clip(salt * 1.4 - 0.55, 0.0, 1.0))
+    roughness = np.clip(0.55 - body * 0.28, 0.18, 1.0)
+    height = np.clip(body * 0.4, 0.0, 1.0)
+    return colour, _fade_border(alpha), roughness, height
+
+
+def build_decal_scuff(res: int, seed: int):
+    """Traffic wear: a drawn-out smear along the line people walk.
+
+    Anisotropic on purpose. A round wear patch reads as a spill; a long one
+    reads as a route, and §12's corridors are routes. Bright rather than dark —
+    a floor that is walked on gets *polished*, and the polish is what catches
+    §03's beam at a grazing angle.
+    """
+    grain = fbm(res, seed, beta=1.5, low_cycles=8.0)
+    drawn = ndimage.gaussian_filter1d(grain, sigma=res * 0.045, axis=1, mode="wrap")
+    drawn = normalise01(drawn)
+
+    across = smoothstep(1.0, 0.15, np.abs(np.linspace(-1.0, 1.0, res, dtype=np.float32))[:, None])
+    along = smoothstep(1.0, 0.05, np.abs(np.linspace(-1.0, 1.0, res, dtype=np.float32))[None, :])
+    lines = scratches(res, seed + 5, count=42, length=0.55, width=0.0015)
+
+    alpha = np.clip((0.30 + 0.55 * drawn) * across * along + lines * 0.35 * across, 0.0, 0.75)
+    colour = tint((0.115, 0.112, 0.106), np.ones_like(drawn),
+                  (0.052, 0.050, 0.047), lines)
+    roughness = np.clip(0.42 + (1.0 - drawn) * 0.22, 0.18, 1.0)
+    height = np.clip(lines * 0.5, 0.0, 1.0)
+    return colour, _fade_border(alpha), roughness, height
+
+
+def build_decal_patch(res: int, seed: int):
+    """A cut-and-made-good repair: a slab of newer, paler, flatter screed.
+
+    The most legible piece of history a concrete floor can carry, and the one a
+    tiling material can never contain — its whole meaning is that it is a
+    rectangle *here* and nowhere else. The edge is a trowelled joint, so it is
+    hard on three sides and feathered where the screed was floated out.
+    """
+    axis = np.linspace(-1.0, 1.0, res, dtype=np.float32)
+    box = np.minimum(smoothstep(0.92, 0.72, np.abs(axis))[:, None],
+                     smoothstep(0.88, 0.66, np.abs(axis))[None, :])
+    inner = np.minimum(smoothstep(0.80, 0.60, np.abs(axis))[:, None],
+                       smoothstep(0.76, 0.54, np.abs(axis))[None, :])
+    wobble = fbm(res, seed, beta=2.1, low_cycles=3.0)
+    float_marks = ndimage.gaussian_filter1d(fbm(res, seed + 2, beta=1.6, low_cycles=10.0),
+                                            sigma=res * 0.02, axis=1, mode="wrap")
+
+    # The joint between old slab and new screed is the part that reads. Without
+    # it the patch is a pale rectangle that could be a lighting artefact; with
+    # it, it is obviously a repair.
+    joint = np.clip(box - inner, 0.0, 1.0)
+    alpha = np.clip(box * (0.34 + 0.26 * wobble) + joint * 0.55, 0.0, 0.92)
+    colour = tint((0.128, 0.127, 0.124), np.ones_like(wobble),
+                  (0.088, 0.086, 0.083), float_marks)
+    roughness = np.clip(0.72 + float_marks * 0.14, 0.18, 1.0)
+    height = np.clip(box * 0.7 + float_marks * 0.2, 0.0, 1.0)
+    return colour, _fade_border(alpha, width=0.03), roughness, height
+
+
+def build_decal_puddle(res: int, seed: int):
+    """Standing water. §03's first worked example of a clue is 물이 있는 층.
+
+    Three things make water read as water and none of them is a blue tint:
+    it is *darker* (the film lets light into the substrate instead of scattering
+    it back), it is *smooth* (roughness 0.05–0.12, which turns the beam's diffuse
+    pool into a streak), and its edge is *level* — a puddle boundary follows a
+    contour, so it is irregular in plan and sharp in section.
+    """
+    shape = fbm(res, seed, beta=2.3, low_cycles=2.5)
+    wobble = fbm(res, seed + 2, beta=2.8, low_cycles=1.5)
+
+    # The outline is a *contour*, so it is pushed around by the low-frequency
+    # shape of the ground rather than being a circle with a rough edge. Warping
+    # the radius is what turns one blob into a puddle with lobes and a neck.
+    warped = _radial(res) * (0.72 + 0.62 * wobble)
+    depth = np.clip(smoothstep(1.0, 0.30, warped) * (0.55 + 1.05 * shape) - 0.44, 0.0, 1.0)
+
+    # Sharp in section: the water line is a threshold on depth, not a gradient.
+    alpha = smoothstep(0.0, 0.055, depth)
+    ripple = fbm(res, seed + 4, beta=1.1, low_cycles=26.0)
+
+    colour = tint((0.021, 0.022, 0.024), np.ones_like(shape),
+                  (0.012, 0.013, 0.015), np.clip(depth * 2.2, 0.0, 1.0))
+    roughness = np.clip(0.055 + (1.0 - alpha) * 0.35 + ripple * 0.045, 0.02, 1.0)
+    height = np.clip(1.0 - depth * 0.3, 0.0, 1.0)
+    return colour, _fade_border(alpha), roughness, height
+
+
+def build_decal_drip(res: int, seed: int):
+    """Spatter under a leak: a tight cluster of small dark marks.
+
+    Small and cheap, and it does something no large decal does — it puts a
+    feature at a size the player can only see by being close, which is what
+    makes a room reward walking into it.
+    """
+    generator = rng(seed)
+    alpha = np.zeros((res, res), dtype=np.float32)
+    grid = np.stack(np.meshgrid(np.arange(res), np.arange(res), indexing="ij"), axis=-1)
+
+    for _ in range(26):
+        centre = generator.normal(res * 0.5, res * 0.13, size=2)
+        radius = generator.uniform(res * 0.008, res * 0.035)
+        distance = np.linalg.norm(grid - centre, axis=-1)
+        alpha = np.maximum(alpha, smoothstep(radius, radius * 0.4, distance)
+                           * float(generator.uniform(0.45, 0.95)))
+
+    speckle = fbm(res, seed + 6, beta=1.3, low_cycles=18.0)
+    colour = tint((0.030, 0.029, 0.028), np.ones_like(speckle),
+                  (0.016, 0.016, 0.017), speckle)
+    roughness = np.clip(0.30 + speckle * 0.25, 0.18, 1.0)
+    return colour, _fade_border(alpha), roughness, np.clip(alpha * 0.4, 0.0, 1.0)
+
+
+def build_decal_soot(res: int, seed: int):
+    """The blackened halo a bare bulb leaves on the soffit above it.
+
+    §03 makes every light switchable and therefore worth looking at, and this is
+    the cheapest thing that says a fitting has been *burning for years* rather
+    than being switched on for the render. It also solves a framing problem: the
+    ceiling above a practical is otherwise the flattest, emptiest, best-lit
+    surface in the room.
+    """
+    r = _radial(res)
+    plume = fbm(res, seed, beta=2.4, low_cycles=2.5)
+    body = smoothstep(1.0, 0.0, r / np.maximum(0.55 + (plume - 0.5) * 0.5, 0.1))
+
+    alpha = np.clip(body ** 1.6 * 0.78, 0.0, 0.78)
+    colour = tint((0.020, 0.019, 0.018), np.ones_like(plume),
+                  (0.045, 0.041, 0.036), plume * 0.5)
+    roughness = np.full_like(plume, 0.93)
+    return colour, _fade_border(alpha), roughness, np.zeros_like(plume)
+
+
+def build_decal_rust(res: int, seed: int):
+    """Rust bleeding out of a fixing and running down what it is bolted to.
+
+    The only warm decal in the set, and it is the one that keeps the building
+    from being a single colour (ART.md §7.8): every steel fixing in the map is a
+    small orange source of contrast on a wall that is otherwise cold grey.
+    """
+    axis = (np.arange(res, dtype=np.float32) + 0.5) / res * 2.0 - 1.0
+
+    # The fixing sits near the top of the decal and the bleed runs down away
+    # from it, so the placer only has to know which way is down.
+    offset = np.sqrt((axis[:, None] + 0.74) ** 2 + axis[None, :] ** 2)
+    head = smoothstep(0.26, 0.0, offset)
+
+    seeds = fbm(res, seed, beta=1.1, low_cycles=8.0, high_cycles=48.0)
+    streak = runs(np.clip((seeds - 0.60) * 7.0, 0.0, 1.0) * smoothstep(0.55, 0.1, offset),
+                  length=int(res * 0.75), falloff=1.5, axis=0)
+    body = blur(streak, res * 0.008)
+
+    alpha = np.clip(body * 1.8 + head, 0.0, 0.94)
+    grit = fbm(res, seed + 8, beta=1.5, low_cycles=12.0)
+
+    colour = tint((0.135, 0.052, 0.021), np.ones_like(grit),
+                  (0.062, 0.030, 0.016), grit * 0.9)
+    roughness = np.clip(0.80 + grit * 0.15, 0.18, 1.0)
+    height = np.clip(body * 0.3 + head * 0.5, 0.0, 1.0)
+    return colour, _fade_border(alpha), roughness, height
+
+
+DECALS: Tuple[DecalSpec, ...] = (
+    DecalSpec("Decal_Contact", build_decal_contact, seed=7101, size_metres=1.30,
+              note="Dirt where a prop has stood. Placed at every prop's footprint."),
+    DecalSpec("Decal_WaterStain", build_decal_water_stain, seed=7201, size_metres=1.60,
+              note="Damp tongue under a dripping joint. Runs downhill in +V."),
+    DecalSpec("Decal_Scuff", build_decal_scuff, seed=7301, size_metres=2.60,
+              note="Polished traffic line. Aligned along the corridor it sits in."),
+    DecalSpec("Decal_Patch", build_decal_patch, seed=7401, size_metres=1.80,
+              note="Cut-and-made-good screed repair. Concrete and tile floors only."),
+    DecalSpec("Decal_Puddle", build_decal_puddle, seed=7501, size_metres=1.70,
+              note="Standing water — §03's 물이 있는 층. Smooth enough to mirror the room."),
+    DecalSpec("Decal_Drip", build_decal_drip, seed=7601, size_metres=0.70,
+              note="Spatter under a leak. Near-field detail that rewards walking in."),
+    DecalSpec("Decal_Soot", build_decal_soot, seed=7701, size_metres=1.10,
+              note="Burn halo on the soffit above a bare bulb."),
+    DecalSpec("Decal_Rust", build_decal_rust, seed=7801, size_metres=0.85,
+              note="Rust bleeding from a fixing. The only warm mark in the building."),
+)
+
+
+def generate_decal(spec: DecalSpec, out_dir: str, res: int) -> Dict[str, object]:
+    """Writes one decal's three maps and returns its manifest entry."""
+    colour, alpha, roughness, height = spec.build(res, spec.seed)
+
+    if float(alpha.max()) < 0.25:
+        raise AssertionError("%s is effectively invisible (max alpha %.3f)"
+                             % (spec.name, float(alpha.max())))
+
+    border = max(float(np.abs(alpha[0]).max()), float(np.abs(alpha[-1]).max()),
+                 float(np.abs(alpha[:, 0]).max()), float(np.abs(alpha[:, -1]).max()))
+    if border > 1e-3:
+        raise AssertionError(
+            "%s has alpha %.4f on its border; a clamped decal stretches that along the "
+            "whole edge of the quad and draws a rectangle on the floor" % (spec.name, border))
+
+    folder = os.path.join(out_dir, "Decals")
+    rgba = np.concatenate([linear_to_srgb(np.clip(colour, 0.0, 1.0)),
+                           alpha[..., None]], axis=-1)
+    write_png(os.path.join(folder, spec.name + "_albedo.png"), to_u8(rgba))
+
+    roughness = np.maximum(roughness, 0.02).astype(np.float32)
+    mask = np.zeros((res, res, 4), dtype=np.float32)
+    mask[..., :3] = spec.metallic
+    mask[..., 3] = 1.0 - roughness
+    write_png(os.path.join(folder, spec.name + "_ms.png"), to_u8(mask))
+
+    normal = height_to_normal(height, spec.size_metres, 0.004)
+    write_png(os.path.join(folder, spec.name + "_normal.png"), to_u8(normal * 0.5 + 0.5))
+
+    return {
+        "name": spec.name,
+        "size_metres": spec.size_metres,
+        "coverage": round(float((alpha > 0.05).mean()), 4),
+        "mean_alpha": round(float(alpha.mean()), 4),
+        "roughness_mean": round(float(roughness.mean()), 4),
+        "metallic": spec.metallic,
+        "note": spec.note,
+        "maps": {
+            "albedo": "Decals/" + spec.name + "_albedo.png",
+            "normal": "Decals/" + spec.name + "_normal.png",
+            "metallic_smoothness": "Decals/" + spec.name + "_ms.png",
+        },
+    }
+
+
+# ── Light sprites ───────────────────────────────────────────────────────────
+#
+# §03 makes light the mechanic — 어둠 = 목표의 잠금장치 — which means every light
+# in the building has to look like a thing that could be switched off. A point
+# light on its own is not that: it puts a disc on the floor and the *source* is
+# invisible, so the room reads as lit by nothing.
+#
+# URP 17 has no volumetric fog, so the alternative to geometry is nothing at all
+# (ART.md §7.10). These two sprites are what the geometry is made of, and they
+# are drawn **additively**, which is the reason the falloff lives in RGB rather
+# than in alpha: an additive blend is `src + dst` and never reads the alpha
+# channel, so a sprite that carries its shape in alpha renders as a solid white
+# rectangle. That mistake is invisible in a texture viewer and unmissable in a
+# frame.
+
+
+def build_glow_point(res: int, seed: int) -> np.ndarray:
+    """The halo around a filament: a hot core with a long, quiet tail.
+
+    Two lobes rather than one Gaussian. A single falloff either has a core too
+    small to read as a source or a tail so wide it fogs the room; a real bare
+    bulb behind a dirty glass does both at once — a small intense centre and a
+    faint reach that picks out the dust.
+    """
+    r = _radial(res)
+    core = np.exp(-(r / 0.10) ** 2)
+    halo = np.exp(-(r / 0.42) ** 1.6) * 0.30
+    field = np.clip(core + halo, 0.0, 1.0)
+
+    # Zero at the border for the same reason the decals are: the sprite is
+    # clamped, and anything left on the last texel becomes a bright frame.
+    return (field * smoothstep(1.0, 0.86, r)).astype(np.float32)
+
+
+def build_glow_shaft(res: int, seed: int) -> np.ndarray:
+    """A cone of light hanging below a fitting, seen through the dust in the air.
+
+    V runs down the shaft. It is brightest at the top where the source is, fades
+    to nothing before it lands — a shaft that reaches the floor draws a hard line
+    where it stops — and is soft across its width so the two crossed quads it is
+    drawn on never show their own edges.
+
+    The mottling is what stops it reading as a cardboard wedge: real shafts are
+    picked out by dust that is not evenly distributed, and it is the unevenness
+    the eye recognises rather than the cone.
+    """
+    across = np.abs(np.linspace(-1.0, 1.0, res, dtype=np.float32))[None, :]
+    down = np.linspace(0.0, 1.0, res, dtype=np.float32)[:, None]
+
+    # The cone widens as it descends, so the usable half-width at a given depth
+    # grows — that is the whole shape, and it is one line.
+    half_width = 0.18 + down * 0.80
+    body = smoothstep(1.0, 0.0, np.clip(across / half_width, 0.0, 2.0))
+
+    fade = smoothstep(1.0, 0.0, down) ** 1.35
+    dust = 0.55 + 0.45 * fbm(res, seed, beta=1.9, low_cycles=3.0)
+
+    return np.clip(body ** 1.7 * fade * dust, 0.0, 1.0).astype(np.float32)
+
+
+GLOWS: Tuple[Tuple[str, Callable[[int, int], np.ndarray], int, bool, str], ...] = (
+    ("Glow_Point", build_glow_point, 8801, False,
+     "Halo around a bare filament. Drawn on three crossed quads at each fitting."),
+    ("Glow_Shaft", build_glow_shaft, 8901, True,
+     "Dust-lit cone below a fitting. V runs down the shaft."),
+)
+
+
+def generate_glow(name: str, build: Callable[[int, int], np.ndarray], seed: int,
+                  top_open: bool, out_dir: str, res: int = 256) -> Dict[str, object]:
+    """Writes one additive light sprite and returns its manifest entry.
+
+    `top_open` exempts the V=0 edge from the border check. A shaft *starts* at
+    its source and the source is at the top of the quad, so demanding it fade
+    there would be demanding a beam that begins in mid-air. Every other edge
+    still has to reach zero — a clamped additive sprite stretches whatever is on
+    its last texel along the whole side of the quad, which draws a lit frame.
+    """
+    field = build(res, seed)
+    edges = [float(field[-1].max()), float(field[:, 0].max()), float(field[:, -1].max())]
+    if not top_open:
+        edges.append(float(field[0].max()))
+
+    border = max(edges)
+    if border > 2e-3:
+        raise AssertionError("%s is %.4f bright on its border; additive sprites clamp, so "
+                             "that paints a lit frame around the quad" % (name, border))
+
+    rgba = np.repeat(field[..., None], 4, axis=-1)
+    write_png(os.path.join(out_dir, "Glow", name + "_albedo.png"),
+              to_u8(linear_to_srgb(rgba)))
+
+    return {
+        "name": name,
+        "map": "Glow/" + name + "_albedo.png",
+        "mean": round(float(field.mean()), 4),
+        "peak": round(float(field.max()), 4),
+    }
 
 
 # ── Verification ────────────────────────────────────────────────────────────
@@ -1946,7 +2603,70 @@ class TextureReport:
     ao_mean: float
     ao_contrast: float = 0.0
     seam_ratio: float = 0.0
+    texel_px_per_m: float = 0.0
+    blob_share: float = 0.0
+    grain_share: float = 0.0
+    height_blob_share: float = 0.0
     failures: List[str] = field(default_factory=list)
+
+
+BLOB_CYCLES_PER_TILE = 2.0
+"""Where the "this is a repeating tile" band ends, in cycles per tile.
+
+Anything slower than two cycles across the tile is a shape the size of the tile
+itself, so every copy of it lands on the same grid and the eye locks onto the
+lattice rather than onto the material. This is the frequency `detile` attacks,
+and it is measured in cycles *per tile* rather than per metre on purpose: the
+repeat is a property of the tiling, not of how big the tile is in the world.
+"""
+
+GRAIN_CYCLES_PER_METRE = 25.0
+"""Where near-field grain begins, in cycles per metre — 4 cm features and finer.
+
+A 1920-wide frame at §05's 90° FOV resolves ~21 px per degree, so at one metre
+the eye separates about 610 cycles per metre and at three metres about 200. A
+surface with no energy above 25 cyc/m therefore has nothing left to show once
+the player is closer than about four metres — which, in a §12 corridor with a
+2.2 m clear width, is *all the time*. This share is the number that says whether
+the texel density the scale correction bought is being used or wasted.
+"""
+
+
+def spectral_shares(field_2d: np.ndarray, world_size: float) -> Tuple[float, float]:
+    """Fraction of a map's contrast energy that is tile-sized blob, and that is grain.
+
+    Both are measured from the radially binned power spectrum of the zero-mean
+    field, so they are shift- and rotation-independent and do not care what the
+    feature happens to *be* — a paint cloud, a stain and a pool of rust all count
+    as blob if they are the size of the tile.
+
+    Why this is measured at all: correcting the kit's UV scale (see
+    `KIT_UV_UNITS_PER_METRE`) halved the world size of every tile without
+    changing a single texture, so the repeat became twice as frequent and every
+    texture's largest features became the repeat's signature. The same correction
+    doubled texel density, which is only worth anything if there is detail up
+    there to resolve. One number for each half of that.
+    """
+    data = np.asarray(field_2d, dtype=np.float64)
+    if data.ndim == 3:
+        # Rec.709 luma: chroma variation is not what the eye reads a surface by.
+        data = data[..., 0] * 0.2126 + data[..., 1] * 0.7152 + data[..., 2] * 0.0722
+
+    res = data.shape[0]
+    spectrum = np.abs(np.fft.fft2(data - data.mean())) ** 2
+
+    # Cycles per tile, signed frequencies folded to their magnitude.
+    axis = np.fft.fftfreq(res) * res
+    radius = np.sqrt(axis[:, None] ** 2 + axis[None, :] ** 2)
+
+    total = float(spectrum.sum())
+    if total <= 0.0:
+        return 0.0, 0.0
+
+    grain_cycles_per_tile = GRAIN_CYCLES_PER_METRE * world_size
+    blob = float(spectrum[(radius > 0.0) & (radius <= BLOB_CYCLES_PER_TILE)].sum())
+    grain = float(spectrum[radius >= grain_cycles_per_tile].sum())
+    return blob / total, grain / total
 
 
 def seam_ratio(image: np.ndarray, axes: Tuple[int, ...] = (0, 1)) -> float:
@@ -2058,6 +2778,17 @@ def verify(spec: MaterialSpec, maps: MapSet, normal: np.ndarray, occlusion: np.n
             "AO contrast %.4f between crevice and peak — the map is not occluding anything"
             % contrast)
 
+    # Measured, not judged: how much of this surface is tile-sized blob (the
+    # repeat's signature) and how much is grain the near field can resolve.
+    #
+    # Both come from the albedo. The normal map is deliberately *not* averaged
+    # in: it is a spatial derivative of the height field, and a derivative is a
+    # high-pass filter, so every normal map in the set scores 70–100 % grain
+    # whatever its height field actually contains. Its blob share is still
+    # meaningful and is reported beside it.
+    albedo_blob, albedo_grain = spectral_shares(maps.albedo, maps.world_size)
+    normal_blob, _ = spectral_shares(maps.height, maps.world_size)
+
     return TextureReport(
         name=spec.name,
         resolution=res,
@@ -2073,6 +2804,10 @@ def verify(spec: MaterialSpec, maps: MapSet, normal: np.ndarray, occlusion: np.n
         ao_mean=float(occlusion.mean()),
         ao_contrast=contrast,
         seam_ratio=max(ratios),
+        texel_px_per_m=res / maps.world_size,
+        blob_share=albedo_blob,
+        grain_share=albedo_grain,
+        height_blob_share=normal_blob,
         failures=failures,
     )
 
@@ -2083,6 +2818,12 @@ def verify(spec: MaterialSpec, maps: MapSet, normal: np.ndarray, occlusion: np.n
 def generate(spec: MaterialSpec, out_dir: str, res: int) -> TextureReport:
     """Builds, calibrates, writes and measures one material."""
     maps = spec.build(res, spec.seed)
+
+    # Before calibration, so the grain's albedo modulation is inside what gets
+    # landed on the target mean rather than knocking it off afterwards.
+    if spec.grain is not None:
+        apply_grain(maps, spec.grain, spec.seed + 7717)
+
     maps.albedo, gain = finish_albedo(maps.albedo, spec.target_albedo)
     maps.roughness = np.maximum(maps.roughness, MIN_ROUGHNESS).astype(np.float32)
 
@@ -2115,21 +2856,69 @@ def generate(spec: MaterialSpec, out_dir: str, res: int) -> TextureReport:
 
 def report_table(reports: Sequence[TextureReport]) -> str:
     """The measurement table. Every number here is a thing that can be wrong."""
-    header = ("%-26s %6s %6s %8s %8s %6s %7s %7s %8s %6s %6s"
-              % ("material", "px", "size", "albedo", "range", "gain", "rough", "seam", "relief",
-                 "AO", "AOcon"))
+    header = ("%-26s %6s %6s %6s %7s %6s %6s %7s %6s %6s %6s %7s"
+              % ("material", "px", "size", "px/m", "albedo", "rough", "seam", "relief",
+                 "AOcon", "blob%", "hblob%", "grain%"))
     lines = [header, "-" * len(header)]
 
     for r in reports:
         lines.append(
-            "%-26s %6d %5.1fm %8.4f %3.2f-%3.2f %6.2f %7.2f %7.2f %6.1fmm %6.2f %6.3f%s"
-            % (r.name, r.resolution, r.world_size, r.albedo_mean_linear,
-               r.albedo_min_linear, r.albedo_max_linear, r.calibration_gain,
-               r.roughness_mean, r.seam_ratio, r.normal_relief_mm, r.ao_mean, r.ao_contrast,
+            "%-26s %6d %5.1fm %6.0f %7.4f %6.2f %6.2f %5.1fmm %6.3f %5.1f%% %5.1f%% %6.1f%%%s"
+            % (r.name, r.resolution, r.world_size, r.texel_px_per_m, r.albedo_mean_linear,
+               r.roughness_mean, r.seam_ratio, r.normal_relief_mm,
+               r.ao_contrast, r.blob_share * 100.0, r.height_blob_share * 100.0,
+               r.grain_share * 100.0,
                "" if not r.failures else "  FAIL")
         )
 
     return "\n".join(lines)
+
+
+def detail_payload(spec: MaterialSpec) -> Dict[str, object]:
+    """The detail-normal half of a manifest entry, in the units the binder consumes.
+
+    `size_metres` carries the same deliberate lie `world_size_metres` does and
+    for the same reason — see `KIT_UV_UNITS_PER_METRE`. The engine divides its
+    own `KitUvUnitsPerMetre = 1` by this field, so what has to be written here
+    is UV units per detail tile, not metres. `authored_metres_per_tile` beside
+    it is the truth. Correct both together or not at all.
+    """
+    if not spec.detail:
+        return {}
+
+    by_name = {d.name: d for d in DETAILS}
+    if spec.detail not in by_name:
+        raise AssertionError(
+            "%s asks for detail %r, which is not in DETAILS" % (spec.name, spec.detail))
+
+    detail = by_name[spec.detail]
+    return {
+        "name": detail.name,
+        "normal": "Detail/" + detail.name + "_normal.png",
+        "size_metres": round(detail.tile_metres * KIT_UV_UNITS_PER_METRE, 6),
+        "authored_metres_per_tile": detail.tile_metres,
+        "note": detail.note,
+    }
+
+
+def write_decal_manifest(path: str, entries: Sequence[Dict[str, object]],
+                         glows: Sequence[Dict[str, object]] = ()) -> None:
+    """A manifest of its own, for the same reason the material one exists.
+
+    Kept separate from `Textures.manifest.json` because the two are consumed by
+    different passes at different points in the pipeline — the material binder
+    runs once per texture rebuild, and the decal placer runs once per map
+    regeneration — and a single file would make each of them fail on the other's
+    absence.
+    """
+    import json
+
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump({"generated_by": "tools/textures/gen_textures.py",
+                   "decals": list(entries), "glows": list(glows)},
+                  handle, indent=2, ensure_ascii=False)
+        handle.write("\n")
 
 
 def write_manifest(path: str, reports: Sequence[TextureReport], res: int) -> None:
@@ -2165,6 +2954,8 @@ def write_manifest(path: str, reports: Sequence[TextureReport], res: int) -> Non
                 "albedo_mean_linear": round(by_name[spec.name].albedo_mean_linear, 4),
                 "roughness_mean": round(by_name[spec.name].roughness_mean, 4),
                 "relief_mm": round(by_name[spec.name].normal_relief_mm, 2),
+                "texel_px_per_metre": round(by_name[spec.name].texel_px_per_m, 1),
+                "detail": detail_payload(spec),
                 "maps": {
                     "albedo": spec.name + "/" + spec.name + "_albedo.png",
                     "normal": spec.name + "/" + spec.name + "_normal.png",
@@ -2213,6 +3004,42 @@ def main(argv: Sequence[str] | None = None) -> int:
         reports.append(report)
         print(" ok" if not report.failures else " FAIL")
 
+    # Always written, even under --only. They are shared, they are ~0.3 MB each,
+    # and a material rebuilt without its detail map is a material that silently
+    # loses its near field.
+    detail_lines: List[str] = []
+    for detail in DETAILS:
+        relative, tilt = generate_detail(detail, args.out)
+        detail_lines.append("  %-20s %4d px  %.2f m tile  %5.0f px/m  mean tilt %.2f°"
+                            % (detail.name, detail.resolution, detail.tile_metres,
+                               detail.resolution / detail.tile_metres, tilt))
+        if tilt < 0.25:
+            print("FAIL  %s detail normal is effectively flat (%.3f°)" % (detail.name, tilt),
+                  file=sys.stderr)
+            return 1
+
+    # Decals are placed, not tiled, so 512 is plenty: the largest of them spans
+    # 2.6 m, which is 197 px/m — but a decal is a soft mark over a base material
+    # that already carries the grain, so it never has to hold an edge on its own.
+    decal_entries = [generate_decal(spec, args.out, 512) for spec in DECALS]
+    glow_entries = [generate_glow(name, build, seed, top_open, args.out)
+                    for name, build, seed, top_open, _ in GLOWS]
+    write_decal_manifest(os.path.join(args.out, "Decals.manifest.json"), decal_entries,
+                         glow_entries)
+
+    print()
+    print("detail normals")
+    print("\n".join(detail_lines))
+    print()
+    print("light sprites")
+    for entry in glow_entries:
+        print("  %-14s mean %.3f  peak %.3f" % (entry["name"], entry["mean"], entry["peak"]))
+    print()
+    print("decals")
+    for entry in decal_entries:
+        print("  %-20s %.2f m  coverage %5.1f%%  mean alpha %.3f  rough %.2f"
+              % (entry["name"], entry["size_metres"], float(entry["coverage"]) * 100.0,
+                 entry["mean_alpha"], entry["roughness_mean"]))
     print()
     print(report_table(reports))
     print()

@@ -2,8 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using HorrorGame.Core;
+using HorrorGame.Core.Clues;
 using HorrorGame.Core.Map;
 using HorrorGame.Core.Telemetry;
+using HorrorGame.EditorTools.SceneGen;
 
 namespace HorrorGame.Sim
 {
@@ -13,10 +15,38 @@ namespace HorrorGame.Sim
     /// </summary>
     public static class SimCommands
     {
+        // How many layouts `validate` checks §03's chain converges on. One would not
+        // be evidence — the resolver draws a different objective, different hosts and
+        // a different decoy count per seed — and the check is a few microseconds each.
+        private const int ChainSampleSeeds = 500;
+
         /// <summary>Dispatches a subcommand.</summary>
         /// <param name="args">Arguments as passed on the command line.</param>
         /// <returns>A process exit code.</returns>
         public static int Run(string[] args)
+        {
+            try
+            {
+                return Dispatch(args);
+            }
+            catch (MapSketchException error)
+            {
+                // The simulator builds the shipped map from FirstMapSketch rather than
+                // from a copy of it, so a map that is mid-edit stops the simulator. That
+                // is the trade F-006 was worth making — a tool that cannot be run against
+                // a broken building is better than one that quietly measures a different
+                // one — but the failure has to read as "the map does not build" and not
+                // as a crash in a balance tool.
+                Console.Error.WriteLine(
+                    "The map does not currently build, so there is nothing to measure:\n  "
+                    + error.Message
+                    + "\nFix unity/HorrorGame/Assets/Scripts/Editor/SceneGen/, then run this again. "
+                    + "MapSceneGenerator will be refusing to write the scene for the same reason.");
+                return 5;
+            }
+        }
+
+        private static int Dispatch(string[] args)
         {
             if (args == null || args.Length == 0)
             {
@@ -73,16 +103,128 @@ namespace HorrorGame.Sim
             Console.WriteLine("§12 map validation: "
                 + (report.Passed ? "passed" : "failed [" + string.Join(", ", report.FailedRuleIds) + "]"));
 
+            if (!report.Passed)
+            {
+                // A gate that prints "failed" and exits 0 is not a gate. §12's checklist
+                // is the one MapSceneGenerator refuses to write a scene through, so a
+                // balance run taken while it is red is a balance run on a map that
+                // cannot ship.
+                Console.Error.WriteLine(
+                    "§12 rejects this map, so no measurement taken from it describes the shipped game. "
+                    + "MapSceneGenerator would refuse to write the scene for the same reasons.");
+                return 6;
+            }
+
+            var unwinnable = FirstUnwinnableLayout(map, ChainSampleSeeds);
+            if (unwinnable >= 0)
+            {
+                Console.Error.WriteLine(
+                    "Seed " + unwinnable + " lays out a match whose §03 chain does not converge on the objective: "
+                    + "a team that read every clue correctly would still not be pinned to the right 후보 지점. "
+                    + "That is a catalog defect — the storey signs or the site labels — not a balance finding.");
+                return 4;
+            }
+
+            Console.WriteLine("§03's chain converges on the objective in all " + ChainSampleSeeds
+                + " sampled layouts.");
+
+            // Reported rather than enforced: it is a property of the building and of
+            // MapGraph.NearestNode, and the simulator's job is to say what it measured.
+            var ambiguous = map.CrossStoreyAmbiguities(GameConstants.MonsterWaypointTolerance);
+            Console.WriteLine("Places NearestNode cannot tell apart across storeys (within "
+                + GameConstants.MonsterWaypointTolerance.ToString("0.##", CultureInfo.InvariantCulture)
+                + " m in plan): " + ambiguous.Count + ".");
+            for (var i = 0; i < ambiguous.Count && i < 8; i++)
+            {
+                Console.WriteLine("  " + ambiguous[i]);
+            }
+
             return 0;
         }
 
         private static int DescribeMap()
         {
             var map = SimMap.Build();
-            Console.WriteLine(map.Graph.ToString());
-            Console.WriteLine(MapValidator.Validate(map.Graph).Describe());
-            Console.WriteLine(RunnerTest.Run(map.Graph, new Core.Session.DeterministicRandom(1)).Describe());
+            Console.Write(DescribeTheBuilding(map));
+            Console.WriteLine();
+            Console.Write(MapQualityReport.Measure(map.Sketch).Describe());
             return 0;
+        }
+
+        /// <summary>
+        /// The banner every population report carries: which building these numbers
+        /// were measured in.
+        /// <para>
+        /// docs/BALANCE-FINDINGS.md F-006 spent a whole pass being answered against a
+        /// map the game does not have, and nothing in the output said so. Printing the
+        /// building's own §12 census next to the match numbers is what makes the next
+        /// reader able to check: these lines must reproduce docs/STATUS.md §1.6, which
+        /// is measured from the Unity scene by a different tool.
+        /// </para>
+        /// </summary>
+        private static string DescribeTheBuilding(SimMap map)
+        {
+            var graph = map.Graph;
+            var deadEnds = 0;
+            for (var i = 0; i < graph.Nodes.Length; i++)
+            {
+                if (graph.IsDeadEnd(i))
+                {
+                    deadEnds++;
+                }
+            }
+
+            var validation = MapValidator.Validate(graph);
+            graph.Footprint(out var min, out var max);
+
+            var text = new System.Text.StringBuilder();
+            text.Append("=== the building these matches were run in\n");
+            text.Append("  ").Append(graph.Name).Append("  (seed ").Append(map.Sketch.Seed).Append(")\n");
+            text.Append("  ").Append(graph.Zones.Length).Append(" zones · ")
+                .Append(graph.Nodes.Length).Append(" places · ")
+                .Append(graph.Edges.Length).Append(" passages · ")
+                .Append(graph.IndependentLoopCount).Append(" 순환로 · ")
+                .Append(deadEnds).Append(" 막힌 길 · footprint ")
+                .Append(Metres(max.X - min.X)).Append(" × ").Append(Metres(max.Z - min.Z)).Append('\n');
+            text.Append("  §12 validation ").Append(validation.Passed ? "PASS" : "FAIL")
+                .Append(" · 후보 지점 ").Append(map.Catalog.Sites.Count)
+                .Append(" · 전리품 ").Append(map.LootNodes.Length)
+                .Append(" · 금고 ").Append(map.SafeNodes.Length)
+                .Append(" · monster spawn ").Append(Metres(graph.PathLength(map.EntranceNode, map.MonsterSpawnNode)))
+                .Append(" from the door\n");
+            text.Append("  built by FirstMapSketch.Build — the same call MapSceneGenerator makes before it lays\n");
+            text.Append("  a single FBX, compiled into this binary rather than exported to it (F-006).\n");
+            return text.ToString();
+        }
+
+        private static string Metres(float value) =>
+            value.ToString("0.#", CultureInfo.InvariantCulture) + " m";
+
+        /// <summary>
+        /// The first seed whose layout a perfect team could not solve, or −1.
+        /// <para>
+        /// <see cref="ObjectiveResolver.VerifyChainConverges"/> is the host-side
+        /// invariant that §03's three clues, read correctly, name exactly one site and
+        /// that it is the right one. It is the check that would catch the way this
+        /// simulator's map could go wrong: the storey signs and the site labels are
+        /// the simulator's own, and a duplicate label on a storey would make a share of
+        /// matches quietly unwinnable — which would look exactly like a balance finding.
+        /// </para>
+        /// </summary>
+        private static int FirstUnwinnableLayout(SimMap map, int seeds)
+        {
+            for (var seed = 1; seed <= seeds; seed++)
+            {
+                var rng = new Core.Session.DeterministicRandom(seed);
+                var resolver = new ObjectiveResolver(
+                    map.Catalog, map.World, map.PositionOf(map.EntranceNode), rng);
+                if (!resolver.VerifyChainConverges())
+                {
+                    return seed;
+                }
+            }
+
+            return -1;
         }
 
         private static int RunOneMatch(string[] args)
@@ -156,6 +298,8 @@ namespace HorrorGame.Sim
                 map, seed, matches, Overrides(args), "seeds " + seed + "…" + (seed + matches - 1),
                 StartSeconds(args));
 
+            Console.Write(DescribeTheBuilding(map));
+            Console.WriteLine();
             Console.Write(point.Report.Describe(point.Sink));
             return 0;
         }
@@ -197,6 +341,8 @@ namespace HorrorGame.Sim
                     return 1;
             }
 
+            Console.Write(DescribeTheBuilding(map));
+            Console.WriteLine();
             Console.WriteLine("sweep " + args[1] + " — " + matches + " matches per point, seeds "
                 + seed + "…" + (seed + matches - 1) + ", identical across points");
             Console.WriteLine();

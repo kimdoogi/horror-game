@@ -465,14 +465,23 @@ namespace HorrorGame.Gameplay.Guidance
 
         /// <summary>
         /// F-006, stated on the overlay. The window comes from <c>GameConstants</c>; the
-        /// 2.5-minute median is a measurement and is cited as one.
+        /// median is a measurement and is cited as one.
+        /// <para>
+        /// <b>7.2 minutes, measured 2026-08-01</b> over 500 seeded matches on 요양원 지하 5층
+        /// — <c>dotnet run -c Release --project core/HorrorGame.Sim -- run --matches 500
+        /// --seed 1</c>. It replaces a 2.5 that this line carried until the simulator was
+        /// pointed at the building the game actually ships; the old figure was measured
+        /// against SimMap's own four-zone ring and stayed on this overlay after the
+        /// finding had moved. A literal here is a copy of a measurement, so when F-006 is
+        /// re-measured this line is part of what gets re-quoted.
+        /// </para>
         /// </summary>
         private static string Q3Caveat()
         {
             var min = (GameConstants.TargetMatchSecondsMin / 60f).ToString("0", CultureInfo.InvariantCulture);
             var max = (GameConstants.TargetMatchSecondsMax / 60f).ToString("0", CultureInfo.InvariantCulture);
 
-            return "     ※ 아직 물을 수 없습니다 — 한 판 중앙값 2.5분, §01 목표는 "
+            return "     ※ 아직 물을 수 없습니다 — 한 판 중앙값 7.2분, §01 목표는 "
                 + min + "~" + max + "분 (docs/BALANCE-FINDINGS.md F-006)";
         }
 

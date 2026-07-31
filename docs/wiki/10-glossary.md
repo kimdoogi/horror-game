@@ -78,7 +78,7 @@ answers its questions; `MonsterAnimationDriver`, `MonsterAudioDriver`,
 | **바닥 재질** floor material | `FloorMaterial` {Wood, Tile, Gravel, Concrete, Metal} · `FloorTile_*.fbx` · `Audio/FloorSurfaces.cs` · `RuleFloorMaterials` | 아트 결정이 아니라 시스템 결정이다 |
 | **후보 지점** candidate site | `SiteCatalog`, `SiteLabel` · `RuleCandidateSites` | 구역당 3개, all satisfying the same conditions |
 | **은폐 지점** concealment | `Assets/Models/Props/HidingSpot_Locker.fbx` · `RuleConcealmentNearExit` | for §07's 새벽, when 괴물이 출입구를 안다 |
-| **주자 테스트** runner test | `Core/Map/RunnerTest.cs` | the 실전 검증 grade; §12 wants 5–7/10. Currently 7/10 |
+| **주자 테스트** runner test | `Core/Map/RunnerTest.cs` · census in `Editor/SceneGen/RunnerCensus.cs` | the 실전 검증 grade; §12 wants 5–7/10. **Currently 10/10 TooEasy — outside the band** ([F-007](09-open-questions.md#f-007)). The census says 164/164 places, so it is not an unlucky ten |
 | **검증 체크리스트** checklist | `Core/Map/MapValidator.cs` — **16 rules** | necessary, not sufficient: `MapTests.SketchMap_PassesTheChecklistAndStillGradesTooEasy` |
 
 ---
@@ -142,7 +142,8 @@ allowed to name a clue type, and it returns a rendered `string`. See
 | Term | Means |
 |---|---|
 | `ASSET_REPORT` / `ASSET_FAILED` | the markers every Blender generator prints. Trust these, not the exit code |
-| `주자 테스트 7/10, Balanced` | `RunnerTest`'s grade band — §12 wants 5–7/10 |
+| `주자 테스트 10/10, TooEasy` | `RunnerTest`'s grade band — §12 wants 5–7/10, so this one is a failing grade, not a good score |
+| `164/164 escapable` | `RunnerCensus` — the same test from every place instead of §12's ten samples |
 | `[ChaseTest]` | `MonsterChaseTests` log prefix — the §14 Q1 measurement |
 | `[NavMeshAudit]` | connectivity only. Necessary, **not** sufficient — [expensive bugs](07-expensive-bugs.md) |
 | `[SoloPlaytest]` | `SoloPlaytest.VerifyBatch`, the §01 loop end to end |

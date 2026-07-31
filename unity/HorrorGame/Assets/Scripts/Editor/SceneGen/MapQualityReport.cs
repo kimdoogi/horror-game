@@ -25,8 +25,10 @@ namespace HorrorGame.EditorTools.SceneGen
             int seed,
             MapValidationReport validation,
             RunnerTestReport runnerTest,
-            float[] breakSpacings)
+            float[] breakSpacings,
+            RunnerCensus census)
         {
+            Census = census;
             Seed = seed;
             Validation = validation;
             RunnerTest = runnerTest;
@@ -54,6 +56,25 @@ namespace HorrorGame.EditorTools.SceneGen
         /// </summary>
         public float[] BreakSpacings { get; }
 
+        /// <summary>
+        /// §12's 실전 검증 run from <em>every</em> place instead of the ten it samples.
+        /// <para>
+        /// §12's bands are quoted against ten tries, so the grade
+        /// <see cref="RunnerTest"/> returns is a ten-point sample and nothing more. On a
+        /// map whose true escape rate is anywhere near the 5~7/10 band that sample is a
+        /// coin flip: at a true rate of 60% a single seed lands outside the band a third
+        /// of the time. This is the same simulation over the whole graph, so a designer
+        /// can tell "this map is borderline and the seed was unlucky" from "every place
+        /// on this map escapes" — which are the same 10/10 to §12.
+        /// </para>
+        /// <para>
+        /// It also localises the problem. The per-zone split says which 구역 is handing
+        /// out the releases, and §12's prescription for a TooEasy map — "시야 차단 지점을
+        /// 줄인다" — is only actionable once you know where they are.
+        /// </para>
+        /// </summary>
+        public RunnerCensus Census { get; }
+
         /// <summary>True when every §12 rule passed — the gate.</summary>
         public bool Buildable => Validation.Passed;
 
@@ -65,7 +86,8 @@ namespace HorrorGame.EditorTools.SceneGen
                 map.Seed,
                 MapValidator.Validate(graph),
                 HorrorGame.Core.Map.RunnerTest.Run(graph, new DeterministicRandom(map.Seed)),
-                MeasureBreakSpacing(graph));
+                MeasureBreakSpacing(graph),
+                RunnerCensus.Take(graph));
         }
 
         /// <summary>The whole thing as text, ready to paste into a bug or read out of a CI log.</summary>
@@ -76,6 +98,8 @@ namespace HorrorGame.EditorTools.SceneGen
             text.Append(Validation.Describe());
             text.Append('\n');
             text.Append(RunnerTest.Describe());
+            text.Append('\n');
+            text.Append(Census.Describe());
             text.Append('\n');
             text.Append(DescribeSpacing());
             return text.ToString();

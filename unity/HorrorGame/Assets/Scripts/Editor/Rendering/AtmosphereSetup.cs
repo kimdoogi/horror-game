@@ -61,6 +61,12 @@ namespace HorrorGame.EditorTools.Rendering
             log.Add(ConfigureVolumeProfile());
             log.Add(ConfigureNightSky());
 
+            // Runs here rather than as its own documented step because a material
+            // that quietly lost its detail normal is invisible — it renders as a
+            // slightly softer floor and nothing reports it. Idempotent, and it only
+            // sets properties the material binder never touches.
+            log.Add(MaterialDetailPass.Apply());
+
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
 
@@ -117,8 +123,23 @@ namespace HorrorGame.EditorTools.Rendering
                 CastShadowsFromEveryFitting();
                 WindClockTo(tier);
 
+                var switched = 0;
+                if (Environment.GetCommandLineArgs().Any(a => string.Equals(a, "-litZones",
+                        StringComparison.Ordinal)))
+                {
+                    switched = SwitchOnEveryFitting();
+                }
+
+                // In memory, like everything else this entry point does. The saved
+                // scene keeps whatever it had; these are the glows for the lights that
+                // are on *in this render*.
+                var glow = PracticalGlow.Place();
+
                 var shots = SceneShot.Capture(scene, tag);
-                Debug.Log("[Atmosphere] §07 tier " + tier + ": wrote " + shots.Count + " shot(s).");
+                Debug.Log("[Atmosphere] §07 tier " + tier + ": wrote " + shots.Count + " shot(s)."
+                          + (switched > 0 ? "\n  §04 zone lighting forced on: " + switched
+                                            + " fitting(s), nothing saved." : "")
+                          + "\n  " + glow);
                 EditorApplication.Exit(0);
             }
             catch (Exception ex)
@@ -157,9 +178,30 @@ namespace HorrorGame.EditorTools.Rendering
                 ApplySkybox();
                 EnsureDirector();
                 var lit = CastShadowsFromEveryFitting();
+
+                // Last, and inside this loop rather than as its own pipeline step,
+                // because the decals are read off geometry the earlier passes wrote
+                // and are written back into the same scene asset. A separate step
+                // would have to re-open and re-save every map scene to do the same
+                // work, and would be one more thing that can be forgotten after a
+                // regeneration — which for a decal means it simply is not there, with
+                // nothing in any log to say so.
+                var decals = ContactDecals.Place(ContactDecals.DefaultSeed);
+
+                // After the shadow pass, because it only glows the fittings that are
+                // actually switched on and that is a property CastShadowsFromEveryFitting
+                // must not have changed underneath it.
+                var glow = PracticalGlow.Place();
+
+                // Before the save, and after the decals, so the zone variants a room
+                // gets are built from whatever the material binder last wrote.
+                var zones = ZoneIdentity.Apply();
+
                 EditorSceneManager.MarkSceneDirty(scene);
                 EditorSceneManager.SaveScene(scene);
-                touched.Add(path + "  (" + lit + " fittings now shadow-casting)");
+                touched.Add(path + "  (" + lit + " fittings now shadow-casting)\n    "
+                            + decals.Replace("\n  ", "\n    ") + "\n    " + glow
+                            + "\n    " + zones);
             }
 
             Debug.Log("[Atmosphere] §07 tier " + tierIndex + " environment written to " + touched.Count
@@ -241,6 +283,49 @@ namespace HorrorGame.EditorTools.Rendering
             }
 
             return touched;
+        }
+
+        /// <summary>
+        /// Switches on every fitting in the open scene, for a review render only.
+        /// <para>
+        /// <b>Read the number this returns before drawing any conclusion about the
+        /// grade.</b> The saved map has 123 <see cref="Light"/> components in it and
+        /// exactly <em>one</em> of them is enabled. 122 of those are §04's zone
+        /// lighting, which is correctly off until the 정비공 pays for it; the caged
+        /// bulbs that used to be on belong to the dressing pass, and the dressing pass's
+        /// output is not in the scene as saved — there is no <c>Map/Dressing</c> root
+        /// and no reference to <c>Assets/Models/Dressing</c> anywhere in it.
+        /// </para>
+        /// <para>
+        /// That is the whole of the luminance regression ART.md records as an art
+        /// defect: the three-storey map was measured with fittings in it and the
+        /// five-storey map is being measured without any. No grade can recover it —
+        /// tonemapping and colour grading are multiplicative, and multiplying a wall
+        /// lit only by 0.005 ambient does not make it legible, it makes it a slightly
+        /// less black wall.
+        /// </para>
+        /// <para>
+        /// So this exists to produce the counter-example rather than to fix anything:
+        /// one render of the same viewpoints with the fittings on, which is also the
+        /// first picture anyone has taken of what §04's ability actually buys.
+        /// </para>
+        /// </summary>
+        private static int SwitchOnEveryFitting()
+        {
+            var switched = 0;
+            foreach (var light in UnityEngine.Object.FindObjectsByType<Light>(
+                         FindObjectsInactive.Include, FindObjectsSortMode.None))
+            {
+                if (light.type != LightType.Point || light.enabled)
+                {
+                    continue;
+                }
+
+                light.enabled = true;
+                switched++;
+            }
+
+            return switched;
         }
 
         /// <summary>

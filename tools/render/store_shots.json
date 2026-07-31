@@ -1,0 +1,509 @@
+{
+  "scene": "Assets/Scenes/Map_FirstSketch_Solo.unity",
+  "outputDir": "docs/store/screenshots",
+  "width": 1920,
+  "height": 1080,
+  "seed": 1204,
+  "shots": [
+    {
+      "name": "01_corridor_and_beam",
+      "position": {
+        "x": 41.25,
+        "y": -13.37,
+        "z": 16.25
+      },
+      "euler": {
+        "x": 6,
+        "y": 90,
+        "z": 0
+      },
+      "useLookAt": false,
+      "lookAt": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fov": 0.0,
+      "flashlight": true,
+      "survey": false,
+      "surveyIntensity": 1.4,
+      "surveyPitch": 72.0,
+      "surveyYaw": 30.0,
+      "ui": "none",
+      "monster": false,
+      "monsterPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "monsterYaw": 0.0,
+      "monsterClip": "Chase",
+      "monsterPose": 0.35,
+      "monsterTell": false,
+      "movePlayer": false,
+      "playerPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fill": false,
+      "fillPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fillRange": 8.0,
+      "fillIntensity": 1.1
+    },
+    {
+      "name": "02_the_monster_at_distance",
+      "position": {
+        "x": 43.75,
+        "y": -5.87,
+        "z": 43.75
+      },
+      "euler": {
+        "x": 4,
+        "y": 95,
+        "z": 0
+      },
+      "useLookAt": false,
+      "lookAt": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fov": 0.0,
+      "flashlight": true,
+      "survey": false,
+      "surveyIntensity": 1.4,
+      "surveyPitch": 72.0,
+      "surveyYaw": 30.0,
+      "ui": "none",
+      "monster": true,
+      "monsterPosition": {
+        "x": 58.693,
+        "y": -7.5,
+        "z": 42.443
+      },
+      "monsterYaw": 275.0,
+      "monsterClip": "Chase",
+      "monsterPose": 0.35,
+      "monsterTell": false,
+      "movePlayer": false,
+      "playerPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fill": false,
+      "fillPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fillRange": 8.0,
+      "fillIntensity": 1.1
+    },
+    {
+      "name": "03_it_is_closer_now",
+      "position": {
+        "x": 43.75,
+        "y": -5.87,
+        "z": 43.75
+      },
+      "euler": {
+        "x": 4,
+        "y": 95,
+        "z": 0
+      },
+      "useLookAt": false,
+      "lookAt": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fov": 0.0,
+      "flashlight": true,
+      "survey": false,
+      "surveyIntensity": 1.4,
+      "surveyPitch": 72.0,
+      "surveyYaw": 30.0,
+      "ui": "none",
+      "monster": true,
+      "monsterPosition": {
+        "x": 52.716,
+        "y": -7.5,
+        "z": 42.966
+      },
+      "monsterYaw": 275.0,
+      "monsterClip": "Chase",
+      "monsterPose": 0.55,
+      "monsterTell": true,
+      "movePlayer": false,
+      "playerPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fill": false,
+      "fillPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fillRange": 8.0,
+      "fillIntensity": 1.1
+    },
+    {
+      "name": "04_the_glance_back",
+      "position": {
+        "x": 48.73,
+        "y": -5.87,
+        "z": 43.31
+      },
+      "euler": {
+        "x": 2,
+        "y": 230,
+        "z": 0
+      },
+      "useLookAt": false,
+      "lookAt": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fov": 0.0,
+      "flashlight": true,
+      "survey": false,
+      "surveyIntensity": 1.4,
+      "surveyPitch": 72.0,
+      "surveyYaw": 30.0,
+      "ui": "none",
+      "monster": true,
+      "monsterPosition": {
+        "x": 44.75,
+        "y": -7.5,
+        "z": 43.66
+      },
+      "monsterYaw": 95.0,
+      "monsterClip": "Chase",
+      "monsterPose": 0.45,
+      "monsterTell": true,
+      "movePlayer": false,
+      "playerPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fill": false,
+      "fillPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fillRange": 8.0,
+      "fillIntensity": 1.1
+    },
+    {
+      "name": "05_the_shop",
+      "position": {
+        "x": 41.25,
+        "y": 1.63,
+        "z": 90.0
+      },
+      "euler": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "useLookAt": true,
+      "lookAt": {
+        "x": 41.25,
+        "y": 0.9,
+        "z": 96.25
+      },
+      "fov": 0.0,
+      "flashlight": true,
+      "survey": false,
+      "surveyIntensity": 1.4,
+      "surveyPitch": 72.0,
+      "surveyYaw": 30.0,
+      "ui": "shop",
+      "monster": false,
+      "monsterPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "monsterYaw": 0.0,
+      "monsterClip": "Chase",
+      "monsterPose": 0.35,
+      "monsterTell": false,
+      "movePlayer": true,
+      "playerPosition": {
+        "x": 41.25,
+        "y": 0.0,
+        "z": 96.25
+      },
+      "fill": false,
+      "fillPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fillRange": 8.0,
+      "fillIntensity": 1.1
+    },
+    {
+      "name": "06_five_storeys",
+      "position": {
+        "x": 38.75,
+        "y": -5.72,
+        "z": 55.0
+      },
+      "euler": {
+        "x": 28,
+        "y": 115,
+        "z": 0
+      },
+      "useLookAt": false,
+      "lookAt": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fov": 0.0,
+      "flashlight": true,
+      "survey": false,
+      "surveyIntensity": 1.4,
+      "surveyPitch": 72.0,
+      "surveyYaw": 30.0,
+      "ui": "none",
+      "monster": false,
+      "monsterPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "monsterYaw": 0.0,
+      "monsterClip": "Chase",
+      "monsterPose": 0.35,
+      "monsterTell": false,
+      "movePlayer": false,
+      "playerPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fill": false,
+      "fillPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fillRange": 8.0,
+      "fillIntensity": 1.1
+    },
+    {
+      "name": "07_the_gravel_floor",
+      "position": {
+        "x": 31.25,
+        "y": -9.62,
+        "z": 33.75
+      },
+      "euler": {
+        "x": 9,
+        "y": 175,
+        "z": 0
+      },
+      "useLookAt": false,
+      "lookAt": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fov": 0.0,
+      "flashlight": true,
+      "survey": false,
+      "surveyIntensity": 1.4,
+      "surveyPitch": 72.0,
+      "surveyYaw": 30.0,
+      "ui": "none",
+      "monster": false,
+      "monsterPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "monsterYaw": 0.0,
+      "monsterClip": "Chase",
+      "monsterPose": 0.35,
+      "monsterTell": false,
+      "movePlayer": false,
+      "playerPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fill": false,
+      "fillPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fillRange": 8.0,
+      "fillIntensity": 1.1
+    },
+    {
+      "name": "08_the_wood_floor",
+      "position": {
+        "x": 43.75,
+        "y": -2.12,
+        "z": 58.75
+      },
+      "euler": {
+        "x": 8,
+        "y": 5,
+        "z": 0
+      },
+      "useLookAt": false,
+      "lookAt": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fov": 0.0,
+      "flashlight": true,
+      "survey": false,
+      "surveyIntensity": 1.4,
+      "surveyPitch": 72.0,
+      "surveyYaw": 30.0,
+      "ui": "none",
+      "monster": false,
+      "monsterPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "monsterYaw": 0.0,
+      "monsterClip": "Chase",
+      "monsterPose": 0.35,
+      "monsterTell": false,
+      "movePlayer": false,
+      "playerPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fill": false,
+      "fillPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fillRange": 8.0,
+      "fillIntensity": 1.1
+    },
+    {
+      "name": "09_monster_in_the_archive",
+      "position": {
+        "x": 43.75,
+        "y": -2.12,
+        "z": 58.75
+      },
+      "euler": {
+        "x": 3,
+        "y": 5,
+        "z": 0
+      },
+      "useLookAt": false,
+      "lookAt": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fov": 0.0,
+      "flashlight": true,
+      "survey": false,
+      "surveyIntensity": 1.4,
+      "surveyPitch": 72.0,
+      "surveyYaw": 30.0,
+      "ui": "none",
+      "monster": true,
+      "monsterPosition": {
+        "x": 44.709,
+        "y": -3.75,
+        "z": 69.708
+      },
+      "monsterYaw": 185.0,
+      "monsterClip": "Chase",
+      "monsterPose": 0.55,
+      "monsterTell": false,
+      "movePlayer": false,
+      "playerPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fill": false,
+      "fillPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fillRange": 8.0,
+      "fillIntensity": 1.1
+    },
+    {
+      "name": "10_the_hud",
+      "position": {
+        "x": 43.75,
+        "y": -5.87,
+        "z": 43.75
+      },
+      "euler": {
+        "x": 3,
+        "y": 95,
+        "z": 0
+      },
+      "useLookAt": false,
+      "lookAt": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fov": 0.0,
+      "flashlight": true,
+      "survey": false,
+      "surveyIntensity": 1.4,
+      "surveyPitch": 72.0,
+      "surveyYaw": 30.0,
+      "ui": "hud",
+      "monster": true,
+      "monsterPosition": {
+        "x": 58.693,
+        "y": -7.5,
+        "z": 42.443
+      },
+      "monsterYaw": 275.0,
+      "monsterClip": "Chase",
+      "monsterPose": 0.35,
+      "monsterTell": false,
+      "movePlayer": false,
+      "playerPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fill": false,
+      "fillPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fillRange": 8.0,
+      "fillIntensity": 1.1
+    }
+  ]
+}

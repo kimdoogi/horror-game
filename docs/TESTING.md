@@ -49,6 +49,20 @@ dotnet test /Users/doogi/horror-game/core/HorrorGame.Core.Tests/HorrorGame.Core.
 dotnet build /Users/doogi/horror-game/core/HorrorGame.sln -c Release
 ```
 
+```
+    경고 11개
+    오류 0개
+```
+
+**Do not skip this because §1 and §3 were green.** It is the only command in this
+document that can see a break in `HorrorGame.Sim`. On 2026-08-01 it was failing on two
+errors while `dotnet test` passed 448/448, Unity compiled 0 errors and the full Unity
+suite passed 112/112 — the balance simulator would not build at all and nothing else
+noticed, because nothing else references it. `HorrorGame.Sim.csproj` lists the
+engine-free map-authoring sources **by name** rather than globbing them, deliberately,
+so a new file in `Editor/SceneGen/` is not picked up automatically. See
+[BLOCKERS.md B-006](BLOCKERS.md#b-006).
+
 ### 3 · Unity compiles — 229 scripts and every package
 
 ```bash
@@ -213,8 +227,17 @@ dotnet run -c Release --project core/HorrorGame.Sim -- sweep loot-value --matche
 ```
 
 Read [BALANCE-FINDINGS.md](BALANCE-FINDINGS.md) F-006 before trusting any economy
-number: matches currently resolve in 2.5 minutes against §01's 25–35 minute target,
-so the late game the economy is meant to shape does not happen yet.
+number: matches currently resolve in **7.2 minutes** against §01's 25–35 minute target,
+so the late game the economy is meant to shape is reached by a minority of matches
+rather than by the normal one. The economy does now run — 0.70 of one of everything
+earned, 283 강화 손전등 bought per 500 matches against 23 — so §16-2 is measurable for
+the first time.
+
+> **This figure was 2.5 minutes until 2026-08-01, and that was not staleness.** The
+> simulator built its own four-zone ring instead of reading the level, so every
+> economy number ever taken from it described a building the game does not ship.
+> `SimMap` now calls `FirstMapSketch.Build`. **Read the first five lines of the run
+> output — they are the building — before quoting anything under them.**
 
 ---
 
@@ -238,11 +261,19 @@ S-corridor — then runs Core's `MapValidator` as a gate and `RunnerTest` as a g
 **Generation fails if any §12 rule breaks**, so a bad map cannot reach you.
 
 `HorrorGame ▸ Scene Gen ▸ Report Map Quality` prints the §12 checklist result and the
-runner-test rate against §12's 5–7/10 target band.
+runner-test rate against §12's 5–7/10 target band. `horrorsim map` prints the same
+report headless, from the same sources, and the two agree exactly.
 
 > A map can pass all sixteen checklist rules and still grade 10/10 TooEasy. §12's
 > checklist is necessary, not sufficient — pinned by
 > `MapTests.SketchMap_PassesTheChecklistAndStillGradesTooEasy`.
+>
+> **The shipped map is in exactly that state.** 요양원 지하 5층 passes 16 of 16 and
+> grades **10/10 TooEasy**, outside the band; the three-storey building it replaced
+> graded 7/10 Balanced. Read the two lines the report prints underneath the grade:
+> `164/164 escapable` rules out an unlucky ten-point sample, and `79 corners …
+> mean 4.1 m, 0 inside the band` is the cause. See
+> [BALANCE-FINDINGS F-007](BALANCE-FINDINGS.md#f-007).
 
 ### Two players on one PC — §14 step 2
 

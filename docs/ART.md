@@ -50,42 +50,43 @@ cd unity/HorrorGame/Shots && python3 ../../../tools/render/frame_stats.py 'final
 | median luminance | 3–16 | The unlit room. Not zero. |
 | pixels above 250 ("blown") | < 0.5% | A clipped hotspot throws away the texture detail in the exact part of the frame the player is looking at. |
 
-**Three of the five zone views now miss the legible floor, and the five-storey map
-is measurably darker than the three-storey one it replaced.** Measured 2026-08-01
-on `Shots/map_*`, which is the same command and the same viewpoints as the
-`real8_*` figures it supersedes — only the tag differs:
+**All five zone views are inside all four bands, for the first time.** Measured
+2026-08-01 on `Shots/final_*`, which is the same command and the same viewpoints as
+the `map_*` figures it supersedes — only the tag differs:
 
 ```bash
 /Applications/Unity/Hub/Editor/6000.3.21f1/Unity.app/Contents/MacOS/Unity -batchmode -quit \
   -silent-crashes -projectPath unity/HorrorGame \
   -executeMethod HorrorGame.EditorTools.SceneShot.Batch \
-  -shotScene Assets/Scenes/Map_FirstSketch.unity -shotTag map
-cd unity/HorrorGame/Shots && python3 ../../../tools/render/frame_stats.py 'map_Zone_*.png'
+  -shotScene Assets/Scenes/Map_FirstSketch.unity -shotTag final
+cd unity/HorrorGame/Shots && python3 ../../../tools/render/frame_stats.py 'final_Zone_*.png'
 ```
 
 ```
 shot                                     mean    p50    p90    p99  black%  legible%  blown%    sat
-map_Zone_A_B2_Wood.png                    6.9    2.9   15.8   62.8    40.6      25.9    0.00    5.6
-map_Zone_B_B5_Tile.png                    7.5    3.4   17.0   63.7    36.1      29.2    0.00    7.9
-map_Zone_C_B4_Gravel.png                  7.4    3.3   17.5   69.2    38.0      26.6    0.00    7.3
-map_Zone_D_B1_Concrete.png                9.2    6.2   18.9   59.5    17.7      40.4    0.00   10.8
-map_Zone_E_B3_Metal.png                  12.7    8.4   31.1   49.9    17.0      52.5    0.00   14.6
+final_Zone_A_B2_Wood.png                  8.0    4.2   18.6   62.9    33.9      32.2    0.00    4.5
+final_Zone_B_B5_Tile.png                  8.1    4.7   17.7   63.5    31.6      33.2    0.00    8.4
+final_Zone_C_B4_Gravel.png                8.5    5.1   18.2   69.2    30.9      34.3    0.00    9.2
+final_Zone_D_B1_Concrete.png             10.0    7.4   18.9   59.5    14.5      47.8    0.00   12.4
+final_Zone_E_B3_Metal.png                12.6    8.4   31.0   49.7    17.6      51.9    0.00   13.9
 ```
 
-Four misses against the bands above, where the previous map had one:
+Four misses to none. Zone by zone, against `map_*` on the same scene and seeds:
 
-| Band | Was (`real8_*`, 3 storeys) | Now (`map_*`, 5 storeys) | |
-|---|---|---|:--:|
-| crushed 10–40% | 10.4–37.4% | 17.0–**40.6%** | zone A over |
-| legible 30–75% | 28.4–54.8% | **25.9**–52.5% | A, B, C under |
-| median 3–16 | 3.9–9.1 | **2.9**–8.4 | zone A under |
-| blown < 0.5% | 0.00% | 0.00% | ok |
+| Shot | crushed % (10–40) | legible % (30–75) | median (3–16) | blown % (<0.5) |
+|---|--:|--:|--:|--:|
+| Zone A · B2 · 나무 | **40.6 ✗ → 33.9** ✓ | **25.9 ✗ → 32.2** ✓ | **2.9 ✗ → 4.2** ✓ | 0.00 ✓ |
+| Zone B · B5 · 타일 | 36.1 → **31.6** ✓ | **29.2 ✗ → 33.2** ✓ | 3.4 → **4.7** ✓ | 0.00 ✓ |
+| Zone C · B4 · 자갈 | 38.0 → **30.9** ✓ | **26.6 ✗ → 34.3** ✓ | 3.3 → **5.1** ✓ | 0.00 ✓ |
+| Zone D · B1 · 콘크리트 | 17.7 → **14.5** ✓ | 40.4 → **47.8** ✓ | 6.2 → **7.4** ✓ | 0.00 ✓ |
+| Zone E · B3 · 금속 | 17.0 → **17.6** ✓ | 52.5 → **51.9** ✓ | 8.4 → **8.4** ✓ | 0.00 ✓ |
+| spawn0 | 37.8 → **27.6** | 26.4 → **31.8** | 3.3 → **5.2** | 0.00 ✓ |
+| spawn1 | 40.3 → **26.3** | 26.2 → **31.3** | 2.7 → **5.2** | 0.00 ✓ |
+| spawn2 | 34.9 → **17.1** | 32.6 → **43.1** | 4.1 → **6.5** | 0.27 ✓ |
+| spawn3 | 27.2 → **23.1** | 41.1 → **46.1** | 6.1 → **6.9** | 0.00 ✓ |
 
-The direction is consistent rather than noisy — every zone lost legible fraction and
-every median fell. Zone A (wood, B2) is the worst on all three moving measures. The
-grade was not retuned when the building grew from 74 places to 164; the same ambient
-and fog now have to carry rooms that are further apart and more of which sit outside
-any practical's falloff. This is an unclosed regression, not a settled state.
+None of that came from the grade, and **none of it could have.** §3.13 is the
+measurement that says so, and it is the most important thing on this page.
 
 The older claim on this page — "16–39% crushed and 31–57% legible" — was stale by
 two passes and was recorded as defect 3.7 in STATUS.md. Do not trust a range here
@@ -114,13 +115,28 @@ is written only when every material was generated, so a filtered run cannot leav
 the contract describing a set that was not produced. Run it unfiltered before
 building materials in Unity.
 
-Writes albedo / normal / roughness / AO / metallic-smoothness at 1024², plus
-`Textures.manifest.json`, which is the contract the Unity side reads. Then bind them:
+Writes five things, not one:
+
+| Output | What | Contract |
+|---|---|---|
+| `<Material>/*.png` | albedo / normal / roughness / AO / metallic-smoothness, 1024² | `Textures.manifest.json` |
+| `Detail/*.png` | five shared micro-normals, 512², §3.9 | same, `detail` per material |
+| `Decals/*.png` | eight placed marks, 512², RGBA, §3.10 | `Decals.manifest.json` |
+| `Glow/*.png` | two additive light sprites, 256², §3.11 | same, `glows` |
+
+Then bind them. Two commands, and the second is not optional — a material that
+silently loses its detail normal renders as a slightly softer floor and nothing
+reports it:
 
 ```bash
 Unity -batchmode -quit -nographics -projectPath unity/HorrorGame \
   -executeMethod HorrorGame.EditorTools.TextureImport.ProceduralTextureMaterials.Build
+Unity -batchmode -quit -nographics -projectPath unity/HorrorGame \
+  -executeMethod HorrorGame.EditorTools.Rendering.MaterialDetailPass.Batch
 ```
+
+`MaterialDetailPass` also runs from `AtmosphereSetup.Configure`, so the map pipeline
+cannot skip it. The decals and the glows are placed by the atmosphere pass — §2.3.
 
 This writes the five contractual floor materials **in place** at
 `Assets/Scenes/Generated/Materials/Floor_*.mat`. It must not create them anywhere
@@ -155,7 +171,19 @@ the atmosphere pass rendered under a bright procedural sky. Nothing errored. The
 was simply the brightest thing in every frame, and every smooth surface mirrored it.
 
 Order is **layout → dressing → atmosphere**, atmosphere last because it is the only
-pass that knows what the air is supposed to look like.
+pass that knows what the air is supposed to look like — and, since this pass, because
+it is the only one that can see what the other two left behind. The atmosphere pass
+now does five things per `Map_` scene, in this order, and the order matters:
+
+1. ambient, fog and skybox for the §07 tier;
+2. shadow casting on every fitting (§3.8b);
+3. **contact decals** (§3.10) — read off the baked NavMesh and the props;
+4. **practical glows** (§3.11) — only for fittings that step 2 left switched on;
+5. **zone identity** (§3.12) — re-skin before the scene is saved.
+
+Nothing here needs a separate command and nothing here can be forgotten after a
+regeneration, which for a decal or a glow would mean it simply is not there with
+nothing in any log to say so.
 
 The pipeline exits non-zero if §12 rejects the layout or the dressing scatter seals a
 route. The atmosphere pass runs regardless of the dressing result — the dressing
@@ -175,7 +203,17 @@ black.
 
 `AtmosphereSetup.ShotBatch` does the same thing with a chosen `-atmoTier` applied in
 memory and nothing saved — the fast loop for grading, and the only way to review "the
-night gets worse" as a picture rather than as a table.
+night gets worse" as a picture rather than as a table. It takes one more flag:
+
+```bash
+… -executeMethod HorrorGame.EditorTools.Rendering.AtmosphereSetup.ShotBatch \
+  -shotScene Assets/Scenes/Map_FirstSketch.unity -shotTag lit -atmoTier 0 -litZones
+```
+
+`-litZones` switches every fitting on **in memory only** and re-places the glows for
+them. It is not a cheat for a prettier screenshot: it is the counter-example that says
+whether a dark frame is a grading problem or a missing-light problem, and §3.13 is
+what it found.
 
 ---
 
@@ -367,7 +405,257 @@ which is the most legible of the three because the beam then finds a lit lattice
 rather than a lit patch; the timber floor wicks damp out of its joints and holds
 none, because a lake on a wooden floor would read as the wrong zone.
 
-### 3.8 The monster — a rim, two eyes, and less fog than the room
+### 3.9 Grain, and where the texel density went — `Grain` in `gen_textures.py`
+
+The scale correction in §3.8a did two things and only one of them was noticed. It
+halved the world size of every tile, which is the fix. It also **doubled texel
+density**, from 284 px/m to 410–683 px/m, and nothing in the set had anything up
+there to resolve.
+
+Measured rather than judged. `spectral_shares` reports, per material, the share of
+its albedo's contrast energy below two cycles per *tile* — the blob that makes the
+repeat legible — and above 25 cycles per *metre*, which is grain the near field can
+see, 4 cm features and finer. Before:
+
+```
+material                       px   size   px/m   AOcon  blob% grain%
+Floor_Concrete               1024   2.5m    410   0.037  15.0%   7.9%
+Floor_Metal                  1024   2.0m    512   0.146   2.4%   9.7%
+Wall_Plaster_Stained         1024   2.0m    512   0.210  54.4%   6.7%
+Wall_Concrete_Bare           1024   2.5m    410   0.196   8.7%  36.8%
+```
+
+`Floor_Concrete` is the argument in one row: the softest texel density in the set,
+the least grain, 15 % of its energy at tile scale, and an AO contrast of 0.037
+against a failure threshold of 0.030. It was a photograph of clouds — and it is zone
+D's floor and most corridors.
+
+Why it matters at all: at one metre a 1920-wide frame at §05's 90° FOV resolves about
+1220 px/m, and §05 puts the camera 1.63 m above a floor it looks at from about a
+metre. Everything between 0.3 mm and 4 mm was simply absent from the surface a player
+spends the match staring at.
+
+Two layers, both authored in **millimetres of world** so the same call gives the same
+physical grain on a 1.5 m gravel tile and a 2.5 m slab:
+
+- **`Grain`, in the base maps** — 5–17 mm features, 0.2–2.0 mm of relief, added to the
+  height field *in metres* with the height scale re-derived afterwards, so the normal
+  stays a true slope and the reported `relief_mm` stays honest. Clipping into [0,1]
+  instead would have quietly flattened the peaks of every deep surface in the set,
+  gravel worst. It also modulates albedo and roughness a little: grain is where dirt
+  collects and where a specular lobe breaks up.
+- **`DETAILS`, five shared micro-normals** at 512², tiled every 22–45 cm — 1138 to
+  2327 px/m, above what the eye resolves at one metre. Sand, aggregate, timber fibre,
+  brushed steel, ceramic glaze; 1.6 MB for the set, shared by twelve materials. Pure
+  grain on purpose: grain has no landmark, so a 30 cm repeat of it is invisible where
+  a 30 cm repeat of anything recognisable would be unbearable.
+
+After:
+
+```
+Floor_Concrete               1024   2.5m    410   0.105  13.8%  15.0%
+Floor_Metal                  1024   2.0m    512   0.150   2.4%  10.2%
+Wall_Brick_Painted           1024   1.8m    569   0.938   1.4%  20.3%
+Wall_Concrete_Bare           1024   2.5m    410   0.214   7.7%  44.2%
+```
+
+Concrete's grain share doubled and its AO contrast went up 2.8×. Worst seam ratio
+across the set moved 0.94 → 0.96 against a 1.10 limit, which is what putting more
+energy into the high band costs and is still well inside.
+
+This is the `_DetailNormalMap` that §7.9 called unreachable. It is reachable, from a
+second pass over the generated materials — `Editor/Rendering/MaterialDetailPass.cs` —
+which is a different file from the binder and only ever sets properties the binder
+does not touch. The keyword is the part that fails silently: URP compiles the whole
+detail block out unless `_DETAIL_MULX2` is on, so the map binds, the inspector shows
+it, and the surface renders as though it were never assigned.
+
+**Two things in the set are still wrong and are left as measured facts.**
+`Wall_Plaster_Stained` carries 53.9 % of its albedo energy at tile scale — much of
+that is the rising-damp gradient, which is *correct* authoring for a band that tiles
+in one axis only, but not all of it. And `Trim_Skirting_Painted` runs at 4655 px/m —
+1024² over a 0.2 m cross-section, 20× more texels than the eye can use, and a 256² away
+from being fixed.
+
+The soffit is the one surface with no detail normal, deliberately: nothing is ever
+near a ceiling. §05 puts the eye at 1.63 m under a 3 m soffit, so the closest approach
+is 1.4 m and it is straight up — and a ceiling is a large share of the screen in every
+corridor, which made it the most expensive place in the game to sample two extra
+textures for detail nobody can reach.
+
+### 3.10 Decals — `ContactDecals.cs` and `DECALS` in `gen_textures.py`
+
+A tiling material can say what a surface is made of. It cannot say what has happened
+to it *here*, and everything in a used building that says it has been used is
+registered to a position: the dirt where a crate stood for ten years, the tongue under
+the joint that drips, the pale rectangle where the slab was cut and made good. Baked
+into a tiling material any of those appears everywhere at once, which is worse than
+not having it — it stops reading as history and starts reading as pattern.
+
+Eight marks, generated at 512², 2.7 MB: contact dirt, water stain, traffic scuff,
+screed patch, puddle, drip spatter, soot, rust bleed.
+
+**One rule about the channels.** Every decal's RGB is painted across the whole texture
+and only its alpha is shaped. A decal drawn as "colour where opaque, black where not"
+bleeds that black into the colour channels at every mip level and then wears a dark
+halo that gets worse with distance — in the one place a decal must not draw attention
+to itself.
+
+Placement runs last, inside the atmosphere pass, off geometry the earlier passes left
+behind:
+
+- the **baked NavMesh triangulation**, sampled area-weighted, for anywhere a person
+  can stand. It is the right source and not a convenience: a wear mark taken from it
+  is on a route by definition, and none of them land inside a wall, under a crate or
+  on top of a stair nosing.
+- **raycasts sideways** from those samples, for wall stains and for the grime line at
+  the foot of a wall.
+- **every point light**, for the burn halo on the soffit above it.
+
+Which mark lands where is decided by reading the material actually under the sample,
+which makes the mix a §12 zone cue as well as a plausibility check: water collects in
+the voids of 자갈 and on 타일, a screed repair is cut into 콘크리트 and nowhere else, and
+자갈 takes almost no polish, because ballast cannot be polished.
+
+**The wall/floor junction is where this pays, and that is not what was expected.** The
+map has **ten loose props in it.** Every crate, panel and conduit run a frame shows is
+modelled into the kit piece, so "dirt under the thing that was standing there" had
+almost nothing to attach to — five props settled, five were correctly rejected as not
+standing on anything. The wall base has hundreds of metres of junction, it is where a
+brush never reaches in any real building, and it is the line the eye uses to decide
+whether a room has a floor or is a box with a texture on the bottom.
+
+**Mesh decals, not URP decal projectors.** A projector needs `DecalRendererFeature` on
+`HorrorGame_URP_Renderer.asset` and costs a screen-space pass every frame whether a
+decal is visible or not. These are quads lifted 1.2 cm off their surface, merged into
+one mesh per kind per storey, drawn through URP's ordinary transparent path and
+therefore **lit by the flashlight** — which is the whole point. A stain the beam does
+not find is not a clue.
+
+**One bug worth writing down, because it will happen to the next person.** URP 12
+added `_BlendModePreserveSpecular`; it defaults to **on**, and it silently redefines
+what "alpha blend" means. The factors become `One / OneMinusSrcAlpha` and the shader
+is expected to premultiply the colour by alpha itself, under `_ALPHAPREMULTIPLY_ON`.
+Setting `SrcAlpha / OneMinusSrcAlpha` and turning that keyword off — the obvious thing
+— produced neither: URP's material post-processor re-derived the factors from
+`_Surface` on import and put `One` back, while the keyword stayed off. The result is
+`dst·(1−a) + src·1`, which *adds* the decal's full colour everywhere its alpha is
+zero. On screen that is a bright rectangle exactly the size of the quad, on every wall
+in the building. It looks like a broken texture and it is a broken blend.
+
+### 3.11 Practicals that read as sources — `PracticalGlow.cs`
+
+§03 makes darkness the lock and light the key, and §04 sells zone lighting to the
+정비공 as an ability with a material cost. Both assume a player can look down a
+corridor and see *that there is a light there*. A point light cannot say that: it puts
+a disc on the floor and leaves the source invisible, so the room reads as lit by
+nothing and a fitting that could be switched on looks identical to one that could not.
+
+URP 17 has no volumetric fog, so there is no setting for this (§7.10). The
+alternatives are a light cookie — which URP wants as a *cubemap* for a point light,
+and every fitting here is a point light — or geometry. Two pieces of geometry:
+
+- a **filament halo**, three crossed quads at the bulb, driven at 1.35× the fitting's
+  own colour so its core sits above the bloom threshold. Static crossed quads rather
+  than a billboard because a billboard needs a component running every frame on 123
+  objects, and for a radially symmetric sprite the two are indistinguishable.
+- a **shaft**, two crossed quads hanging below wherever there is 1.6 m of clear drop,
+  at 0.30×. First tried at 0.16×, where they were placed, counted, reported — and
+  could not be found in the frame at all. Invisible is the other failure mode and it
+  costs the same number of triangles.
+
+Both are additive, and **the falloff is in RGB, not alpha**: an additive blend is
+`src + dst` and never reads the alpha channel, so a sprite carrying its shape in alpha
+renders as a solid rectangle of light. Batched by kind, storey and colour, so §12's
+five zone tints cost five materials rather than 123.
+
+Only fittings that are actually switched on get one. A dark bulb that glows is worse
+than no bulb: §04's ability is "pay to turn this zone on", and it is meaningless if
+the zone already looks lit.
+
+### 3.12 Zone identity — `ZoneIdentity.cs`
+
+§7.3 said: *"Five zones, five floors, and the floors genuinely do read now. Everything
+above knee height does not: the same brick wall, the same square hall, the same single
+central pillar."*
+
+Each zone's rooms now carry their own walls, dado and soffit. Keyed on the §12 **floor
+material** rather than on the zone letter, because letters come from the layout seed
+and move with it while the five 바닥 재질 are a contract that does not. Corridors, which
+live under `Map/Shared`, keep the base brick deliberately — a building where the
+corridors also change colour has no places in it, only gradients.
+
+| Zone | Walls | Why |
+|---|---|---|
+| 기록보관소 · 나무 · B2 | limewashed cream, chalky, ×1.22 | a dry paper store — and the darkest view in the building, so the one that most needed the light |
+| 저수조 · 타일 · B5 | institutional glazed green, gloss kept | the only wall in the building that is wiped down, so it takes a specular streak |
+| 저탄장 · 자갈 · B4 | damp limewash gone cold blue, ×1.10 | see below |
+| 하역장 · 콘크리트 · B1 | **`Wall_Concrete_Bare`** — board-formed, snap-tie holes | the only zone that changes *material*. It was generated long ago and left unbound, with the note "awaiting a per-zone wall slot" |
+| 기계실 · 금속 · B3 | oil-stained ochre, ×1.08, deeper relief | the warmest zone in the building, against 저수조's green two storeys down |
+
+It costs 15 material assets and nothing at runtime: every variant points at the same
+textures, so the batcher still batches and no extra texture memory is used at all.
+
+**저탄장 had to be argued with three times.** A coal store is dark, and this view was
+already the nearest in the building to the 40 % crushed ceiling. Darkened 12 % with
+15 % more occlusion it measured 49.8 % crushed and 20.1 % legible; pulled back to 3 %
+darker, 42.3 % and 23.7 % — still worse than leaving it alone. It is the one zone that
+cannot afford to look like what it is, so its walls now go the other way: limewash,
+cold and pale, 30.9 % and 34.3 %. Its identity is carried by 45 mm of ballast
+underfoot, which is unmistakable at any brightness.
+
+The test is the one the work was set: render one frame per zone, shuffle them, and try
+to name them. All five are namable from the still — ballast under a corridor open to
+the night sky; warm cream over plank; cold green over small tile; board-formed
+concrete over a big slab; ochre over diamond plate.
+
+### 3.13 **The building has one working light in it**
+
+This is the most important measurement on this page and it is not an art finding.
+
+```
+Light components in Map_FirstSketch.unity      123
+of which m_Enabled: 1                            1
+```
+
+122 of those are §04's zone lighting, which is *correctly* off until the 정비공 pays
+for it. The caged bulbs that used to be lit belong to the dressing pass — and **the
+dressing pass's output is not in the scene as saved**: there is no `Map/Dressing`
+root and no reference to `Assets/Models/Dressing` anywhere in the file. §3.6 on this
+page describes "16 fittings across 2469 m²"; there is one.
+
+That is the whole of the luminance regression this document recorded as an art defect
+in its previous edition. The three-storey map was measured with fittings in it and the
+five-storey map was being measured without any.
+
+**No grade can recover it, and that is arithmetic rather than opinion.** Tonemapping
+and colour grading are multiplicative. Multiplying a wall lit by 0.005 of ambient does
+not make it legible; it makes it a slightly less black wall. The counter-example is
+one command — nothing is saved, the zone lights are switched on in memory only:
+
+```bash
+… -executeMethod HorrorGame.EditorTools.Rendering.AtmosphereSetup.ShotBatch \
+  -shotScene Assets/Scenes/Map_FirstSketch.unity -shotTag lit -atmoTier 0 -litZones
+```
+
+```
+                              crushed %   legible %
+Zone A · 나무    unlit → lit    38.2 → 1.5   27.7 → 96.6
+Zone D · 콘크리트 unlit → lit    14.5 → 0.8   47.5 → 96.0
+Zone E · 금속    unlit → lit    17.6 → 0.1   51.9 → 99.4
+```
+
+So the band is bracketed rather than solved: **one** fitting gives 25–52 % legible and
+three of five zones under the floor; **123** gives 96–99 % and a building with no dark
+in it at all. The right answer is neither and it is not a grading decision — it is the
+dressing pass's caged bulbs, at ART.md's own stated density of one in five. Until they
+come back, every luminance number in this document is a number for a building with its
+lights off.
+
+It is also the first picture anyone has taken of what §04's ability actually buys, and
+it is worth looking at: `Shots/d4lit_Zone_E_B3_Metal.png`.
+
+### 3.14 The monster — a rim, two eyes, and less fog than the room
 
 The creature was invisible past about 10 m and that was not atmosphere, it was two
 broken systems: §04's 관측자 works at 15 m and §12's 주자 table endorses pulling aggro
@@ -462,43 +750,27 @@ still framed sensibly. Three things about it are deliberate:
 
 ## 6. Where it stands
 
-Map: `Assets/Scenes/Map_FirstSketch.unity` as saved, seed 1204, dressing seed
-4703, §07 tier 0. Rendered with
+Map: `Assets/Scenes/Map_FirstSketch.unity` as saved, seed 1204, §07 tier 0 — and
+with **no dressing in it at all**, which is §7.0 and is the single most important
+qualifier on every number below. Rendered with
 
 ```bash
 … -executeMethod HorrorGame.EditorTools.SceneShot.Batch \
-  -shotScene Assets/Scenes/Map_FirstSketch.unity -shotTag real8
-cd unity/HorrorGame/Shots && python3 ../../../tools/render/frame_stats.py 'real8_*.png'
+  -shotScene Assets/Scenes/Map_FirstSketch.unity -shotTag final
+cd unity/HorrorGame/Shots && python3 ../../../tools/render/frame_stats.py 'final_*.png'
 ```
 
-`real1` is the same command run before any of §3.8a–c, on the same scene, so the
-two columns are a controlled comparison.
+`map_*` is the same command run on the same scene before any of §3.9–3.13, so the
+two are a controlled comparison. The shot tags on this page, oldest first:
+`real1` → `real8` (three storeys) → `map` (five storeys, before tonight) →
+`final` (five storeys, after), plus `d4lit` for §3.13's counter-example.
 
-| Shot | crushed % (10–40) | legible % (30–75) | median (3–16) | blown % (<0.5) |
-|---|--:|--:|--:|--:|
-| Zone A · B1 · 나무 | 37.4 → **37.4** ✓ | 32.8 → **32.0** ✓ | 3.9 → **4.1** ✓ | 0.00 → **0.00** ✓ |
-| Zone B · B3 · 타일 | 16.4 → **15.8** ✓ | 48.3 → **50.7** ✓ | 7.4 → **8.1** ✓ | 0.00 → **0.00** ✓ |
-| Zone C · B2 · 자갈 | **43.8 ✗ → 34.4** ✓ | **29.2 ✗ → 28.4 ✗** | **2.4 ✗ → 3.9** ✓ | 0.00 → **0.00** ✓ |
-| Zone D · B1 · 콘크리트 | **8.8 ✗ → 10.4** ✓ | 58.6 → **54.8** ✓ | 9.2 → **8.9** ✓ | 0.00 → **0.00** ✓ |
-| Zone E · B2 · 금속 | 19.1 → **18.0** ✓ | 44.1 → **45.4** ✓ | 6.5 → **7.1** ✓ | 0.00 → **0.00** ✓ |
-| spawn0 | 1.7 → **4.3** | 95.3 → **89.5** | 59.6 → **52.4** | 0.00 → **0.14** ✓ |
-| spawn1 | 10.2 → **28.7** | 74.9 → **49.7** | 19.1 → **7.9** | 0.00 → **0.00** ✓ |
-| spawn2 | 6.0 → **8.1** | 91.6 → **86.7** | 47.4 → **39.9** | 0.00 → **0.00** ✓ |
-| spawn3 | 27.7 → **35.0** ✓ | 41.6 → **38.1** ✓ | 6.3 → **5.4** ✓ | **0.93 ✗ → 0.29** ✓ |
+The per-shot table is at the top of this page under **Measured targets** and is not
+repeated here. In one line: **four band misses became none**, and §3.13 is why that
+was possible at all and what it does not mean.
 
-Two of the five zone views were out of band, in opposite directions, and both are
-now in. Zone C's legible fraction is the one figure still outside: 28.4 % against
-a 30 % floor. It moved 43.8 → 34.4 on crushed and did not recover on legible,
-because the fittings shadow correctly now (§3.8b) and zone C had been reading
-partly by light from the rooms next door. Its floor is already at 0.44 linear —
-the last step before `ALBEDO_MAX_LINEAR` stops the run — and its baked AO is down
-to 0.55 strength. The remaining 1.6 points are the room's light level rather than
-the floor's paint, and the fittings belong to the dressing pass.
-
-**spawn0 and spawn2 are outside the band by design and always were.** They stand
-at the surface by the vehicle; a lit loading yard is not what a 10–40 % crushed
-band describes. spawn1 moved a long way (74.9 → 49.7 legible) for the same reason
-zone C did: it had been lit through walls.
+**spawn2 is outside the band by design and always was.** It stands at the surface by
+the vehicle; a lit loading yard is not what a 10–40 % crushed band describes.
 
 ### Frame cost
 
@@ -510,30 +782,68 @@ zone C did: it had been lit through walls.
 1920×1080, MSAA 4×, §07 tier 0, on the M1 Pro. Median of 40 timed frames per
 viewpoint after 12 warm-up frames, each frame followed by a one-pixel read-back so
 the timer measures the render rather than the submission. This is the renderer's
-share **in the editor** — no physics, animation, networking or UI — so read it as
-a before/after against itself and not as a player frame rate.
+share **in the editor** — no physics, animation, networking or UI — so read it as a
+before/after against itself and not as a player frame rate.
 
-| | before (real1) | after (real8) |
+Measured four times tonight on the five-storey map, which is why the attribution below
+is a measurement rather than a guess:
+
+| | typical | worst view |
 |---|--:|--:|
-| typical viewpoint | 8.48 ms (118 fps) | **8.89 ms (113 fps)** |
-| worst viewpoint — Zone E, the open hall | 16.74 ms (60 fps) | **20.25 ms (49 fps)** |
+| before any of §3.9–3.13 | 6.39 ms (156 fps) | Zone A, 9.32 ms (107 fps) |
+| + grain, detail normals, decals, glows, zone skins | 8.05 ms (124 fps) | Zone A, 10.65 ms (94 fps) |
+| − 93 decal quads (504 → 411) | 7.54 ms (133 fps) | Zone A, 10.44 ms (96 fps) |
+| − the soffit's detail normal | **7.33 ms (136 fps)** | Zone A, **10.28 ms (97 fps)** |
 
-+4.8 % typical, +21 % on the worst viewpoint, and effectively all of it is §3.8b:
-72 fittings that now render shadow maps. The texture work costs nothing at
-runtime, and the SSAO change moved intensity and radius rather than the sample
-count. Zone E was already the outlier before any of this — an open 20 × 20 m hall
-with a 6 m soffit and the most lights in frustum.
+**+14.7 % typical and +10.3 % on the worst view, against a +26 %/+14 % peak.** Both
+cuts were made because they were measured, not because they were guessed:
 
-The dial, if it ever needs turning, is `CastShadowsFromEveryFitting` in
-`AtmosphereSetup`: `LightShadows.None` there returns the cost and gives back light
-that passes through walls. §04's zone-lighting ability cannot be balanced in that
-state, so this is the price of a mechanic and not of a picture.
+- 93 fewer decal quads bought 0.51 ms, so decals cost about 5.5 µs each in frame. The
+  93 came from the two marks with the worst value per quad — the drip spatter, at
+  3.5 % coverage and 0.016 mean alpha, and half the wall-base grime. Comparing the two
+  renders, the grime line is thinner and the frame is not worse.
+- Clearing the ceiling's detail normal bought a further 0.21 ms, which is what two
+  texture samples per pixel cost on a surface that fills the top third of every
+  corridor. Nothing is ever near a soffit, so nothing was lost. `MaterialDetailPass`
+  had to learn to *unbind* for this: a detail declaration that could only ever be
+  added is a dial with one position.
+- The remaining ~0.9 ms is the detail normals on the other eleven materials, and that
+  is the price of §3.9. It is per-pixel and it is what the near field is made of.
+
+Against the last figures this page published — 8.89 ms typical and 20.25 ms on the
+worst view, measured on the three-storey map — the current build is faster on both,
+so nothing here has spent the budget that table was worried about.
+
+The dial, if it ever needs turning, is `SquareMetresPerWallBase` in `ContactDecals`
+(11 → 22 tonight, and 30 would still leave the junction reading) and then
+`CastShadowsFromEveryFitting` in `AtmosphereSetup`, which is the expensive one and is
+the price of a mechanic rather than of a picture — see §3.8b.
 
 ---
 
 ## 7. What still needs work
 
-Honest list, worst first.
+Honest list, worst first — but read **§7.11 first**. It was missing from this page
+entirely until 2026-08-01, it is the most visible defect in the game, and it is the one
+the store page is blocked on.
+
+### 7.0 The dressing pass's output is not in the saved map
+
+**One of the 123 lights in `Map_FirstSketch.unity` is switched on**, there is no
+`Map/Dressing` root in the scene and no reference to `Assets/Models/Dressing`
+anywhere in it. Ten loose props in a 2469 m² building.
+
+Everything this page said about the map being too dark was this. Everything it says
+now about the map being in band was measured with the lights off, so the band will
+have to be re-judged once they are back — probably downward, and that is the good
+direction to have to move in.
+
+It is also why §3.10's contact dirt found five props to settle and why §3.11 draws one
+filament halo. Both passes are written against however many there turn out to be.
+
+Not this area's to fix: `MapPipeline.Regenerate` runs layout → dressing → atmosphere
+and would put it back, but running it re-rolls the §12 layout and re-bakes the NavMesh,
+which is not a thing to do at 3 a.m. underneath four other passes' measurements.
 
 ### 7.1 ~~The monster still cannot reach anybody~~ — closed
 
@@ -557,24 +867,38 @@ Related: *"14 corners, nearest-neighbour 2.5 m–7.5 m, mean 4.3 m, **0 inside t
 band**"* against §12's 15–25 m 시야 차단 지점 spacing rule. The map passes the
 checklist and violates the numeric rule the checklist was derived from.
 
-### 7.3 Every room is the same room
+### 7.3 ~~Every room is the same room~~ — half closed
 
-Five zones, five floors, and the floors genuinely do read now. Everything above knee
-height does not: the same brick wall, the same square hall, the same single central
-pillar. The zone-tinted practicals help, but they are 16 lights in a 60×65 m
-building. A still frame taken above the beam still cannot answer "where am I" without
-looking down.
+The walls are done: §3.12 gives every zone its own dado, soffit and wall colour, and
+하역장 its own wall *material*. Shuffled and unlabelled, all five zone frames are
+namable.
 
-This is a map-kit and set-dressing problem, not a lighting one. It wants per-zone wall
-treatments and at least one silhouette-level architectural feature per zone.
+What is left of this is the half that really is a map-kit problem, and it is worth
+stating precisely so nobody re-solves the colour: **the same square hall and the same
+single central pillar.** Every zone's 개방 공간 is a box with one column in it. Colour
+separates places; silhouette is what makes them memorable, and no amount of paint
+substitutes for one architectural feature per zone — a gantry, a tank, a stair that
+crosses the room, a run of racking.
 
 ### 7.4 Sky is still visible from some lower-storey corridors
 
 `BuildCeilingCaps` covers zone rects. Corridor cells outside a zone rect on B2/B3 are
-still open to the sky where nothing is above them — visible at the right-hand edge of
-the Zone E frame. Extending the cap to tile cells is easy; doing it without sealing a
-stairwell needs the stairwell guard extended too, and with the NavMesh already broken
-there is no way to verify the result, so it was left.
+still open to the sky where nothing is above them.
+
+**Re-confirmed 2026-08-01 on `final_*`, and it is worse-framed than this said.** It is
+not an edge-of-frame artefact any more: in `final_Zone_C_B4_Gravel.png` the sky is a
+bright blue rectangle at the **vanishing point of the corridor**, dead centre, and it
+is the brightest thing in a frame whose whole subject is a flashlight on gravel. Four
+storeys underground, looking down a brick tunnel, at daylight. The store pass captured
+the same thing independently — `docs/store/defects/S5_sky_visible_from_B3.png`.
+
+**The reason recorded here for leaving it is now void.** It said verification was
+impossible "with the NavMesh already broken"; the NavMesh is not broken — the audit
+reads `complete 1830 (100.0 %) · islands 1 · monster reach 19/19`
+([STATUS.md §1.5](STATUS.md)), and [B-001](BLOCKERS.md#b-001) has been closed since. So
+the work is: extend the cap to tile cells, extend the stairwell guard so capping does
+not seal a stairwell, regenerate, and re-run the NavMesh audit to prove the guard held.
+That is a normal change with a normal gate on it, and nothing is blocking it.
 
 ### 7.5 ~~Brick scale~~ — fixed, and it was worse than this said
 
@@ -610,37 +934,82 @@ and it is thorough; the overhead shot should probably be deleted rather than fix
 ### 7.8 Everything is one colour
 
 The grade is cold, saturation −34, and the practicals are the only warmth in the
-building. It is coherent, and it is monotonous over a 25–35 minute match. §07 ramps
+building. It is coherent, and it is monotonous over a match of any length — 7.2 minutes
+is the measured median ([F-006](BALANCE-FINDINGS.md#f-006)) and §01 asks for 25–35, and
+the complaint gets worse in proportion to which of those two you believe. §07 ramps
 brightness and vignette across the night but not hue; there is room for the last tier
 to go somewhere the first tier does not.
 
-### 7.9 What surface variation still cannot do from the texture side
+### 7.9 ~~What surface variation cannot do from the texture side~~ — two of three closed
 
-Three of the things that most separate this from a shipped look need a shader, and
-the materials are bound to URP's stock `Lit` by `ProceduralTextureMaterials`, which
-is not this area's file:
+Two of the three were not blocked, they were unattempted, and the reason recorded here
+for both — "that file belongs to another area" — was wrong in the same way twice. The
+*materials* are a generated artefact; a second pass over them is not an edit to the
+binder.
 
-- **Detail normals.** The binder sets `_BaseMap`, `_BumpMap`, `_OcclusionMap` and
-  `_MetallicGlossMap` and nothing else, so `_DetailNormalMap` is unreachable. The
-  near-field micro-detail that a detail map would give is currently carried by the
-  base normal alone, which is why the tiling correction mattered so much — it is
-  the only lever that made the base normal sharper.
-- **Stochastic or triplanar blending between clean and damaged.** The proper
-  answer to repetition. `detile` in `gen_textures.py` is what can be done from the
-  texture side alone: it divides out each tile's low-frequency luminance envelope
-  so the repeat has no blob to lock onto, and it does not stop a wall from being
-  literally the same wall every 1.8 m.
-- **Decals.** URP's decal renderer feature could be added to
-  `HorrorGame_URP_Renderer.asset`, but a decal needs a projector placed where a
-  prop meets a floor, and prop placement is the dressing pass. The contact
-  darkening that exists instead comes from SSAO plus two things baked into
-  materials that sit on the junction itself — the skirting's dirt line and the
-  plaster's rising damp, both registered to the floor by §3.8a's box projection.
+- **Detail normals** — done, §3.9. `Editor/Rendering/MaterialDetailPass.cs`.
+- **Decals** — done, §3.10. `Editor/Rendering/ContactDecals.cs`. They did not need the
+  URP decal renderer feature and they did not need the dressing pass's cooperation;
+  they needed the *result* of the dressing pass, which is a different thing and is
+  sitting in the scene by the time the atmosphere pass runs.
+- **Stochastic or triplanar blending between clean and damaged** — still open, and now
+  the only one. It is the proper answer to repetition. `detile` divides out each tile's
+  low-frequency luminance envelope so the repeat has no blob to lock onto, and the
+  decals break the plane up where they land, but a wall is still literally the same
+  wall every 1.8 m and no texture-side trick changes that.
 
-### 7.10 Light shafts
+  What the measurement now says about where it would pay: `Wall_Plaster_Stained` at
+  53.9 % blob share is the worst offender in the set, and it is the dado band on every
+  wall in the building.
 
-Not attempted. URP 17 has no volumetric fog, so a visible shaft through a grate
-means an additive cone mesh placed per fitting — geometry, which is the dressing
-pass's, not a setting. The cheap substitute would be a light cookie, and URP wants
-a **cubemap** cookie for a point light; every fitting in this building is a point
-light.
+### 7.10 ~~Light shafts~~ — done, and they are the cheap version
+
+§3.11. Two crossed additive quads per fitting where there is 1.6 m of clear drop, not
+volumetrics — URP 17 still has none, and the light-cookie route still wants a cubemap
+for a point light.
+
+What that leaves open is honest: these are *static* geometry, so a shaft does not move
+when the light does and does not disappear when something is put in front of it. Every
+fitting in this building is fixed to a soffit, so neither has come up. A carried lamp
+or a swinging bulb would need the same thing as a component instead, which is a
+runtime script in a different assembly.
+
+They are also invisible until somebody switches the lights on — §3.13.
+
+### 7.11 Every object the player touches is an untextured white primitive
+
+**This is the worst-looking thing in the game and this page had never mentioned it.**
+It was found by the store pass, which could not avoid it — three of the four trailer
+beats worth cutting are *about* these objects — and filed under
+`docs/store/defects/` rather than here, so the art register never saw it.
+
+`Interactable.CreateProp` builds every interactive object with
+`GameObject.CreatePrimitive` and a self-lit material tinted by colour alone:
+
+| Object | Section | Shape | Evidence |
+|---|:--:|---|---|
+| 단서 clue | §03 | Quad | `docs/store/defects/S1_clue_prop_is_a_white_square.png` |
+| 목표물 objective | §03 | Capsule | `S3_objective_prop_is_a_white_capsule.png` |
+| 전리품 loot | §08 | Cube | `S4_loot_props_are_white_cubes.png` |
+| 차량 vehicle | §08 | Cube | `S2_surface_vehicle_is_a_white_box.png` |
+
+The comment in `CreateProp` explains the emissive material and it is a good reason —
+§03 puts every one of these in the dark, and an unlit prop in an unlit corridor cannot
+be found. The primitive is not defended anywhere; it is placeholder that outlived the
+sentence that would have called it one.
+
+**Why it outranks the rest of this list.** Everything else here is a quality of the
+picture — a hue, a repeat, a shaft. This is a white box in a room built to §3.8a's
+7.5 cm brick courses and dressed with §3.10's contact dirt, and the eye goes to it
+before anything else in the frame. It is also unavoidable: the 차량 is where §01 sends
+the team at the end of **every** round trip, 2.94 times a match, and it is a
+2 m untextured cube. `docs/store/screenshots/01_corridor_and_beam.png` — a frame chosen
+for the store page, not a defect capture — has a glowing white clue quad sitting in the
+middle of the corridor.
+
+**What it is not.** Not blocked on anything. `MapKitCatalogue` already loads FBX from
+`Assets/Models/Props/`, `gen_props.py` already generates that folder, and §7.9's
+materials work already proved a second pass over generated assets is normal. Four
+props, one generator, one binder change — and it is the single highest-value hour of
+art work in the project, because it is the difference between screenshots that read as
+a game and screenshots that read as a prototype.

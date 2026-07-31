@@ -1,0 +1,659 @@
+{
+  "scene": "Assets/Scenes/Map_FirstSketch_Solo.unity",
+  "outputDir": "docs/store/trailer",
+  "width": 1920,
+  "height": 1080,
+  "seed": 1204,
+  "shots": [
+    {
+      "name": "beat01_cold_open",
+      "position": {
+        "x": 48.73,
+        "y": -5.87,
+        "z": 43.31
+      },
+      "euler": {
+        "x": 2,
+        "y": 230,
+        "z": 0
+      },
+      "useLookAt": false,
+      "lookAt": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fov": 0.0,
+      "flashlight": true,
+      "survey": false,
+      "surveyIntensity": 1.4,
+      "surveyPitch": 72.0,
+      "surveyYaw": 30.0,
+      "ui": "none",
+      "monster": true,
+      "monsterPosition": {
+        "x": 44.75,
+        "y": -7.5,
+        "z": 43.66
+      },
+      "monsterYaw": 95.0,
+      "monsterClip": "Chase",
+      "monsterPose": 0.45,
+      "monsterTell": true,
+      "movePlayer": false,
+      "playerPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fill": false,
+      "fillPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fillRange": 8.0,
+      "fillIntensity": 1.1
+    },
+    {
+      "name": "beat02_surface",
+      "position": {
+        "x": 41.25,
+        "y": 1.63,
+        "z": 90.0
+      },
+      "euler": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "useLookAt": true,
+      "lookAt": {
+        "x": 41.25,
+        "y": 0.9,
+        "z": 96.25
+      },
+      "fov": 0.0,
+      "flashlight": true,
+      "survey": false,
+      "surveyIntensity": 1.4,
+      "surveyPitch": 72.0,
+      "surveyYaw": 30.0,
+      "ui": "none",
+      "monster": false,
+      "monsterPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "monsterYaw": 0.0,
+      "monsterClip": "Chase",
+      "monsterPose": 0.35,
+      "monsterTell": false,
+      "movePlayer": true,
+      "playerPosition": {
+        "x": 41.25,
+        "y": 0.0,
+        "z": 96.25
+      },
+      "fill": false,
+      "fillPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fillRange": 8.0,
+      "fillIntensity": 1.1
+    },
+    {
+      "name": "beat03_descent",
+      "position": {
+        "x": 38.75,
+        "y": -5.72,
+        "z": 55.0
+      },
+      "euler": {
+        "x": 28,
+        "y": 115,
+        "z": 0
+      },
+      "useLookAt": false,
+      "lookAt": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fov": 0.0,
+      "flashlight": true,
+      "survey": false,
+      "surveyIntensity": 1.4,
+      "surveyPitch": 72.0,
+      "surveyYaw": 30.0,
+      "ui": "none",
+      "monster": false,
+      "monsterPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "monsterYaw": 0.0,
+      "monsterClip": "Chase",
+      "monsterPose": 0.35,
+      "monsterTell": false,
+      "movePlayer": false,
+      "playerPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fill": false,
+      "fillPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fillRange": 8.0,
+      "fillIntensity": 1.1
+    },
+    {
+      "name": "beat04_floor_wood",
+      "position": {
+        "x": 43.75,
+        "y": -2.12,
+        "z": 58.75
+      },
+      "euler": {
+        "x": 10,
+        "y": 5,
+        "z": 0
+      },
+      "useLookAt": false,
+      "lookAt": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fov": 0.0,
+      "flashlight": true,
+      "survey": false,
+      "surveyIntensity": 1.4,
+      "surveyPitch": 72.0,
+      "surveyYaw": 30.0,
+      "ui": "none",
+      "monster": false,
+      "monsterPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "monsterYaw": 0.0,
+      "monsterClip": "Chase",
+      "monsterPose": 0.35,
+      "monsterTell": false,
+      "movePlayer": false,
+      "playerPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fill": false,
+      "fillPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fillRange": 8.0,
+      "fillIntensity": 1.1
+    },
+    {
+      "name": "beat05_floor_gravel",
+      "position": {
+        "x": 31.25,
+        "y": -9.62,
+        "z": 33.75
+      },
+      "euler": {
+        "x": 11,
+        "y": 175,
+        "z": 0
+      },
+      "useLookAt": false,
+      "lookAt": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fov": 0.0,
+      "flashlight": true,
+      "survey": false,
+      "surveyIntensity": 1.4,
+      "surveyPitch": 72.0,
+      "surveyYaw": 30.0,
+      "ui": "none",
+      "monster": false,
+      "monsterPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "monsterYaw": 0.0,
+      "monsterClip": "Chase",
+      "monsterPose": 0.35,
+      "monsterTell": false,
+      "movePlayer": false,
+      "playerPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fill": false,
+      "fillPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fillRange": 8.0,
+      "fillIntensity": 1.1
+    },
+    {
+      "name": "beat06_floor_tile",
+      "position": {
+        "x": 41.25,
+        "y": -13.37,
+        "z": 16.25
+      },
+      "euler": {
+        "x": 9,
+        "y": 90,
+        "z": 0
+      },
+      "useLookAt": false,
+      "lookAt": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fov": 0.0,
+      "flashlight": true,
+      "survey": false,
+      "surveyIntensity": 1.4,
+      "surveyPitch": 72.0,
+      "surveyYaw": 30.0,
+      "ui": "none",
+      "monster": false,
+      "monsterPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "monsterYaw": 0.0,
+      "monsterClip": "Chase",
+      "monsterPose": 0.35,
+      "monsterTell": false,
+      "movePlayer": false,
+      "playerPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fill": false,
+      "fillPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fillRange": 8.0,
+      "fillIntensity": 1.1
+    },
+    {
+      "name": "beat07_floor_metal",
+      "position": {
+        "x": 43.75,
+        "y": -5.87,
+        "z": 43.75
+      },
+      "euler": {
+        "x": 11,
+        "y": 95,
+        "z": 0
+      },
+      "useLookAt": false,
+      "lookAt": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fov": 0.0,
+      "flashlight": true,
+      "survey": false,
+      "surveyIntensity": 1.4,
+      "surveyPitch": 72.0,
+      "surveyYaw": 30.0,
+      "ui": "none",
+      "monster": false,
+      "monsterPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "monsterYaw": 0.0,
+      "monsterClip": "Chase",
+      "monsterPose": 0.35,
+      "monsterTell": false,
+      "movePlayer": false,
+      "playerPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fill": false,
+      "fillPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fillRange": 8.0,
+      "fillIntensity": 1.1
+    },
+    {
+      "name": "beat08_seen_18m",
+      "position": {
+        "x": 43.75,
+        "y": -5.87,
+        "z": 43.75
+      },
+      "euler": {
+        "x": 4,
+        "y": 95,
+        "z": 0
+      },
+      "useLookAt": false,
+      "lookAt": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fov": 0.0,
+      "flashlight": true,
+      "survey": false,
+      "surveyIntensity": 1.4,
+      "surveyPitch": 72.0,
+      "surveyYaw": 30.0,
+      "ui": "none",
+      "monster": true,
+      "monsterPosition": {
+        "x": 61.682,
+        "y": -7.5,
+        "z": 42.181
+      },
+      "monsterYaw": 275.0,
+      "monsterClip": "Patrol",
+      "monsterPose": 0.2,
+      "monsterTell": false,
+      "movePlayer": false,
+      "playerPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fill": false,
+      "fillPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fillRange": 8.0,
+      "fillIntensity": 1.1
+    },
+    {
+      "name": "beat09_seen_12m",
+      "position": {
+        "x": 43.75,
+        "y": -5.87,
+        "z": 43.75
+      },
+      "euler": {
+        "x": 4,
+        "y": 95,
+        "z": 0
+      },
+      "useLookAt": false,
+      "lookAt": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fov": 0.0,
+      "flashlight": true,
+      "survey": false,
+      "surveyIntensity": 1.4,
+      "surveyPitch": 72.0,
+      "surveyYaw": 30.0,
+      "ui": "none",
+      "monster": true,
+      "monsterPosition": {
+        "x": 55.704,
+        "y": -7.5,
+        "z": 42.704
+      },
+      "monsterYaw": 275.0,
+      "monsterClip": "Chase",
+      "monsterPose": 0.3,
+      "monsterTell": true,
+      "movePlayer": false,
+      "playerPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fill": false,
+      "fillPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fillRange": 8.0,
+      "fillIntensity": 1.1
+    },
+    {
+      "name": "beat10_seen_6m",
+      "position": {
+        "x": 43.75,
+        "y": -5.87,
+        "z": 43.75
+      },
+      "euler": {
+        "x": 4,
+        "y": 95,
+        "z": 0
+      },
+      "useLookAt": false,
+      "lookAt": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fov": 0.0,
+      "flashlight": true,
+      "survey": false,
+      "surveyIntensity": 1.4,
+      "surveyPitch": 72.0,
+      "surveyYaw": 30.0,
+      "ui": "none",
+      "monster": true,
+      "monsterPosition": {
+        "x": 49.727,
+        "y": -7.5,
+        "z": 43.227
+      },
+      "monsterYaw": 275.0,
+      "monsterClip": "Chase",
+      "monsterPose": 0.6,
+      "monsterTell": false,
+      "movePlayer": false,
+      "playerPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fill": false,
+      "fillPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fillRange": 8.0,
+      "fillIntensity": 1.1
+    },
+    {
+      "name": "beat11_glance",
+      "position": {
+        "x": 57.697,
+        "y": -5.87,
+        "z": 42.53
+      },
+      "euler": {
+        "x": 2,
+        "y": 268,
+        "z": 0
+      },
+      "useLookAt": false,
+      "lookAt": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fov": 0.0,
+      "flashlight": true,
+      "survey": false,
+      "surveyIntensity": 1.4,
+      "surveyPitch": 72.0,
+      "surveyYaw": 30.0,
+      "ui": "none",
+      "monster": true,
+      "monsterPosition": {
+        "x": 50.723,
+        "y": -7.5,
+        "z": 43.14
+      },
+      "monsterYaw": 95.0,
+      "monsterClip": "Chase",
+      "monsterPose": 0.15,
+      "monsterTell": false,
+      "movePlayer": false,
+      "playerPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fill": false,
+      "fillPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fillRange": 8.0,
+      "fillIntensity": 1.1
+    },
+    {
+      "name": "beat12_shop",
+      "position": {
+        "x": 41.25,
+        "y": 1.63,
+        "z": 90.0
+      },
+      "euler": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "useLookAt": true,
+      "lookAt": {
+        "x": 41.25,
+        "y": 0.9,
+        "z": 96.25
+      },
+      "fov": 0.0,
+      "flashlight": true,
+      "survey": false,
+      "surveyIntensity": 1.4,
+      "surveyPitch": 72.0,
+      "surveyYaw": 30.0,
+      "ui": "shop",
+      "monster": false,
+      "monsterPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "monsterYaw": 0.0,
+      "monsterClip": "Chase",
+      "monsterPose": 0.35,
+      "monsterTell": false,
+      "movePlayer": true,
+      "playerPosition": {
+        "x": 41.25,
+        "y": 0.0,
+        "z": 96.25
+      },
+      "fill": false,
+      "fillPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fillRange": 8.0,
+      "fillIntensity": 1.1
+    },
+    {
+      "name": "beat13_title_plate",
+      "position": {
+        "x": 41.25,
+        "y": -13.37,
+        "z": 16.25
+      },
+      "euler": {
+        "x": 4,
+        "y": 90,
+        "z": 0
+      },
+      "useLookAt": false,
+      "lookAt": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fov": 0.0,
+      "flashlight": true,
+      "survey": false,
+      "surveyIntensity": 1.4,
+      "surveyPitch": 72.0,
+      "surveyYaw": 30.0,
+      "ui": "none",
+      "monster": false,
+      "monsterPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "monsterYaw": 0.0,
+      "monsterClip": "Chase",
+      "monsterPose": 0.35,
+      "monsterTell": false,
+      "movePlayer": false,
+      "playerPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fill": false,
+      "fillPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "fillRange": 8.0,
+      "fillIntensity": 1.1
+    }
+  ]
+}

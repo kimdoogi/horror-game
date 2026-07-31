@@ -101,16 +101,18 @@ Last run recorded in [STATUS.md §1.3](../STATUS.md) and
 ## Where the project actually stands
 
 [`docs/STATUS.md`](../STATUS.md) is the authority and is rewritten each pass. As of
-its 2026-07-31 edition, in one paragraph:
+its 2026-08-01 edition, in one paragraph:
 
-The rules core is green (448/448). Unity compiles clean. The monster crosses the map
+**Every test in the project is green — 560 of 560** (core 448, EditMode 70, PlayMode
+42). Unity compiles clean and so does the core solution. The monster crosses the map
 and catches you. A solo match runs end to end — descend, read clues, take loot,
-surface, sell, buy, descend, carry the objective out. The map is a three-storey
-basement passing all 16 §12 rules and grading 7/10 on the 주자 테스트, inside §12's
-5–7 band. One Unity test is red for an environment reason
-([B-002](../BLOCKERS.md#b-002)). The economy resolves a match in 2.5 minutes against
-a 25–35 minute design target ([F-006](../BALANCE-FINDINGS.md)), so three of §07's
-five threat tiers are content nobody sees.
+surface, sell, buy, descend, carry the objective out. The map is a **five**-storey
+basement, 164 places against the old 74, passing all 16 §12 rules — but grading
+**10/10 TooEasy** on the 주자 테스트, *outside* §12's 5–7 band, which the three-storey
+map held at 7/10 ([F-007](09-open-questions.md#f-007)). The economy resolves a match
+in **7.2 minutes** against a 25–35 minute design target
+([F-006](09-open-questions.md#f-006)) — up from 2.5, and all five of §07's threat
+tiers are now reached by real matches, but 25–35 is still not the normal match.
 
 **Nobody has yet sat down with two instances and played it.** §14 says questions 1
 and 2 decide the project and 「직접 만져봐야 나온다」. That is the highest-value thing

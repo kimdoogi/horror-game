@@ -1,0 +1,131 @@
+{
+  "generated_by": "tools/textures/gen_textures.py",
+  "decals": [
+    {
+      "name": "Decal_Contact",
+      "size_metres": 1.3,
+      "coverage": 0.312,
+      "mean_alpha": 0.1547,
+      "roughness_mean": 0.9115,
+      "metallic": 0.0,
+      "note": "Dirt where a prop has stood. Placed at every prop's footprint.",
+      "maps": {
+        "albedo": "Decals/Decal_Contact_albedo.png",
+        "normal": "Decals/Decal_Contact_normal.png",
+        "metallic_smoothness": "Decals/Decal_Contact_ms.png"
+      }
+    },
+    {
+      "name": "Decal_WaterStain",
+      "size_metres": 1.6,
+      "coverage": 0.4951,
+      "mean_alpha": 0.2283,
+      "roughness_mean": 0.5211,
+      "metallic": 0.0,
+      "note": "Damp tongue under a dripping joint. Runs downhill in +V.",
+      "maps": {
+        "albedo": "Decals/Decal_WaterStain_albedo.png",
+        "normal": "Decals/Decal_WaterStain_normal.png",
+        "metallic_smoothness": "Decals/Decal_WaterStain_ms.png"
+      }
+    },
+    {
+      "name": "Decal_Scuff",
+      "size_metres": 2.6,
+      "coverage": 0.6362,
+      "mean_alpha": 0.1857,
+      "roughness_mean": 0.5201,
+      "metallic": 0.0,
+      "note": "Polished traffic line. Aligned along the corridor it sits in.",
+      "maps": {
+        "albedo": "Decals/Decal_Scuff_albedo.png",
+        "normal": "Decals/Decal_Scuff_normal.png",
+        "metallic_smoothness": "Decals/Decal_Scuff_ms.png"
+      }
+    },
+    {
+      "name": "Decal_Patch",
+      "size_metres": 1.8,
+      "coverage": 0.7553,
+      "mean_alpha": 0.3932,
+      "roughness_mean": 0.7894,
+      "metallic": 0.0,
+      "note": "Cut-and-made-good screed repair. Concrete and tile floors only.",
+      "maps": {
+        "albedo": "Decals/Decal_Patch_albedo.png",
+        "normal": "Decals/Decal_Patch_normal.png",
+        "metallic_smoothness": "Decals/Decal_Patch_ms.png"
+      }
+    },
+    {
+      "name": "Decal_Puddle",
+      "size_metres": 1.7,
+      "coverage": 0.3285,
+      "mean_alpha": 0.3174,
+      "roughness_mean": 0.317,
+      "metallic": 0.0,
+      "note": "Standing water — §03's 물이 있는 층. Smooth enough to mirror the room.",
+      "maps": {
+        "albedo": "Decals/Decal_Puddle_albedo.png",
+        "normal": "Decals/Decal_Puddle_normal.png",
+        "metallic_smoothness": "Decals/Decal_Puddle_ms.png"
+      }
+    },
+    {
+      "name": "Decal_Drip",
+      "size_metres": 0.7,
+      "coverage": 0.0352,
+      "mean_alpha": 0.0159,
+      "roughness_mean": 0.4193,
+      "metallic": 0.0,
+      "note": "Spatter under a leak. Near-field detail that rewards walking in.",
+      "maps": {
+        "albedo": "Decals/Decal_Drip_albedo.png",
+        "normal": "Decals/Decal_Drip_normal.png",
+        "metallic_smoothness": "Decals/Decal_Drip_ms.png"
+      }
+    },
+    {
+      "name": "Decal_Soot",
+      "size_metres": 1.1,
+      "coverage": 0.1153,
+      "mean_alpha": 0.0354,
+      "roughness_mean": 0.93,
+      "metallic": 0.0,
+      "note": "Burn halo on the soffit above a bare bulb.",
+      "maps": {
+        "albedo": "Decals/Decal_Soot_albedo.png",
+        "normal": "Decals/Decal_Soot_normal.png",
+        "metallic_smoothness": "Decals/Decal_Soot_ms.png"
+      }
+    },
+    {
+      "name": "Decal_Rust",
+      "size_metres": 0.85,
+      "coverage": 0.3582,
+      "mean_alpha": 0.1551,
+      "roughness_mean": 0.8777,
+      "metallic": 0.0,
+      "note": "Rust bleeding from a fixing. The only warm mark in the building.",
+      "maps": {
+        "albedo": "Decals/Decal_Rust_albedo.png",
+        "normal": "Decals/Decal_Rust_normal.png",
+        "metallic_smoothness": "Decals/Decal_Rust_ms.png"
+      }
+    }
+  ],
+  "glows": [
+    {
+      "name": "Glow_Point",
+      "map": "Glow/Glow_Point_albedo.png",
+      "mean": 0.0524,
+      "peak": 1.0
+    },
+    {
+      "name": "Glow_Shaft",
+      "map": "Glow/Glow_Shaft_albedo.png",
+      "mean": 0.0545,
+      "peak": 0.7964
+    }
+  ]
+}

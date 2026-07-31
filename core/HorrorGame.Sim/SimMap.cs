@@ -4,13 +4,30 @@ using HorrorGame.Core;
 using HorrorGame.Core.Clues;
 using HorrorGame.Core.Map;
 using HorrorGame.Core.Math;
+using HorrorGame.EditorTools.SceneGen;
 
 namespace HorrorGame.Sim
 {
     /// <summary>
-    /// The building the simulator runs matches in: §12's 첫 맵 스케치, built through
-    /// Core's own <see cref="MapGraphBuilder"/> and answered through Core's own
-    /// <see cref="MapGraphProbe"/>.
+    /// The building the simulator runs matches in: <b>the one the game ships</b>.
+    /// <para>
+    /// <b>Why this file was rewritten.</b> It used to build its own four-zone ring out
+    /// of <see cref="GameConstants"/> and never read the level. So on 2026-08-01 the
+    /// Unity map grew from 74 places to 164 and from 133.9 m of monster route to
+    /// 189.6 m, and the simulator reported a 2.5-minute median match and 1.2% reaching
+    /// 심야 — identical to three significant figures, because it could not have been
+    /// otherwise. F-006's own option 1 is "make traversal cost real time", the map was
+    /// grown to do exactly that, and the measurement was taken against a different
+    /// building (docs/BALANCE-FINDINGS.md F-006).
+    /// </para>
+    /// <para>
+    /// It now calls <see cref="FirstMapSketch.Build"/> — the same call
+    /// <c>MapSceneGenerator.Generate</c> makes before it lays a single FBX — and takes
+    /// the <see cref="MapGraph"/> that comes out. Not a copy of it, not an export of
+    /// it: the same sources, compiled into this assembly by HorrorGame.Sim.csproj, so
+    /// "the map got bigger" and "matches got longer" are one measurement instead of
+    /// two that can silently disagree.
+    /// </para>
     /// <para>
     /// Fixed across matches on purpose. §03's 랜덤화 범위 table puts 맵 구조 in the
     /// 고정 column — "학습 가능해야 실력이 성장한다" — so a sweep that varied the map
@@ -19,28 +36,64 @@ namespace HorrorGame.Sim
     /// where the loot is.
     /// </para>
     /// <para>
-    /// <b>Floors are zones.</b> §03's chain narrows by floor ("물이 있는 층은 지하
-    /// 3층이다") and then by site sign, and §12's map is a graph of four zones. The
-    /// simulator maps one onto the other — zone A is 지하 1층, D is 지하 4층 — so the
-    /// first two links of the chain narrow to a zone and the third narrows to one of
-    /// that zone's three 후보 지점 (§12: 구역당 3개). Nothing downstream can tell the
-    /// difference, because <see cref="SiteCatalog"/> only ever compares floor
-    /// indices for equality.
+    /// <b>Floors are storeys, and storeys are zones.</b> §03's chain narrows by floor
+    /// ("물이 있는 층은 지하 5층이다") and then by site sign.
+    /// <see cref="FirstMapSketch"/> gives each 구역 its own storey for exactly that
+    /// reason, so the first two links of the chain narrow to a storey and the third
+    /// narrows to one of that storey's three 후보 지점 (§12: 구역당 3개).
     /// </para>
     /// </summary>
     public sealed class SimMap
     {
-        // §12's geometry, derived from the constants rather than chosen: a zone is
-        // square with the mean allowed diagonal, and a ring leg is one S-corridor
-        // leg plus enough slack that the ring closes.
-        private const float LayoutSlack = 2f;
-        private const float SpurOffset = 4f;
+        // §03 needs three marks per floor and needs a single mis-seen mark to land on
+        // another real site on the same floor. ㅁ↔ㅇ and 6↔9 both do here; 좌↔우 maps
+        // onto nothing, which is §03's one free warning. Reused on every storey,
+        // because reuse is what makes the floor half of the chain load-bearing:
+        // "ㅁ-6 좌" on its own is five places in this building.
+        private static readonly SiteLabel[] SiteLabels =
+        {
+            new SiteLabel(ClueGlyph.WingMieum, ClueGlyph.Digit6, ClueGlyph.SideLeft),
+            new SiteLabel(ClueGlyph.WingMieum, ClueGlyph.Digit9, ClueGlyph.SideLeft),
+            new SiteLabel(ClueGlyph.WingIeung, ClueGlyph.Digit6, ClueGlyph.SideLeft),
+        };
+
+        // The mark each storey is signed with in its stairwells, deepest last. §03's
+        // 혼동쌍 are only load-bearing if a misread lands on a floor that exists, so
+        // 1↔7 (손글씨) and 6↔9 (뒤집힌 각도) are both signed onto real storeys: a team
+        // that misreads the mapping walks confidently onto the wrong 층 rather than
+        // being told it was wrong. The fifth storey takes the unpaired 3 — nothing
+        // misreads onto it and a misread of it lands nowhere, which is the same free
+        // warning 좌↔우 gives on the site labels.
+        //
+        // These four are the signs the four-zone predecessor used, in the same order,
+        // so that the before/after in F-006 differs by the building and by nothing
+        // else.
+        private static readonly ClueGlyph[] FloorSigns =
+        {
+            ClueGlyph.Digit1,
+            ClueGlyph.Digit7,
+            ClueGlyph.Digit6,
+            ClueGlyph.Digit9,
+            ClueGlyph.Digit3,
+        };
+
+        // How many of the 막힌 길 hold a 금고 rather than a loose piece.
+        //
+        // Not in GameConstants, and deliberately: §08 describes what is in a safe and
+        // what opening one costs, and says nothing about how many a building has. It
+        // is a property of a level, and this level does not declare any — so the
+        // number lives with the code that invents it rather than being promoted into
+        // the authority for numbers the game actually ships.
+        //
+        // Two is what the four-zone predecessor used, held deliberately: F-006's
+        // before/after has to differ by the building and not by the 정비공's income.
+        private const int SafesPerMap = 2;
 
         private readonly int[] _siteNodes;
         private readonly int[] _floorOfZone;
 
         private SimMap(
-            MapGraph graph,
+            MapSketchResult sketch,
             SiteCatalog catalog,
             int[] siteNodes,
             int[] floorOfZone,
@@ -50,8 +103,9 @@ namespace HorrorGame.Sim
             int[] safeNodes,
             int monsterSpawnNode)
         {
-            Graph = graph;
-            Probe = new MapGraphProbe(graph);
+            Sketch = sketch;
+            Graph = sketch.Graph;
+            Probe = new MapGraphProbe(Graph);
             World = new CachedWorldProbe(Probe);
             World.Verify();
             Catalog = catalog;
@@ -64,7 +118,14 @@ namespace HorrorGame.Sim
             MonsterSpawnNode = monsterSpawnNode;
         }
 
-        /// <summary>The graph every position in a match lives on.</summary>
+        /// <summary>
+        /// Everything the scene generator produced for this seed — graph, kit pieces,
+        /// props and markers. Kept so the simulator can say which building it measured
+        /// (<c>horrorsim map</c>) rather than asking anyone to take it on trust.
+        /// </summary>
+        public MapSketchResult Sketch { get; }
+
+        /// <summary>The graph every position in a match lives on. <see cref="FirstMapSketch"/>'s, unmodified.</summary>
         public MapGraph Graph { get; }
 
         /// <summary>
@@ -109,7 +170,9 @@ namespace HorrorGame.Sim
 
         /// <summary>
         /// Dead ends that carry a reward. §12: "막힌 길에 좋은 것을 둔다" — loot is
-        /// placed where the map already punishes you for going.
+        /// placed where the map already punishes you for going. Read off the
+        /// generator's own 전리품 markers, so the simulator picks up exactly what the
+        /// scene spawns.
         /// </summary>
         public int[] LootNodes { get; }
 
@@ -130,214 +193,261 @@ namespace HorrorGame.Sim
         public Vec3 PositionOf(int nodeId) => Graph.Nodes[nodeId].Position;
 
         /// <summary>
-        /// Builds the map. Deterministic and argument-free: every match in a sweep
-        /// gets the identical building, per §03's 고정 column.
+        /// Builds the shipped map at <see cref="FirstMapSketch.DefaultSeed"/> — the
+        /// seed <c>Assets/Scenes/Map_FirstSketch.unity</c> was generated from, so the
+        /// simulator and the scene are the same building down to which 전리품 waits in
+        /// which 막힌 길.
         /// </summary>
-        public static SimMap Build()
+        public static SimMap Build() => Build(FirstMapSketch.DefaultSeed);
+
+        /// <summary>
+        /// Builds the shipped map at an arbitrary seed. Deterministic: the same seed
+        /// gives the identical building, per §03's 고정 column.
+        /// </summary>
+        /// <param name="seed">Passed straight to <see cref="FirstMapSketch.Build"/>.</param>
+        /// <exception cref="InvalidOperationException">
+        /// The generated map cannot carry §03's chain — no 출입구, a storey without its
+        /// three 후보 지점, a floor surface the simulator has no §03 property for. Every
+        /// message names the rule, because the alternative is a balance run against a
+        /// building that quietly lost a link of the clue chain.
+        /// </exception>
+        public static SimMap Build(int seed)
         {
-            var zoneSide = (GameConstants.ZoneDiagonalMin + GameConstants.ZoneDiagonalMax)
-                           * 0.5f / MathF.Sqrt(2f);
-            var ringSide = GameConstants.SCorridorLegLength + LayoutSlack;
+            var sketch = FirstMapSketch.Build(seed);
+            var graph = sketch.Graph;
 
-            var map = new MapGraphBuilder().Named("§12 첫 맵 스케치 (sim)");
+            var entrance = SingleEntrance(graph);
+            var floorOfZone = SignTheStoreys(sketch, out var floors);
+            var catalog = new SiteCatalog(floors, CollectSites(sketch, floorOfZone, out var siteNodes));
 
-            var a = AddZoneRing(map, "A 나무", FloorMaterial.Wood, new Vec3(0f, 0f, 0f),
-                MapNodeKind.MazeSpace, zoneSide, ringSide);
-            var b = AddZoneRing(map, "B 타일", FloorMaterial.Tile, new Vec3(0f, 0f, zoneSide),
-                MapNodeKind.OpenSpace, zoneSide, ringSide);
-            var c = AddZoneRing(map, "C 자갈", FloorMaterial.Gravel, new Vec3(zoneSide, 0f, zoneSide),
-                MapNodeKind.MazeSpace, zoneSide, ringSide);
-            var d = AddZoneRing(map, "D 콘크리트", FloorMaterial.Concrete, new Vec3(zoneSide, 0f, 0f),
-                MapNodeKind.MazeSpace, zoneSide, ringSide);
+            var lootNodes = MarkerNodes(sketch, MapMarkerKind.LootSpawn);
+            if (lootNodes.Length == 0)
+            {
+                throw new InvalidOperationException(
+                    "The map has no 전리품 markers, so §08's economy has no income and F-006's "
+                    + "'the economy cannot be tuned' would be true for the wrong reason.");
+            }
 
-            var maze = MapNodeKind.MazeSpace;
-            var reward = GameConstants.LootValueTrinket;
+            var monsterSpawn = MarkerNodes(sketch, MapMarkerKind.MonsterSpawn);
+            if (monsterSpawn.Length != 1)
+            {
+                throw new InvalidOperationException(
+                    "The map declares " + monsterSpawn.Length + " monster spawns and §06 has one monster.");
+            }
 
-            // Gates. Three per zone so §12's 구역당 진입점 2~3 holds on every pair.
-            var gateAne = Attach(map, a, 2, SpurOffset, SpurOffset, maze | MapNodeKind.ElectricalPanel, "A 북동 통로", 0);
-            var gateAnw = Attach(map, a, 3, -SpurOffset, SpurOffset, maze, "A 북서 통로", 0);
-            var gateAse = Attach(map, a, 1, SpurOffset, -SpurOffset, maze, "A 남동 통로", 0);
-            var lootA1 = Attach(map, a, 0, -SpurOffset, -SpurOffset, MapNodeKind.None, "A 창고", reward);
-            var lootA2 = Attach(map, a, 3, -SpurOffset, -SpurOffset, MapNodeKind.None, "A 다락", reward);
-
-            var gateBsw = Attach(map, b, 0, -SpurOffset, -SpurOffset, maze | MapNodeKind.ElectricalPanel, "B 남서 통로", 0);
-            var gateBse = Attach(map, b, 1, SpurOffset, -SpurOffset, maze, "B 남동 통로", 0);
-            var gateBne = Attach(map, b, 2, SpurOffset, SpurOffset, maze, "B 북동 통로", 0);
-            var lootB1 = Attach(map, b, 3, -SpurOffset, SpurOffset, MapNodeKind.None, "B 창고", reward);
-            var lootB2 = Attach(map, b, 3, -SpurOffset, -SpurOffset, MapNodeKind.None, "B 배전실", reward);
-
-            var gateCsw = Attach(map, c, 0, -SpurOffset, -SpurOffset, maze | MapNodeKind.ElectricalPanel, "C 남서 통로", 0);
-            var gateCnw = Attach(map, c, 3, -SpurOffset, SpurOffset, maze, "C 북서 통로", 0);
-            var gateCse = Attach(map, c, 1, SpurOffset, -SpurOffset, maze, "C 남동 통로", 0);
-            var lootC1 = Attach(map, c, 2, SpurOffset, SpurOffset, MapNodeKind.None, "C 창고", reward);
-            var lootC2 = Attach(map, c, 1, SpurOffset, SpurOffset, MapNodeKind.None, "C 자재실", reward);
-
-            var gateDnw = Attach(map, d, 3, -SpurOffset, SpurOffset, maze | MapNodeKind.ElectricalPanel, "D 북서 통로", 0);
-            var gateDne = Attach(map, d, 2, SpurOffset, SpurOffset, maze, "D 북동 통로", 0);
-            var gateDsw = Attach(map, d, 0, -SpurOffset, -SpurOffset, maze, "D 남서 통로", 0);
-            var lootD1 = Attach(map, d, 1, SpurOffset, -SpurOffset, MapNodeKind.None, "D 창고", reward);
-            var lootD2 = Attach(map, d, 0, SpurOffset, -SpurOffset, MapNodeKind.None, "D 자재실", reward);
-            var lootD3 = Attach(map, d, 1, -SpurOffset, -SpurOffset, MapNodeKind.Concealment, "D 은폐 지점", reward);
-
-            var entrance = map.AddNode(
-                d.Zone,
-                new Vec3(d.CornerPositions[1].X + SpurOffset, 0f, d.CornerPositions[1].Z + (ringSide * 0.5f)),
-                MapNodeKind.Entrance | MapNodeKind.MazeSpace,
-                "D 출입구");
-            map.Connect(d.Corners[1], entrance);
-            map.Connect(d.Corners[2], entrance);
-
-            map.Connect(gateAnw, gateBsw);
-            map.Connect(gateAne, gateBse);
-            map.Connect(gateBse, gateCsw);
-            map.Connect(gateBne, gateCnw);
-            map.Connect(gateCsw, gateDnw);
-            map.Connect(gateCse, gateDne);
-            map.Connect(gateDnw, gateAne);
-            map.Connect(gateDsw, gateAse);
-
-            var graph = map.Build();
             var surfacePosition = new Vec3(
                 graph.Nodes[entrance].Position.X + GameConstants.ZoneDiagonalMax,
-                0f,
+                graph.Nodes[entrance].Position.Y,
                 graph.Nodes[entrance].Position.Z);
 
-            var floorOfZone = new int[4];
-            floorOfZone[a.Zone] = -1;
-            floorOfZone[b.Zone] = -2;
-            floorOfZone[c.Zone] = -3;
-            floorOfZone[d.Zone] = -4;
+            return new SimMap(
+                sketch,
+                catalog,
+                siteNodes,
+                floorOfZone,
+                entrance,
+                surfacePosition,
+                lootNodes,
+                FurthestFromTheDoor(graph, entrance, lootNodes, SafesPerMap),
+                monsterSpawn[0]);
+        }
 
-            var floors = new[]
+        /// <summary>
+        /// Places where <see cref="MapGraph.NearestNode"/> cannot tell two storeys
+        /// apart: pairs of nodes on different floors whose horizontal separation is
+        /// under <paramref name="metres"/>.
+        /// <para>
+        /// Worth reporting rather than assuming away. <c>NearestNode</c> measures
+        /// horizontally — deliberately, so that standing on a stairwell landing does
+        /// not read as extra distance — and that was harmless when §12's map was one
+        /// storey of four zones side by side. In a five-storey building the storeys
+        /// sit on top of each other, so a position can snap onto a place two floors
+        /// up, and every <see cref="Core.Session.IWorldProbe"/> answer taken at a raw
+        /// position rather than at a node id inherits it. The count belongs in
+        /// <c>horrorsim map</c> so a reader can weigh the numbers underneath it.
+        /// </para>
+        /// </summary>
+        /// <param name="metres">Horizontal separation below which the two are indistinguishable.</param>
+        public IReadOnlyList<string> CrossStoreyAmbiguities(float metres)
+        {
+            var found = new List<string>();
+            var nodes = Graph.Nodes;
+
+            for (var a = 0; a < nodes.Length; a++)
             {
-                // §03's 혼동쌍 are only load-bearing if a misread lands on a floor that
-                // exists. 1↔7 (손글씨) and 6↔9 (뒤집힌 각도) are therefore both signed
-                // onto real floors: a team that misreads the mapping walks confidently
-                // into the wrong 층 rather than being told it was wrong.
-                new FloorDescriptor(-1, ClueGlyph.Digit1, FloorFeature.Water),
-                new FloorDescriptor(-2, ClueGlyph.Digit7, FloorFeature.Machinery),
-                new FloorDescriptor(-3, ClueGlyph.Digit6, FloorFeature.Cold),
-                new FloorDescriptor(-4, ClueGlyph.Digit9, FloorFeature.Rust),
-            };
-
-            // Three labels per floor, chosen so that a single mis-seen mark maps onto
-            // another real site on the same floor (ㅁ↔ㅇ and 6↔9 both do), while the
-            // 좌↔우 pair maps onto nothing — §03's one free warning.
-            var labels = new[]
-            {
-                new SiteLabel(ClueGlyph.WingMieum, ClueGlyph.Digit6, ClueGlyph.SideLeft),
-                new SiteLabel(ClueGlyph.WingMieum, ClueGlyph.Digit9, ClueGlyph.SideLeft),
-                new SiteLabel(ClueGlyph.WingIeung, ClueGlyph.Digit6, ClueGlyph.SideLeft),
-            };
-
-            var blocks = new[] { a, b, c, d };
-            var sites = new List<CandidateSite>();
-            var siteNodes = new List<int>();
-
-            for (var z = 0; z < blocks.Length; z++)
-            {
-                var block = blocks[z];
-                for (var k = 0; k < GameConstants.CandidateSitesPerZone; k++)
+                for (var b = a + 1; b < nodes.Length; b++)
                 {
-                    var node = block.Corners[k];
-                    var siteId = sites.Count;
-                    sites.Add(new CandidateSite(
-                        siteId, block.Zone, floorOfZone[block.Zone], graph.Nodes[node].Position, labels[k]));
-                    siteNodes.Add(node);
+                    if (System.Math.Abs(nodes[a].Position.Y - nodes[b].Position.Y) < MathX.Epsilon)
+                    {
+                        continue;
+                    }
+
+                    var apart = Vec3.DistanceFlat(nodes[a].Position, nodes[b].Position);
+                    if (apart < metres)
+                    {
+                        found.Add(
+                            nodes[a] + " and " + nodes[b] + " are "
+                            + apart.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)
+                            + " m apart in plan on different storeys");
+                    }
                 }
             }
 
-            var catalog = new SiteCatalog(floors, sites);
-
-            var lootNodes = new[] { lootA1, lootA2, lootB1, lootB2, lootC1, lootC2, lootD1, lootD2, lootD3 };
-
-            // §08 puts 금고 속 문서 behind the Engineer, so the safes go on the two
-            // dead ends furthest from the door: the Engineer's income is also the
-            // Engineer's exposure.
-            var safeNodes = new[] { lootA2, lootB1 };
-
-            return new SimMap(
-                graph, catalog, siteNodes.ToArray(), floorOfZone,
-                entrance, surfacePosition, lootNodes, safeNodes, b.Corners[2]);
+            return found;
         }
 
-        private sealed class Block
+        // ====================================================================
+
+        private static int SingleEntrance(MapGraph graph)
         {
-            public Block(int zone, int[] corners, Vec3[] cornerPositions)
+            var entrances = graph.NodesOfKind(MapNodeKind.Entrance);
+            if (entrances.Length != 1)
             {
-                Zone = zone;
-                Corners = corners;
-                CornerPositions = cornerPositions;
+                throw new InvalidOperationException(
+                    "The map declares " + entrances.Length + " 출입구. §03's 왕복 turns around at one door and "
+                    + "§08's vehicle is parked outside it, so the simulator needs exactly one.");
             }
 
-            public int Zone { get; }
-
-            public int[] Corners { get; }
-
-            public Vec3[] CornerPositions { get; }
+            return entrances[0];
         }
 
-        private static Vec3 At(Vec3 origin, float x, float z) => new Vec3(origin.X + x, 0f, origin.Z + z);
-
-        private static Block AddZoneRing(
-            MapGraphBuilder map,
-            string zoneName,
-            FloorMaterial floor,
-            Vec3 origin,
-            MapNodeKind cornerKind,
-            float zoneSide,
-            float ringSide)
+        /// <summary>
+        /// Gives every storey the two things §03's chain needs and §12's map does not
+        /// carry: a property the first clue can name, and a sign the second clue can
+        /// spell.
+        /// <para>
+        /// The property is derived from the floor surface rather than declared per
+        /// storey, because §12 already guarantees the surfaces are distinct per zone —
+        /// <c>MapValidator</c>'s floor-materials rule — which makes the mapping a
+        /// bijection for free and keeps <see cref="SiteCatalog"/>'s "두 층이 같은
+        /// 속성이면 단서가 아니다" satisfied by construction rather than by care. Each
+        /// pairing is the building's own: 타일 is the 저수조's wet floor (§03's "물이
+        /// 있는 층"), 금속 the grating over the boilers, 자갈 the coal store with the
+        /// 냉장고 in it, 나무 the one floor that can give way, 콘크리트 the loading bay
+        /// and its ironwork.
+        /// </para>
+        /// </summary>
+        /// <param name="sketch">The generated map.</param>
+        /// <param name="floors">Receives one descriptor per storey, shallowest first.</param>
+        /// <returns>Floor index by zone id: 지하 1층 is −1.</returns>
+        private static int[] SignTheStoreys(MapSketchResult sketch, out FloorDescriptor[] floors)
         {
-            var zone = map.AddZone(
-                zoneName,
-                floor,
-                new Vec3(origin.X + (zoneSide * 0.5f), 0f, origin.Z + (zoneSide * 0.5f)),
-                new Vec3(zoneSide, 0f, zoneSide));
+            var rects = sketch.ZoneRects;
+            var floorOfZone = new int[sketch.Graph.Zones.Length];
+            var byLevel = new List<MapZoneRect>(rects);
+            byLevel.Sort((a, b) => a.Level.CompareTo(b.Level));
 
-            var inset = (zoneSide - ringSide) * 0.5f;
-            var positions = new[]
+            if (byLevel.Count > FloorSigns.Length)
             {
-                At(origin, inset, inset),
-                At(origin, inset + ringSide, inset),
-                At(origin, inset + ringSide, inset + ringSide),
-                At(origin, inset, inset + ringSide),
-            };
-
-            // Three 후보 지점 and one 관측 지점 per zone (§12's 검증 체크리스트). The
-            // ring itself is the S-corridor: four right-angle bends, each one a
-            // sight break, which is what §12's "단일 모퉁이는 실패한다" demands.
-            var kinds = new[]
-            {
-                cornerKind | MapNodeKind.CandidateSite,
-                cornerKind | MapNodeKind.CandidateSite,
-                cornerKind | MapNodeKind.CandidateSite,
-                cornerKind | MapNodeKind.ObservationPost,
-            };
-
-            var names = new[] { " 후보1", " 후보2", " 후보3", " 관측지점" };
-            var corners = new int[4];
-            for (var i = 0; i < 4; i++)
-            {
-                corners[i] = map.AddNode(zone, positions[i], kinds[i], zoneName + names[i]);
+                throw new InvalidOperationException(
+                    "The map has " + byLevel.Count + " storeys and only " + FloorSigns.Length
+                    + " signs are written here. §03's second clue names a floor by its sign, so every storey "
+                    + "needs one and no two may share.");
             }
 
-            for (var i = 0; i < 4; i++)
+            floors = new FloorDescriptor[byLevel.Count];
+            for (var i = 0; i < byLevel.Count; i++)
             {
-                var carriesDoor = i == 0;
-                map.Connect(corners[i], corners[(i + 1) % 4], carriesDoor, carriesDoor ? zoneName + " 잠금문" : null);
+                var rect = byLevel[i];
+                var floorIndex = -(rect.Level + 1);
+                floorOfZone[rect.ZoneId] = floorIndex;
+                floors[i] = new FloorDescriptor(floorIndex, FloorSigns[i], FeatureOf(rect));
             }
 
-            return new Block(zone, corners, positions);
+            return floorOfZone;
         }
 
-        private static int Attach(
-            MapGraphBuilder map, Block block, int cornerIndex, float dx, float dz,
-            MapNodeKind kind, string name, int reward)
+        private static FloorFeature FeatureOf(MapZoneRect zone)
         {
-            var at = block.CornerPositions[cornerIndex];
-            var id = map.AddNode(block.Zone, new Vec3(at.X + dx, 0f, at.Z + dz), kind, name, reward);
-            map.Connect(block.Corners[cornerIndex], id);
-            return id;
+            switch (zone.Floor)
+            {
+                case FloorMaterial.Tile:
+                    return FloorFeature.Water;
+                case FloorMaterial.Metal:
+                    return FloorFeature.Machinery;
+                case FloorMaterial.Gravel:
+                    return FloorFeature.Cold;
+                case FloorMaterial.Wood:
+                    return FloorFeature.Collapse;
+                case FloorMaterial.Concrete:
+                    return FloorFeature.Rust;
+                default:
+                    throw new InvalidOperationException(
+                        "Zone " + zone.Name + " is floored in " + zone.Floor + ", which no §03 floor property "
+                        + "is written for. §03's first clue names a property of the objective's storey, so a "
+                        + "storey without one is a storey the objective can never be on.");
+            }
+        }
+
+        /// <summary>
+        /// Turns §12's 후보 지점 into §03's catalog: three per storey, each signed so
+        /// that a single mis-seen mark lands on another real site on the same storey.
+        /// </summary>
+        private static List<CandidateSite> CollectSites(
+            MapSketchResult sketch, int[] floorOfZone, out int[] siteNodes)
+        {
+            var graph = sketch.Graph;
+            var sites = new List<CandidateSite>();
+            var nodes = new List<int>();
+
+            for (var zone = 0; zone < graph.Zones.Length; zone++)
+            {
+                var inZone = graph.NodesOfKindInZone(zone, MapNodeKind.CandidateSite);
+                if (inZone.Length != GameConstants.CandidateSitesPerZone)
+                {
+                    throw new InvalidOperationException(
+                        "Zone " + graph.Zones[zone].Name + " has " + inZone.Length + " 후보 지점 and §12 asks for "
+                        + GameConstants.CandidateSitesPerZone + ". §03's third clue pins one of them by its sign, "
+                        + "and there are exactly that many signs.");
+                }
+
+                for (var k = 0; k < inZone.Length; k++)
+                {
+                    sites.Add(new CandidateSite(
+                        sites.Count,
+                        zone,
+                        floorOfZone[zone],
+                        graph.Nodes[inZone[k]].Position,
+                        SiteLabels[k]));
+                    nodes.Add(inZone[k]);
+                }
+            }
+
+            siteNodes = nodes.ToArray();
+            return sites;
+        }
+
+        private static int[] MarkerNodes(MapSketchResult sketch, MapMarkerKind kind)
+        {
+            var found = new List<int>();
+            for (var i = 0; i < sketch.Markers.Length; i++)
+            {
+                if (sketch.Markers[i].Kind == kind && sketch.Markers[i].NodeId >= 0)
+                {
+                    found.Add(sketch.Markers[i].NodeId);
+                }
+            }
+
+            found.Sort();
+            return found.ToArray();
+        }
+
+        /// <summary>
+        /// §08 puts 금고 속 문서 behind the 정비공, so the safes go on the dead ends
+        /// furthest from the door by walking: the Engineer's income is also the
+        /// Engineer's exposure.
+        /// </summary>
+        private static int[] FurthestFromTheDoor(MapGraph graph, int entrance, int[] candidates, int wanted)
+        {
+            var order = new List<int>(candidates);
+            order.Sort((a, b) =>
+            {
+                var byDistance = graph.PathLength(entrance, b).CompareTo(graph.PathLength(entrance, a));
+                return byDistance != 0 ? byDistance : a.CompareTo(b);
+            });
+
+            var take = System.Math.Min(wanted, order.Count);
+            return order.GetRange(0, take).ToArray();
         }
     }
 }

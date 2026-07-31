@@ -97,5 +97,21 @@ namespace HorrorGame.Sim
 
         /// <summary>Whether the sim's own guard rail ended it — §07's table ran out before §02 did.</summary>
         public bool HitTimeCap;
+
+        /// <summary>
+        /// Whether the run ended because every light was dead and the wallet could not
+        /// buy another cell — §03's "배터리가 떨어지면 단서를 읽을 수 없다" taken to its
+        /// conclusion.
+        /// <para>
+        /// Separated out because it is a different failure from losing: §02 files it as
+        /// 생존, the team walks out alive, and the match simply stops. It became worth
+        /// counting when the simulator moved onto the five-storey building — a first
+        /// descent that spends its whole battery walking to 후보 지점 can surface with
+        /// nothing to sell, and a team with nothing to sell cannot fund a second
+        /// descent. Any read of §01's match length has to know what share of the
+        /// population ended this way (docs/BALANCE-FINDINGS.md F-006).
+        /// </para>
+        /// </summary>
+        public bool EndedOutOfLight;
     }
 }

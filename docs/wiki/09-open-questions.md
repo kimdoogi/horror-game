@@ -33,7 +33,8 @@ between the options is not your call.
 
 | # | Finding | Priority | Blocks |
 |:--:|---|:--:|---|
-| **F-006** | Matches finish in 2.5 min, so three of §07's five threat tiers are dead | 🔴 **highest** | §14 Q3 entirely; §16-2 (the economy); makes every chase number a number for a tier nobody reaches |
+| **F-006** | Matches finish in 7.2 min against §01's 25–35 — moved a long way by the five-storey map, not closed | 🔴 **highest** | §14 Q3; §16-2 (the economy). No longer kills §07's upper tiers — all five are now reached |
+| **F-007** | The five-storey map grades 10/10 TooEasy on the 주자 테스트, outside §12's 5–7 band | 🟠 high | §12's only grade on the map; §06's chase as the game's central pressure |
 | F-002 | The Listener's HUD contradicts the player's ears through a wall | 🔴 blocking | §04's 청음사 as a role; the CI audio gate is red-by-baseline because of it |
 | F-004 | The Runner's sprint-timing dilemma cannot exist at these numbers | 🔴 | a named skill expression in §06; §12 cannot grade a map on sprint timing |
 | F-001 | The weight table is a cliff, not a gradient | 🔴 | §16-2; three of §08's four bands mean one thing |
@@ -42,82 +43,145 @@ between the options is not your call.
 
 ---
 
-## F-006 · Matches finish in 2.5 minutes — read this one first
+## F-006 · Matches finish in 7.2 minutes — read this one first
 
-**Sections:** §01 × §07 × §08. **Source:** 500 simulated matches, seeds 1–500.
+**Sections:** §01 × §07 × §08. **Source:** 500 simulated matches, seeds 1–500, run on
+요양원 지하 5층 — the building the game actually ships.
 
-Reproduced 2026-07-31 23:40, exit 0 — the simulator is deterministic and these are
-byte-for-byte the figures in the write-up:
+Reproduced 2026-08-01 03:20, exit 0 — the simulator is deterministic and these are
+byte-for-byte the figures in [BALANCE-FINDINGS F-006](../BALANCE-FINDINGS.md#f-006):
 
 ```
 §01 match length — target 25~35 min
-  median                                             2.5 min
-  p10 / p90                                          1.3 min / 7.9 min
-  inside the window                                  0.6%
+  median                                             7.2 min
+  p10 / p90                                          4.2 min / 32.4 min
+  inside the window                                  15.8%
+  ended with every light dead                        40.6%
+  median of the rest                                 17.1 min
 
 §07 threat curve
-  mean tier at end (0=초저녁 … 4=동트기 전)                 0.12
-  reached 심야 or later                                1.2%
-  chases per match                                   5.19
-  chases broken                                      59.6%
-  deaths per match                                   2.1
+  mean tier at end (0=초저녁 … 4=동트기 전)                 1.12
+  reached 심야 or later                                33.6%
+  reached 새벽 or later                                17.4%
+  reached 동트기 전                                     13.0%
+  chases per match                                   5.52
+  chases broken                                      87.7%
+  deaths per match                                   0.68
 
 §02 outcome mix
-  완전 승리 10.6% · 부분 승리 53.2% · 생존 14.6% · 패배 21.6% · objective recovered 63.8%
+  완전 승리 11.2% · 부분 승리 32.6% · 생존 53.8% · 패배 2.4% · objective recovered 43.8%
 ```
 
 ```bash
 dotnet run -c Release --project core/HorrorGame.Sim -- run --matches 500 --seed 1
 ```
 
-### Why it outranks everything
+> **Every number on this page was 2.5 min / 0.6% / 1.2% until 2026-08-01, and those
+> were measured against a map the game does not have.** `SimMap` built its own
+> four-zone ring — 38 places, monster spawning 52 m from the door — while the game
+> ships 164 places and 217.5 m. Growing the Unity level could not move the simulator
+> at all, and for one pass this document reported that as a *result*. `SimMap` now
+> calls `FirstMapSketch.Build`, compiled into the simulator from the same sources
+> Unity compiles, so the two cannot drift again. **Check the first five lines of the
+> run output — they are the building — before quoting anything below them.**
 
-§07 declares 「시간이 유일한 통화다」 and builds the whole pressure system on the clock.
-At these numbers the clock barely moves, so:
+### What it still costs
 
-- 심야's flashlight −30 % never happens;
-- 새벽's 「괴물이 출입구를 안다」 never happens;
-- the monster's speed never leaves 4.4 — **it never reaches the 4.8 that §06's entire
-  speed ladder is built around**;
-- three of five tiers are content nobody sees.
+§07 declares 「시간이 유일한 통화다」. The five-storey map bought most of the clock back:
+**all five of §07's tiers are now reached by real matches** — 심야 by 33.6%, 새벽 by
+17.4%, 동트기 전 by 13.0% — so 심야's flashlight −30% and 새벽's 「괴물이 출입구를
+안다」 are content now rather than dead text. That was the specific claim this finding
+was opened about, and it has been answered.
 
-And it collides directly with the project's headline result: `MonsterChaseTests` pins
-§07 to 심야 to measure against §06's 4.8 m/s, and a real match reaches 심야 1.2 % of the
-time. The chase numbers are right for the tier they are measured at. **Fixing F-006 is
-what makes them the numbers of the game rather than of a scenario.**
+What has not been answered is §01's word *normal*. 25–35 minutes is asked for as the
+usual match; 7.2 minutes is the usual match, and the window is reachable rather than
+typical. Two populations sit in the gap:
 
-### It blocks the economy, which §16 calls the current bottleneck
+1. **40.6% end broke, not beaten** — every light dead, wallet too thin for another
+   cell, §02 files it as 생존. Excluding them the median is **17.1 min** and 26.6%
+   land inside the window, so this one population is most of the remaining gap. It is
+   an §08 bootstrap failure and §08 has the knob: `BatteryCells`, or a first-descent
+   grubstake.
+2. **The clue chain now pins a site 51.2% of the time**, down from 86.4%. Five storeys
+   means a misread on the floor mapping costs a descent instead of a corridor.
+   That is §03 working as written; whether it is *good* is §14's question, not a bug.
 
-From the same 500 matches: `peak weight band reached by anyone 0.82` (band 1 = no
-penalty), `earned ÷ cost of one of everything 0.17`,
-`purchase_upgraded_flashlight 23 of 500`. Sweeping F-001's `WeightMulLight` from 0.85
-to 0.95 over 400 matches per point moves almost nothing, because **teams never
-accumulate enough loot to leave weight band 1**, so the cliff is barely tested.
+### The economy has started, and every old measurement of it is void
 
-> **The economy cannot be tuned before match length is fixed.** Every economy
-> measurement taken now is taken from a game that ends before the economy starts.
+From the same 500 matches: `earned ÷ cost of one of everything 0.70` (was 0.17),
+`purchase_upgraded_flashlight 283 of 500` (was 23), `credits after the 1st return
+312.71` (was 160.04), `unspent at the end 245.74` (was 24.78). §16-2 **can now be
+measured**. The `weight-mul-light` sweep this page used to quote cannot — it was run
+on the ring, and its re-run on the real building still shows no trend, for a new
+reason: §07 keeps the monster at 4.4 m/s until 심야 and F-001's cliff is about 4.8, so
+the experiment worth running is `sweep weight-mul-light --matches 400 --seed 1
+--start-minutes 16`.
 
 ### The options, and the honest caveat
 
-1. **Make traversal cost real time** — larger maps, or §12's zone diagonals and floor
-   counts scaled so one descent genuinely costs the ~3 minutes §07 assumes. Preserves
-   the design as written.
-2. **Compress the threat curve** to fit the real match length. Cheapest; trades away
-   §07's deliberate gradualness. Reach for it only after a real playtest.
-3. **Add required dwell time** — extend §03's sustained-light-and-stillness principle
-   to safes, zone lights and objective retrieval, spending time on tension rather than
-   on walking.
-4. **Accept a shorter match** and rewrite §01 and §07 around it.
+1. ~~**Make traversal cost real time.**~~ **Done, and it delivered** — 38 places → 164,
+   52 m → 217.5 m. §12 leaves little room for more: five surfaces cap the building at
+   five zones.
+2. **Fix the bootstrap before anything else.** 40.6% of matches never reach §08's
+   growth curve. Biggest remaining lever, and it is a price-table question — the same
+   question as §16-2.
+3. **Compress the threat curve.** Now clearly the wrong move: the tiers are being
+   reached, and compressing them throws away what the map growth bought.
+4. **Add required dwell time.** Cheaper than it was — 41 dead ends carry 전리품 and
+   19.94 pieces are left behind every match.
+5. **Accept a shorter match** and rewrite §01 and §07 around ~15 min. Worth
+   reconsidering now that the honest number for a funded team is 17.1.
 
-The caveat, which is not a reason to dismiss the finding: simulated agents do not
-hesitate, argue, get lost or freeze. Some of the missing 25 minutes is human friction.
-But **the design currently has no mechanism that consumes 25–35 minutes — only the
-hope that players will be slow**, and skilled coordinated players will trend toward
-the simulator's number.
+The caveat, unchanged and now cutting both ways: simulated agents do not hesitate,
+argue, get lost or freeze — and they also walk past loot a human would grab, which is
+part of why 40.6% end broke. **Treat 7.2 minutes as a floor.**
 
-> **If you take option 1 and grow the map:** §12's dimensions come from §06's speeds.
-> The chase tests and §12 validation are the guard, and both must still pass. See
+> **Growing the map again:** §12's dimensions come from §06's speeds. The chase tests
+> and §12 validation are the guard and both must still pass — and so must the 주자
+> 테스트 band, which the last growth broke. See [F-007](#f-007) and
 > [Where every number lives §3](03-where-numbers-live.md).
+
+---
+
+## F-007 · The five-storey map grades 10/10 TooEasy
+
+**Sections:** §12 (실전 검증) × §06 (추격). **Source:**
+`MapSceneGenerator.ReportQualityMenu` and `horrorsim map`, seed 1204 — the two agree
+exactly.
+
+§12 asks for **5–7 of 10** sampled runners to escape aggro. Ten of ten do:
+
+```
+§12 주자 테스트 — 요양원 지하 5층: 10/10 (100%), TooEasy
+  너무 쉽다 — 시야 차단 지점을 줄인다 (§12).
+
+§12 실전 검증, every place rather than the ten §12 samples:
+  164/164 escapable (100%), against §12's 50%~70% band.
+  D 하역장 35/35 · A 기록보관소 34/34 · E 기계실 43/43 · C 저탄장 28/28 · B 저수조 24/24
+
+시야 차단 지점 간격 (§12 수치 규칙 15 m~25 m):
+  79 corners, nearest-neighbour 2.5 m~10 m, mean 4.1 m, 0 inside the band.
+```
+
+The three-storey map graded **7/10, Balanced**. The growth removed exactly the
+weakness that was holding the grade: 85 passages → 180 raised loops from 12 to 17,
+and more connectivity means more corners. A runner who can always find a third corner
+inside 15 m can always break line of sight.
+
+**The last line is the diagnosis.** §12's 수치 규칙 asks corners to sit 15–25 m apart;
+not one of the 79 does, and the mean spacing is 4.1 m. Nothing in §12's sixteen
+checklist rules constrains corner *density*, which is why the map still passes 16 of
+16 — this is [F-005](#f-005)'s "the checklist is necessary, not sufficient" arriving
+in practice for the second time.
+
+The census matters here: 10/10 is a ten-point sample and near the band a sample of ten
+is a coin flip, so "unlucky seed" was a live explanation. 164 of 164 rules it out.
+
+**Options:** thin the corners on the named escape routes (`#90`, `#80`, `#135`, `#2`,
+`#156`, `#106`, `#21`, `#150`); or add corner spacing as a seventeenth §12 rule and
+let the generator enforce it — the one that generalises; or accept a forgiving map and
+raise §06 monster pressure instead, which trades a §12 target for a §06 retune and
+should not be done without a human playtest.
 
 ---
 
@@ -250,9 +314,14 @@ minimum of three can never fail on its own. Harmless today; it matters if the pe
 rule is ever relaxed, because nothing would be underneath.
 
 Filed alongside it, and more useful than the finding itself: **§12's checklist is
-necessary, not sufficient.** The 첫 맵 스케치 passes all sixteen validator rules and
-still grades 10/10 TooEasy on 실전 검증 — pinned by
+necessary, not sufficient.** Core's own fixture map passes all sixteen validator rules
+and still grades 10/10 TooEasy on 실전 검증 — pinned by
 `MapTests.SketchMap_PassesTheChecklistAndStillGradesTooEasy`.
+
+That was an abstract point when it was written. It is not any more: the shipped Unity
+map has now done the same thing, and it cost the 5–7 band the three-storey building
+held. See [F-007](#f-007) — and note that its diagnosis is a quantity (corner spacing)
+that none of the sixteen rules measures.
 
 ---
 
@@ -266,6 +335,6 @@ paper — 「직접 만져봐야 나온다」. Current state, from [TESTING.md](
 |:--:|---|---|
 | 1 | 추격이 재밌는가? | **askable for the first time**, and unanswered. A machine can say 4.83 m/s; only a person can say whether getting away is a good time |
 | 2 | 곁눈질 딜레마가 작동하는가? | needs a human at a mouse. `Horror Game ▸ Player ▸ Feel Harness` shows live speed, the §05 multiplier and the margin |
-| 3 | "지금 나갈까?" 갈등이 생기는가? | **cannot be asked** — F-006 |
+| 3 | "지금 나갈까?" 갈등이 생기는가? | **still not fairly askable** — F-006. Closer than it was: the economy now runs (0.70 of one of everything earned, 245.74 credits unspent at the end) where before it never started. But 7.2 min against §01's 25–35 is not the loop the question is about, and the in-game §14 overlay says so |
 | 4 | "6이었나 9였나" 대화가 나오는가? | confusion pairs implemented and tested; whether they produce the argument is human |
 | 5 | 청음사가 방향·거리를 구별하는가? | headphones required; expect it to work close and fail far — F-003 |

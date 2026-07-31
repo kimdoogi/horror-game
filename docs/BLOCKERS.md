@@ -4,7 +4,51 @@ Things that stop the game working, as opposed to design questions. Balance
 contradictions live in [BALANCE-FINDINGS.md](BALANCE-FINDINGS.md). Art defects that
 do not stop the game live in [ART.md](ART.md) §7.
 
-Last verified: 2026-08-01, Unity 6000.3.21f1, macOS 24.3.0.
+Last verified: 2026-08-01 03:45, Unity 6000.3.21f1, macOS 24.3.0.
+
+---
+
+## B-006 · The core solution did not build — the simulator never compiled the file it depends on
+
+**Status:** 🟢 **CLOSED** 2026-08-01 03:05 · verified by
+`dotnet build core/HorrorGame.sln -c Release` → `오류 0개`
+
+**`dotnet build core/HorrorGame.sln -c Release` failed on two errors.** This is the
+second seam between the same four parallel passes that produced
+[B-005](#b-005), and like that one it was invisible to the pass that caused it.
+
+```
+MapQualityReport.cs(29,13): error CS0246: 'RunnerCensus' 형식 또는 네임스페이스 이름을
+  찾을 수 없습니다. [core/HorrorGame.Sim/HorrorGame.Sim.csproj]
+MapQualityReport.cs(76,16): error CS0246: 'RunnerCensus' …
+빌드하지 못했습니다.    오류 2개
+```
+
+The map pass added `Editor/SceneGen/RunnerCensus.cs` and made `MapQualityReport` hold
+one. Inside Unity that just works — the assembly definition globs the folder. But
+`HorrorGame.Sim.csproj` does **not** glob: it lists the engine-free map-authoring files
+by name, deliberately, because that list is the project's statement of which files are
+safe to compile outside Unity ([F-006](BALANCE-FINDINGS.md#f-006) is the whole reason
+the simulator compiles the map at all). A new file in that folder is not picked up, and
+nothing in the Unity project can notice.
+
+So Unity compiled clean, all 560 tests passed, and the balance simulator — the tool the
+night's headline number comes from — could not be built at all.
+
+### The fix
+
+`RunnerCensus.cs` added to the `<Compile Include>` list in
+`core/HorrorGame.Sim/HorrorGame.Sim.csproj`, with a comment naming this incident so the
+next person adding a file to `Editor/SceneGen/` knows the list is manual and why.
+
+### Why it is filed here rather than shrugged off
+
+The failure mode is the dangerous one: **a green Unity suite and a broken build of the
+tool that measures the design.** `dotnet test core/HorrorGame.Core.Tests` also stays
+green through it, because the test project does not reference the simulator. The only
+command that catches it is the solution build, which is why
+[TESTING.md §2](TESTING.md) puts it in the sweep and why it belongs before the
+simulator run rather than after.
 
 ---
 
