@@ -847,6 +847,35 @@ namespace HorrorGame.Core
         /// <summary>Longest allowed gap between line-of-sight breaks, metres. §12.</summary>
         public const float LineOfSightBreakSpacingMax = 25f;
 
+        /// <summary>
+        /// Widest one 시야 차단 지점 may be — how far apart the bends belonging to a
+        /// single piece of cover may stand, metres.
+        /// <para>
+        /// §12 counts <em>opportunities</em>, not corners: "질주 60m에 3~4번의 기회",
+        /// and its 기본 단위 is an S자 통로 — two bends and one chance. So consecutive
+        /// bends close enough to hold one sight line are one 시야 차단 지점, and this is
+        /// the width past which that one point stops being a chance and becomes a
+        /// certainty.
+        /// </para>
+        /// <para>
+        /// It is §12's own arithmetic, rearranged. §12 needs
+        /// <see cref="SingleCornerMinDistance"/> of gap for
+        /// <see cref="AggroReleaseLineOfSightBreak"/> of cover, and its 어그로 시작 거리
+        /// table endorses <see cref="RunnerTestAggroStartDistance"/> as the shortest
+        /// start that works. A Runner leaving aggro at that distance already carries
+        /// 10 m of the 14.4, so cover that is itself 4.4 m deep completes the release
+        /// <em>wherever</em> it is picked up — at the very first step, at zero run-up.
+        /// Anything wider than this inverts §12's first conclusion, 「주자는 멀리서
+        /// 어그로를 걸어야 한다」: distance stops being what the Runner has to buy.
+        /// </para>
+        /// <para>
+        /// The measured consequence, on the geometry the game ships: a 5 m connector
+        /// between two bends releases from anywhere on the map, and only a 2.5 m one
+        /// leaves the release conditional on how far out aggro was taken.
+        /// </para>
+        /// </summary>
+        public const float SightBreakPointSpanMax = SingleCornerMinDistance - RunnerTestAggroStartDistance;
+
         /// <summary>Length of one leg of an S-corridor, metres. §12 — the map's base unit.</summary>
         public const float SCorridorLegLength = 10f;
 
@@ -1124,6 +1153,9 @@ namespace HorrorGame.Core
             Require(DeadEndRatioMin < DeadEndRatioMax, "§12: dead-end ratio bounds must be ordered.");
             Require(RunnerTestPassRateMin < RunnerTestPassRateMax, "§12: runner-test bounds must be ordered.");
             Require(LineOfSightBreakSpacingMin < LineOfSightBreakSpacingMax, "§12: cover-spacing bounds must be ordered.");
+            Require(SightBreakPointSpanMax > 0f && SightBreakPointSpanMax < LineOfSightBreakSpacingMin,
+                "§12: one 시야 차단 지점 must be narrower than the gap to the next one, or the two "
+                + "readings of 간격 — how wide a chance is and how far apart chances are — collapse into each other.");
         }
 
         private static void Require(bool condition, string message)

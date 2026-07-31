@@ -42,7 +42,19 @@ namespace HorrorGame.Core.Tests
         // hangs off a corner. Both are chosen only so that no bend in the fixture
         // lands near MapSightBreakingBendDegrees by accident.
         private const float LegMargin = 2f;
-        private const float SpurOffset = 4f;
+
+        /// <summary>
+        /// How far a side passage hangs off a ring corner, along each axis.
+        /// <para>
+        /// Half of <see cref="GameConstants.SightBreakPointSpanMax"/> per axis, so a
+        /// spur's node stands <c>√2 × 2.2 = 3.1 m</c> from the corner it hangs off —
+        /// inside the width §12 allows one 시야 차단 지점, and therefore part of that
+        /// corner rather than a second one 3 m away. The fixture is meant to fail §12's
+        /// rules only when a test asks it to, and before this was derived it failed
+        /// sight-break-spacing everywhere purely because its spurs were 5.7 m long.
+        /// </para>
+        /// </summary>
+        private const float SpurOffset = GameConstants.SightBreakPointSpanMax * 0.5f;
 
         // A probe offset: "just inside" and "just short of" a §12 threshold, small
         // enough that no other rule can be responsible for the result.
@@ -57,8 +69,12 @@ namespace HorrorGame.Core.Tests
         private static float ZoneSide =>
             (GameConstants.ZoneDiagonalMin + GameConstants.ZoneDiagonalMax) * 0.5f / MathF.Sqrt(2f);
 
-        /// <summary>A ring leg, long enough to serve as one half of an S자 통로.</summary>
-        private static float RingSide => GameConstants.SCorridorLegLength + LegMargin;
+        /// <summary>
+        /// A ring leg: long enough to serve as one half of an S자 통로, and long enough
+        /// that the four corners of a zone stand at §12's own 시야 차단 지점 간격 rather
+        /// than chaining into one continuous piece of cover.
+        /// </summary>
+        private static float RingSide => GameConstants.LineOfSightBreakSpacingMin + LegMargin;
 
         /// <summary>
         /// How far a Runner has to have run before a single corner starts working, in
@@ -87,7 +103,7 @@ namespace HorrorGame.Core.Tests
         {
             var report = MapValidator.Validate(BuildSketchMap(Flaw.None));
 
-            Assert.That(report.Failures, Is.Empty,
+            Assert.That(OtherFailures(report, MapValidator.RuleSightBreakSpacing), Is.Empty,
                 "§12's own 첫 맵 스케치 fails its own rules:\n" + report.Describe());
             Assert.That(report.ChecklistPassed, Is.True);
             Assert.That(report.Results.Count(r => r.IsChecklistItem), Is.EqualTo(11),
@@ -528,6 +544,107 @@ namespace HorrorGame.Core.Tests
 
             var result = AssertOnlyFailure(report, MapValidator.RuleConcealmentNearExit, "See above.");
             Assert.That(result.Detail, Does.Contain("은폐 지점"));
+        }
+
+        // ====================================================================
+        // §12 수치 규칙 — 시야 차단 지점 간격 15~25m.
+        // ====================================================================
+
+        /// <summary>
+        /// "시야 차단 지점 간격 15~25m", broken on its own by widening one spur.
+        /// <para>
+        /// Nothing else about the map moves: the same nodes, the same degrees, the same
+        /// passages. The bend that hangs off a ring corner simply stands further from
+        /// it, and at
+        /// <see cref="GameConstants.SightBreakPointSpanMax"/> the two stop being one
+        /// 시야 차단 지점 and become cover deep enough to finish §06's
+        /// <see cref="GameConstants.AggroReleaseLineOfSightBreak"/> from any distance at
+        /// all — §12's first conclusion, 「주자는 멀리서 어그로를 걸어야 한다」, inverted.
+        /// </para>
+        /// </summary>
+        [Test]
+        public void SightBreakSpacing_CoverDeeperThanTheAggroHeadStart_FailsOnItsOwn()
+        {
+            var legal = BuildLongHouse(SpurOffset);
+            Assert.That(MapValidator.Validate(legal).Failures, Is.Empty,
+                "The unmodified long house has to be legal, or this test is measuring two changes.");
+
+            // √2 × this is the span of the 지점 the spur and its corner form together.
+            var wide = (GameConstants.SightBreakPointSpanMax + JustInside) / MathF.Sqrt(2f);
+            var map = BuildLongHouse(wide);
+            var report = MapValidator.Validate(map);
+
+            Assert.That(map.Nodes.Length, Is.EqualTo(legal.Nodes.Length),
+                "Widening a spur must not add a place, or another rule could be the one that broke.");
+            Assert.That(map.Edges.Length, Is.EqualTo(legal.Edges.Length));
+
+            var result = report[MapValidator.RuleSightBreakSpacing];
+            Assert.That(result.Passed, Is.False,
+                "Cover " + (GameConstants.SightBreakPointSpanMax + JustInside)
+                + " m deep breaks aggro wherever it is picked up:\n" + report.Describe());
+            Assert.That(result.IsChecklistItem, Is.False,
+                "§12's 검증 체크리스트 has eleven items and this is not one of them — it comes from the "
+                + "수치 규칙 table, like 구역 개수 and 맵 전체.");
+            Assert.That(
+                report.FailedRuleIds.Where(id => id != MapValidator.RuleSightBreakSpacing), Is.Empty,
+                "Only the spacing was supposed to change. Full report:\n" + report.Describe());
+            Assert.That(result.Detail, Does.Contain("주자는 멀리서 어그로를 걸어야 한다"),
+                "§12 states the consequence, and the consequence is what a designer can act on.");
+        }
+
+        /// <summary>
+        /// The other half of the same row: cover so far from the next cover that the
+        /// stretch between them is an unbroken run. §12 caps the gap at 25 m for the
+        /// same reason it caps a straight corridor at 20 — the Runner gains 0.8 m/s and
+        /// cannot outrun the difference.
+        /// </summary>
+        [Test]
+        public void SightBreakSpacing_CoverFurtherApartThanSection12Allows_Fails()
+        {
+            var lonely = MapValidator.Validate(
+                Serpentine(4, GameConstants.LineOfSightBreakSpacingMax + LegMargin, false));
+            var packed = MapValidator.Validate(
+                Serpentine(4, GameConstants.LineOfSightBreakSpacingMax - LegMargin, false));
+
+            Assert.That(packed[MapValidator.RuleSightBreakSpacing].Passed, Is.True,
+                "Bends " + (GameConstants.LineOfSightBreakSpacingMax - LegMargin)
+                + " m apart are inside §12's band:\n" + packed.Describe());
+            Assert.That(lonely[MapValidator.RuleSightBreakSpacing].Passed, Is.False,
+                "Bends " + (GameConstants.LineOfSightBreakSpacingMax + LegMargin)
+                + " m apart leave a stretch with no cover in it at all:\n" + lonely.Describe());
+            Assert.That(lonely[MapValidator.RuleSightBreakSpacing].Detail,
+                Does.Contain("over §12's " + GameConstants.LineOfSightBreakSpacingMax + " m"),
+                "The failure has to quote the bound it broke, not just say the map is wrong.");
+        }
+
+        /// <summary>
+        /// The two fixtures, side by side, so that the compact sketch failing this rule
+        /// is a recorded fact rather than something the next reader trips over.
+        /// <para>
+        /// §12's 첫 맵 스케치 is four zones edge to edge. §12 also caps a zone at a 40 m
+        /// diagonal and a straight corridor at 20 m, so the bends either side of a zone
+        /// boundary can only ever be a few metres apart — wider than one 시야 차단 지점
+        /// may be, far short of the gap to the next. The compact sketch is cover-
+        /// saturated by construction, which is exactly why
+        /// <see cref="SketchMap_PassesTheChecklistAndStillGradesTooEasy"/> grades it
+        /// 너무 쉽다 while every checklist item passes. This rule is the arithmetic
+        /// behind that grade.
+        /// </para>
+        /// </summary>
+        [Test]
+        public void SightBreakSpacing_TheCompactSketchFailsItAndTheLongHouseDoesNot()
+        {
+            var compact = MapValidator.Validate(BuildSketchMap(Flaw.None));
+            var strungOut = MapValidator.Validate(BuildLongHouse());
+
+            Assert.That(compact.ChecklistPassed, Is.True,
+                "All eleven 검증 체크리스트 items still pass on the compact sketch.");
+            Assert.That(compact.FailedRuleIds, Is.EqualTo(new[] { MapValidator.RuleSightBreakSpacing }),
+                "and this is the only rule it breaks:\n" + compact.Describe());
+
+            Assert.That(strungOut.Failures, Is.Empty,
+                "The long house is the map §12's 실전 검증 is run against, so it has to satisfy every "
+                + "rule §12 states:\n" + strungOut.Describe());
         }
 
         /// <summary>
@@ -1554,7 +1671,9 @@ namespace HorrorGame.Core.Tests
             var report = MapValidator.Validate(BuildSketchMap(Flaw.None));
 
             Assert.That(() => report["no-such-rule"], Throws.TypeOf<KeyNotFoundException>());
-            Assert.That(report.Describe(), Does.Contain("PASS"));
+            Assert.That(report.Describe(), Does.Contain("[ok]   " + MapValidator.RuleStraightCorridor),
+                "A report has to show the rules that passed as well as the ones that did not, or a "
+                + "designer cannot tell a rule that was checked from one that was never run.");
             Assert.That(report.MapName, Is.EqualTo("§12 첫 맵 스케치"));
         }
 
@@ -1726,11 +1845,24 @@ namespace HorrorGame.Core.Tests
         /// That is what a 5~7/10 map is.
         /// </para>
         /// </summary>
-        private static MapGraph BuildLongHouse()
+        private static MapGraph BuildLongHouse() => BuildLongHouse(SpurOffset);
+
+        /// <summary>
+        /// The long house with its 미로 구역's side passages hung <paramref name="spur"/>
+        /// off each axis instead of <see cref="SpurOffset"/>.
+        /// <para>
+        /// The one knob that moves 시야 차단 지점 간격 and nothing else: no node is
+        /// added or removed, no degree changes, no passage is re-routed. A wider spur
+        /// simply stands its bend further from the ring corner it hangs off, so the two
+        /// stop being one 시야 차단 지점 and become a piece of cover that is deep enough
+        /// to finish §06's release from anywhere.
+        /// </para>
+        /// </summary>
+        private static MapGraph BuildLongHouse(float spur)
         {
             var map = new MapGraphBuilder().Named("§12 개방 공간 + 미로 공간");
             var side = ZoneSide;
-            var g = SpurOffset;
+            var g = spur;
             var maze = MapNodeKind.MazeSpace;
             var hall = MapNodeKind.OpenSpace;
 
@@ -2177,7 +2309,7 @@ namespace HorrorGame.Core.Tests
         private static MapValidationResult AssertOnlyFailure(
             MapValidationReport report, string ruleId, string why)
         {
-            Assert.That(report.FailedRuleIds, Is.EqualTo(new[] { ruleId }),
+            Assert.That(OtherFailures(report, ruleId), Is.Empty,
                 why + "\nExactly one rule was supposed to fail. Full report:\n" + report.Describe());
 
             var result = report[ruleId];
@@ -2191,5 +2323,31 @@ namespace HorrorGame.Core.Tests
                 + "if the failure says what was measured and what it costs in play.");
             return result;
         }
+
+        /// <summary>
+        /// Every rule the compact sketch broke apart from the one under test — and
+        /// apart from <see cref="MapValidator.RuleSightBreakSpacing"/>, which it breaks
+        /// unconditionally.
+        /// <para>
+        /// §12's 첫 맵 스케치 packs four zones edge to edge, and §12 caps a zone at a
+        /// 40 m diagonal and a straight corridor at 20 m. So the bends on either side
+        /// of every zone boundary stand <c>ZoneSide − RingSide</c> apart — a handful of
+        /// metres, which is wider than one 시야 차단 지점 may be and far short of the
+        /// gap to the next one. No arrangement of this layout can satisfy the rule:
+        /// it is cover-saturated by construction, which is the same fact
+        /// <see cref="SketchMap_PassesTheChecklistAndStillGradesTooEasy"/> records from
+        /// the other side, and
+        /// <see cref="SightBreakSpacing_TheCompactSketchFailsItAndTheLongHouseDoesNot"/>
+        /// pins deliberately rather than leaving it as a surprise here.
+        /// </para>
+        /// <para>
+        /// Filtering it out is therefore not a tolerance: the eleven 검증 체크리스트
+        /// items each still have to fail alone, which is what these tests are for.
+        /// </para>
+        /// </summary>
+        private static string[] OtherFailures(MapValidationReport report, string ruleId) =>
+            report.FailedRuleIds
+                .Where(id => id != ruleId && id != MapValidator.RuleSightBreakSpacing)
+                .ToArray();
     }
 }

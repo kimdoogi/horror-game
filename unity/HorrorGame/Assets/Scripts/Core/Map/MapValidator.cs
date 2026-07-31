@@ -272,6 +272,9 @@ namespace HorrorGame.Core.Map
         /// <summary>Each node must physically lie in the zone it claims, or every per-zone count above is fiction.</summary>
         public const string RuleZoneMembership = "zone-membership";
 
+        /// <summary>"시야 차단 지점 간격 15~25m" — 질주 60m에 3~4번의 기회.</summary>
+        public const string RuleSightBreakSpacing = "sight-break-spacing";
+
         /// <summary>
         /// Runs every rule and returns the whole report.
         /// </summary>
@@ -302,6 +305,7 @@ namespace HorrorGame.Core.Map
                 CheckMapExtent(graph),
                 CheckConnectivity(graph),
                 CheckZoneMembership(graph),
+                CheckSightBreakSpacing(graph),
             };
 
             return new MapValidationReport(
@@ -1076,6 +1080,304 @@ namespace HorrorGame.Core.Map
                   + "Listener hears a floor the place is not standing on.";
 
             return new MapValidationResult(RuleZoneMembership, "각 지점이 자기 구역 안에 있다", passed, detail, false);
+        }
+
+        // ====================================================================
+        // 시야 차단 지점 간격 15~25m — "질주 60m에 3~4번의 기회."
+        //
+        // The one row of §12's 수치 규칙 that had no implementation, which is why a
+        // map with a corner every 4 m passed sixteen rules out of sixteen and still
+        // graded 10/10 너무 쉽다. §12's checklist is a list of things that must be
+        // present; this is the one number that says how far apart they have to be,
+        // and without it "present" and "free" are the same map.
+        // ====================================================================
+
+        /// <summary>
+        /// Groups the map's bends into 시야 차단 지점 and measures the gaps between them.
+        /// <para>
+        /// <b>A 지점 is a chance, not a corner.</b> §12 counts opportunities — "질주
+        /// 60m에 3~4번의 기회" — and its own 기본 단위 is an S자 통로, "10m 구간 2개",
+        /// which is two bends and <em>one</em> chance. Reading 간격 as the distance
+        /// between individual bends would therefore make §12 contradict itself: no map
+        /// could satisfy both that row and the S자 통로 row above it. So bends closer
+        /// together than <see cref="GameConstants.LineOfSightBreakSpacingMin"/> are one
+        /// 지점 — a Runner rounding them rides one unbroken sight line across the lot —
+        /// and the spacing rule applies between 지점.
+        /// </para>
+        /// <para>
+        /// <b>Which makes the width of a 지점 the other half of the rule.</b> Grouping
+        /// alone would pass the very map this exists to reject: sixty metres of bends
+        /// every four metres is one enormous group with nothing to be spaced from. A
+        /// 지점 may therefore be no wider than
+        /// <see cref="GameConstants.SightBreakPointSpanMax"/>, which is §12's own
+        /// 14.4 m single-corner requirement minus the 10 m head start its 어그로 시작
+        /// 거리 table endorses: cover deeper than that completes the release from
+        /// wherever it is picked up, and 「주자는 멀리서 어그로를 걸어야 한다」 stops
+        /// being true of the map.
+        /// </para>
+        /// </summary>
+        private static MapValidationResult CheckSightBreakSpacing(MapGraph graph)
+        {
+            const string rule = "시야 차단 지점 간격 15~25m (질주 60m에 3~4번의 기회)";
+
+            var corners = new List<int>();
+            for (var i = 0; i < graph.Nodes.Length; i++)
+            {
+                // A bend drawn inside 개방 공간 hides nobody — §12 gives those rooms
+                // 15~25 m of sight on purpose, because they are where aggro is taken.
+                // RunnerTest applies the same exclusion, so this counts the corners
+                // that actually decide the 실전 검증 score.
+                if (!graph.Nodes[i].Has(MapNodeKind.OpenSpace) && graph.IsSightBreakingCorner(i))
+                {
+                    corners.Add(i);
+                }
+            }
+
+            if (corners.Count == 0)
+            {
+                return new MapValidationResult(
+                    RuleSightBreakSpacing, rule, false,
+                    "The map has no 시야 차단 지점 outside its 개방 공간 at all, so §06's "
+                    + Seconds(GameConstants.AggroReleaseLineOfSightBreak)
+                    + " of broken sight can never begin and every chase is the straight-line speed "
+                    + "comparison a Runner wins by only "
+                    + (GameConstants.RunnerSprintSpeed - GameConstants.MonsterBaseSpeed)
+                        .ToString("0.#", CultureInfo.InvariantCulture)
+                    + " m/s.", false);
+            }
+
+            var separation = CornerSeparations(graph, corners);
+            var pointOf = GroupIntoSightBreakPoints(corners.Count, separation);
+            var pointCount = 0;
+            for (var i = 0; i < pointOf.Length; i++)
+            {
+                if (pointOf[i] + 1 > pointCount)
+                {
+                    pointCount = pointOf[i] + 1;
+                }
+            }
+
+            var widest = new float[pointCount];
+            var widestPair = new int[pointCount][];
+            var nearest = new float[pointCount];
+            var nearestPair = new int[pointCount][];
+            for (var p = 0; p < pointCount; p++)
+            {
+                nearest[p] = float.PositiveInfinity;
+                widestPair[p] = new[] { -1, -1 };
+                nearestPair[p] = new[] { -1, -1 };
+            }
+
+            for (var i = 0; i < corners.Count; i++)
+            {
+                for (var k = 0; k < corners.Count; k++)
+                {
+                    if (i == k)
+                    {
+                        continue;
+                    }
+
+                    var gap = separation[i][k];
+                    if (pointOf[i] == pointOf[k])
+                    {
+                        if (gap > widest[pointOf[i]])
+                        {
+                            widest[pointOf[i]] = gap;
+                            widestPair[pointOf[i]] = new[] { corners[i], corners[k] };
+                        }
+                    }
+                    else if (gap < nearest[pointOf[i]])
+                    {
+                        nearest[pointOf[i]] = gap;
+                        nearestPair[pointOf[i]] = new[] { corners[i], corners[k] };
+                    }
+                }
+            }
+
+            var problems = new List<string>();
+            var tooWide = -1;
+            var tooLonely = -1;
+            for (var p = 0; p < pointCount; p++)
+            {
+                if (widest[p] > GameConstants.SightBreakPointSpanMax + MathX.Epsilon
+                    && (tooWide < 0 || widest[p] > widest[tooWide]))
+                {
+                    tooWide = p;
+                }
+
+                if (nearest[p] > GameConstants.LineOfSightBreakSpacingMax + MathX.Epsilon
+                    && (tooLonely < 0 || nearest[p] > nearest[tooLonely]))
+                {
+                    tooLonely = p;
+                }
+            }
+
+            if (tooWide >= 0)
+            {
+                problems.Add(
+                    "One 시야 차단 지점 is " + Metres(widest[tooWide]) + " deep — "
+                    + graph.Nodes[widestPair[tooWide][0]].Describe() + " to "
+                    + graph.Nodes[widestPair[tooWide][1]].Describe()
+                    + " with nothing further than " + Metres(GameConstants.LineOfSightBreakSpacingMin)
+                    + " between any two of its bends, so a Runner rounding them holds one unbroken sight "
+                    + "line the whole way. §12 allows " + Metres(GameConstants.SightBreakPointSpanMax)
+                    + " — its own " + Metres(GameConstants.SingleCornerMinDistance)
+                    + " single-corner requirement less the " + Metres(GameConstants.RunnerTestAggroStartDistance)
+                    + " head start its 어그로 시작 거리 table endorses. Cover this deep finishes §06's "
+                    + Seconds(GameConstants.AggroReleaseLineOfSightBreak)
+                    + " from wherever it is picked up, which inverts §12's first conclusion — 「주자는 "
+                    + "멀리서 어그로를 걸어야 한다」 — and leaves the 실전 검증 with nothing to grade");
+            }
+
+            if (pointCount < 2)
+            {
+                problems.Add(
+                    "The whole map holds one 시야 차단 지점, so there is no 간격 to measure. §12 sizes the "
+                    + "gap so a Runner meets 3~4 of them inside one sprint's "
+                    + Metres(GameConstants.SprintMaxTravelDistance) + "; with one, a chase is decided by "
+                    + "whether the Runner happened to start near it");
+            }
+            else if (tooLonely >= 0 && nearestPair[tooLonely][0] < 0)
+            {
+                // Unreachable rather than far: the map is in pieces, which the
+                // connectivity rule states plainly. Saying "∞ metres away" here would
+                // send a designer looking for a corridor to shorten.
+                problems.Add(
+                    "One 시야 차단 지점 has no other one it can be walked to at all, so §12's 간격 is "
+                    + "not a distance on this map — see the connectivity rule");
+            }
+            else if (tooLonely >= 0)
+            {
+                problems.Add(
+                    "The nearest other 시야 차단 지점 to "
+                    + graph.Nodes[nearestPair[tooLonely][0]].Describe() + " is "
+                    + Metres(nearest[tooLonely]) + " away, over §12's "
+                    + Metres(GameConstants.LineOfSightBreakSpacingMax)
+                    + ". Between the two there is no cover, and a Runner crossing that stretch gains only "
+                    + (GameConstants.RunnerSprintSpeed - GameConstants.MonsterBaseSpeed)
+                        .ToString("0.#", CultureInfo.InvariantCulture)
+                    + " m/s — the same arithmetic §12 uses to cap a straight corridor at "
+                    + Metres(GameConstants.MaxStraightCorridor));
+            }
+
+            var passed = problems.Count == 0;
+            string detail;
+            if (passed)
+            {
+                var closest = float.PositiveInfinity;
+                var furthest = 0f;
+                var span = 0f;
+                for (var p = 0; p < pointCount; p++)
+                {
+                    closest = nearest[p] < closest ? nearest[p] : closest;
+                    furthest = nearest[p] > furthest ? nearest[p] : furthest;
+                    span = widest[p] > span ? widest[p] : span;
+                }
+
+                detail = pointCount + " 시야 차단 지점 built from " + corners.Count
+                         + " bend(s), the widest " + Metres(span) + " deep (§12 allows "
+                         + Metres(GameConstants.SightBreakPointSpanMax)
+                         + "), nearest-neighbour spacing " + Metres(closest) + "~" + Metres(furthest)
+                         + " inside §12's " + Metres(GameConstants.LineOfSightBreakSpacingMin) + "~"
+                         + Metres(GameConstants.LineOfSightBreakSpacingMax) + ".";
+            }
+            else
+            {
+                detail = pointCount + " 시야 차단 지점 from " + corners.Count + " bend(s). "
+                         + string.Join("; ", problems) + ".";
+            }
+
+            return new MapValidationResult(RuleSightBreakSpacing, rule, passed, detail, false);
+        }
+
+        /// <summary>Walking distance between every pair of bends, in the order they were collected.</summary>
+        private static float[][] CornerSeparations(MapGraph graph, List<int> corners)
+        {
+            var separation = new float[corners.Count][];
+            for (var i = 0; i < corners.Count; i++)
+            {
+                separation[i] = new float[corners.Count];
+            }
+
+            for (var i = 0; i < corners.Count; i++)
+            {
+                for (var k = i + 1; k < corners.Count; k++)
+                {
+                    var walk = graph.PathLength(corners[i], corners[k]);
+                    separation[i][k] = walk;
+                    separation[k][i] = walk;
+                }
+            }
+
+            return separation;
+        }
+
+        /// <summary>
+        /// Single-linkage grouping of bends into 시야 차단 지점 at §12's own minimum gap.
+        /// <para>
+        /// Single linkage rather than anything cleverer because that is what the
+        /// geometry does: three bends at 0, 12 and 24 m are one continuous piece of
+        /// cover even though the outer two are 24 m apart, since the sight line never
+        /// comes back between them. A grouping that split them would report a legal
+        /// 간격 for a stretch the monster never sees down.
+        /// </para>
+        /// </summary>
+        /// <returns>Group index per bend, numbered from 0 with no gaps.</returns>
+        private static int[] GroupIntoSightBreakPoints(int count, float[][] separation)
+        {
+            var parent = new int[count];
+            for (var i = 0; i < count; i++)
+            {
+                parent[i] = i;
+            }
+
+            for (var i = 0; i < count; i++)
+            {
+                for (var k = i + 1; k < count; k++)
+                {
+                    if (separation[i][k] < GameConstants.LineOfSightBreakSpacingMin - MathX.Epsilon)
+                    {
+                        Union(parent, i, k);
+                    }
+                }
+            }
+
+            var label = new Dictionary<int, int>();
+            var group = new int[count];
+            for (var i = 0; i < count; i++)
+            {
+                var root = Find(parent, i);
+                if (!label.TryGetValue(root, out var id))
+                {
+                    id = label.Count;
+                    label[root] = id;
+                }
+
+                group[i] = id;
+            }
+
+            return group;
+        }
+
+        private static int Find(int[] parent, int i)
+        {
+            while (parent[i] != i)
+            {
+                parent[i] = parent[parent[i]];
+                i = parent[i];
+            }
+
+            return i;
+        }
+
+        private static void Union(int[] parent, int a, int b)
+        {
+            var rootA = Find(parent, a);
+            var rootB = Find(parent, b);
+            if (rootA != rootB)
+            {
+                parent[rootB] = rootA;
+            }
         }
 
         // ====================================================================
