@@ -12,9 +12,11 @@
         "Floor_Wood"
       ],
       "note": "§12 구역 A 나무 — staggered boards, deep gaps, soft traffic lane.",
-      "world_size_metres": 2.0,
-      "albedo_mean_linear": 0.2,
-      "roughness_mean": 0.7725,
+      "world_size_metres": 1.0,
+      "authored_metres_per_tile": 2.0,
+      "kit_uv_units_per_metre": 0.5,
+      "albedo_mean_linear": 0.25,
+      "roughness_mean": 0.748,
       "relief_mm": 9.68,
       "maps": {
         "albedo": "Floor_Wood/Floor_Wood_albedo.png",
@@ -30,9 +32,11 @@
         "Floor_Tile"
       ],
       "note": "§12 구역 B 타일 — 8×8 grid, dark grout, glossiest floor so the beam streaks.",
-      "world_size_metres": 2.0,
+      "world_size_metres": 1.0,
+      "authored_metres_per_tile": 2.0,
+      "kit_uv_units_per_metre": 0.5,
       "albedo_mean_linear": 0.32,
-      "roughness_mean": 0.2772,
+      "roughness_mean": 0.2197,
       "relief_mm": 7.24,
       "maps": {
         "albedo": "Floor_Tile/Floor_Tile_albedo.png",
@@ -47,10 +51,12 @@
       "slots": [
         "Floor_Gravel"
       ],
-      "note": "§12 구역 C 자갈 — three stone scales, 45 mm relief, deepest normals in the set.",
-      "world_size_metres": 1.5,
-      "albedo_mean_linear": 0.24,
-      "roughness_mean": 0.7877,
+      "note": "§12 구역 C 자갈 — three stone scales, 45 mm relief, standing water in the voids.",
+      "world_size_metres": 0.75,
+      "authored_metres_per_tile": 1.5,
+      "kit_uv_units_per_metre": 0.5,
+      "albedo_mean_linear": 0.44,
+      "roughness_mean": 0.6792,
       "relief_mm": 45.0,
       "maps": {
         "albedo": "Floor_Gravel/Floor_Gravel_albedo.png",
@@ -65,11 +71,13 @@
       "slots": [
         "Floor_Concrete"
       ],
-      "note": "§12 구역 D 콘크리트 — stains, exposed aggregate, two-scale crack network.",
-      "world_size_metres": 2.5,
-      "albedo_mean_linear": 0.28,
-      "roughness_mean": 0.8109,
-      "relief_mm": 9.57,
+      "note": "§12 구역 D 콘크리트 — stains, exposed aggregate, cracks that hold water.",
+      "world_size_metres": 1.25,
+      "authored_metres_per_tile": 2.5,
+      "kit_uv_units_per_metre": 0.5,
+      "albedo_mean_linear": 0.23,
+      "roughness_mean": 0.6787,
+      "relief_mm": 7.18,
       "maps": {
         "albedo": "Floor_Concrete/Floor_Concrete_albedo.png",
         "normal": "Floor_Concrete/Floor_Concrete_normal.png",
@@ -84,10 +92,12 @@
         "Floor_Metal"
       ],
       "note": "§12 계단 금속 — diamond tread, rivets, rust streaks, lowest roughness.",
-      "world_size_metres": 2.0,
+      "world_size_metres": 1.0,
+      "authored_metres_per_tile": 2.0,
+      "kit_uv_units_per_metre": 0.5,
       "albedo_mean_linear": 0.26,
-      "roughness_mean": 0.3825,
-      "relief_mm": 10.12,
+      "roughness_mean": 0.3551,
+      "relief_mm": 10.1,
       "maps": {
         "albedo": "Floor_Metal/Floor_Metal_albedo.png",
         "normal": "Floor_Metal/Floor_Metal_normal.png",
@@ -102,10 +112,12 @@
         "Wall_Structure"
       ],
       "note": "Painted brick, stretcher bond. Bound to the kit's single wall slot.",
-      "world_size_metres": 1.8,
+      "world_size_metres": 0.9,
+      "authored_metres_per_tile": 1.8,
+      "kit_uv_units_per_metre": 0.5,
       "albedo_mean_linear": 0.22,
-      "roughness_mean": 0.7368,
-      "relief_mm": 12.95,
+      "roughness_mean": 0.7493,
+      "relief_mm": 13.02,
       "maps": {
         "albedo": "Wall_Brick_Painted/Wall_Brick_Painted_albedo.png",
         "normal": "Wall_Brick_Painted/Wall_Brick_Painted_normal.png",
@@ -118,7 +130,9 @@
       "name": "Wall_Concrete_Bare",
       "slots": [],
       "note": "Board-formed concrete with snap-tie holes. Generated, awaiting a per-zone wall slot.",
-      "world_size_metres": 2.5,
+      "world_size_metres": 1.25,
+      "authored_metres_per_tile": 2.5,
+      "kit_uv_units_per_metre": 0.5,
       "albedo_mean_linear": 0.27,
       "roughness_mean": 0.8133,
       "relief_mm": 6.85,
@@ -135,11 +149,13 @@
       "slots": [
         "Wall_Dado"
       ],
-      "note": "Water-stained plaster on the dado — the lower wall band. Rising damp is a lower-wall phenomenon, and the palest surface sits where the beam points.",
-      "world_size_metres": 2.2,
-      "albedo_mean_linear": 0.34,
-      "roughness_mean": 0.837,
-      "relief_mm": 7.63,
+      "note": "Water-stained plaster on the 0.20–1.02 m tanking band. Rising damp, its tide line, salt bloom and the junction dirt are all keyed to the floor, so this tiles along the wall only.",
+      "world_size_metres": 1.0,
+      "authored_metres_per_tile": 2.0,
+      "kit_uv_units_per_metre": 0.5,
+      "albedo_mean_linear": 0.3,
+      "roughness_mean": 0.7495,
+      "relief_mm": 7.86,
       "maps": {
         "albedo": "Wall_Plaster_Stained/Wall_Plaster_Stained_albedo.png",
         "normal": "Wall_Plaster_Stained/Wall_Plaster_Stained_normal.png",
@@ -154,7 +170,9 @@
         "Ceiling_Structure"
       ],
       "note": "Board-marked soffit — directional grain for corridors seen at grazing angles.",
-      "world_size_metres": 2.5,
+      "world_size_metres": 1.25,
+      "authored_metres_per_tile": 2.5,
+      "kit_uv_units_per_metre": 0.5,
       "albedo_mean_linear": 0.21,
       "roughness_mean": 0.8632,
       "relief_mm": 8.7,
@@ -172,7 +190,9 @@
         "Trim_Steel"
       ],
       "note": "Rusted ribbed steel. Sits inside the beam more often than the wall behind it.",
-      "world_size_metres": 1.0,
+      "world_size_metres": 0.5,
+      "authored_metres_per_tile": 1.0,
+      "kit_uv_units_per_metre": 0.5,
       "albedo_mean_linear": 0.19,
       "roughness_mean": 0.683,
       "relief_mm": 9.47,
@@ -190,7 +210,9 @@
         "Door_Leaf"
       ],
       "note": "Painted door leaf — palest surface, so a beam finds §04's 정비공 chokepoints first.",
-      "world_size_metres": 1.2,
+      "world_size_metres": 0.6,
+      "authored_metres_per_tile": 1.2,
+      "kit_uv_units_per_metre": 0.5,
       "albedo_mean_linear": 0.31,
       "roughness_mean": 0.5114,
       "relief_mm": 6.04,
@@ -208,9 +230,11 @@
         "Trim_Painted"
       ],
       "note": "Painted skirting, a cross-section profile: tiles along its length only.",
-      "world_size_metres": 1.0,
+      "world_size_metres": 0.11,
+      "authored_metres_per_tile": 0.22,
+      "kit_uv_units_per_metre": 0.5,
       "albedo_mean_linear": 0.29,
-      "roughness_mean": 0.5523,
+      "roughness_mean": 0.5665,
       "relief_mm": 12.0,
       "maps": {
         "albedo": "Trim_Skirting_Painted/Trim_Skirting_Painted_albedo.png",

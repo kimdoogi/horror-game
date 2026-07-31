@@ -159,15 +159,24 @@ namespace HorrorGame.UI
             var bed = CreateImage("Bed", root, UiStyle.BarBed);
             Stretch((RectTransform)bed.transform);
 
+            // Anchor-driven, not Image.fillAmount.
+            //
+            // An Image with type Filled and NO SPRITE ignores fillAmount entirely:
+            // Image.OnPopulateMesh falls through to Graphic's, which emits the whole
+            // rect. Every meter in this game was built that way and therefore drew full
+            // at every value — §03's battery, §06's twelve seconds of stamina, §03's
+            // read progress. Nothing errored and each bar looked plausible, because a
+            // full bar is what most of them show most of the time.
+            //
+            // Giving the Image a sprite would fix it and would add a runtime sprite
+            // allocation to a layer that deliberately loads no assets. Moving the
+            // fraction onto the RectTransform costs nothing, needs no sprite, and cannot
+            // be silently disabled by a property somebody changes later.
             var fill = CreateImage("Fill", root, UiStyle.Calm);
             var fillRect = Stretch((RectTransform)fill.transform);
             fillRect.pivot = new Vector2(0f, 0.5f);
-            fill.type = Image.Type.Filled;
-            fill.fillMethod = Image.FillMethod.Horizontal;
-            fill.fillOrigin = (int)Image.OriginHorizontal.Left;
-            fill.fillAmount = 1f;
 
-            return new UiBar(root, fill);
+            return new UiBar(root, fill, fillRect);
         }
 
         /// <summary>

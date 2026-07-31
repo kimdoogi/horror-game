@@ -75,3 +75,8 @@ unity/HorrorGame/Shots/
 
 # Blender scratch previews
 artifacts/
+
+# Unity PlayMode test runner scratch scenes — created per run in Assets/, never cleaned up
+# when a run is interrupted. Committing them adds a scene to the project on every test pass.
+unity/HorrorGame/Assets/InitTestScene*.unity
+unity/HorrorGame/Assets/InitTestScene*.unity.meta

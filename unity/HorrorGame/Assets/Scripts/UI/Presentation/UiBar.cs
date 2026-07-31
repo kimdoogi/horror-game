@@ -26,12 +26,21 @@ namespace HorrorGame.UI
     {
         private readonly RectTransform _root;
         private readonly Image _fill;
+        private readonly RectTransform _fillRect;
 
         /// <summary>Wraps an already-built bed and fill. Produced by <see cref="UiFactory.CreateBar"/>.</summary>
-        public UiBar(RectTransform root, Image fill)
+        /// <param name="root">The bar's own transform.</param>
+        /// <param name="fill">The filled portion's image, which carries the colour.</param>
+        /// <param name="fillRect">
+        /// The filled portion's transform, which carries the fraction. See
+        /// <see cref="UiFactory.CreateBar"/> for why the fraction is a right-hand anchor
+        /// rather than <c>Image.fillAmount</c>.
+        /// </param>
+        public UiBar(RectTransform root, Image fill, RectTransform fillRect)
         {
             _root = root;
             _fill = fill;
+            _fillRect = fillRect;
         }
 
         /// <summary>The bar's transform, for callers that lay it out.</summary>
@@ -55,15 +64,31 @@ namespace HorrorGame.UI
         public void SetFill(float fill01)
         {
             var f = Mathf.Clamp01(fill01);
-            _fill.fillAmount = f;
+            Resize(f);
             _fill.color = UiStyle.MeterColor(f);
         }
 
         /// <summary>Sets the fill and overrides the colour — for meters whose danger is not "low", such as a carry-weight band.</summary>
         public void SetFill(float fill01, Color color)
         {
-            _fill.fillAmount = Mathf.Clamp01(fill01);
+            Resize(Mathf.Clamp01(fill01));
             _fill.color = color;
+        }
+
+        /// <summary>
+        /// Writes the fraction as the fill's right-hand anchor.
+        /// <para>
+        /// The offsets are re-zeroed every time because moving an anchor does not move
+        /// the offsets with it: a rect anchored to a shrinking span keeps whatever
+        /// <c>offsetMax</c> it had, and the bar would draw a few pixels past its own end.
+        /// </para>
+        /// </summary>
+        private void Resize(float fill01)
+        {
+            _fillRect.anchorMin = new Vector2(0f, 0f);
+            _fillRect.anchorMax = new Vector2(fill01, 1f);
+            _fillRect.offsetMin = Vector2.zero;
+            _fillRect.offsetMax = Vector2.zero;
         }
     }
 }

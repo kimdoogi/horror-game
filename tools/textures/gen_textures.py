@@ -132,9 +132,45 @@ means the vector was never normalised, not that it was rounded.
 DEFAULT_RESOLUTION = 1024
 """Texels per side.
 
-1024 over a 2 m tile is ~512 px/m, far beyond what a 12 m flashlight range
-(`GameConstants.FlashlightRange`) resolves, and it keeps the whole set inside a
-few seconds of generation and a sane import time.
+1024 over a 2 m tile is ~512 px/m. A 1920-wide frame at §05's 90° FOV resolves
+about 21 px per degree; one centimetre two metres ahead subtends 0.29°, so the
+eye can separate roughly 600 px/m at the distance a player actually reads a
+floor. 512 sits just under that — sharp enough that nothing is visibly soft,
+small enough that the whole set is a few seconds of generation and ~70 MB of
+compressed VRAM.
+"""
+
+
+KIT_UV_UNITS_PER_METRE = 0.5
+"""UV units the MapKit's meshes span per metre of world surface. **Measured.**
+
+`gen_mapkit.py` sets `UV_METRES_PER_TILE = 2.0` and `uv_box_project` multiplies
+every world coordinate by `1 / metres_per_tile`, so one metre of wall, floor or
+soffit carries half a UV unit. Confirmed against the shipped FBXs rather than
+against the source: importing `Corridor_Straight_5m`, `Hall_Open_20x20` and
+`FloorTile_Concrete` and dividing every UV edge length by its world edge length
+gives 0.5000 on all 19 632 edges, on faces of every orientation.
+
+WHY THIS CONSTANT IS HERE AND NOT IN THE ENGINE
+-----------------------------------------------
+`ProceduralTextureMaterials.ApplyTiling` computes the material's UV scale as
+`KitUvUnitsPerMetre / world_size_metres` with `KitUvUnitsPerMetre = 1f`, on the
+strength of a comment claiming the kit was unwrapped in metres. It was not, and
+the consequence is not subtle: **every surface in the game was rendering at
+exactly twice the size it was authored at.** A brick drawn 21.5 cm wide arrived
+45 cm wide, a floor tile at 25 cm arrived at 50 cm, and the crack network drawn
+across a 2.5 m concrete slab spanned five metres of floor. That single factor is
+most of what made the basement read as a model of a basement — nothing else
+communicates "this is a game asset" as loudly as masonry at double scale.
+
+That file belongs to another area, so the correction is applied on this side, in
+one place, by emitting the manifest's `world_size_metres` in the units that
+field is actually consumed in — UV units per tile, not metres per tile. The
+truthful figure travels alongside it as `authored_metres_per_tile`.
+
+If `KitUvUnitsPerMetre` is ever corrected to 0.5 in the engine, set this to 1.0
+in the same commit. The two numbers multiply, and getting both right doubles the
+error rather than fixing it.
 """
 
 
@@ -367,6 +403,30 @@ def cell_random(index: np.ndarray, count: int, seed: int, low: float = 0.0, high
     return table[np.clip(index, 0, count - 1)]
 
 
+def upward(res: int) -> np.ndarray:
+    """Height within the tile as the *renderer* sees it: 0 at V=0, 1 at V=1.
+
+    Needed because the array and the texture disagree about which way is up, and
+    getting it backwards is invisible in an image viewer and wrong in the game.
+    `write_png` emits row 0 as the first PNG scanline, Unity puts the first
+    scanline at the top of the texture, and UV (0,0) samples the bottom-left —
+    so **array row 0 is V = 1**.
+
+    It matters here because `gen_mapkit.py` unwraps with a world-aligned box
+    projection whose V is world Z on every vertical face, and every kit piece has
+    its origin on its own floor. So V = 0 is not an arbitrary edge of a tile: it
+    is *the floor line*, on every wall of every piece on every storey. Anything
+    keyed to this lands where a real building would put it.
+
+    `build_trim_skirting` had it inverted — its mop damage, its scuffing and its
+    "shadow where the board meets the floor" were all authored against a
+    `stripes(..., axis=0)` ramp that runs from the top down, so every one of them
+    rendered at the top edge of the board.
+    """
+    rows = (np.arange(res, dtype=np.float32) + 0.5) / res
+    return np.repeat((1.0 - rows)[:, None], res, axis=1).astype(np.float32)
+
+
 def groove(position: np.ndarray, width: float, softness: float = 0.35) -> np.ndarray:
     """1 inside a gap of fractional `width` centred on a stripe boundary, 0 on the face.
 
@@ -483,6 +543,134 @@ def scratches(res: int, seed: int, count: int, length: float, width: float) -> n
     return normalise01(blur(canvas, max(0.6, width * res * 0.5)))
 
 
+# ── Repetition and water ────────────────────────────────────────────────────
+#
+# The two things that separate a tiling texture from a surface. Both are
+# operators applied at the end of a builder rather than options inside it, so
+# every material gets the same treatment and the reasoning is written once.
+
+
+def detile(colour: np.ndarray, strength: float = 0.75, cycles: float = 2.2,
+           axes: Tuple[int, ...] = (0, 1)) -> np.ndarray:
+    """Flattens the low-frequency luminance a tile repeats as a visible template.
+
+    A repeat is not seen texel by texel. What the eye locks onto is the *blob* —
+    the one large damp patch, the one bright corner — reappearing on a lattice
+    every few metres. Local contrast is not the problem; the tile's low-frequency
+    envelope is, and it is also the cheapest thing to remove.
+
+    So: blur the luminance down to features longer than `1 / cycles` of a tile,
+    and divide that envelope back out. Dividing rather than subtracting is what
+    keeps this from being a fade — every ratio inside the tile survives exactly
+    (grout stays as dark relative to tile, rust as dark relative to plate), only
+    the slow drift across the tile goes. Hue is untouched for the same reason:
+    colour variation tiles far less visibly than value variation does, so it is
+    the variation worth keeping.
+
+    Not 1.0. A completely flat-fielded texture reads as printed wallpaper — real
+    walls do have slow variation, they just do not have *the same* slow variation
+    every 1.8 m. 0.75 removes the lattice and leaves the surface alive.
+
+    `axes` restricts which directions are flattened, and the reference level is
+    the mean *over those axes only*. A material whose vertical structure is
+    registered to the floor — `build_wall_plaster`'s rising damp — passes
+    `axes=(1,)`: each row is normalised to its own mean, so drift along the wall
+    goes and the damp front survives untouched. Flattening both axes there would
+    delete the feature the material exists for.
+
+    The correct fix is stochastic or triplanar blending in the shader. The
+    materials here are bound to URP's stock Lit shader by an editor script in
+    another area, so there is no shader to put it in, and this is what can be
+    done from the texture side alone.
+    """
+    if strength <= 0.0:
+        return colour
+
+    res = colour.shape[0]
+    luminance = np.clip(colour @ np.asarray([0.2126, 0.7152, 0.0722], dtype=np.float32), 1e-4, None)
+
+    # sigma from the requested cut-off: a Gaussian's half-power point sits near
+    # 1 / (2 pi sigma) cycles per texel. Filtered one axis at a time so a
+    # restricted `axes` really does leave the other direction alone; `mode="wrap"`
+    # for the same reason `blur` uses it — a non-periodic filter would author the
+    # very seam this whole file is built to avoid.
+    sigma = res / (2.0 * math.pi * max(0.2, cycles))
+    envelope = luminance
+    for axis in axes:
+        envelope = ndimage.gaussian_filter1d(envelope, sigma=sigma, axis=axis, mode="wrap")
+
+    reference = np.mean(luminance, axis=axes, keepdims=True)
+    gain = (reference / np.clip(envelope, 1e-4, None)) ** strength
+
+    return (colour * gain[..., None]).astype(np.float32)
+
+
+def water_line(height: np.ndarray, fraction: float) -> float:
+    """The height a given fraction of the surface sits below.
+
+    Water levels have to be quantiles, not constants. Every builder normalises
+    its height field differently — packed gravel is a max over three layers of
+    domes, so its 5th percentile sits at 0.538 and *nothing* is near zero, while
+    a concrete slab is a flat 0.86 with cracks cut to 0.16. A level of 0.34 read
+    like "the bottom third" and flooded 0.3 % of the gravel and none of the
+    concrete: both floors measured wet, neither looked it, and the mistake is
+    invisible until something is rendered.
+
+    Asking for a fraction instead states the intent — "the lowest third of this
+    surface holds water" — and stays true when a builder's relief is re-tuned.
+    """
+    return float(np.quantile(height, np.clip(fraction, 0.0, 1.0)))
+
+
+def standing_water(height: np.ndarray, level: float, softness: float = 0.04) -> np.ndarray:
+    """How deeply flooded each texel is, given a water level in height units.
+
+    Water is the one surface feature that is *purely* a function of the height
+    field: it fills from the bottom up and its top is flat. Deriving it rather
+    than painting it is what makes a puddle sit in the hollows between gravel
+    stones and along a crack instead of floating over them as a decal.
+    """
+    return smoothstep(level + softness, level - softness, height)
+
+
+def wet(colour: np.ndarray, roughness: np.ndarray, height: np.ndarray,
+        film: np.ndarray, pool: np.ndarray, level: float,
+        darkening: float = 0.55, film_roughness: float = 0.30,
+        pool_roughness: float = 0.09) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Applies §03's 「물이 있는 층」 to a surface: damp film, then standing water.
+
+    §03's first worked example of a clue is a floor with water on it, which makes
+    wet a gameplay-readable surface state rather than decoration — a player has
+    to be able to say "this is the flooded one" from a beam sweep.
+
+    Three separable physical effects, applied in the order they happen:
+
+    * **Darker.** Water on a rough surface removes the air/solid interface that
+      was scattering light straight back out, so more of it enters the substrate
+      and fewer photons return. A damp patch is genuinely darker, not tinted.
+    * **Smoother.** A film fills the micro-roughness, which is what turns the
+      flashlight's diffuse pool into a streak. This is the whole read: at a
+      grazing angle from 1.63 m the beam skips off water and does not off stone.
+    * **Flat.** Standing water has a level top. Pulling the height field up to
+      the water line where it is pooled is what makes a puddle mirror the room
+      instead of mirroring the gravel underneath it.
+
+    `film` is the damp area, `pool` the subset deep enough to hold water.
+    """
+    film = np.clip(film, 0.0, 1.0)
+    pool = np.clip(pool, 0.0, 1.0)
+    both = np.clip(film + pool, 0.0, 1.0)
+
+    colour = (colour * (1.0 - darkening * both)[..., None]).astype(np.float32)
+
+    roughness = np.where(film > 0.0, roughness * (1.0 - film) + film_roughness * film, roughness)
+    roughness = np.where(pool > 0.0, roughness * (1.0 - pool) + pool_roughness * pool, roughness)
+
+    height = (height * (1.0 - pool) + max(level, 0.0) * pool).astype(np.float32)
+
+    return colour.astype(np.float32), roughness.astype(np.float32), height
+
+
 # ── Height → normal, AO ─────────────────────────────────────────────────────
 
 
@@ -585,6 +773,29 @@ class MaterialSpec:
 
     slots: Tuple[str, ...] = ()
     """MapKit material slot names this binds to. Empty = generated but unbound."""
+
+    ao_strength: float = 1.0
+    """How much of the baked cavity occlusion to keep, 0–1.
+
+    Exists for exactly one reason and is 1.0 everywhere else. The engine runs
+    screen-space AO as well (`AtmosphereSetup.TuneAmbientOcclusion`), and the two
+    occlude the *same* ambient term — so a material whose relief is deep enough
+    for the baked map to be dark on its own has its shadows counted twice.
+
+    That is only a real problem for gravel: 45 mm of relief against 5–13 mm for
+    everything else in the set, and a measured AO contrast of 0.68 against 0.07
+    for the concrete slab. Zone C sat at 25.5 % of the frame legible against
+    ART.md's 30 % floor with every other zone inside the band, and the excess is
+    the double count rather than the paint. 1.0 → 0.72 bought 2.6 points of it
+    and 0.72 → 0.55 was needed for the rest; the stones still shade themselves,
+    the engine is simply no longer shading them a second time.
+
+    Turning the SSAO down globally to fix one zone would have been the wrong
+    lever — it would drag the four zones that are in band out of it — and so
+    would flattening gravel's relief, which is §12's whole reason for choosing
+    it: 자갈 is the floor you cannot mistake for another because every stone
+    throws its own shadow.
+    """
 
     tiling_axes: Tuple[int, ...] = (0, 1)
     """Which axes must tile. 0 is V (down the texture), 1 is U (across).
@@ -715,6 +926,19 @@ def build_wood(res: int, seed: int) -> MapSet:
         0.05, 1.0,
     )
 
+    colour = detile(colour, strength=0.60)
+
+    # Wood is the one floor that should not hold water — it drains through the
+    # gaps and swells rather than pooling. So: damp wicking up out of the joints
+    # and nothing standing on the boards. Getting this wrong in the other
+    # direction would cost the zone its identity, because a lake on a timber
+    # floor reads as the 자갈 zone's flooding in the wrong room.
+    seepage = stain(res, seed + 31, threshold=0.52, softness=0.10, detail=0.5, low_cycles=1.7)
+    film = np.clip(blur(gap, res * 0.008) * 1.5, 0.0, 1.0) * seepage
+    colour, roughness, height = wet(
+        colour, roughness, height, film, np.zeros_like(film), 0.0,
+        darkening=0.38, film_roughness=0.40)
+
     return MapSet(colour, roughness, height, np.zeros((res, res), np.float32), world, 0.010)
 
 
@@ -778,6 +1002,21 @@ def build_tile(res: int, seed: int) -> MapSet:
         0.06, 1.0,
     )
 
+    colour = detile(colour, strength=0.75)
+
+    # Water on a tiled floor sits in the grout lines first — the grid fills and
+    # the field stays merely damp. That is the most legible wet read of the five
+    # floors, because the beam then finds a lit *lattice* rather than a lit
+    # patch, and a lattice tells a player which way the room runs.
+    seepage = stain(res, seed + 31, threshold=0.44, softness=0.10, detail=0.5, low_cycles=1.6)
+    water_level = water_line(height, 0.14)
+    pool = standing_water(height, water_level, softness=0.04) * np.clip(seepage * 1.3, 0.0, 1.0)
+    film = np.clip(seepage - pool, 0.0, 1.0) * 0.8
+
+    colour, roughness, height = wet(
+        colour, roughness, height, film, pool, water_level,
+        darkening=0.45, film_roughness=0.16, pool_roughness=0.08)
+
     return MapSet(colour, roughness, height, np.zeros((res, res), np.float32), world, 0.008)
 
 
@@ -819,12 +1058,16 @@ def build_gravel(res: int, seed: int) -> MapSet:
     grit = fbm(res, seed + 6, beta=1.2, low_cycles=30.0)
     dust = blur(fbm(res, seed + 7, beta=2.4, low_cycles=2.0), res * 0.01)
 
-    # Depth between stones is the read. Darken the gaps hard, but never to black:
-    # the beam still has to find something down there.
+    # Depth between stones is the read. Darken the gaps, but nowhere near to
+    # black: this floor was measured at 43.8% of the frame below 2/255, out the
+    # bottom of ART.md's 10–40% band and out the bottom of its legible band too,
+    # and the gaps between stones are where all of that black lives. §03 gates
+    # the objective with darkness; a floor the beam cannot resolve gates nothing,
+    # it just deletes the zone.
     pit = smoothstep(0.42, 0.0, height)
 
     surface = shade * (0.85 + 0.30 * grit) * (0.88 + 0.24 * dust)
-    colour = tint((0.300, 0.282, 0.252), surface, (0.070, 0.066, 0.060), pit * 0.80)
+    colour = tint((0.300, 0.282, 0.252), surface, (0.152, 0.144, 0.133), pit * 0.52)
 
     # A minority of stones are a different rock. Cheap, and it stops the pile
     # reading as one extruded material.
@@ -833,6 +1076,30 @@ def build_gravel(res: int, seed: int) -> MapSet:
     colour = tint(colour, np.ones((res, res), np.float32), (0.235, 0.150, 0.108), reddish * 0.55)
 
     roughness = np.clip(0.86 - 0.10 * shade + 0.10 * grit - 0.06 * dust, 0.35, 1.0)
+
+    # Before the water, never after. `detile` removes low-frequency luminance and
+    # a puddle *is* low-frequency luminance — running it last erased every pool
+    # in the first generated set and left a floor that measured wet and did not
+    # look it. Everything below this line is meant to survive to the render.
+    colour = detile(colour, strength=0.70)
+
+    # §03's worked example of a clue is 물이 있는 층, and ART.md §3.6 already
+    # calls zone C "the flooded 자갈 end" — the lighting says flooded and the
+    # floor did not. Ballast is where standing water is most obvious in a real
+    # basement, because the voids between stones hold it and the water line cuts
+    # straight across a surface that has no straight line anywhere else in it.
+    #
+    # The pools are patchy rather than a sheet: a floor uniformly under water
+    # reads as a swimming pool, and §12 needs a player to still recognise the
+    # 자갈 underneath.
+    flooded = stain(res, seed + 31, threshold=0.48, softness=0.07, detail=0.55, low_cycles=1.9)
+    water_level = water_line(height, 0.38)
+    pool = standing_water(height, water_level, softness=0.06) * flooded
+    film = np.clip(blur(pool, res * 0.012) * 1.4 - pool, 0.0, 1.0) * 0.7
+
+    colour, roughness, height = wet(
+        colour, roughness, height, film, pool, water_level,
+        darkening=0.55, film_roughness=0.42, pool_roughness=0.12)
 
     return MapSet(colour, roughness, height, np.zeros((res, res), np.float32), world, 0.045)
 
@@ -864,14 +1131,28 @@ def build_concrete_floor(res: int, seed: int) -> MapSet:
 
         # Branch decay: a crack fades along its length instead of running the
         # full width of the slab at constant strength.
-        mask = smoothstep(0.34, 0.66, fbm(res, seed + seed_offset + 5, beta=2.4, low_cycles=2.5))
+        #
+        # Masked at 0.56–0.80, not 0.34–0.66. The looser window let most of the
+        # Worley boundaries through, so the slab arrived as a *complete* polygon
+        # network — every cell outlined, edge to edge. That is dried mud or
+        # crazed glaze; a concrete floor has a handful of cracks wandering across
+        # an otherwise unbroken surface, and a full network was the loudest
+        # generated-looking thing left in the frame once the tiling was fixed.
+        # `Floor_Concrete` is bound to 13 of the kit's pieces, so it is also the
+        # floor this costs the most on.
+        mask = smoothstep(0.56, 0.80, fbm(res, seed + seed_offset + 5, beta=2.4, low_cycles=2.5))
         crack = np.maximum(crack, vein * mask)
     crack = blur(crack, 0.6)
 
     # Aggregate showing through where the surface has worn.
     aggregate_distance, _, aggregate_owner = worley(res, 46, seed + 9, jitter=1.0)
     exposed = smoothstep(0.55, 0.80, base) * smoothstep(0.020, 0.006, aggregate_distance)
-    pits = smoothstep(0.80, 0.94, fbm(res, seed + 10, beta=1.3, low_cycles=26.0))
+    # More pockmarks, and deeper. With the crack network thinned to occasional,
+    # these are the only relief a flat slab has left, and the AO guard passes on
+    # them by 0.002 without this. Old floated concrete really is pitted — the
+    # laitance spalls off in coin-sized flakes — so this is the honest place to
+    # find the contrast rather than putting the crack network back.
+    pits = smoothstep(0.72, 0.91, fbm(res, seed + 10, beta=1.3, low_cycles=26.0))
 
     # Kept deliberately weak. Zone D holds the exit, so this floor is read under
     # stress and its job is to be the *plain* one — heavy staining here would
@@ -882,24 +1163,54 @@ def build_concrete_floor(res: int, seed: int) -> MapSet:
         0.0, 1.0)
     efflorescence = stain(res, seed + 12, threshold=0.70, softness=0.05, detail=0.55, low_cycles=3.5)
 
+    # Cracks cut deeper (0.70 → 0.82) and pits with them, because thinning the
+    # crack network out to "occasional" removed most of what this floor's AO map
+    # had to occlude: the run's own guard caught it at an AO contrast of 0.025
+    # against a 0.03 floor, which is a map that imports, looks plausible in a
+    # viewer, and does nothing. Fewer cracks is right; shallower cracks was not.
+    # A real crack in a slab is a few millimetres of shadow, and it is the only
+    # shadow a flat floor has.
     height = np.clip(
         0.86
         + base * 0.06
         + fine * 0.03
         + exposed * 0.04
-        - crack * 0.70
-        - pits * 0.35,
+        - crack * 0.82
+        - pits * 0.52,
         0.0, 1.0,
     )
 
     shade = (0.86 + 0.28 * base) * (0.92 + 0.16 * fine)
     shade *= 1.0 - 0.30 * damp
-    colour = tint((0.318, 0.312, 0.300), shade, (0.075, 0.072, 0.070), np.clip(crack * 0.9 + pits * 0.6, 0, 1))
+    # Crack interiors lifted from 0.075 to 0.115 linear. A crack in concrete is a
+    # shadow a few millimetres deep, not a hole: at 0.075 the network read as ink
+    # drawn on the slab, which is the other half of why it looked printed.
+    colour = tint((0.318, 0.312, 0.300), shade, (0.115, 0.111, 0.108), np.clip(crack * 0.85 + pits * 0.6, 0, 1))
     colour = tint(colour, np.ones((res, res), np.float32), (0.400, 0.392, 0.365), efflorescence * 0.35)
     colour = tint(colour, np.ones((res, res), np.float32), (0.250, 0.235, 0.205),
                   per_cell(aggregate_owner, 46, seed + 13, 0.0, 1.0) * exposed * 0.6)
 
     roughness = np.clip(0.74 + 0.16 * fine - 0.10 * damp + 0.14 * crack + 0.10 * pits, 0.30, 1.0)
+
+    colour = detile(colour, strength=0.80)
+
+    # Water on a slab does not pool in the open — it runs into the crack network
+    # and stays there, and the surface around a wet crack stays damp for days.
+    # Deriving the wet mask from the cracks rather than painting a second stain
+    # is what ties the two features together; a damp patch that ignores the crack
+    # running through it is the giveaway that both were airbrushed on.
+    seepage = stain(res, seed + 33, threshold=0.46, softness=0.09, detail=0.5, low_cycles=1.7)
+    # A ninth of the surface, not a sixth. `wet` flattens the height to the water
+    # line where it pools, and at 0.16 the line sat at the *rim* of the crack
+    # network — so the water filled every crack flush and erased the relief the
+    # AO map is baked from. Water in a crack sits in the bottom of it.
+    water_level = water_line(height, 0.09)
+    pool = standing_water(height, water_level, softness=0.04) * np.clip(seepage + crack * 0.6, 0.0, 1.0)
+    film = np.clip(blur(np.maximum(pool, crack * seepage), res * 0.016) * 2.2 - pool, 0.0, 1.0) * 0.85
+
+    colour, roughness, height = wet(
+        colour, roughness, height, film, pool, water_level,
+        darkening=0.52, film_roughness=0.34, pool_roughness=0.10)
 
     return MapSet(colour, roughness, height, np.zeros((res, res), np.float32), world, 0.012)
 
@@ -993,6 +1304,21 @@ def build_metal_floor(res: int, seed: int) -> MapSet:
     roughness = np.clip(0.26 + 0.52 * rust + 0.30 * seam + 0.16 * scuff - 0.10 * tread - 0.08 * rivet, 0.08, 1.0)
     metallic = np.clip(0.50 * (1.0 - rust) * (1.0 - seam * 0.8), 0.0, 1.0)
 
+    colour = detile(colour, strength=0.65)
+
+    # Damp, not puddles. This is stair and walkway plate: it drains, and anywhere
+    # it does not drain is exactly where the rust already is — so the wet mask is
+    # the rust mask, softened. Causality both ways round, which is what stops two
+    # separately painted masks from reading as two separate stickers.
+    film = np.clip(blur(rust, res * 0.010) * 0.9, 0.0, 1.0) * \
+        stain(res, seed + 31, threshold=0.52, softness=0.10, detail=0.5, low_cycles=2.2)
+    metal_water = water_line(height, 0.18)
+    pool = np.clip(standing_water(height, metal_water, softness=0.04) * film * 1.4, 0.0, 1.0)
+
+    colour, roughness, height = wet(
+        colour, roughness, height, film, pool, metal_water,
+        darkening=0.42, film_roughness=0.24, pool_roughness=0.10)
+
     return MapSet(colour, roughness, height, metallic, world, 0.012)
 
 
@@ -1022,10 +1348,26 @@ def build_wall_brick(res: int, seed: int) -> MapSet:
 
     mortar = np.maximum(groove(course_position, 0.13, softness=0.55), groove(brick_position, 0.10, softness=0.55))
 
-    brick_tone = cell_random(brick_index, courses * per_course, seed + 1, 0.78, 1.22)
+    # Widened from 0.78–1.22. At half a metre per brick — which is what this
+    # texture was rendering at before KIT_UV_UNITS_PER_METRE was measured — a
+    # narrow tone spread was survivable because the courses were too big to read
+    # as brick anyway. At 21.5 cm it is not: a wall of identically-toned bricks
+    # is the single clearest tell that a surface was generated, because a real
+    # wall is built from several firings and half a century of weather.
+    brick_tone = cell_random(brick_index, courses * per_course, seed + 1, 0.62, 1.34)
     brick_lean = cell_random(brick_index, courses * per_course, seed + 2, -1.0, 1.0)
     face = fbm(res, seed + 3, beta=1.6, low_cycles=12.0)
     pocks = smoothstep(0.72, 0.92, fbm(res, seed + 4, beta=1.2, low_cycles=30.0))
+
+    # Mortar is not one grey. It was repointed in patches, it carries the same
+    # damp as the brick, and where it is old it is darker than the brick rather
+    # than brighter — the bright uniform lattice the first render showed is what
+    # made this wall read as a texture sample rather than as masonry.
+    mortar_tone = np.clip(
+        0.62
+        + 0.55 * stain(res, seed + 41, threshold=0.55, softness=0.12, detail=0.45, low_cycles=2.4)
+        + 0.22 * fbm(res, seed + 42, beta=1.5, low_cycles=16.0),
+        0.28, 1.25)
 
     # Paint fails around damp and along the mortar, which holds water. Modulating
     # the mask by the brick structure itself is what keeps it from floating over
@@ -1052,14 +1394,33 @@ def build_wall_brick(res: int, seed: int) -> MapSet:
 
     shade = brick_tone * (0.86 + 0.28 * face)
     brick_colour = tint((0.270, 0.150, 0.115), shade, (0.330, 0.205, 0.150), np.clip(brick_lean * 0.5 + 0.5, 0, 1) * 0.5)
-    mortar_colour = np.asarray([0.300, 0.292, 0.272], dtype=np.float32)
+    mortar_colour = (np.asarray([0.300, 0.292, 0.272], dtype=np.float32)[None, None, :]
+                     * mortar_tone[..., None])
 
-    colour = brick_colour * (1.0 - mortar[..., None] * 0.85) + mortar_colour[None, None, :] * mortar[..., None] * 0.85
+    colour = brick_colour * (1.0 - mortar[..., None] * 0.85) + mortar_colour * mortar[..., None] * 0.85
     colour = tint(colour, np.ones((res, res), np.float32), (0.330, 0.325, 0.290), paint * 0.80)
     colour *= 1.0 - 0.32 * damp[..., None]
     colour *= 1.0 - 0.25 * pocks[..., None]
 
-    roughness = np.clip(0.86 - 0.30 * paint + 0.10 * face + 0.06 * mortar - 0.12 * damp, 0.18, 1.0)
+    # Efflorescence: the salt bloom damp masonry pushes out to its own surface as
+    # it dries. It is the most recognisable thing about a wet basement wall, it
+    # is always *on* the damp rather than next to it, and it is nearly white —
+    # the one bright feature in a room whose whole palette is dark, which makes
+    # it worth its cost off-beam as well as under it.
+    bloom = np.clip(
+        stain(res, seed + 43, threshold=0.62, softness=0.05, detail=0.6, low_cycles=5.0)
+        * damp * (0.55 + 0.45 * mortar), 0.0, 1.0)
+    colour = tint(colour, np.ones((res, res), np.float32), (0.520, 0.512, 0.495), bloom * 0.70)
+
+    # Soot and hand-height dirt, drawn as slow broad noise rather than as blobs
+    # so it darkens without adding another shape to repeat.
+    soot = blur(fbm(res, seed + 44, beta=2.4, low_cycles=2.2), res * 0.02)
+    colour *= (1.0 - 0.22 * soot)[..., None]
+
+    roughness = np.clip(
+        0.86 - 0.30 * paint + 0.10 * face + 0.06 * mortar - 0.12 * damp + 0.14 * bloom, 0.18, 1.0)
+
+    colour = detile(colour, strength=0.80)
 
     return MapSet(colour, roughness, height, np.zeros((res, res), np.float32), world, 0.014)
 
@@ -1107,19 +1468,43 @@ def build_wall_concrete(res: int, seed: int) -> MapSet:
 
     roughness = np.clip(0.78 + 0.12 * fine - 0.14 * bleed + 0.10 * pits, 0.30, 1.0)
 
+    colour = detile(colour, strength=0.75)
+
     return MapSet(colour, roughness, height, np.zeros((res, res), np.float32), world, 0.010)
 
 
 def build_wall_plaster(res: int, seed: int) -> MapSet:
-    """Water-stained plaster — the brightest wall in the set.
+    """Water-stained plaster — the brightest wall in the set, and the damp band.
 
     Kept pale on purpose: §03's flashlight needs at least one surface class that
     throws light back generously, or every room reads at the same brightness.
     Plaster is that surface. The staining is what keeps it from looking clean —
     tide marks where water ran and dried, and blown patches where it has fallen
     away to the substrate.
+
+    REGISTERED TO THE FLOOR, WHICH IS WHY IT TILES ONE WAY ONLY
+    -----------------------------------------------------------
+    This material is bound to `Wall_Dado`, and `gen_mapkit_detail.dressed_wall`
+    calls that band by its real name: the *damp / tanking band*, `SKIRT_H` (0.20 m)
+    up to `DADO_TOP` (1.02 m). The kit's box projection puts V = world Z with the
+    piece origin on its own floor, so at a 2 m tile that band lands on
+    V = 0.10 … 0.51 — the same slice of this texture, on every wall, on all three
+    storeys.
+
+    So the damp can be drawn where damp actually is. Rising damp is not a stain
+    that happens to be low down; it is a front that climbs out of the ground to
+    the height the wall can wick to and stops in a hard tide line, with salt
+    blooming below it and nothing above. Drawn as a `stain` mask floating
+    anywhere on the wall — which is what this did — it reads as an airbrushed
+    smudge. Drawn against the floor it reads as a building with a water problem,
+    and it puts grime along the wall/floor junction of every corridor in the map
+    without a single decal.
+
+    The price is that a vertical gradient cannot wrap, so `tiling_axes` declares
+    U only. That is honest rather than a loosened threshold: the band is 0.82 m
+    of a 2 m tile and never repeats within itself.
     """
-    world = 2.2
+    world = 2.0
 
     trowel = blur(fbm(res, seed + 1, beta=2.2, low_cycles=3.0), res * 0.004)
     swirl = warp(trowel, (fbm(res, seed + 2, beta=2.2) - 0.5) * res * 0.05,
@@ -1141,24 +1526,88 @@ def build_wall_plaster(res: int, seed: int) -> MapSet:
     # wall that reliably throws light back.
     marks = np.clip(damp * 0.40 + np.clip(tide_edge, 0.0, 1.0) * 0.60 + trickle * 0.8, 0.0, 1.0)
 
+    # ── Rising damp, keyed to the floor line. See the docstring. ──
+    #
+    # The front is not level: masonry wicks further where the mortar is worse, so
+    # the height of the tide line is modulated by slow noise along the wall. A
+    # dead-straight line reads as a painted dado.
+    above_floor = upward(res)
+    front = 0.40 + 0.13 * (fbm(res, seed + 31, beta=2.4, low_cycles=2.5) - 0.5) * 2.0
+    rise = smoothstep(0.10, -0.06, above_floor - front)
+
+    # The tide line itself: where the water stopped and left everything it was
+    # carrying. It is the single most recognisable feature of a damp wall.
+    tide = np.exp(-((above_floor - front) / 0.028) ** 2) * (0.55 + 0.45 * damp)
+
+    # Salt bloom below the front, crusty and near-white, strongest in the middle
+    # of the band rather than at the very bottom where the skirting covers it.
+    # low_cycles 14, not 4.5: at 4.5 over a 2 m tile the blooms came out 45 cm
+    # across and read as mould rather than as salt. Efflorescence is a crust of
+    # centimetre-scale crystals; the size is most of what identifies it.
+    salt = np.clip(
+        stain(res, seed + 32, threshold=0.66, softness=0.05, detail=0.65, low_cycles=14.0)
+        * rise * smoothstep(0.04, 0.16, above_floor) * 1.3, 0.0, 1.0)
+
+    # Grime along the wall/floor junction: dust, mop water and boot dirt, which
+    # accumulate in the corner and nowhere else. This is the contact shading a
+    # decal would otherwise have to provide.
+    junction = smoothstep(0.16, 0.03, above_floor) * (0.55 + 0.45 * warped_fbm(
+        res, seed + 33, beta=2.2, strength=res * 0.02, low_cycles=3.0))
+
+    marks = np.clip(marks + rise * 0.55 + tide * 0.9, 0.0, 1.0)
+
     blown = stain(res, seed + 6, threshold=0.70, softness=0.05, detail=0.55, low_cycles=4.0)
+
+    # 9 and 17 cells over a 2 m tile drew 22 cm and 12 cm polygons, which is
+    # crazy paving rather than crazing. Real hairline cracking in a lime render
+    # closes at two to ten centimetres, and at 22 cm the pattern reads as a
+    # decorative motif — it was the loudest generated-looking thing left on the
+    # wall once the brick came back to size.
     hairline = np.zeros((res, res), dtype=np.float32)
-    for cells, width, offset in ((9, 0.0030, 61), (17, 0.0018, 71)):
+    for cells, width, offset in ((20, 0.0022, 61), (38, 0.0014, 71)):
         f1, f2, _ = worley(res, cells, seed + offset, jitter=0.95)
         vein = 1.0 - smoothstep(0.0, width, f2 - f1)
         hairline = np.maximum(hairline, vein * smoothstep(0.45, 0.72, fbm(res, seed + offset + 3, beta=2.2, low_cycles=2.0)))
 
     mould = stain(res, seed + 7, threshold=0.76, softness=0.04, detail=0.5, low_cycles=3.0) * marks
 
-    height = np.clip(0.88 + swirl * 0.06 + fine * 0.02 - blown * 0.45 - hairline * 0.50, 0.0, 1.0)
+    # The blown patches concentrate in the damp band, because that is what damp
+    # does to plaster — it pushes it off the wall. Multiplying an existing mask
+    # by the front rather than adding a second one keeps the count of independent
+    # shapes down, and every shape is one more thing that can repeat visibly.
+    blown = np.clip(blown * (0.45 + 0.85 * rise), 0.0, 1.0)
+
+    height = np.clip(0.88 + swirl * 0.06 + fine * 0.02 - blown * 0.45 - hairline * 0.50
+                     + salt * 0.04 - junction * 0.03, 0.0, 1.0)
 
     shade = (0.86 + 0.28 * swirl) * (0.95 + 0.10 * fine)
     colour = tint((0.430, 0.418, 0.388), shade, (0.250, 0.212, 0.158), marks * 0.60)
     colour = tint(colour, np.ones((res, res), np.float32), (0.135, 0.140, 0.115), mould * 0.55)
     colour = tint(colour, np.ones((res, res), np.float32), (0.290, 0.268, 0.238), blown * 0.70)
+    colour = tint(colour, np.ones((res, res), np.float32), (0.545, 0.535, 0.512), salt * 0.65)
     colour *= 1.0 - 0.30 * hairline[..., None]
+    colour *= 1.0 - 0.52 * junction[..., None]
 
-    roughness = np.clip(0.80 + 0.10 * fine - 0.10 * marks + 0.12 * blown, 0.30, 1.0)
+    # Floor raised 0.30 → 0.40. Plaster has no gloss at any age, and this is the
+    # palest surface in the game standing where §03's beam lands on it from one
+    # metre: at 0.30 the specular lobe put 0.93 % of the spawn3 frame over 250,
+    # against ART.md's 0.5 % ceiling, and a clipped highlight throws away the
+    # texture exactly where the player is looking.
+    roughness = np.clip(
+        0.80 + 0.10 * fine - 0.10 * marks + 0.12 * blown + 0.14 * salt + 0.10 * junction, 0.40, 1.0)
+
+    # A damp wall is damp: below the front the plaster is wet enough to darken
+    # and to take a sheen at a grazing angle, which is how a player reads "this
+    # room floods" from the wall rather than from the floor.
+    # U only: the vertical structure above is registered to the floor and must
+    # not be flattened away, so detile runs across the wall and not up it. And
+    # before the damp, so the damp survives it.
+    colour = detile(colour, strength=0.55, cycles=2.6, axes=(1,))
+
+    film = np.clip(rise * (0.35 + 0.65 * damp) - salt * 0.6, 0.0, 1.0)
+    colour, roughness, _ = wet(
+        colour, roughness, height, film, np.zeros_like(film), 0.0,
+        darkening=0.30, film_roughness=0.52)
 
     return MapSet(colour, roughness, height, np.zeros((res, res), np.float32), world, 0.008)
 
@@ -1207,6 +1656,8 @@ def build_ceiling_concrete(res: int, seed: int) -> MapSet:
     colour = tint(colour, np.ones((res, res), np.float32), (0.185, 0.165, 0.130), seep * 0.55)
 
     roughness = np.clip(0.82 + 0.10 * grain - 0.12 * seep + 0.08 * pits, 0.32, 1.0)
+
+    colour = detile(colour, strength=0.75)
 
     return MapSet(colour, roughness, height, np.zeros((res, res), np.float32), world, 0.011)
 
@@ -1300,34 +1751,62 @@ def build_trim_door(res: int, seed: int) -> MapSet:
 def build_trim_skirting(res: int, seed: int) -> MapSet:
     """Painted timber skirting — the base board where wall meets floor.
 
-    Not bound to a kit slot yet (the kit has no skirting mesh). Generated because
-    the moment one is modelled this has to exist, and a skirting board is the
-    cheapest way to stop a wall/floor junction reading as two planes meeting at
-    nothing — the artefact that made the baseline look like grey boxes.
+    Bound to `Trim_Painted`, which `gen_mapkit_detail.dressed_wall` puts on 13 of
+    the kit's pieces: the skirting itself, world Z 0 → `SKIRT_H` = 0.20 m, and
+    the dado rail at 1.02 → 1.11 m. It is therefore the surface that draws the
+    wall/floor junction in almost every corridor in the game, which is why the
+    dirt line at its foot is worth more than anything else in this file per texel
+    spent — objects and rooms read as *placed* until something darkens where they
+    meet, and this is the one contact shadow a tiling texture is allowed to draw.
+
+    TWO THINGS WERE WRONG HERE AND BOTH WERE INVISIBLE IN AN IMAGE VIEWER
+    ---------------------------------------------------------------------
+    The tile was 1 m and the board is 0.20 m, so only the lowest fifth of the
+    authored profile ever reached a wall — the bead, the body and the top shadow
+    were drawn and never rendered. And the profile ramp ran the wrong way (see
+    `upward`), so the mop damage, the scuffing and the "shadow where the board
+    meets the floor" were all sitting at the top edge. The board rendered as a
+    flat painted stripe, which is exactly what it looked like.
+
+    Now the tile is the board: `world` is `SKIRT_H` plus the millimetre of margin
+    that keeps the top shadow off the wrap, and every feature is placed by its
+    real height above the floor.
     """
-    world = 1.0
+    world = 0.22
 
-    profile = stripes(res, 1, axis=0)
-    bead = smoothstep(0.10, 0.04, np.abs(profile - 0.22)) + smoothstep(0.07, 0.02, np.abs(profile - 0.34))
-    body = smoothstep(0.02, 0.10, profile) * smoothstep(0.98, 0.86, profile)
+    # Height above the floor within the tile, in metres — so the numbers below
+    # are the dimensions of an actual skirting board rather than fractions.
+    metres = upward(res) * world
+    bead = (smoothstep(0.020, 0.008, np.abs(metres - 0.155))
+            + smoothstep(0.014, 0.004, np.abs(metres - 0.130)))
+    body = smoothstep(0.004, 0.020, metres) * smoothstep(0.205, 0.185, metres)
 
-    # Shadow lines top and bottom. A skirting board is nailed over finished wall
-    # and never sits flush, so there is a dark gap where it meets the plaster and
-    # another where it meets the floor. Without them the profile is all smooth
-    # ramps, the AO map has nothing to occlude, and the board reads as a painted
-    # stripe rather than as a thing standing proud of the wall.
-    shadow_top = smoothstep(0.030, 0.006, np.abs(profile - 0.87))
-    shadow_floor = smoothstep(0.030, 0.006, np.abs(profile - 0.05))
+    # A skirting is nailed over finished wall and never sits flush, so there is a
+    # dark gap where it meets the plaster and another where it meets the floor.
+    # Without them the profile is all smooth ramps, the AO map has nothing to
+    # occlude, and the board reads as a painted stripe rather than as a thing
+    # standing proud of the wall.
+    shadow_top = smoothstep(0.008, 0.001, np.abs(metres - 0.196))
+    shadow_floor = smoothstep(0.010, 0.001, np.abs(metres - 0.004))
     shadow = np.clip(shadow_top + shadow_floor, 0.0, 1.0)
 
     grain = blur(fbm(res, seed + 1, beta=1.3, low_cycles=4.0), res * 0.010)
     grain = warp(grain, np.zeros((res, res)), (fbm(res, seed + 2, beta=2.4) - 0.5) * res * 0.02)
 
     # Skirting takes damage at the bottom, from mops, boots and damp.
-    low = smoothstep(0.42, 0.06, profile)
+    low = smoothstep(0.090, 0.012, metres)
     chip = smoothstep(0.66, 0.85, fbm(res, seed + 3, beta=1.5, low_cycles=16.0)) * (0.3 + 0.7 * low)
     scuffing = np.clip(low * smoothstep(0.35, 0.75, fbm(res, seed + 4, beta=2.0, low_cycles=3.0)), 0.0, 1.0)
     dust = warped_fbm(res, seed + 5, beta=2.4, strength=res * 0.04, low_cycles=1.5)
+
+    # The dirt line. Everything a floor collects ends up in the 2 cm against the
+    # skirting, because that is the one strip a mop cannot reach and a boot
+    # pushes into. It is nearly black, it is ragged, and it is the single detail
+    # that makes a wall and a floor look like they have been in the same room for
+    # forty years rather than having been placed in the same scene.
+    junction = smoothstep(0.030, 0.002, metres) * (0.5 + 0.5 * warped_fbm(
+        res, seed + 6, beta=2.1, strength=res * 0.02, low_cycles=4.0))
+    junction = np.clip(junction * 1.2, 0.0, 1.0)
 
     height = np.clip(0.70 + body * 0.14 + bead * 0.14 + grain * 0.03 - chip * 0.25
                      - shadow * 0.55, 0.0, 1.0)
@@ -1335,9 +1814,14 @@ def build_trim_skirting(res: int, seed: int) -> MapSet:
     shade = (0.90 + 0.20 * grain)
     colour = tint((0.340, 0.330, 0.298), shade, (0.215, 0.196, 0.168), np.clip(scuffing * 0.7 + dust * 0.3, 0, 1))
     colour = tint(colour, np.ones((res, res), np.float32), (0.230, 0.148, 0.090), chip * 0.70)
+    colour = tint(colour, np.ones((res, res), np.float32), (0.055, 0.052, 0.048), junction * 0.85)
     colour *= 1.0 - 0.45 * shadow[..., None]
 
-    roughness = np.clip(0.48 + 0.30 * chip + 0.14 * scuffing + 0.08 * grain + 0.15 * shadow, 0.16, 1.0)
+    roughness = np.clip(
+        0.48 + 0.30 * chip + 0.14 * scuffing + 0.08 * grain + 0.15 * shadow + 0.22 * junction, 0.16, 1.0)
+
+    # Along the board only: the profile above is the material's whole point.
+    colour = detile(colour, strength=0.55, cycles=2.6, axes=(1,))
 
     return MapSet(colour, roughness, height, np.zeros((res, res), np.float32), world, 0.012)
 
@@ -1351,8 +1835,13 @@ def build_trim_skirting(res: int, seed: int) -> MapSet:
 
 
 MATERIALS: Tuple[MaterialSpec, ...] = (
+    # 0.20 → 0.23 → 0.25. Zone A sat at 37.8 % crushed with the textures alone and
+    # went to 45.3 % once the fittings stopped lighting through walls — the light
+    # it was reading by was light that should never have reached it. Worn timber
+    # goes grey and pale rather than dark, so paying for that here is in
+    # character; `build_wood` already lifts the traffic lane the same way.
     MaterialSpec(
-        "Floor_Wood", build_wood, seed=1201, target_albedo=0.20,
+        "Floor_Wood", build_wood, seed=1201, target_albedo=0.25,
         slots=("Floor_Wood",),
         note="§12 구역 A 나무 — staggered boards, deep gaps, soft traffic lane.",
     ),
@@ -1361,15 +1850,28 @@ MATERIALS: Tuple[MaterialSpec, ...] = (
         slots=("Floor_Tile",),
         note="§12 구역 B 타일 — 8×8 grid, dark grout, glossiest floor so the beam streaks.",
     ),
+    # 0.24 → 0.31 → 0.35 → 0.40, in three measured steps, and it is the highest
+    # value in the set by a wide margin for a reason that is not taste. Zone C
+    # started at 43.8% of the frame crushed to black and 29.2% legible, out of
+    # ART.md's 10–40% and 30–75% bands in the same direction: too dark to read.
+    # Gravel has 45 mm of relief, the deepest in the set, so its own baked AO
+    # takes most of its albedo back in self-shadow before a single light is
+    # placed — it needs the most paint on it to arrive where a flat concrete
+    # slab arrives with 0.23. Pale limestone ballast really does sit here, and
+    # 0.44 is the last step before ALBEDO_MAX_LINEAR stops the run.
     MaterialSpec(
-        "Floor_Gravel", build_gravel, seed=1401, target_albedo=0.24,
+        "Floor_Gravel", build_gravel, seed=1401, target_albedo=0.44,
         slots=("Floor_Gravel",),
-        note="§12 구역 C 자갈 — three stone scales, 45 mm relief, deepest normals in the set.",
+        ao_strength=0.55,
+        note="§12 구역 C 자갈 — three stone scales, 45 mm relief, standing water in the voids.",
     ),
+    # 0.28 → 0.23. Zone D measured 8.8% crushed, below ART.md's 10% floor: not
+    # dark enough for §03's lock to be a lock, which is the mechanic this zone
+    # holds the exit for.
     MaterialSpec(
-        "Floor_Concrete", build_concrete_floor, seed=1501, target_albedo=0.28,
+        "Floor_Concrete", build_concrete_floor, seed=1501, target_albedo=0.23,
         slots=("Floor_Concrete",),
-        note="§12 구역 D 콘크리트 — stains, exposed aggregate, two-scale crack network.",
+        note="§12 구역 D 콘크리트 — stains, exposed aggregate, cracks that hold water.",
     ),
     MaterialSpec(
         "Floor_Metal", build_metal_floor, seed=1601, target_albedo=0.26,
@@ -1385,11 +1887,16 @@ MATERIALS: Tuple[MaterialSpec, ...] = (
         "Wall_Concrete_Bare", build_wall_concrete, seed=2201, target_albedo=0.27,
         note="Board-formed concrete with snap-tie holes. Generated, awaiting a per-zone wall slot.",
     ),
+    # 0.34 → 0.30. Still the brightest wall in the set and still the surface that
+    # throws the beam back, but 0.34 was chosen before the tiling correction
+    # halved the area each stain covers, and it now clips at close range.
     MaterialSpec(
-        "Wall_Plaster_Stained", build_wall_plaster, seed=2301, target_albedo=0.34,
+        "Wall_Plaster_Stained", build_wall_plaster, seed=2301, target_albedo=0.30,
         slots=("Wall_Dado",),
-        note="Water-stained plaster on the dado — the lower wall band. Rising damp is a "
-             "lower-wall phenomenon, and the palest surface sits where the beam points.",
+        tiling_axes=(1,),
+        note="Water-stained plaster on the 0.20–1.02 m tanking band. Rising damp, its "
+             "tide line, salt bloom and the junction dirt are all keyed to the floor, "
+             "so this tiles along the wall only.",
     ),
     MaterialSpec(
         "Ceiling_Concrete_Formed", build_ceiling_concrete, seed=3101, target_albedo=0.21,
@@ -1580,7 +2087,7 @@ def generate(spec: MaterialSpec, out_dir: str, res: int) -> TextureReport:
     maps.roughness = np.maximum(maps.roughness, MIN_ROUGHNESS).astype(np.float32)
 
     normal = height_to_normal(maps.height, maps.world_size, maps.height_scale)
-    occlusion = ambient_occlusion(maps.height, maps.world_size, maps.height_scale)
+    occlusion = ambient_occlusion(maps.height, maps.world_size, maps.height_scale, spec.ao_strength)
 
     folder = os.path.join(out_dir, spec.name)
     write_png(os.path.join(folder, spec.name + "_albedo.png"),
@@ -1644,7 +2151,17 @@ def write_manifest(path: str, reports: Sequence[TextureReport], res: int) -> Non
                 "name": spec.name,
                 "slots": list(spec.slots),
                 "note": spec.note,
-                "world_size_metres": by_name[spec.name].world_size,
+                # UV units per tile, which is what ApplyTiling divides into its
+                # own (wrong) uv-per-metre constant. See KIT_UV_UNITS_PER_METRE:
+                # the field is named for metres and consumed as UV units, and
+                # emitting metres here rendered the whole game at double scale.
+                "world_size_metres": round(
+                    by_name[spec.name].world_size * KIT_UV_UNITS_PER_METRE, 6),
+                # The truth, for anyone reading the manifest rather than the
+                # binder. Unity's JsonUtility ignores fields it has no member
+                # for, so this is free to carry.
+                "authored_metres_per_tile": by_name[spec.name].world_size,
+                "kit_uv_units_per_metre": KIT_UV_UNITS_PER_METRE,
                 "albedo_mean_linear": round(by_name[spec.name].albedo_mean_linear, 4),
                 "roughness_mean": round(by_name[spec.name].roughness_mean, 4),
                 "relief_mm": round(by_name[spec.name].normal_relief_mm, 2),

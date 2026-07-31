@@ -227,10 +227,17 @@ namespace HorrorGame.EditorTools
                 text.AppendLine("known third-party defects (reported, tolerated, did NOT fail the build)");
                 foreach (var defect in KnownDefects)
                 {
-                    // The stored line still contains the original message verbatim, so the
-                    // same predicate that classified it also finds its explanation.
                     text.AppendLine("  * " + defect);
-                    text.AppendLine("      " + BuildPipelineKnownDefects.ExplanationFor(defect));
+                }
+
+                // Once, after the list. Unity re-logs the same defect in several build steps,
+                // and repeating the paragraph per occurrence buries the list it explains.
+                // The stored lines contain the original message verbatim, so the same
+                // predicate that classified them also finds the explanation.
+                foreach (var explanation in DistinctExplanations())
+                {
+                    text.AppendLine();
+                    text.AppendLine("  why this is tolerated: " + explanation);
                 }
             }
 
@@ -283,6 +290,24 @@ namespace HorrorGame.EditorTools
             JsonLine(json, "shippingWarning", ShippingWarning, false);
             json.AppendLine("}");
             return json.ToString();
+        }
+
+        /// <summary>
+        /// The explanations for <see cref="KnownDefects"/>, each once, in first-seen order.
+        /// </summary>
+        private List<string> DistinctExplanations()
+        {
+            var seen = new List<string>();
+            foreach (var defect in KnownDefects)
+            {
+                var explanation = BuildPipelineKnownDefects.ExplanationFor(defect);
+                if (explanation.Length > 0 && !seen.Contains(explanation))
+                {
+                    seen.Add(explanation);
+                }
+            }
+
+            return seen;
         }
 
         private string NotShippableReason()

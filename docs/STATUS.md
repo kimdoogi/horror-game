@@ -1,6 +1,6 @@
 # Project status
 
-Where this game actually stands, on 2026-07-31.
+Where this game actually stands, on 2026-08-01.
 
 Every command below was run on this machine in one sitting, in the order shown, and
 the output quoted under it is the real output of that run. Nothing here is carried
@@ -21,16 +21,31 @@ export DOTNET_ROOT="$HOME/.dotnet"; export PATH="$HOME/.dotnet:$PATH"
 
 ## The one-line answer
 
-**The game has an antagonist now.** [B-001](BLOCKERS.md#b-001) is closed: the monster
-walks 133.9 m from its B3 spawn, up two storeys, and reaches a player in 27.52 s at
-4.83 m/s. §14 says that question decides the project, and it is the only reason this
-document reads differently from the last one.
+**Every test in the project is green for the first time — 560 of 560 — and the
+headline number the map was grown to move did not move at all.**
 
-Everything else is roughly where it was. One test is red (B-002, an environment
-problem). The economy still resolves a match in 2.5 minutes against a 25–35 minute
-design target (F-006), so §14's question 3 remains unaskable. **Nobody has yet sat
-down with two instances and played it**, which is now the highest-value thing anyone
-can do here and cannot be automated.
+The building is now five storeys instead of three: 164 places and 180 passages
+against 74 and 85. The monster's route to a player grew from 133.9 m to **189.6 m**
+and it still arrives, in 38.86 s at 4.85 m/s, so [B-001](BLOCKERS.md#b-001) stays
+closed at the larger scale. [B-002](BLOCKERS.md#b-002) has stopped reproducing and
+one real seam between two of the four parallel passes was found and fixed
+([B-005](BLOCKERS.md#b-005) — regenerating the map silently unregistered the scene
+the 시작 button loads, so the main menu did nothing).
+
+**F-006 is exactly where it was: median match 2.5 min against §01's 25–35, and 1.2%
+of matches reach 심야.** Identical to three significant figures, and it could not have
+been otherwise — the simulator builds its own four-zone map from `GameConstants` and
+never reads the Unity level. Growing the building was option 1 in F-006's own list of
+fixes, and it was applied to the wrong map. That is the single most important thing
+on this page.
+
+Two things also got worse and are written up rather than buried: the map's §12 주자
+테스트 fell out of its band, 7/10 Balanced → **10/10 TooEasy** (F-007), and three of
+five zone views now miss the legible-pixel floor the three-storey map cleared (ART.md
+§ Measured targets).
+
+**Nobody has yet sat down with two instances and played it**, which is still the
+highest-value thing anyone can do here and still cannot be automated.
 
 ---
 
@@ -60,7 +75,7 @@ dotnet build /Users/doogi/horror-game/core/HorrorGame.sln -c Release
 ```
     경고 11개
     오류 0개
-경과 시간: 00:00:03.69
+경과 시간: 00:00:01.42
 ```
 
 11 warnings, all `CS8625` nullable-literal plus one `CS0649`, all in the test project.
@@ -92,20 +107,28 @@ Exit 0. `<test-run result="Passed" total="4" passed="4" failed="0" …>`
 
 ```
 [ChaseTest] §14 Q1 — can the monster reach a player at all?
-[ChaseTest]   route            133.9 m of NavMesh path, monster spawn → (33.75, 0.18, 71.25)
-[ChaseTest]   straight line    60.1 m
-[ChaseTest]   chase entered    27.12 s
-[ChaseTest]   reached          27.52 s
-[ChaseTest]   closing speed    4.83 m/s of route, against §06's 4.8 m/s of ground speed
+[ChaseTest]   route            189.6 m of NavMesh path, monster spawn → (41.25, 0.15, 88.75)
+[ChaseTest]   straight line    82.5 m
+[ChaseTest]   chase entered    37.18 s
+[ChaseTest]   reached          38.86 s
+[ChaseTest]   closing speed    4.85 m/s of route, against §06's 4.8 m/s of ground speed
 [ChaseTest]   worst 1 s rise   0.0 m of route (0 is a monster that never backtracked)
 ```
 
-`MonsterSpawn` is at `(36.25, -7.50, 11.25)` on B3 and the player at
-`(33.75, 0.00, 71.25)` on B1, so that route climbs 7.5 m across two storey
-boundaries. All four tests' full output is in
-[BLOCKERS.md B-001](BLOCKERS.md#b-001); the two numbers worth repeating here are
-**4.80 m/s of corridor against §06's 4.8** and **0.80 m/s of gap opened while
-sprinting against §06's 0.8**, which is the design's central speed claim —
+**This is the number the map growth was supposed to move, and it moved.** Against the
+three-storey building: route 133.9 m → **189.6 m**, straight line 60.1 → **82.5 m**,
+reached 27.52 s → **38.86 s**. The monster now walks four storeys instead of two and
+still never backtracks — `worst 1 s rise` stays at 0.0 m, which is the measurement
+that would expose a fragmented NavMesh.
+
+Note what this does *not* say. A 39 % longer route bought 11.3 s of monster travel; it
+did not buy a longer match, because the thing that ends a match is the objective loop
+and that is measured somewhere else entirely (§2.3, F-006).
+
+The control tests are the ones that keep this honest — `ASingleCornerDoesNotBreakAChase`
+still ends `caught at 12.54 s`, and the two numbers worth repeating are **4.80 m/s of
+corridor against §06's 4.8** and **0.80 m/s of gap opened while sprinting against
+§06's 0.8**, which is the design's central speed claim —
 「괴물이 달리기보다 0.3만 빠른 것이 핵심이다」 — measured to 1 % on real geometry.
 
 ### 1.4 The whole solo match loop
@@ -120,25 +143,32 @@ Exit 0, no errors in the log.
 
 ```
 [SoloPlaytest] §01 solo loop verification
-  §03 layout varies per seed: objective moved yes, clue set changed yes
-  placed 4 clues, 1 objective, 10 pocketable loot, 1 oversize, 1 safe   (planned round trips 4)
+  §03 layout varies per seed: objective moved no, clue set changed yes
+  placed 4 clues, 1 objective, 36 pocketable loot, 1 oversize, 1 safe   (planned round trips 4)
   §08 picked up 회중시계 · 반지 — weight 1/10, speed ×1.00
   §04 safe: refused 주자, opened for 정비공, 문서 taken
   §03 objective refused while holding loot: §03 전리품 동시 소지 불가 — 들고 있는 전리품을 먼저 처리해야 한다.
   §03 read cancels when the light goes — progress reset to zero
-  §03 read completed and the overlay drew: "ㅁ-4 우"
+  §03 read completed and the overlay drew: "녹 → 4"
   §01 descended — §07 clock hidden, 4.3s elapsed
-  §03 partial reset — monster back at spawn (was 15.7 m away), clock untouched
+  §03 partial reset — monster back at spawn (was 19.0 m away), clock untouched
   §08 sold on arrival — team wallet 65 credits
   §08 shop open at the vehicle, cheapest item 15 credits
   §03 objective taken — no flashlight, no loot, speed ×1.00
   §02 FullVictory — escaped 1, lost 0, clock 6.9s
+  §02 회수 released the objective — load 0
   §02 Survived — information kept without the objective
+  §13 second BeginMatch — empty hands, load 0 (dropped 1 carried-over piece(s))
 PASS — §01's loop ran end to end.
 ```
 
-This is the same code path as the one red test in §2.1. It is red inside the test
-harness and green outside it, which is what "environment problem" means here.
+The bigger building shows up here too: **36 pocketable loot pieces against 10**, from
+the same four planned round trips. That is the loot side of §1.6's place count, and it
+is worth noticing next to §2.3 — more to pick up did not make a match longer.
+
+This is the same code path as `SoloMatchLoopTests`, which used to be the project's one
+red test ([B-002](BLOCKERS.md#b-002)) and now passes inside the harness as well as
+outside it.
 
 ### 1.5 NavMesh connectivity
 
@@ -153,15 +183,20 @@ Exit 0.
 
 ```
 [NavMeshAudit] PASS
-  markers          36
-  pairs            630
-  complete         630 (100.0 %, need 98 %)
+  markers          61
+  pairs            1830
+  complete         1830 (100.0 %, need 98 %)
   partial          0
   invalid          0
   islands          1
-  worst snap       0.44 m  (CandidateSite_B 저수조_14)
+  worst snap       0.23 m  (CandidateSite_E 기계실_8)
   monster reach    19/19 player spawns and 후보 지점 reachable from MonsterSpawn (§06)
 ```
+
+The five-storey map nearly tripled the sample — 36 markers and 630 pairs became
+**61 and 1830** — and every one of them still completes, on one island, with the
+worst marker snap *improving* from 0.44 m to 0.23 m. A bigger building did not
+fragment the surface.
 
 **Read this one with B-001 in mind.** This exact output was green while the monster
 was frozen 95 m from the player: the audit asks `NavMesh.CalculatePath`, the monster
@@ -181,7 +216,7 @@ this audit stand in for a chase test again.
 
 ```
 === §12 map quality — seed 1204 ===
-§12 map validation — 요양원 지하 (B1 하역장 · B2 기계층 · B3 저수조): PASS
+§12 map validation — 요양원 지하 5층 (B1 하역장 · B2 기록보관소 · B3 기계실 · B4 저탄장 · B5 저수조): PASS
 ```
 
 All **16 of 16** rules `[ok]`: straight-corridor, open-adjacent-to-maze,
@@ -192,26 +227,36 @@ measurements, verbatim:
 
 ```
 Longest unbroken sight line is 20 m, inside §12's 20 m limit.
-Independent 순환로: 12 map-wide (need 3+).
-막힌 길: 16 of 74 places = 21.6% (§12 band 20%~25%).
-Distinct and non-overlapping: D 하역장=Concrete, A 기록보관소=Wood, C 저탄장=Gravel,
-  E 기계실=Metal, B 저수조=Tile.
-5 zones, inside §12's 4~6.   Footprint 60 m × 65 m, inside §12's 100 m square.
-One walkable piece, 74 places, 85 passages.
+Independent 순환로: 17 map-wide (need 3+).
+막힌 길: 41 of 164 places = 25% (§12 band 20%~25%).
+Distinct and non-overlapping: D 하역장=Concrete, A 기록보관소=Wood, E 기계실=Metal,
+  C 저탄장=Gravel, B 저수조=Tile.
+5 zones, inside §12's 4~6.   Footprint 50 m × 92.5 m, inside §12's 100 m square.
+One walkable piece, 164 places, 180 passages.
 ```
 
-And the grade:
+The building roughly doubled: 74 places → **164**, 85 passages → **180**, loops
+12 → **17**, dead-ends 21.6% → **25%** (at the top of the band, not through it).
+
+And the grade — **this is the regression**:
 
 ```
-§12 주자 테스트 — 요양원 지하 (B1 하역장 · B2 기계층 · B3 저수조): 7/10 (70%), Balanced
-  적정 (§12). Breaking aggro is possible from most of the map and never free.
+§12 주자 테스트 — 요양원 지하 5층: 10/10 (100%), TooEasy
+  너무 쉽다 — 시야 차단 지점을 줄인다 (§12). Aggro is a threat the players can shrug
+  off, so §06's chase never becomes the pressure the game is built on.
 ```
 
-**7/10, at the top of §12's 5–7/10 band.** Three of the ten sampled routes end
-`CAUGHT`, all three descending into zones C and E, all three reporting *"No
-sight-breaking corner was ever rounded. §12 asks for 3~4 chances inside that
-distance; this route offered none that held."* That is a real weakness in the lower
-storeys, and it is inside tolerance rather than outside it.
+**10/10, outside §12's 5–7/10 band, against 7/10 Balanced before the map grew.**
+Every one of the ten sampled runners now escapes, each releasing with *"3 s of
+unbroken cover"* after rounding **2–4 sight-breaking corners** at 12.8–18.5 m. The
+three routes that used to end `CAUGHT` — the ones descending into zones C and E,
+reporting *"No sight-breaking corner was ever rounded"* — are gone, and they were the
+only thing holding the grade inside the band.
+
+More passages means more corners, and nothing in the sixteen rules constrains corner
+*density*. So the map passes the entire checklist and fails the one grade §12 gives
+it. Written up as [F-007](BALANCE-FINDINGS.md#f-007) with the named node chains to
+straighten; it is the clearest open piece of map work.
 
 ### 1.7 Asset import settings
 
@@ -221,7 +266,7 @@ storeys, and it is inside tolerance rather than outside it.
 
 ```
 [AssetImport] Audio import settings: 166 inspected, 0 excluded by marker, 0 failing, 0 warnings.
-[AssetImport] Model import settings: 85 inspected, 0 excluded by marker, 0 failing, 0 warnings.
+[AssetImport] Model import settings: 86 inspected, 0 excluded by marker, 0 failing, 0 warnings.
 ```
 
 Not housekeeping. A positional clip imported as stereo is not spatialised, and §04's
@@ -249,37 +294,50 @@ onto and a human cannot use one at all. And the built-scene sight-line sampler n
 reports a longest run of **21.2 m** where it used to report **100.0 m**; §3.4 covers
 what is left of that defect.
 
+### 1.9 The full Unity suite — 112 of 112, and one seam it caught
+
+Run the two platforms separately and read the XML rather than the exit code.
+**No `-quit`**: the runner is async and exits from its own callback, and `-quit`
+kills it before any results are written.
+
+```bash
+/Applications/Unity/Hub/Editor/6000.3.21f1/Unity.app/Contents/MacOS/Unity -batchmode \
+  -projectPath /Users/doogi/horror-game/unity/HorrorGame -runTests -testPlatform EditMode \
+  -testResults /tmp/editmode.xml -logFile /tmp/em.log
+# then again with -testPlatform PlayMode
+python3 -c "import xml.etree.ElementTree as ET,sys; r=ET.parse(sys.argv[1]).getroot(); print(r.get('total'),r.get('passed'),r.get('failed'),r.get('result'))" /tmp/editmode.xml
+```
+
+Both exit 0.
+
+```
+EditMode   total 70 passed 70 failed 0 result Passed
+PlayMode   total 42 passed 42 failed 0 result Passed
+```
+
+**112 of 112, against 93 of 94 last pass.** EditMode grew 52 → 70 and PlayMode
+41 → 42 as the four parallel passes added tests. Two things changed to get here and
+only one of them was work:
+
+- [B-002](BLOCKERS.md#b-002) stopped reproducing on its own.
+  `SoloMatchLoopTests.Solo_match_runs_the_whole_round_trip` passes. Nothing was fixed;
+  the package cache was rewritten during the art passes. It is dormant, not closed.
+- [B-005](BLOCKERS.md#b-005) was real, and this suite is the only thing that saw it.
+  `UiFlowTests.Menu_ComesUp_AndStartReachesTheMatchScene` failed because
+  `MapSceneGenerator.RegisterScenes()` rewrites Build Settings wholesale and named
+  only the bootstrap and the raw map — so regenerating the enlarged map deleted
+  `Map_FirstSketch_Solo.unity`, the scene 시작 actually loads. `LoadSceneAsync`
+  returns `null` rather than throwing for an unlisted scene, so the shell bounced
+  silently back to the menu: **the main menu's start button did nothing, with no error
+  anywhere.** Fixed by naming the scene once in `SceneGenPaths.MatchScene` and having
+  both writers use it.
+
+That is the seam worth knowing about between four agents who could not see each
+other's work: the map pass and the front-end pass were each correct alone.
+
 ---
 
 ## 2 · Verified red
-
-### 2.1 The full Unity suite — 93 of 94
-
-```bash
-# NOTE: no -quit. The runner is async and exits from its own callback; -quit kills it
-# before any results are written. TESTING.md's version of this command has -quit and
-# therefore silently reports nothing — that is defect 3.6.
-/Applications/Unity/Hub/Editor/6000.3.21f1/Unity.app/Contents/MacOS/Unity -batchmode \
-  -nographics -silent-crashes -projectPath /Users/doogi/horror-game/unity/HorrorGame \
-  -executeMethod HorrorGame.EditorTools.BuildPipelineTestRunner.RunFromCommandLine -logFile /tmp/t2.log
-```
-
-Exit code **6**.
-
-```
-[TestRunner] Summary
-  editmode    52 passed     1 failed     0 skipped     0 inconclusive  in 1.5s
-  playmode    41 passed     0 failed     0 skipped     0 inconclusive  in 56.5s
-  total: 94 (93 passed, 1 failed, 0 skipped, 0 inconclusive) in 61.2s
-[TestRunner] Failed: HorrorGame.Gameplay.MatchEditor.SoloMatchLoopTests.Solo_match_runs_the_whole_round_trip
-```
-
-The one failure is [B-002](BLOCKERS.md#b-002): a missing `.meta` in the Mirror
-package cache raises a `Debug.LogError` inside `AssetDatabase.Refresh()`, and the
-harness fails any test that logs an unexpected error. The loop itself passes — §1.4.
-
-PlayMode is 41 tests, not the 27 older docs claim; the four `MonsterChaseTests` and
-the audio scene suite are new.
 
 ### 2.2 The audio alphabet — one blocking defect
 
@@ -339,13 +397,33 @@ Exit 0, and the numbers are the problem:
 ```
 
 **0.6 % of matches land in §01's window and 1.2 % ever reach 심야.** Three of §07's
-five threat tiers are dead content. [F-006](BALANCE-FINDINGS.md).
+five threat tiers are dead content. [F-006](BALANCE-FINDINGS.md#f-006).
 
-Note the collision with §1.3: `MonsterChaseTests` pins §07 to 심야 to measure against
-§06's 4.8 m/s, and the simulator says a real match reaches 심야 1.2 % of the time. The
-chase numbers are correct for the tier they are measured at, and that tier is one
-players almost never see. Fixing F-006 is what makes §1.3's numbers the numbers of
-the game rather than of a scenario.
+### The map grew and these numbers did not change at all
+
+Not "barely moved" — **byte-identical to the run taken before the building went from
+three storeys to five.** Same median, same p10/p90, same 1.2%.
+
+That is not a coincidence and it is not a bug in the simulator. It is a coupling that
+does not exist: `core/HorrorGame.Sim/SimMap.cs` builds **its own four-zone ring map**
+out of `GameConstants` (`ZoneDiagonalMin`/`Max`, `CandidateSitesPerZone`) and never
+reads `FirstMapSketch`. `git diff` confirms `core/` and `GameConstants.cs` are
+unchanged by the pass that grew the Unity map. The two buildings are separate
+artifacts that both cite §12.
+
+F-006's own option 1 is *"make traversal cost real time — larger maps"*. A larger map
+was built, in Unity, and the simulator cannot see it. **So F-006 is not just still
+open, it is untested by the work aimed at it.** The next move is either to grow the
+constants `SimMap` derives its geometry from, or — better — to have `SimMap` consume
+the same `MapGraph` `FirstMapSketch` emits, so that "the map got bigger" and "matches
+got longer" become one measurement instead of two unrelated ones. Both sides already
+speak `MapGraph`.
+
+Note also the collision with §1.3: `MonsterChaseTests` pins §07 to 심야 to measure
+against §06's 4.8 m/s, and the simulator says a real match reaches 심야 1.2 % of the
+time. The chase numbers are correct for the tier they are measured at, and that tier
+is one players almost never see. Fixing F-006 is what makes §1.3's numbers the numbers
+of the game rather than of a scenario.
 
 ---
 
@@ -353,22 +431,24 @@ the game rather than of a scenario.
 
 | # | Defect | Where | Kind |
 |:--:|---|---|---|
-| 3.1 | `SoloMatchLoopTests` red on a Mirror package-cache `.meta` | [B-002](BLOCKERS.md#b-002) | environment |
+| 3.1 | ~~`SoloMatchLoopTests` red on a Mirror package-cache `.meta`~~ **not reproducing** — dormant, not fixed | [B-002](BLOCKERS.md#b-002) | environment |
 | 3.2 | Two `HallOpen20x20` rooms dropped at `LogError` on every generation | [B-003](BLOCKERS.md#b-003) · `MapSketch.cs:1101` | design intent lost |
-| 3.3 | The monster is invisible past ~8 m | §4.2 | art |
+| 3.3 | ~~The monster is invisible past ~8 m~~ **fixed** — all 8 staged frames pass, 15 m contrast 0.0592 against a 0.015 floor | §4.1 | art |
 | 3.4 | §12's 15–25 m 시야 차단 spacing rule violated, reported not enforced | [ART.md §7.2](ART.md) · `Sightlines.cs:174` | design rule unmet |
-| 3.5 | Zone C over-crushed, zone D under-crushed, both out of ART.md's band | §4.2 | art |
-| 3.6 | `TESTING.md`'s suite command has `-quit` and so reports nothing | §2.1 | documentation |
-| 3.7 | `TESTING.md` says PlayMode 27 (it is 41); `ART.md` says 16–39 % crushed (it is 8.8–43.8 %) | §2.1, §4.2 | documentation |
+| 3.5 | **Worse.** Four zone-view misses against ART.md's bands, was one; zone A wood 40.6 % crushed, 25.9 % legible, median 2.9 | §4.3 · [ART.md](ART.md) | art |
+| 3.6 | `TESTING.md`'s suite command has `-quit` and so reports nothing | §1.9 | documentation |
+| 3.7 | `TESTING.md` quotes EditMode 55 / PlayMode 27 and NavMesh 630; they are **70 / 42** and **1830** | §1.5, §1.9 | documentation |
 | 3.8 | No test asserts a non-`None` floor material on **generated** geometry | §3a below | test gap |
 | 3.9 | Gravel/concrete clarity is inverted against measured loudness | [F-002](BALANCE-FINDINGS.md) | gameplay |
-| 3.10 | Matches end in 2.5 min; §07 tiers 2–4 unreachable | [F-006](BALANCE-FINDINGS.md) | gameplay |
+| 3.10 | Matches end in 2.5 min; §07 tiers 2–4 unreachable — **and the simulator cannot see the enlarged map**, so growing it did not test this | [F-006](BALANCE-FINDINGS.md#f-006) | gameplay |
 | 3.11 | Weight table is a cliff at band 2, not a gradient | [F-001](BALANCE-FINDINGS.md) | gameplay |
 | 3.12 | Runner sprint-timing dilemma cannot exist at these numbers | [F-004](BALANCE-FINDINGS.md) | gameplay |
 | 3.13 | §12 states two loop rules; only one can ever bind | [F-005](BALANCE-FINDINGS.md) | design |
-| 3.14 | The 12 m monster shot photographs the end wall, not the monster | §4.2 | tooling |
-| 3.15 | Every room is the same room above knee height | [ART.md §7.3](ART.md) | art |
-| 3.16 | `verify_overhead.png` is a blue rectangle, not a map | §4.2 | tooling |
+| 3.14 | ~~The 12 m monster shot photographs the end wall~~ — the staged rig has clearance and all four distances read | §4.1 | tooling |
+| 3.15 | Every room is the same room above knee height; the 개방 공간 are near-undressed boxes | [ART.md §7.3](ART.md) · §4.4 | art |
+| 3.17 | Map passes 16/16 §12 rules and grades **10/10 TooEasy**, out of the 5–7 band — was 7/10 | [F-007](BALANCE-FINDINGS.md#f-007) · §1.6 | gameplay |
+| 3.18 | Settings screen's 해상도 row reads `640 × 480` in a batch shot, so the real default is unconfirmed | §4.2 | ui |
+| 3.16 | `map_overhead.png` is still a blue rectangle, not a map | §4.4 | tooling |
 
 ### 3a · The floor-material chain — previously S-001, now wired
 
@@ -401,89 +481,124 @@ quietly as last time.
 ## 4 · The look, as of this pass
 
 Rendered fresh, **without** `-nographics` — that flag disables the graphics device
-and every shot comes out black:
+and every shot comes out black. Four passes, each exit 0:
 
 ```bash
 … -executeMethod HorrorGame.EditorTools.SceneShot.Batch \
-  -shotScene Assets/Scenes/Map_FirstSketch.unity -shotTag verify -logFile /tmp/shot.log
-… -executeMethod HorrorGame.Gameplay.MonsterEditor.MonsterShot.Batch \
-  -shotScene Assets/Scenes/Map_FirstSketch.unity -shotTag verifymon -logFile /tmp/mon.log
+  -shotScene Assets/Scenes/Map_FirstSketch.unity -shotTag map          # 10 shots
+… -executeMethod HorrorGame.EditorTools.SceneGen.BootstrapSceneGenerator.ShotBatch \
+  -shotTag menu                                                        # 5 shots
+… -executeMethod HorrorGame.EditorTools.Playtest.GuidanceShot.Batch \
+  -shotTag guide                                                       # 5 shots
+… -executeMethod HorrorGame.Gameplay.MonsterEditor.MonsterShot.StageBatch \
+  -shotTag stage                                                       # 12 shots
 ```
 
-Both exit 0 — 10 map shots and 15 monster shots into `unity/HorrorGame/Shots/verify*`.
-Measured with `python3 tools/render/frame_stats.py` against [ART.md](ART.md)'s own
-targets: 10–40 % crushed, 30–75 % legible, median luminance 3–16, blown < 0.5 %.
-Compared against `Shots/final_*.png` (09:13–10:28) and `Shots/chase_*.png` (11:35).
+### 4.1 The monster is visible at every gated distance — all 8 frames pass
 
-### 4.1 What genuinely improved
+```
+[MonsterShot] staged readings  (pass: contrast >= 0.015, coverage >= 0.40, peak >= 0.040)
+  dist  state       footprint    diff  coverage    peak     body    ring  contrast   verdict
+     8m Chase         1946px  0.0337    0.728  0.1048  0.1166  0.0956    0.0331   PASS
+     8m Patrol        2039px  0.0330    0.742  0.0970  0.1167  0.0968    0.0318   PASS
+    12m Chase          889px  0.0581    0.927  0.1530  0.1200  0.1021    0.0586   PASS
+    12m Patrol         920px  0.0573    0.935  0.1583  0.1157  0.1022    0.0576   PASS
+    15m Chase          599px  0.0588    0.947  0.1631  0.1376  0.1202    0.0592   PASS
+    15m Patrol         610px  0.0544    0.918  0.1558  0.1294  0.1205    0.0550   PASS
+    20m Chase          345px  0.0530    0.936  0.1325  0.1522  0.1491    0.0532   PASS
+    20m Patrol         345px  0.0615    0.962  0.1373  0.1570  0.1492    0.0617   PASS
+[MonsterShot] §04's 관측자 range passes: every frame at 15 m is above the visibility floor.
+```
 
-**The stairwell is now a place.** `Shots/verify_spawn2.png` shows diamond-plate
-treads, a mid-landing and headroom, lit and walkable. The previous pass had no
-comparable shot because there was no comparable geometry — only a `NavMeshLink`
-across a gap. This is what B-001's fix looks like from the inside.
+**This is the defect the last two passes of this document called the honest headline,
+and it is fixed.** At 15 m the creature clears the contrast floor by 3.9× (0.0592
+against 0.015) and the peak floor by 4.1×. It is legible at 20 m, past §03's 12 m
+beam. §04's 관측자 and §12's 주자 table both need that and now have it.
 
-**The corridor is finally in its own luminance band.** The monster corridor measured
-mean 41.0 / median 37.7 in `final_Chase_*.png`; it now measures mean 15.0 / median
-14.8 in `verifymon_Chase_*.png`, against ART.md's median target of 3–16. The older
-`final_*` shots were roughly 2.7× too bright and out of band. This is a correction,
-not a regression.
+Looking at the frames rather than the numbers: at 8 m it is a gaunt hunched biped with
+elongated arms, a bladed head and two pinprick eye lights — recognisably a creature.
+At 15 m it is a dark upright smudge with two eyes, which is the right amount. The
+sculpt detail the art pass added is invisible past about 5 m, so it is doing less work
+than its cost suggests.
 
-**The monster reads as a creature at close range.** At 3 m the new silhouette is
-bulky and hunched, with a plated skull and heavy hanging forearms; `chase_Chase_3m.png`
-was an articulated shop mannequin with visible segment joints. That is a real
-improvement, and 3 m is the only distance at which it is one.
+### 4.2 The menu and settings screens look commercial
 
-### 4.2 What did not improve, stated plainly
+`Shots/menu_main.png` is the strongest frame in the project: the title over a
+receding brick corridor with a practical at the far end, three buttons with
+subtitles, and §05's headphone warning along the bottom. Nothing about it reads as
+programmer art.
 
-**Past 8 m the monster is not there.** This is the honest headline of the render pass,
-and the rebuild did not change it:
+`Shots/menu_settings.png` is a real settings screen — FOV, sensitivity, Y-invert, four
+audio buses, resolution, screen mode, vsync, quality preset, six rebindable keys,
+기본값 and 닫기·저장, each row carrying the §-reference for why the range is what it
+is. This is further along than the rest of the game.
 
-| Shot | mean | p50 | p99 | `resolve` (the tool's own score) |
-|---|---:|---:|---:|---:|
-| `chase_Chase_8m.png` (before) | 15.0 | 14.8 | 45.7 | — |
-| `verifymon_Chase_8m.png` (after) | **14.9** | **14.8** | **45.6** | **0.70** |
-| `chase_Chase_12m.png` (before) | 15.0 | 14.8 | 48.3 | — |
-| `verifymon_Chase_12m.png` (after) | **15.0** | **14.8** | **47.8** | **0.45** |
+One defect visible in it: the 해상도 row reads `640 × 480`, which is the batch-mode
+window rather than a real default, so the shot cannot confirm what a player would see.
 
-The after-frames are statistically indistinguishable from the before-frames, and both
-are indistinguishable from an empty corridor. Looking at `verifymon_Chase_12m.png`
-directly: there is no creature visible in it. Whatever the rebuild changed, it did not
-change what the player sees at the distance a chase is decided at.
+### 4.3 The map is measurably darker than the smaller building it replaced
 
-**At 3 m the new monster is darker than the old one** — p99 86.7 → 69.4, mean 15.8 →
-15.3. Better silhouette, less light coming off it.
+Measured with `tools/render/frame_stats.py` on `Shots/map_Zone_*.png` against
+[ART.md](ART.md)'s targets — 10–40 % crushed, 30–75 % legible, median 3–16,
+blown < 0.5 %:
 
-**The 12 m shot is measuring shadows.** `changed=70.180% px=646781` on every 12 m
-pose, in all six §06 states. The lane is 13.5 m clear so the rig clamps to 12 m and
-stands the creature in the end wall; 70 % of the frame "changing" is every shadow in
-the corridor moving, not a silhouette. `MonsterShot.cs` says so itself. Until there is
-a 20 m run to shoot down, the 12 m column is not evidence of anything.
+```
+shot                                     mean    p50    p90    p99  black%  legible%  blown%    sat
+map_Zone_A_B2_Wood.png                    6.9    2.9   15.8   62.8    40.6      25.9    0.00    5.6
+map_Zone_B_B5_Tile.png                    7.5    3.4   17.0   63.7    36.1      29.2    0.00    7.9
+map_Zone_C_B4_Gravel.png                  7.4    3.3   17.5   69.2    38.0      26.6    0.00    7.3
+map_Zone_D_B1_Concrete.png                9.2    6.2   18.9   59.5    17.7      40.4    0.00   10.8
+map_Zone_E_B3_Metal.png                  12.7    8.4   31.1   49.9    17.0      52.5    0.00   14.6
+```
 
-**Two zone views drifted out of ART.md's band.**
+**Four misses where the three-storey map had one**, and the same command and
+viewpoints produced both:
 
-| Zone view, `final_` → `verify_` | crushed % (target 10–40) | legible % (target 30–75) |
-|---|---:|---:|
-| `Zone_C_B2_Gravel` | 37.1 → **43.8** ✗ | 32.2 → **29.2** ✗ |
-| `Zone_D_B1_Concrete` | 15.6 → **8.8** ✗ | 56.6 → 58.6 ✓ |
-| `Zone_A_B1_Wood` | 38.8 → 37.4 ✓ | 30.9 → 32.8 ✓ |
-| `Zone_B_B3_Tile` | 16.6 → 16.4 ✓ | 47.7 → 48.3 ✓ |
-| `Zone_E_B2_Metal` | 19.3 → 19.1 ✓ | 52.3 → 44.1 ✓ |
+| Band | Was (`real8_*`) | Now (`map_*`) | |
+|---|---|---|:--:|
+| crushed 10–40 % | 10.4–37.4 % | 17.0–**40.6 %** | zone A over |
+| legible 30–75 % | 28.4–54.8 % | **25.9**–52.5 % | A, B, C under |
+| median 3–16 | 3.9–9.1 | **2.9**–8.4 | zone A under |
+| blown < 0.5 % | 0.00 % | 0.00 % | ok |
 
-Gravel is now too dark to read *and* out the bottom of the legible band; concrete is
-no longer dark enough to gate anything, which is §03's whole mechanic. `blown %` is
-0.00 on all five. ART.md's claim of "16–39 % crushed and 31–57 % legible" is stale —
-the real range is **8.8–43.8 %** and **29.2–58.6 %**.
+Every zone lost legible fraction and every median fell — a consistent direction, not
+noise. The grade was not retuned when the building doubled, so the same ambient and
+fog now light rooms that are further apart and more often outside a practical's
+falloff. Zone A (wood, B2) is worst on all three moving measures.
 
-**`verify_overhead.png` remains useless** — a small flat blue rectangle, which is the
-roof of the top storey seen from above. A bug in the shot rig, not a picture of the
-map, and equally useless before.
+### 4.4 What still does not hold up
 
-### 4.3 The verdict
+**The rooms are empty.** `map_Zone_D` and `map_Zone_E` are large textured boxes with a
+pillar and a pool of light in them. The corridors carry the game — `map_spawn0` and
+`map_spawn3` have skirting, wall panels, ceiling beams, conduit and a crate, and they
+look like a horror game — but the open spaces have almost no set dressing, and §12
+requires one 개방 공간 per zone. A player will spend real time in those.
 
-The stair rebuild improved the game — measurably, and in the way that mattered most.
-The monster rebuild improved the close-up silhouette and changed nothing at the
-distances a chase is fought at, while pulling two zone views out of their band. That
-is a partial improvement, and calling the monster work finished would be wrong.
+**`map_overhead.png` is still useless** — a small flat blue rectangle, the roof of the
+top storey seen from above. Same shot-rig bug as the previous two passes.
+
+**The guidance overlays are developer instrumentation, not UI.** That is what they are
+for, and they work; worth stating only so nobody mistakes `guide_*.png` for the
+player-facing HUD. The §14 panel in `guide_underground.png` prints F-006 against
+itself in red: *"아직 물을 수 없습니다 — 한 판 중앙값 2.5분, §01 목표는 25~35분"*.
+
+### 4.5 The verdict — could this be sold?
+
+**The menu could ship tomorrow. The corridors could ship after a dressing pass. The
+open rooms could not, and the game as a whole could not — but not for visual
+reasons.**
+
+Nothing here looks like a prototype in the way prototypes usually look: the materials
+are consistent, the fog and grading are coherent, the monster is a creature rather
+than a capsule, and the interface is written by someone who knows what the settings
+are for. Someone shown `menu_main.png` and `map_spawn0.png` would believe it was a
+commercial product.
+
+What stops it is that a buyer would then play it, and a match would end in two and a
+half minutes without the threat curve ever starting (§2.3), against a map every
+sampled runner escapes from (§1.6). **The look is ahead of the game.** The honest
+next spend is not more art — it is F-006, and the zone-A luminance and the open-room
+dressing after it.
 
 ---
 

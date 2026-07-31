@@ -114,6 +114,7 @@ namespace HorrorGame.EditorTools.Rendering
                 var scene = EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Single);
                 NightAtmosphere.ApplyEnvironment(NightAtmosphere.ForTier(tier));
                 ApplySkybox();
+                CastShadowsFromEveryFitting();
                 WindClockTo(tier);
 
                 var shots = SceneShot.Capture(scene, tag);
@@ -155,9 +156,10 @@ namespace HorrorGame.EditorTools.Rendering
                 NightAtmosphere.ApplyEnvironment(settings);
                 ApplySkybox();
                 EnsureDirector();
+                var lit = CastShadowsFromEveryFitting();
                 EditorSceneManager.MarkSceneDirty(scene);
                 EditorSceneManager.SaveScene(scene);
-                touched.Add(path);
+                touched.Add(path + "  (" + lit + " fittings now shadow-casting)");
             }
 
             Debug.Log("[Atmosphere] §07 tier " + tierIndex + " environment written to " + touched.Count
@@ -165,6 +167,80 @@ namespace HorrorGame.EditorTools.Rendering
                 + "\n  fog exp2 density " + settings.FogDensity.ToString("0.0000")
                 + " (half-visibility at " + GameConstants.LineOfSightBreakSpacingMax.ToString("0") + " m ×"
                 + (settings.FogDensity / NightAtmosphere.FogDensityEarlyEvening).ToString("0.00") + ")");
+        }
+
+        /// <summary>
+        /// Turns on shadow casting for every fitting in the open scene, and
+        /// returns how many it touched.
+        /// <para>
+        /// Every point light in this map was authored with
+        /// <c>LightShadows.None</c> — the caged bulbs the dressing pass hangs, the
+        /// entrance light, and §04's switchable zone lights. A light that casts no
+        /// shadow does not stop at walls: it lights the far side of a partition,
+        /// the inside of a crate and the corridor behind a closed door, all at
+        /// full strength. That is not a subtle quality setting in this game.
+        /// </para>
+        /// <list type="bullet">
+        /// <item>§03 makes darkness the lock on the objective. A shadowless
+        /// fitting hands out light through the geometry that was supposed to be
+        /// keeping the room dark.</item>
+        /// <item>§04 gives the 정비공 zone lighting as an ability with a cost. A
+        /// zone light at <see cref="GameConstants.ZoneLightRadius"/> that ignores
+        /// walls lights the two zones either side of the one that was paid for,
+        /// so the ability cannot be balanced.</item>
+        /// <item>And it is most of what "looks like a real light" means. A bare
+        /// filament in a wire cage throws the cage across the wall behind it. That
+        /// pattern is free the moment the flag is on, and no amount of grading
+        /// substitutes for it.</item>
+        /// </list>
+        /// <para>
+        /// Hard, not soft, and deliberately: a bare bulb is a point source and its
+        /// shadows genuinely are sharp. Soft here would cost more and be less
+        /// true. Spot lights are left alone — the only one in the game is §03's
+        /// flashlight, which <see cref="HorrorGame.Rendering.FlashlightBeam"/>
+        /// owns and already configures.
+        /// </para>
+        /// </summary>
+        private static int CastShadowsFromEveryFitting()
+        {
+            var touched = 0;
+
+            foreach (var light in UnityEngine.Object.FindObjectsByType<Light>(
+                         FindObjectsInactive.Include, FindObjectsSortMode.None))
+            {
+                if (light.type != LightType.Point)
+                {
+                    continue;
+                }
+
+                light.shadows = LightShadows.Hard;
+
+                // A zone light reaches a whole §12 zone and a bulb reaches one
+                // corridor, so they cannot share a shadow map budget. The split
+                // is on range rather than on name: the dressing pass and the map
+                // builder create these independently and a renamed object should
+                // not silently change how the map is lit.
+                light.shadowResolution = light.range >= GameConstants.ZoneLightRadius * 0.5f
+                    ? UnityEngine.Rendering.LightShadowResolution.Medium
+                    : UnityEngine.Rendering.LightShadowResolution.Low;
+
+                // The filament sits a few centimetres inside its own fitting, so
+                // the near plane has to clear the glass rather than Unity's 0.2 m
+                // default — at 0.2 m the bulb's own cage is behind the near plane
+                // and casts nothing, which is the one shadow worth having here.
+                light.shadowNearPlane = 0.02f;
+
+                // Normal bias fights acne on surfaces lit at a grazing angle,
+                // which at ceiling height is every floor in the room. Depth bias
+                // stays low so the contact between a crate and the floor does not
+                // detach — that contact is the whole point of the exercise.
+                light.shadowBias = 0.04f;
+                light.shadowNormalBias = 0.35f;
+
+                touched++;
+            }
+
+            return touched;
         }
 
         /// <summary>
@@ -324,7 +400,12 @@ namespace HorrorGame.EditorTools.Rendering
             // difference between a light and a torch.
             SetBool(so, "m_AdditionalLightShadowsSupported", true, missing);
             SetInt(so, "m_AdditionalLightsShadowmapResolution", 4096, missing);
-            SetInt(so, "m_AdditionalLightsShadowResolutionTierLow", 512, missing);
+            // 512 → 256 for the low tier, which is what every caged bulb now
+            // uses. Turning shadows on for 72 fittings cost 0.8 ms of a typical
+            // frame and 3.8 ms of the worst one, and a bare filament at a 5.5 m
+            // range does not need a sharper shadow than this: the penumbra is
+            // already one texel wide at the distance a player stands from it.
+            SetInt(so, "m_AdditionalLightsShadowResolutionTierLow", 256, missing);
             SetInt(so, "m_AdditionalLightsShadowResolutionTierMedium", 1024, missing);
             SetInt(so, "m_AdditionalLightsShadowResolutionTierHigh", 2048, missing);
 
@@ -463,9 +544,44 @@ namespace HorrorGame.EditorTools.Rendering
             SetInt(so, "m_Settings.AOMethod", 1, missing);            // Interleaved gradient — cheaper, stable
             SetInt(so, "m_Settings.Source", 1, missing);              // DepthNormals
             SetInt(so, "m_Settings.NormalSamples", 1, missing);       // Medium
-            SetFloat(so, "m_Settings.Intensity", 1.6f, missing);
-            SetFloat(so, "m_Settings.DirectLightingStrength", 0.15f, missing);
-            SetFloat(so, "m_Settings.Radius", 0.28f, missing);
+            // Back to 1.6 after measuring 2.0. SSAO multiplies the *ambient*
+            // term, and in this game the ambient term is the entire picture
+            // outside the beam — §03's whole demand is that a player reads shape
+            // there. At 2.0 zone A went to 45.3 % of the frame crushed to black
+            // and zone C to 49.7 %, against ART.md's 40 % ceiling, and zone C's
+            // legible fraction fell to 17.1 % against a 30 % floor. The contact
+            // shading that was actually wanted comes from the direct-light term
+            // below, which costs the dark nothing.
+            //
+            // And then below 1.6, to 1.30. The old value was tuned against a
+            // building whose 72 fittings cast no shadows, so every room was
+            // receiving light through its own walls from the rooms next door.
+            // With that leak closed there is genuinely less light in a room, and
+            // an AO term calibrated against the leak double-counts the darkening:
+            // zone C sat at 42.1 % crushed and 21.4 % legible at 1.6, against
+            // ART.md's 40 % and 30 %.
+            SetFloat(so, "m_Settings.Intensity", 1.30f, missing);
+
+            // 0.15 → 0.35. Physically this term should be near zero: ambient
+            // occlusion describes how much of the *sky* a point can see, and
+            // occluding a torch with it is a lie. It is a lie that buys the one
+            // thing the frames were missing — a crate lit by the beam sat on the
+            // floor with no darkening at all where the two met, so every prop in
+            // the map read as placed on the floor rather than resting on it, and
+            // the beam is the only light most props ever get. Kept well under
+            // half so a corner never goes black just because it is a corner, and
+            // it is the one part of the round-3 AO change that survived measurement.
+            SetFloat(so, "m_Settings.DirectLightingStrength", 0.35f, missing);
+
+            // 0.28 → 0.45 m. The radius is the distance over which contact
+            // darkening spreads, and it has to be about the size of the gap the
+            // eye is looking for. A quarter of a metre is a thin liner around an
+            // object; 0.45 m is the shadow a crate actually pools around itself,
+            // and it is still short enough that a 2.2 m §12 corridor does not
+            // darken its own walls from across the passage. Trimmed from 0.45 to
+            // 0.34 with the intensity: a wide radius on a dark ambient reaches
+            // past the contact it is for and shades the whole corner.
+            SetFloat(so, "m_Settings.Radius", 0.34f, missing);
             SetFloat(so, "m_Settings.Falloff", 40f, missing);
             SetInt(so, "m_Settings.Samples", 1, missing);             // Medium
             SetInt(so, "m_Settings.BlurQuality", 0, missing);         // High
@@ -571,8 +687,17 @@ namespace HorrorGame.EditorTools.Rendering
             // was set properly.
             var bloom = Add<Bloom>(profile);
             bloom.threshold.value = 0.55f;
-            bloom.intensity.value = 0.65f;
-            bloom.scatter.value = 0.68f;
+
+            // 0.65 → 0.85, and no further. The one thing in this building that
+            // should visibly *glow* is a working fitting — the dressing pass
+            // swaps a `Dress_BulbLit` emissive in for one bulb in five, and §03
+            // wants every light in the scene to look like a thing that could be
+            // switched off. A little more halo around a filament is how a lens
+            // says "that is a source, not a bright patch of wall". Past this it
+            // stops being a lens and starts being fog on one, and the fog in this
+            // game is real fog with a solved density behind it.
+            bloom.intensity.value = 0.85f;
+            bloom.scatter.value = 0.70f;
             bloom.tint.value = new Color(1f, 0.95f, 0.88f);
             bloom.highQualityFiltering.value = true;
 

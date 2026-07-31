@@ -37,6 +37,20 @@ namespace HorrorGame.EditorTools.SceneGen
         /// </summary>
         public const string BootstrapScene = "Assets/Scenes/Bootstrap.unity";
 
+        /// <summary>
+        /// The playable assembly of <see cref="MapScene"/> — the same building with a
+        /// player, a monster and a <c>MatchDirector</c> in it. This is what 시작 loads.
+        /// <para>
+        /// It lives here rather than only on <c>BootstrapSceneGenerator</c> because
+        /// <see cref="MapSceneGenerator.RegisterScenes"/> rewrites the build list
+        /// wholesale, and a list that names only the map drops this one. That is not a
+        /// cosmetic loss: <c>SceneManager.LoadSceneAsync</c> returns null for a scene
+        /// outside the list, so 시작 silently does nothing and the menu looks hung.
+        /// Pinned by <c>UiFlowTests.Menu_ComesUp_AndStartReachesTheMatchScene</c>.
+        /// </para>
+        /// </summary>
+        public const string MatchScene = "Assets/Scenes/Map_FirstSketch_Solo.unity";
+
         /// <summary>Creates a folder and every missing parent, the way <c>AssetDatabase</c> insists on.</summary>
         public static void EnsureFolder(string assetFolderPath)
         {

@@ -1,30 +1,44 @@
+#nullable enable
+
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using HorrorGame.Core;
-using HorrorGame.Core.Roles;
+using HorrorGame.Rendering;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
-using UnityEngine.UI;
+using UnityEngine.SceneManagement;
 
 namespace HorrorGame.EditorTools.SceneGen
 {
     /// <summary>
-    /// Builds the scene the player actually launches into: main menu, lobby, role
-    /// select.
+    /// Builds the scene the player actually launches into: the main menu, standing in a
+    /// corridor.
     /// <para>
     /// It is generated rather than hand-built for the same reason the map is — the
-    /// role list, the player count and the objective escort minimum all come from
-    /// <see cref="GameConstants"/> and <see cref="RoleId"/>, so a sixth role or a
-    /// change to §11's 인원 구조 rebuilds the screen instead of leaving a stale panel
-    /// nobody noticed. §14 puts 매칭 · 로비 outside the 2-week prototype, so this is
-    /// deliberately structure without behaviour: named objects, correct counts, and
-    /// no logic.
+    /// backdrop is made of <c>MapKit</c> pieces and the camera runs at
+    /// <see cref="GameConstants.FovDefault"/> under
+    /// <see cref="NightAtmosphere"/>'s own fog and grade, so re-exporting the kit or
+    /// re-tuning the night rebuilds the menu instead of leaving a stale photograph of a
+    /// game that no longer looks like that.
     /// </para>
     /// <para>
-    /// Nothing here references Mirror or the Steam layer. The bootstrap object is a
-    /// named, empty anchor (<see cref="NetBootstrapName"/>) that the Net layer attaches
-    /// its <c>NetworkManager</c> to; wiring a transport from the Editor assembly would
-    /// put a networking decision in the scene generator, which is the wrong layer and
-    /// would make this file un-buildable whenever the Net layer is mid-change.
+    /// <b>The backdrop is the point.</b> A menu over a flat colour is the cheapest thing
+    /// to build and the most expensive thing to ship: §13 lists the store page as a
+    /// deliverable and a store page opens on the menu. What is behind the four words
+    /// here is the real renderer — ART.md §3.4's fog solved to half-visibility at 25 m,
+    /// §3.5's beam at its real intensity, §3.6's practicals at 5.5 m — drifting slowly
+    /// under <c>MenuBackdrop</c>.
+    /// </para>
+    /// <para>
+    /// <b>This assembly does not reference the UI assembly, deliberately.</b> The same
+    /// argument the Net layer already gets in this file: a scene generator that imported
+    /// the interface would stop building whenever the interface was mid-change, and the
+    /// Editor layer is not where a UI decision belongs. So the two shell components are
+    /// attached by name, and a missing type is a loud error rather than a scene that
+    /// opens with no menu on it.
     /// </para>
     /// </summary>
     public static class BootstrapSceneGenerator
@@ -32,14 +46,28 @@ namespace HorrorGame.EditorTools.SceneGen
         /// <summary>Empty anchor the Net layer hangs its <c>NetworkManager</c> on.</summary>
         public const string NetBootstrapName = "NetBootstrap";
 
-        /// <summary>Root of the main menu panel — the only one active at load.</summary>
-        public const string MainMenuName = "MainMenu";
+        /// <summary>The object carrying <c>GameShell</c> — menu, settings, pause, loading.</summary>
+        public const string ShellName = "GameShell";
 
-        /// <summary>Root of the lobby panel.</summary>
-        public const string LobbyName = "Lobby";
+        /// <summary>Root of the corridor the menu is drawn over.</summary>
+        public const string BackdropName = "MenuBackdrop";
 
-        /// <summary>Root of the role-select panel.</summary>
-        public const string RoleSelectName = "RoleSelect";
+        /// <summary>
+        /// The playable scene 시작 loads. Assembled by <c>SoloPlaytest</c>.
+        /// <para>
+        /// Aliases <see cref="SceneGenPaths.MatchScene"/> so the build-list writer and
+        /// the menu cannot disagree about which scene that is — they did, and the map
+        /// generator silently unregistered it.
+        /// </para>
+        /// </summary>
+        public const string MatchScenePath = SceneGenPaths.MatchScene;
+
+        private const string ShellTypeName = "HorrorGame.UI.Shell.GameShell, HorrorGame.UI";
+        private const string DriftTypeName = "HorrorGame.UI.Shell.MenuBackdrop, HorrorGame.UI";
+        private const string KitFolder = "Assets/Models/MapKit/";
+
+        /// <summary>Eye height, metres. The same figure <c>SceneShot</c> frames the game at.</summary>
+        private const float EyeHeight = 1.63f;
 
         /// <summary>Builds and saves the bootstrap scene.</summary>
         [MenuItem("HorrorGame/Scene Gen/Generate Bootstrap Scene", priority = 23)]
@@ -52,8 +80,16 @@ namespace HorrorGame.EditorTools.SceneGen
         /// <summary>Batch entry point.</summary>
         public static void GenerateFromCommandLine()
         {
-            Generate();
-            EditorApplication.Exit(0);
+            try
+            {
+                var ok = Generate();
+                EditorApplication.Exit(ok ? 0 : 1);
+            }
+            catch (Exception error)
+            {
+                Debug.LogError("[SceneGen] " + error);
+                EditorApplication.Exit(2);
+            }
         }
 
         /// <summary>Builds the scene and writes it to <see cref="SceneGenPaths.BootstrapScene"/>.</summary>
@@ -62,179 +98,692 @@ namespace HorrorGame.EditorTools.SceneGen
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             SceneGenPaths.EnsureFolder(SceneGenPaths.SceneRoot);
 
-            var camera = new GameObject("MenuCamera").AddComponent<Camera>();
-            camera.clearFlags = CameraClearFlags.SolidColor;
-            camera.backgroundColor = new Color(0.02f, 0.02f, 0.03f);
-            camera.orthographic = true;
-            camera.transform.position = new Vector3(0f, 1f, -10f);
-            camera.gameObject.AddComponent<AudioListener>();
+            BuildBackdrop(out var corridorCentreX, out var corridorEndZ);
+            var sightLine = SightLine(corridorCentreX, corridorEndZ);
+            BuildCamera(corridorCentreX);
+            BuildAtmosphere();
 
             var bootstrap = new GameObject(NetBootstrapName);
             bootstrap.transform.position = Vector3.zero;
 
-            var canvasGo = new GameObject("Canvas", typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
-            var canvas = canvasGo.GetComponent<Canvas>();
-            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            var scaler = canvasGo.GetComponent<CanvasScaler>();
-            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(1920f, 1080f);
-
-            var events = new GameObject("EventSystem", typeof(UnityEngine.EventSystems.EventSystem));
-            events.AddComponent<UnityEngine.EventSystems.StandaloneInputModule>();
-
-            BuildMainMenu(canvasGo);
-            BuildLobby(canvasGo);
-            BuildRoleSelect(canvasGo);
+            BuildShell();
 
             var saved = EditorSceneManager.SaveScene(scene, SceneGenPaths.BootstrapScene);
             if (saved)
             {
                 AssetDatabase.SaveAssets();
-                MapSceneGenerator.RegisterScenes();
+                RegisterScenes();
             }
+
+            Debug.Log(
+                "[SceneGen] Bootstrap: corridor " + corridorEndZ.ToString("0.0") + " m of kit, sight line "
+                + sightLine.ToString("0.0") + " m from the camera, centre x " + corridorCentreX.ToString("0.00")
+                + ", eye height " + EyeHeight.ToString("0.00") + " m at " + GameConstants.FovDefault.ToString("0")
+                + "° (§05), fog half-visibility " + GameConstants.LineOfSightBreakSpacingMax.ToString("0")
+                + " m (ART.md §3.4).");
 
             return saved;
         }
 
-        private static void BuildMainMenu(GameObject canvas)
+        /// <summary>
+        /// Puts the three scenes into Build Settings, bootstrap first.
+        /// <para>
+        /// <c>MapSceneGenerator.RegisterScenes</c> registers the bootstrap and the raw
+        /// map. The raw map is geometry with no player, no monster and no
+        /// <c>MatchDirector</c> in it, so 시작 cannot load it and a player who reached it
+        /// would stand in an empty building. The playable scene is the solo one, and it
+        /// has to be in the list or <c>SceneManager.LoadSceneAsync</c> returns null and
+        /// the menu button does nothing.
+        /// </para>
+        /// </summary>
+        public static void RegisterScenes()
         {
-            var panel = Panel(canvas, MainMenuName, true);
-            Label(panel, "Title", "HORROR GAME", 72, new Vector2(0f, 260f));
-            Label(panel, "Subtitle", "4인 비대칭 협동 — 프로토타입", 28, new Vector2(0f, 190f));
+            MapSceneGenerator.RegisterScenes();
 
-            // §14 step 2 is "Mirror 로컬 호스트 — 같은 PC 2인스턴스", so Host and Join are
-            // the only two entries that have to exist before there is any matchmaking.
-            Button(panel, "HostButton", "호스트로 시작 (Host)", new Vector2(0f, 60f));
-            Button(panel, "JoinButton", "참가 (Join)", new Vector2(0f, -20f));
-            Button(panel, "QuitButton", "종료", new Vector2(0f, -100f));
-
-            Label(panel, "BuildNote",
-                "§14: 음성은 디스코드. 게임 내 근접 음성은 5단계.", 20, new Vector2(0f, -280f));
-        }
-
-        private static void BuildLobby(GameObject canvas)
-        {
-            var panel = Panel(canvas, LobbyName, false);
-            Label(panel, "Title", "로비", 56, new Vector2(0f, 300f));
-
-            // §11 인원 구조: four players per match, five roles to choose from — the
-            // asymmetry is that somebody always goes without.
-            for (var i = 0; i < GameConstants.PlayersPerMatch; i++)
+            if (!File.Exists(MatchScenePath))
             {
-                var y = 160f - (i * 90f);
-                var slot = Panel(panel, "PlayerSlot_" + i, true);
-                Label(slot, "Name", "빈 자리 " + (i + 1), 32, new Vector2(-200f, y));
-                Label(slot, "Role", "—", 28, new Vector2(220f, y));
+                Debug.LogWarning(
+                    "[SceneGen] " + MatchScenePath + " does not exist, so 시작 has nothing to load. "
+                    + "Run HorrorGame ▸ Play ▸ ▶ START PLAYTEST once to assemble it.");
+                return;
             }
 
-            Label(panel, "EscortNote",
-                "§03: 목표물 운반에는 " + GameConstants.ObjectiveEscortMinPlayers + "명이 필요하다.",
-                22, new Vector2(0f, -220f));
-            Button(panel, "ReadyButton", "준비", new Vector2(-160f, -320f));
-            Button(panel, "BackButton", "뒤로", new Vector2(160f, -320f));
+            var scenes = EditorBuildSettings.scenes.ToList();
+            if (scenes.Any(s => string.Equals(s.path, MatchScenePath, StringComparison.Ordinal)))
+            {
+                return;
+            }
+
+            scenes.Add(new EditorBuildSettingsScene(MatchScenePath, enabled: true));
+            EditorBuildSettings.scenes = scenes.ToArray();
         }
 
-        private static void BuildRoleSelect(GameObject canvas)
-        {
-            var panel = Panel(canvas, RoleSelectName, false);
-            Label(panel, "Title", "직업 선택", 56, new Vector2(0f, 320f));
+        // ====================================================================
+        // The corridor.
+        // ====================================================================
 
-            // Generated from RoleId so the screen cannot drift from §04. RoleId.None is
-            // not a choice — it is the absence of one.
-            var roles = (RoleId[])System.Enum.GetValues(typeof(RoleId));
-            var index = 0;
-            foreach (var role in roles)
+        /// <summary>
+        /// Lays a straight run of kit down the +Z axis: ten metres, a doorway, ten more,
+        /// and a dead end.
+        /// <para>
+        /// <b>Placed by measurement rather than by arithmetic.</b> The kit is authored in
+        /// Blender, where Z is up and the footprint's depth is Y, and the importer does
+        /// not always bake that conversion — <c>MapSceneBuilder.KitOrientation</c>
+        /// documents what a wrong guess costs (every L-corner a quarter-turn out, every
+        /// T-junction a half-turn, and most of B-001's island count). Rather than
+        /// reproduce that reasoning for a backdrop, each piece is instantiated, its world
+        /// bounds are read, and it is then translated so those bounds land where the
+        /// composition wants them. Nothing here depends on knowing which way up the kit
+        /// arrived.
+        /// </para>
+        /// <para>
+        /// The composition is a §12 corridor and not a diorama: 2.2 m of clear width,
+        /// one 병목 partway down, and a 막힌 길 at the end so the frame has a far wall to
+        /// haze instead of a hole with the night sky in it.
+        /// </para>
+        /// </summary>
+        private static void BuildBackdrop(out float centreX, out float endZ)
+        {
+            var root = new GameObject(BackdropName);
+            centreX = 0f;
+            endZ = 0f;
+
+            var pieces = new[]
             {
-                if (role == RoleId.None)
+                "Corridor_Straight_10m",
+                "Doorway_Frame",
+                "Corridor_Straight_10m",
+                "DeadEnd_Cap",
+            };
+
+            var standUp = Quaternion.identity;
+            var probed = false;
+            var z = 0f;
+            var minX = 0f;
+            var maxX = 0f;
+            var placed = 0;
+
+            foreach (var name in pieces)
+            {
+                var go = Instantiate(name, root.transform);
+                if (go == null)
                 {
                     continue;
                 }
 
-                var y = 180f - (index * 90f);
-                Button(panel, "Role_" + role, KoreanName(role) + "  (" + role + ")", new Vector2(0f, y));
-                index++;
+                if (!probed)
+                {
+                    standUp = StandUpRotation(go);
+                    probed = true;
+                }
+
+                // Multiplied onto whatever the import left, never assigned over it. The
+                // FBX prefabs currently arrive with a −90° X on the root — already
+                // upright — and assigning identity here laid all four of them back down,
+                // producing a 13.2 m corridor made of four 3.3 m ceiling-to-ceiling
+                // slices instead of a 27.5 m one.
+                go.transform.rotation = standUp * go.transform.rotation;
+
+                if (!TryBounds(go, out var bounds))
+                {
+                    UnityEngine.Object.DestroyImmediate(go);
+                    continue;
+                }
+
+                // Butt the piece's near face against the running Z cursor and sit its
+                // floor on y = 0. The offset is the gap between where the object's
+                // pivot is and where its geometry actually starts, which is the whole
+                // point of measuring rather than assuming.
+                go.transform.position += new Vector3(0f, -bounds.min.y, z - bounds.min.z);
+
+                TryBounds(go, out bounds);
+                z = bounds.max.z;
+                minX = placed == 0 ? bounds.min.x : Mathf.Min(minX, bounds.min.x);
+                maxX = placed == 0 ? bounds.max.x : Mathf.Max(maxX, bounds.max.x);
+                placed++;
             }
 
-            Label(panel, "CountNote",
-                "§11: 직업 " + GameConstants.RoleCount + "개, 한 판 " + GameConstants.PlayersPerMatch + "명 — 하나는 항상 빠진다.",
-                22, new Vector2(0f, -280f));
-            Button(panel, "ConfirmButton", "확정", new Vector2(0f, -360f));
+            centreX = (minX + maxX) * 0.5f;
+            endZ = z;
+
+            CloseTheFarEnd(root, centreX, endZ);
+            BuildPracticals(root, centreX, endZ);
         }
 
-        /// <summary>§04's names, so the screen reads the way the design document does.</summary>
-        private static string KoreanName(RoleId role)
+        /// <summary>
+        /// Makes sure the corridor ends in a wall.
+        /// <para>
+        /// The 막힌 길 piece has exactly one dock, so half the time it is laid down open
+        /// end first and the menu looks down a tube at the night sky. Rather than reason
+        /// about which, the finished corridor is probed with a ray at eye height: if it
+        /// escapes, the cap is turned round and the ray is cast again. This is the only
+        /// orientation question in the backdrop and it is answered by measurement, like
+        /// the rest.
+        /// </para>
+        /// </summary>
+        private static void CloseTheFarEnd(GameObject root, float centreX, float endZ)
         {
-            switch (role)
+            Physics.SyncTransforms();
+
+            var eye = new Vector3(centreX, EyeHeight, 0.5f);
+            if (Physics.Raycast(eye, Vector3.forward, endZ + 1f))
             {
-                case RoleId.Listener: return "청음사";
-                case RoleId.Observer: return "관측자";
-                case RoleId.Runner: return "주자";
-                case RoleId.Engineer: return "정비공";
-                case RoleId.Flasher: return "섬광수";
-                default: return role.ToString();
+                return;
+            }
+
+            var cap = root.transform.Cast<Transform>()
+                .LastOrDefault(t => t.name.StartsWith("DeadEnd_Cap", StringComparison.Ordinal));
+
+            if (cap == null)
+            {
+                Debug.LogWarning("[SceneGen] The menu corridor has no far wall and no cap to turn round.");
+                return;
+            }
+
+            if (!TryBounds(cap.gameObject, out var before))
+            {
+                return;
+            }
+
+            cap.rotation = Quaternion.AngleAxis(180f, Vector3.up) * cap.rotation;
+            TryBounds(cap.gameObject, out var after);
+
+            cap.position += new Vector3(
+                before.center.x - after.center.x,
+                before.min.y - after.min.y,
+                before.min.z - after.min.z);
+
+            Physics.SyncTransforms();
+
+            if (!Physics.Raycast(eye, Vector3.forward, endZ + 1f))
+            {
+                Debug.LogWarning(
+                    "[SceneGen] The menu corridor still has no far wall after turning the cap round. "
+                    + "The frame will show sky at the end of the corridor.");
             }
         }
 
+        /// <summary>
+        /// How far the eye can see down the finished corridor. Reported because it is the
+        /// one number that decides whether the menu frame has depth: ART.md §3.4 solves
+        /// the fog to half-visibility at <c>LineOfSightBreakSpacingMax</c>, so a wall
+        /// nearer than that lands before the haze does any work.
+        /// </summary>
+        private static float SightLine(float centreX, float endZ)
+        {
+            Physics.SyncTransforms();
+            var eye = new Vector3(centreX, EyeHeight, 0.5f);
+            return Physics.Raycast(eye, Vector3.forward, out var hit, endZ + 40f) ? hit.distance : -1f;
+        }
+
+        /// <summary>
+        /// ART.md §3.6's practicals: 5.5 m range, 1.1 intensity, tinted per §12 zone.
+        /// <para>
+        /// Three, at a third and four fifths of the run plus one behind the camera.
+        /// Depth is ART.md's third target — "a frame must have a near, a middle and a
+        /// far" — and the near one is there because the first version had none: the
+        /// corridor's clear width is 2.2 m, so at eye height the side walls are barely a
+        /// metre away, entirely outside §03's 22° beam cone, and they measured as pure
+        /// black. 57 % of the first frame of the game was below 2/255 against ART.md's
+        /// 10–40 % band, and the black was all of it the player's own elbows.
+        /// </para>
+        /// <para>
+        /// The near fitting is dimmer than the other two. Its job is to put a falloff on
+        /// a wall a metre away, and at full intensity that close it is the brightest
+        /// thing in the frame — which is the failure ART.md §3.1 records for the metal
+        /// floors, arriving by another route.
+        /// </para>
+        /// </summary>
+        private static void BuildPracticals(GameObject root, float centreX, float endZ)
+        {
+            AddPractical(root, new Vector3(centreX, 2.9f, -0.9f), new Color(1f, 0.86f, 0.68f), 0.45f);
+            AddPractical(root, new Vector3(centreX, 2.9f, endZ * 0.30f), new Color(1f, 0.83f, 0.62f), 1.1f);
+            AddPractical(root, new Vector3(centreX, 2.9f, endZ * 0.78f), new Color(0.78f, 0.92f, 0.85f), 1.1f);
+        }
+
+        private static void AddPractical(GameObject root, Vector3 position, Color tint, float intensity)
+        {
+            var go = new GameObject("Practical");
+            go.transform.SetParent(root.transform, worldPositionStays: false);
+            go.transform.position = position;
+
+            var light = go.AddComponent<Light>();
+            light.type = LightType.Point;
+            light.range = 5.5f;
+            light.intensity = intensity;
+            light.color = tint;
+            light.shadows = LightShadows.None;
+        }
+
         // ====================================================================
-        // uGUI plumbing. No behaviour: §14 puts 로비 outside the prototype, so these
-        // are named anchors for the UI layer rather than a half-written menu.
+        // The camera.
         // ====================================================================
 
-        private static GameObject Panel(GameObject parent, string name, bool active)
+        /// <summary>
+        /// One perspective camera at §05's own field of view, standing in the corridor.
+        /// <para>
+        /// Perspective and 80°, not an orthographic placeholder: the whole argument for
+        /// putting a corridor behind the menu is that the picture is the game's picture,
+        /// and a different lens would make it a picture of something else. It carries
+        /// §03's flashlight for the same reason <c>SceneShot</c> does — nobody is ever in
+        /// this basement without one.
+        /// </para>
+        /// </summary>
+        private static void BuildCamera(float centreX)
         {
-            var go = new GameObject(name, typeof(RectTransform));
-            go.transform.SetParent(parent.transform, false);
-            var rect = go.GetComponent<RectTransform>();
-            rect.anchorMin = Vector2.zero;
-            rect.anchorMax = Vector2.one;
-            rect.offsetMin = Vector2.zero;
-            rect.offsetMax = Vector2.zero;
-            go.SetActive(active);
+            var go = new GameObject("MenuCamera");
+            go.transform.SetPositionAndRotation(
+                new Vector3(centreX, EyeHeight, 1.2f), Quaternion.Euler(2.5f, 0f, 0f));
+
+            var camera = go.AddComponent<Camera>();
+            camera.clearFlags = CameraClearFlags.Skybox;
+            camera.fieldOfView = GameConstants.FovDefault;
+            camera.nearClipPlane = 0.05f;
+            camera.farClipPlane = 300f;
+
+            go.AddComponent<AudioListener>();
+
+            var beam = new GameObject("Flashlight");
+            beam.transform.SetParent(go.transform, worldPositionStays: false);
+            FlashlightBeam.Apply(beam.AddComponent<Light>());
+
+            AddByName(go, DriftTypeName, "the menu camera will not drift");
+        }
+
+        /// <summary>
+        /// §07's 초저녁 air and grade, plus the night sky.
+        /// <para>
+        /// <c>AtmosphereSetup.ApplyEnvironmentToMapScenes</c> only touches scenes named
+        /// <c>Map_*</c>, so the bootstrap scene has always been left with Unity's default
+        /// daytime skybox and no fog. That is exactly the failure ART.md §2.3 describes —
+        /// nothing errors, the sky is simply the brightest thing in the frame — and it
+        /// would have been the first thing anybody saw.
+        /// </para>
+        /// </summary>
+        private static void BuildAtmosphere()
+        {
+            NightAtmosphere.ApplyEnvironment(NightAtmosphere.ForTier(0));
+
+            var sky = AssetDatabase.LoadAssetAtPath<Material>("Assets/Settings/HorrorGame_NightSky.mat");
+            if (sky != null)
+            {
+                RenderSettings.skybox = sky;
+            }
+
+            new GameObject("[Atmosphere]").AddComponent<ThreatAtmosphereDirector>();
+        }
+
+        private static void BuildShell()
+        {
+            var go = new GameObject(ShellName);
+            AddByName(go, ShellTypeName, "the menu will not come up and 시작 will do nothing");
+        }
+
+        // ====================================================================
+        // Plumbing.
+        // ====================================================================
+
+        private static GameObject? Instantiate(string pieceName, Transform parent)
+        {
+            var path = KitFolder + pieceName + ".fbx";
+            var asset = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+            if (asset == null)
+            {
+                Debug.LogError("[SceneGen] MapKit piece missing: " + path + ". The menu backdrop needs it.");
+                return null;
+            }
+
+            var go = PrefabUtility.InstantiatePrefab(asset, parent) as GameObject;
+            if (go != null)
+            {
+                go.name = pieceName;
+            }
+
             return go;
         }
 
-        private static Text Label(GameObject parent, string name, string content, int size, Vector2 position)
+        /// <summary>
+        /// Any extra rotation a kit piece needs on top of what the import left it at.
+        /// Probed on the 10 m corridor, which is the first piece laid.
+        /// <para>
+        /// That piece measures 2.5 wide × 10 deep × 3.3 tall, so the two possible import
+        /// states are told apart by which of the last two axes is the long one: upright,
+        /// the depth is in Z and Z &gt; Y; lying on its back — the state Blender's Z-up
+        /// leaves it in when the importer does not bake the conversion — the depth is in
+        /// Y and Y &gt; Z. Measured on the instance as instantiated, so it reports what is
+        /// actually there rather than what the importer was configured to do.
+        /// </para>
+        /// <para>
+        /// Probed rather than assumed for the reason <c>MapSceneBuilder</c> gives: both
+        /// states are possible, and a wrong guess produces a scene that still opens.
+        /// </para>
+        /// </summary>
+        private static Quaternion StandUpRotation(GameObject piece)
         {
-            var go = new GameObject(name, typeof(RectTransform));
-            go.transform.SetParent(parent.transform, false);
-            var rect = go.GetComponent<RectTransform>();
-            rect.anchoredPosition = position;
-            rect.sizeDelta = new Vector2(900f, size + 24f);
-
-            var text = go.AddComponent<Text>();
-            text.text = content;
-            text.fontSize = size;
-            text.alignment = TextAnchor.MiddleCenter;
-            text.color = new Color(0.88f, 0.88f, 0.9f);
-            text.font = DefaultFont();
-            return text;
-        }
-
-        private static Button Button(GameObject parent, string name, string content, Vector2 position)
-        {
-            var go = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(Button));
-            go.transform.SetParent(parent.transform, false);
-            var rect = go.GetComponent<RectTransform>();
-            rect.anchoredPosition = position;
-            rect.sizeDelta = new Vector2(560f, 68f);
-            go.GetComponent<Image>().color = new Color(0.13f, 0.13f, 0.16f);
-
-            Label(go, "Text", content, 30, Vector2.zero);
-            return go.GetComponent<Button>();
-        }
-
-        private static Font DefaultFont()
-        {
-            // LegacyRuntime.ttf is the built-in uGUI font in Unity 6; Arial.ttf was
-            // removed. Falling through to null would render every label invisible,
-            // which looks like a broken generator rather than a missing font.
-            var font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            if (font == null)
+            if (!TryBounds(piece, out var bounds))
             {
-                font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+                return Quaternion.identity;
             }
 
-            return font;
+            return bounds.size.y > bounds.size.z ? Quaternion.Euler(-90f, 0f, 0f) : Quaternion.identity;
+        }
+
+        private static bool TryBounds(GameObject go, out Bounds bounds)
+        {
+            var renderers = go.GetComponentsInChildren<Renderer>(includeInactive: false);
+            if (renderers.Length == 0)
+            {
+                bounds = new Bounds(go.transform.position, Vector3.zero);
+                return false;
+            }
+
+            bounds = renderers[0].bounds;
+            for (var i = 1; i < renderers.Length; i++)
+            {
+                bounds.Encapsulate(renderers[i].bounds);
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Attaches a component from the UI assembly by name.
+        /// <para>
+        /// See the type remarks: this assembly does not reference the interface. The
+        /// error is deliberately specific about what stops working, because a scene that
+        /// saves successfully with a component silently missing is the exact failure the
+        /// rest of this project builds screens in code to avoid.
+        /// </para>
+        /// </summary>
+        private static Component? AddByName(GameObject go, string assemblyQualifiedName, string consequence)
+        {
+            var type = Type.GetType(assemblyQualifiedName, throwOnError: false);
+            if (type == null)
+            {
+                Debug.LogError(
+                    "[SceneGen] '" + assemblyQualifiedName + "' was not found, so " + consequence
+                    + ". Either the UI assembly failed to compile or the type was renamed.");
+                return null;
+            }
+
+            return go.AddComponent(type);
+        }
+
+        // ====================================================================
+        // Verification.
+        // ====================================================================
+
+        /// <summary>
+        /// Checks that the saved bootstrap scene can actually bring a menu up.
+        /// <code>
+        /// Unity -batchmode -quit -nographics -projectPath . \
+        ///   -executeMethod HorrorGame.EditorTools.SceneGen.BootstrapSceneGenerator.VerifyBatch
+        /// </code>
+        /// <para>
+        /// <b>What it proves and what it does not.</b> It is a structural check: the
+        /// scene has a camera, a beam, fog, a shell component that resolved by name, and
+        /// a match scene that is genuinely in Build Settings. It does not press 시작 —
+        /// that needs play mode, and the assertion that would matter (does the map load
+        /// and does <c>MatchDirector</c> start) is a person or a PlayMode test.
+        /// </para>
+        /// <para>
+        /// It exists because of the one design risk in this file: the shell components
+        /// are attached by name, so a rename in the UI assembly compiles cleanly on both
+        /// sides and produces a bootstrap scene with no menu in it. That failure is
+        /// invisible until somebody launches the game.
+        /// </para>
+        /// </summary>
+        public static void VerifyBatch()
+        {
+            try
+            {
+                var problems = new List<string>();
+
+                if (!File.Exists(SceneGenPaths.BootstrapScene))
+                {
+                    Debug.LogError("[SceneGen] " + SceneGenPaths.BootstrapScene + " does not exist. Generate it first.");
+                    EditorApplication.Exit(2);
+                    return;
+                }
+
+                EditorSceneManager.OpenScene(SceneGenPaths.BootstrapScene, OpenSceneMode.Single);
+
+                var shell = GameObject.Find(ShellName);
+                if (shell == null || shell.GetComponent(ResolveType(ShellTypeName)!) == null)
+                {
+                    problems.Add("no GameShell — the menu never comes up and 시작 does nothing");
+                }
+
+                var camera = UnityEngine.Object.FindFirstObjectByType<Camera>();
+                if (camera == null)
+                {
+                    problems.Add("no camera");
+                }
+                else
+                {
+                    if (camera.orthographic)
+                    {
+                        problems.Add("the menu camera is orthographic, so the backdrop is not the game's own lens");
+                    }
+
+                    if (!Mathf.Approximately(camera.fieldOfView, GameConstants.FovDefault))
+                    {
+                        problems.Add("the menu camera is at " + camera.fieldOfView.ToString("0")
+                            + "°, not §05's default " + GameConstants.FovDefault.ToString("0") + "°");
+                    }
+
+                    if (camera.GetComponentInChildren<Light>() == null)
+                    {
+                        problems.Add("the menu camera has no flashlight, so the backdrop is not a frame of this game (§03)");
+                    }
+
+                    var drift = ResolveType(DriftTypeName);
+                    if (drift == null || camera.GetComponent(drift) == null)
+                    {
+                        problems.Add("no MenuBackdrop — the first screenshot is a still");
+                    }
+                }
+
+                if (!RenderSettings.fog)
+                {
+                    problems.Add("no fog: ART.md §3.4's depth cue is off in the one frame every player sees first");
+                }
+
+                if (UnityEngine.Object.FindFirstObjectByType<HorrorGame.Rendering.ThreatAtmosphereDirector>() == null)
+                {
+                    problems.Add("no atmosphere director, so the menu renders ungraded");
+                }
+
+                var registered = EditorBuildSettings.scenes
+                    .Any(s => s.enabled && string.Equals(s.path, MatchScenePath, StringComparison.Ordinal));
+
+                if (!registered)
+                {
+                    problems.Add(MatchScenePath + " is not an enabled scene in Build Settings, so LoadSceneAsync returns "
+                        + "null and 시작 bounces back to the menu");
+                }
+
+                var corridorPieces = GameObject.Find(BackdropName);
+                var renderers = corridorPieces != null ? corridorPieces.GetComponentsInChildren<Renderer>().Length : 0;
+                if (renderers == 0)
+                {
+                    problems.Add("the backdrop has no geometry in it");
+                }
+
+                if (problems.Count > 0)
+                {
+                    Debug.LogError("[SceneGen] Bootstrap scene FAIL:\n  " + string.Join("\n  ", problems));
+                    EditorApplication.Exit(1);
+                    return;
+                }
+
+                Debug.Log(
+                    "[SceneGen] Bootstrap scene PASS — GameShell present, "
+                    + renderers + " backdrop renderers, camera at " + GameConstants.FovDefault.ToString("0")
+                    + "° with §03's beam, fog on, and " + MatchScenePath + " registered for 시작.");
+
+                EditorApplication.Exit(0);
+            }
+            catch (Exception error)
+            {
+                Debug.LogError("[SceneGen] " + error);
+                EditorApplication.Exit(3);
+            }
+        }
+
+        private static Type? ResolveType(string assemblyQualifiedName)
+        {
+            return Type.GetType(assemblyQualifiedName, throwOnError: false);
+        }
+
+        // ====================================================================
+        // Review shots — see ART.md §2.4. Run WITHOUT -nographics.
+        // ====================================================================
+
+        /// <summary>
+        /// Renders the menu, settings and pause screens to <c>Shots/</c>.
+        /// <code>
+        /// Unity -batchmode -quit -silent-crashes -projectPath . \
+        ///   -executeMethod HorrorGame.EditorTools.SceneGen.BootstrapSceneGenerator.ShotBatch -shotTag menu
+        /// </code>
+        /// <para>
+        /// The screens build their own hierarchy in code, so a shot needs no play mode:
+        /// the component is added, <c>SetVisible(true)</c> builds it, and the canvas is
+        /// re-pointed at the shot camera. That last step is the one compromise —
+        /// a screen-space-overlay canvas draws straight to the back buffer and cannot be
+        /// captured through a <c>RenderTexture</c>, so the canvases are switched to
+        /// screen-space-camera for the render. It changes one thing about the picture and
+        /// the log says so: the interface goes through the grade with the world instead
+        /// of being composited after it, so these shots show the UI slightly darker and
+        /// less saturated than the game will.
+        /// </para>
+        /// </summary>
+        public static void ShotBatch()
+        {
+            try
+            {
+                var tag = ArgValue("-shotTag") ?? "menu";
+
+                if (!File.Exists(SceneGenPaths.BootstrapScene))
+                {
+                    Generate();
+                }
+
+                var scene = EditorSceneManager.OpenScene(SceneGenPaths.BootstrapScene, OpenSceneMode.Single);
+                var written = CaptureScreens(scene, tag);
+
+                Debug.Log("[SceneGen] menu shots (UI is graded with the world in these — see ShotBatch):\n  "
+                    + string.Join("\n  ", written));
+                EditorApplication.Exit(0);
+            }
+            catch (Exception error)
+            {
+                Debug.LogError("[SceneGen] " + error);
+                EditorApplication.Exit(1);
+            }
+        }
+
+        private static List<string> CaptureScreens(Scene scene, string tag)
+        {
+            const int Width = 1920;
+            const int Height = 1080;
+
+            var written = new List<string>();
+            var root = Path.Combine(Directory.GetParent(Application.dataPath)!.FullName, "Shots");
+            System.IO.Directory.CreateDirectory(root);
+
+            var camera = UnityEngine.Object.FindFirstObjectByType<Camera>();
+            if (camera == null)
+            {
+                Debug.LogError("[SceneGen] The bootstrap scene has no camera to render from.");
+                return written;
+            }
+
+            var screens = new[]
+            {
+                new KeyValuePair<string, string>("main", "HorrorGame.UI.Screens.MainMenuScreen, HorrorGame.UI"),
+                new KeyValuePair<string, string>("settings", "HorrorGame.UI.Screens.SettingsScreen, HorrorGame.UI"),
+                new KeyValuePair<string, string>("pause", "HorrorGame.UI.Screens.PauseScreen, HorrorGame.UI"),
+                new KeyValuePair<string, string>("loading", "HorrorGame.UI.Screens.LoadingScreen, HorrorGame.UI"),
+            };
+
+            written.Add(RenderTo(camera, Path.Combine(root, tag + "_backdrop.png"), Width, Height));
+
+            foreach (var screen in screens)
+            {
+                var host = new GameObject("[Shot] " + screen.Key);
+                try
+                {
+                    var component = AddByName(host, screen.Value, "that screen cannot be photographed");
+                    if (component == null)
+                    {
+                        continue;
+                    }
+
+                    var setVisible = component.GetType().GetMethod("SetVisible");
+                    setVisible?.Invoke(component, new object[] { true });
+
+                    foreach (var canvas in host.GetComponentsInChildren<Canvas>(includeInactive: true))
+                    {
+                        canvas.renderMode = RenderMode.ScreenSpaceCamera;
+                        canvas.worldCamera = camera;
+                        canvas.planeDistance = 0.1f;
+                    }
+
+                    Canvas.ForceUpdateCanvases();
+                    written.Add(RenderTo(camera, Path.Combine(root, tag + "_" + screen.Key + ".png"), Width, Height));
+                }
+                finally
+                {
+                    UnityEngine.Object.DestroyImmediate(host);
+                }
+            }
+
+            return written;
+        }
+
+        private static string RenderTo(Camera camera, string path, int width, int height)
+        {
+            var target = new RenderTexture(width, height, 24, RenderTextureFormat.ARGB32) { antiAliasing = 2 };
+            var previousTarget = camera.targetTexture;
+            var previousActive = RenderTexture.active;
+
+            try
+            {
+                camera.targetTexture = target;
+                camera.Render();
+
+                RenderTexture.active = target;
+                var texture = new Texture2D(width, height, TextureFormat.RGB24, false);
+                texture.ReadPixels(new Rect(0, 0, width, height), 0, 0);
+                texture.Apply();
+
+                File.WriteAllBytes(path, texture.EncodeToPNG());
+                UnityEngine.Object.DestroyImmediate(texture);
+            }
+            finally
+            {
+                camera.targetTexture = previousTarget;
+                RenderTexture.active = previousActive;
+                target.Release();
+                UnityEngine.Object.DestroyImmediate(target);
+            }
+
+            return path;
+        }
+
+        private static string? ArgValue(string flag)
+        {
+            var args = Environment.GetCommandLineArgs();
+            for (var i = 0; i < args.Length - 1; i++)
+            {
+                if (string.Equals(args[i], flag, StringComparison.Ordinal))
+                {
+                    return args[i + 1];
+                }
+            }
+
+            return null;
         }
     }
 }

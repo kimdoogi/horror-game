@@ -169,6 +169,13 @@ namespace HorrorGame.EditorTools.SceneGen
         /// decision is made: scene 0 is the bootstrap, so a player comes up on the menu
         /// rather than in the middle of the map with no transport.
         /// </para>
+        /// <para>
+        /// The list is rewritten wholesale rather than appended to, so every scene the
+        /// shipped game needs has to be named here. <see cref="SceneGenPaths.MatchScene"/>
+        /// is one of them and was missing: regenerating the map dropped the scene 시작
+        /// loads, and because <c>LoadSceneAsync</c> returns null rather than throwing for
+        /// an unlisted scene, the only symptom was a menu button that did nothing.
+        /// </para>
         /// </summary>
         public static void RegisterScenes()
         {
@@ -181,6 +188,11 @@ namespace HorrorGame.EditorTools.SceneGen
             if (File.Exists(SceneGenPaths.MapScene))
             {
                 wanted.Add(SceneGenPaths.MapScene);
+            }
+
+            if (File.Exists(SceneGenPaths.MatchScene))
+            {
+                wanted.Add(SceneGenPaths.MatchScene);
             }
 
             var scenes = new EditorBuildSettingsScene[wanted.Count];

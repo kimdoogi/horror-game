@@ -399,6 +399,46 @@ the ones who will never see three quarters of the threat system.
 Option 1 preserves the design as written. Option 2 is the one to reach for only after
 measuring a real playtest, because it trades away §07's gradualness.
 
+### 2026-08-01 — option 1 was built, and it did not move this number
+
+The Unity map grew from three storeys to five, from 74 places and 85 passages to
+**164 places and 180 passages**, and the monster's route to a player went from 133.9 m
+to **189.6 m**. That is option 1, and it is real: it is measured in §12's own
+validator and in `MonsterChaseTests`.
+
+The simulator reports exactly what it reported before:
+
+```
+§01 match length — target 25~35 min
+  median                                             2.5 min
+  p10 / p90                                          1.3 min / 7.9 min
+  inside the window                                  0.6%
+
+§07 threat curve
+  reached 심야 or later                                1.2%
+```
+
+Not "barely moved" — **identical to three significant figures**, because it could not
+have moved. `core/HorrorGame.Sim/SimMap.cs` does not read `FirstMapSketch`. It builds
+its own four-zone ring from `GameConstants` (`ZoneDiagonalMin`/`Max`,
+`CandidateSitesPerZone`), and `git diff` shows `core/` and `GameConstants.cs`
+unchanged in the pass that grew the map. The two maps are separate artifacts that
+happen to both claim §12.
+
+**So F-006 is not merely still open — it is untested by the work that was supposed to
+address it.** Two things follow, and they are the next actions on this finding:
+
+1. **The simulator's map is the thing to grow.** Traversal cost lives in
+   `SimMap`'s geometry, which is derived from `GameConstants`. Until those constants
+   or that construction change, no amount of Unity level design will show up here.
+2. **Or couple them.** The honest long-term fix is for `SimMap` to consume the same
+   `MapGraph` `FirstMapSketch` produces, so that "the map got bigger" and "matches got
+   longer" are the same measurement rather than two unrelated ones. Both sides already
+   speak `MapGraph`, so this is plumbing rather than redesign.
+
+Until one of those happens, treat any claim that a bigger map fixed the match length
+as unsupported.
+
 ### This blocks §16-2, which the document calls the current bottleneck
 
 The same 500 matches:
@@ -435,3 +475,77 @@ economy starts.
   a wipe lose everything, so that rate deserves a deliberate decision.
 - §08 calls the 강화 손전등 "이 목록의 대표작", and it is bought in 23 of 500
   matches. Either the price is wrong or the doubled visibility cost is not worth it.
+
+---
+
+## F-007 · The five-storey map lost the 주자 테스트 band the three-storey one held
+
+**Sections:** §12 (실전 검증 · 주자 테스트) × §06 (추격)
+· **Priority:** 🟠 high — it is the one grade §12 gives the map, and it moved the wrong way
+· **Status:** open · **Source:** `MapSceneGenerator.ReportQualityMenu`, seed 1204
+· **Found:** 2026-08-01, integrating the map-scale pass
+
+### Measured
+
+Same command, same seed, before and after the building grew:
+
+```
+before (3 storeys, 74 places, 85 passages, 60 m × 65 m)
+§12 주자 테스트 — 요양원 지하: 7/10 (70%), Balanced
+  적정 (§12). Breaking aggro is possible from most of the map and never free.
+
+after  (5 storeys, 164 places, 180 passages, 50 m × 92.5 m)
+§12 주자 테스트 — 요양원 지하 5층: 10/10 (100%), TooEasy
+  너무 쉽다 — 시야 차단 지점을 줄인다 (§12). Aggro is a threat the players can
+  shrug off, so §06's chase never becomes the pressure the game is built on.
+```
+
+Reproduce with:
+
+```
+/Applications/Unity/Hub/Editor/6000.3.21f1/Unity.app/Contents/MacOS/Unity -batchmode -quit \
+  -nographics -silent-crashes -projectPath unity/HorrorGame \
+  -executeMethod HorrorGame.EditorTools.SceneGen.MapSceneGenerator.ReportQualityMenu -logFile /tmp/quality.log
+```
+
+### What it means
+
+§12 asks for **5–7 of 10** sampled runners to escape. Ten of ten now do, and the
+report says why in every row: each escape releases with *"3 s of unbroken cover"*
+after rounding **2–4 sight-breaking corners**, at 12.8–18.5 m. The old map's three
+`CAUGHT` routes all reported the opposite — *"No sight-breaking corner was ever
+rounded"* — and they were the routes descending into zones C and E.
+
+The growth removed exactly the weakness that was holding the grade. Going from 85
+passages to 180 raised the loop count from 12 to 17 and the dead-end share from
+21.6% to 25%, and more connectivity means more corners; a runner who can always find
+a third corner inside 15 m can always break line of sight. The checklist did not
+notice because more corners is not a rule any of the sixteen check — the map still
+passes **16 of 16**.
+
+This is F-005's "the checklist is necessary, not sufficient" arriving in practice
+rather than in the abstract, and it is the second time the same lesson has cost
+something.
+
+### Options
+
+1. **Thin the corners on the escape routes.** The report names the exact node chains
+   (`#90`, `#80`, `#135`, `#2`, `#156`, `#106`, `#21`, `#150`). Straightening the
+   worst of them is the smallest change that moves the grade.
+2. **Make the descent legs longer and barer.** §12 caps a straight run at 20 m, and
+   the map is currently at that cap; the escapes are not being broken by long sight
+   lines, they are being won by short ones close together. A minimum spacing between
+   sight-breaking corners would be a new rule, and it is the one this map wants.
+3. **Accept a more forgiving map and raise monster pressure instead** — §06's speed
+   ladder, or the aggro-release rule. This trades a §12 target for a §06 retune and
+   should not be done without a human playtest.
+
+Option 2 is the one that generalises: nothing in the sixteen rules constrains corner
+*density*, which is the quantity that actually decides this grade.
+
+### Not to be confused with F-005's note
+
+F-005 records that Core's own fixture map grades 10/10 TooEasy and always has —
+pinned by `MapTests.SketchMap_PassesTheChecklistAndStillGradesTooEasy`. That is a
+different map from the Unity scene graded here, and it was already TooEasy. What is
+new is that the **Unity** map, which was 7/10 and inside the band, has joined it.

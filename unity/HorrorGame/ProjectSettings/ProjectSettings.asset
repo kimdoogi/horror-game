@@ -171,7 +171,7 @@ PlayerSettings:
   androidMinAspectRatio: 1
   applicationIdentifier: {}
   buildNumber:
-    Standalone: 1
+    Standalone: 2
     VisionOS: 0
     iPhone: 0
     tvOS: 0

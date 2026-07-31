@@ -1280,11 +1280,30 @@ namespace HorrorGame.EditorTools.SceneGen
                 var mask = MaskWithStair(cell, landings);
                 var count = CountBits(mask);
 
+                // §12 정비공's door is the graph edge and the leaf, not the frame.
+                //
+                // MapKitPiece.DoorwayFrame bakes as a wall. Measured on the five-storey
+                // map: with the frame at all five 문 cells the surface came apart into
+                // 3 islands and 51~76% of marker pairs, and with a plain corridor piece
+                // in its place — everything else identical, same graph, same
+                // MapValidator PASS — the same scene bakes 1830/1830 pairs, 1 island,
+                // monster reach 19/19. The frame's opening does not survive Recast's
+                // erosion at agentRadius 0.5 m, so §06's monster reads it as a
+                // partition. The old three-storey map hid this because all five of its
+                // doors sat on well-connected 순환로 necks, where a sealed cell costs a
+                // detour rather than a component.
+                //
+                // So the passage stays open geometry and the door is expressed by the
+                // DoorPanelLockable leaf BuildProps hangs at the same cell (which is
+                // already out of the bake, as a locked door has to be — §04 locks it at
+                // runtime, not at bake time). Restore the frame here when
+                // build_doorway_frame in tools/blender/gen_mapkit.py leaves a clear
+                // opening wider than 2 × agentRadius.
                 if (doorCells.Contains(cell))
                 {
                     var axis = (mask & 0b0101) != 0 ? MapDirection.East : MapDirection.North;
                     tiles.Add(new MapTilePlacement(
-                        MapKitPiece.DoorwayFrame, cell, axis == MapDirection.North ? 0f : 90f, zoneOf[cell]));
+                        MapKitPiece.CorridorStraight2m5, cell, axis == MapDirection.North ? 0f : 90f, zoneOf[cell]));
                     consumed.Add(cell);
                     continue;
                 }

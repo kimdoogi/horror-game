@@ -5,7 +5,10 @@
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner",
         "HorrorGame.Core",
-        "HorrorGame.UI"
+        "HorrorGame.UI",
+        "HorrorGame.Audio",
+        "HorrorGame.Gameplay.Player",
+        "Unity.InputSystem"
     ],
     "includePlatforms": [
         "Editor"

@@ -81,7 +81,20 @@ Read the results properly rather than trusting the exit code:
 python3 -c "import xml.etree.ElementTree as ET,sys; r=ET.parse('/tmp/playmode.xml').getroot(); print(r.get('total'),r.get('passed'),r.get('failed'))"
 ```
 
+```
+EditMode   total 70 passed 70 failed 0 result Passed
+PlayMode   total 42 passed 42 failed 0 result Passed
+```
+
+**112 of 112 as of 2026-08-01.** Older revisions of this file said EditMode 55 and
+PlayMode 27; both were stale.
+
 In the editor these are `Horror ▸ Test ▸ Run EditMode + PlayMode`.
+
+Run **both** platforms. PlayMode is the only one that can catch a menu button that
+does nothing — `UiFlowTests` found exactly that after a map regeneration dropped the
+match scene from Build Settings, and nothing in EditMode or the compiler could see it
+(see BLOCKERS.md B-005).
 
 The chase suite is the one to watch — it is §14's first verification question turned
 into something a machine can answer:
@@ -101,7 +114,7 @@ total=4 passed=4 failed=0 result=Passed
 ```
 
 ```
-complete 630 (100.0 %, need 98 %) · islands 1 · monster reach 19/19
+complete 1830 (100.0 %, need 98 %) · islands 1 · monster reach 19/19
 ```
 
 The monster paths through the NavMesh. A fragmented surface produces no error — the
@@ -121,7 +134,7 @@ a `NavMeshLink` answers the first without the second. That is why the chase test
 
 ```
 Audio import settings: 166 inspected, 0 failing, 0 warnings.
-Model import settings: 47 inspected, 0 failing, 0 warnings.
+Model import settings: 86 inspected, 0 failing, 0 warnings.
 ```
 
 This is not housekeeping. A positional clip imported as stereo will not be
@@ -290,18 +303,187 @@ Asset Imports`.
 
 ---
 
-## Building
+## Building a standalone player
+
+This produces a `.app` or `.exe` that runs on a machine with no Unity installed.
+Every command below was run on this machine and its real output is quoted.
+
+### The one command
 
 ```bash
-/Applications/Unity/Hub/Editor/6000.3.21f1/Unity.app/Contents/MacOS/Unity -batchmode -quit -projectPath unity/HorrorGame -executeMethod HorrorGame.EditorTools.BuildPipelineRunner.BuildFromCommandLine -buildTarget Win64 -logFile /tmp/b.log
+cd /Users/doogi/horror-game
+/Applications/Unity/Hub/Editor/6000.3.21f1/Unity.app/Contents/MacOS/Unity -batchmode -nographics -silent-crashes -projectPath unity/HorrorGame -executeMethod HorrorGame.EditorTools.BuildPipelineRunner.BuildFromCommandLine -buildPlatform macos-arm64 -buildConfig development -logFile /tmp/b.log
+echo "exit=$?"
 ```
 
-Or `Horror ▸ Build ▸ Windows x64 — Release`. Output lands in `dist/`.
+```
+exit=0
+  macOS Apple silicon                        Development Mono   OK          259.83 MB  194s
+```
 
-> **macOS cannot produce an IL2CPP Windows player — only Mono.** Steam's audience is
-> mostly Windows, so a shipping build needs a Windows machine or the CI runner in
-> `.github/workflows/unity.yml`. The build script warns loudly when it falls back;
-> do not ship a build that printed that warning.
+Output is `dist/<platform>/`, wiped and rewritten each time.
+`dist/last-build-summary.txt` holds the table above; `dist/<platform>/build-report.txt`
+holds everything else — commit, backend, scene load order, sizes and every error.
+
+> **Never pass `-quit`.** `BuildFromCommandLine` owns the exit code and calls
+> `EditorApplication.Exit` itself. `-quit` overrides a failure with 0, which is how a
+> broken build reports success. This is the same trap as the test runner above.
+
+Exit codes: `0` ok · `1` unexpected · `2` arguments · `3` scenes · `4` build failed ·
+`5` IL2CPP required but unavailable · `7` scripts do not compile · `8` module missing.
+
+### Running it
+
+```bash
+open /Users/doogi/horror-game/dist/macos-arm64/HorrorGame.app
+```
+
+It boots straight into `Map_FirstSketch_Solo` — scene 0 in the build list, put there
+by `StandaloneBuild.Prepare` — so a double-click starts a match rather than opening
+the not-yet-wired bootstrap menu.
+
+To confirm it actually reached a match rather than merely opening a window, read the
+player's own log:
+
+```bash
+grep -E "\[Match\] seed|Exception" ~/Library/Logs/DefaultCompany/HorrorGame/Player.log
+```
+
+```
+[Match] seed 20260731 · 4 clues (§03 needs 3) · planned round trips 4 · 5 zones · local role Runner
+```
+
+That line is `MatchDirector.BeginMatch` completing. No `Exception` line means §14's
+guidance overlays came up with it — `PlaytestGuidanceScreen` builds its canvas in the
+same frame and would throw here if it could not.
+
+Two log lines are expected and harmless:
+
+- `[Steam] Running offline on development App ID 480 (Spacewar).` — Steam is not
+  running. Local hosting works, invites and in-game voice do not. §14 step 3 plays
+  this way on purpose.
+- `Failed to create agent because there is no valid NavMesh` — a load-order artifact
+  that appears **only in a player**, never in the editor. The scene's NavMesh comes
+  from a `NavMeshSurface` whose `OnEnable` calls `AddData()`, and the monster's native
+  `NavMeshAgent` is enabled during the same scene load with no ordering guarantee
+  between them. It has no lasting effect: `MonsterAgent` sets `updatePosition = false`
+  and drives the transform from `MonsterBrain`, which paths through the *global*
+  `NavMesh.CalculatePath` in `NavMeshWorldProbe` — and those succeed once the surface's
+  data is in. The warning that would prove real breakage,
+  `[Monster] NavMeshAgent is off the NavMesh at ...`, does not appear.
+
+### Which backend this machine can produce
+
+| Target | Development | Release | Shippable on Steam |
+|---|---|---|---|
+| macOS arm64 | Mono, ~3 min | **IL2CPP** — but see the caveat below | yes, for the macOS depot |
+| Windows x64 | Mono | **Mono only, never IL2CPP** | no |
+
+Development is always Mono by design: it links in seconds and a managed debugger
+attaches. Release wants IL2CPP and gets it only when the host OS matches the target's
+native toolchain.
+
+**Windows IL2CPP cannot be produced on a Mac at all.** IL2CPP transpiles to C++ and
+then calls the target's own compiler, which cannot cross-compile. A Windows Release
+build made here falls back to Mono and the pipeline drops
+`MONO-FALLBACK-DO-NOT-SHIP.txt` into the output folder. Steam's audience is mostly
+Windows, so a shipping Windows build needs a Windows machine or a Windows CI runner —
+see [STEAM-RELEASE.md](STEAM-RELEASE.md).
+
+### macOS IL2CPP needs one environment variable on this machine
+
+```bash
+export CPLUS_INCLUDE_PATH=/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1
+/Applications/Unity/Hub/Editor/6000.3.21f1/Unity.app/Contents/MacOS/Unity -batchmode -nographics -silent-crashes -projectPath unity/HorrorGame -executeMethod HorrorGame.EditorTools.BuildPipelineRunner.BuildFromCommandLine -buildPlatform macos-arm64 -buildConfig release -logFile /tmp/b.log
+```
+
+Without it the build fails at exit 4 with:
+
+```
+[Error] Postprocess built player: Building Library/Bee/artifacts/.../pch-cpp.pch failed with output:
+.../libil2cpp/codegen/il2cpp-codegen.h:24:10: fatal error: 'cmath' file not found
+```
+
+This is **not** a Unity fault and **not** the absence of Xcode. This machine's Command
+Line Tools are damaged: `/Library/Developer/CommandLineTools/usr/include/c++/v1` holds
+11 files where it should hold 185, and clang prefers that directory over the complete
+copy inside the SDK. A two-line `.cpp` that includes `<cmath>` fails to compile with
+plain `clang++`, no Unity involved — that is the whole bug.
+
+The export points clang at the SDK's complete copy and is a workaround. The real fix is
+to reinstall the tools, which is a system change to make deliberately:
+
+```bash
+sudo rm -rf /Library/Developer/CommandLineTools
+sudo xcode-select --install
+```
+
+After that the export is unnecessary. Note that `Horror ▸ Build ▸ Report Build
+Environment` reports `release backend IL2CPP` for macOS either way — it asks whether the
+host OS matches the target, not whether the C++ toolchain is intact.
+
+### Both platforms at once
+
+```bash
+export CPLUS_INCLUDE_PATH=/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1
+/Applications/Unity/Hub/Editor/6000.3.21f1/Unity.app/Contents/MacOS/Unity -batchmode -nographics -silent-crashes -projectPath unity/HorrorGame -executeMethod HorrorGame.EditorTools.BuildPipelineRunner.BuildFromCommandLine -buildPlatform windows-x64,macos-arm64 -buildConfig release -logFile /tmp/b.log
+```
+
+```
+exit code : 0
+
+  Windows x64                                Release     Mono   OK          144.09 MB  316s
+  macOS Apple silicon                        Release     IL2CPP OK         1343.32 MB  44s
+```
+
+The macOS figure is the whole output folder. The shippable part —
+`dist/macos-arm64/HorrorGame.app` — is 159 MB; the rest is
+`HorrorGame_BackUpThisFolder_ButDontShipItWithYourGame`, IL2CPP's C++ intermediates,
+which the name asks you not to ship.
+
+Menu equivalents live under `Horror ▸ Build`.
+
+### Mirror's meta-file error is expected
+
+Every build prints this and it does not fail the build:
+
+```
+[Error] Prebuild Cleanup and Recompile: Asset Packages/com.mirrornetworking.mirror/Mirror/Assets
+has no meta file, but it's in an immutable folder. The asset will be ignored.
+```
+
+`com.mirrornetworking.mirror@96.6.4` on OpenUPM repacks Mirror's git repository
+*including its `Mirror` submodule*, and that submodule's Unity project root —
+`Mirror/Assets` — legitimately has no `.meta`, because in the original repository
+nothing sits above it to reference it. Inside a package Unity demands one for every
+asset, so it logs an error. Everything below the folder has its own `.meta` and
+compiles into the player: `Mirror.dll`, `Mirror.Components` and `Mirror.Transports`
+are all in the build, which is what 70 EditMode tests sit on top of.
+
+It cannot be fixed from this repository. Registry packages live in
+`Library/PackageCache`, which Unity treats as immutable — writing the missing
+`Assets.meta` there was tried, and Unity deleted the file and logged *"The following
+asset(s) located in immutable packages were unexpectedly altered"*. The folder is
+regenerated from the tarball on every resolve, so nothing written into it survives a
+fresh clone. Fixing it for real means moving to a version that packs correctly, or
+vendoring Mirror's 2,955 files into the repository — both deliberate decisions, and
+neither belongs in a build fix.
+
+`BuildPipelineKnownDefects` names it, matching on both the symptom *and* that exact
+package path. Matching errors are printed, counted, and listed in `build-report.txt`
+under **known third-party defects** — they simply do not fail the build. Every other
+error still does, including a missing `.meta` in any other package. Delete the entry
+when the dependency moves.
+
+> **This is why `BuildOptions.StrictMode` is not set.** StrictMode fails a build when
+> any error was logged, and reports it as
+> `Failed to process scene before export: '<scene>'` — naming a scene that is not the
+> problem and never naming the error that is. It made every scene in this project
+> unbuildable, including the near-empty bootstrap menu, because the error being counted
+> was Mirror's and was logged before any scene was touched. The pipeline enforces the
+> same rule itself in `BuildPipelineRunner.ReportBuildMessages`, and can say what
+> happened. Proof it still works: the first IL2CPP attempt above failed at exit 4 on the
+> `'cmath'` error, reported as `1 this project's, 1 known third-party defect`.
 
 Steam depot upload is in `tools/steam/` — see [STEAM-RELEASE.md](STEAM-RELEASE.md).
 It dry-runs without contacting Steam, and refuses to upload while the App ID is still
@@ -319,4 +501,7 @@ It dry-runs without contacting Steam, and refuses to upload while the App ID is 
 | A map that plays badly | `HorrorGame ▸ Scene Gen ▸ Report Map Quality` |
 | Balance feels wrong | The simulator, then [BALANCE-FINDINGS.md](BALANCE-FINDINGS.md) |
 | Unity batch command fails | The editor holds the project lock. Close it |
+| `Failed to process scene before export` | Almost never the scene. It is `BuildOptions.StrictMode` failing on an unrelated logged error and blaming the first scene — see *Mirror's meta-file error is expected* above. Build one scene at a time to prove it: if the bootstrap menu fails too, the scene is innocent |
+| A standalone build fails and says nothing | `dist/<platform>/build-report.txt` — the pipeline copies every message off Unity's `BuildReport`, which the raw log does not do reliably |
+| `'cmath' file not found` during a Release build | Damaged Command Line Tools, not Unity. See *macOS IL2CPP needs one environment variable* above |
 | A number disagrees with the design | `GameConstants.cs` is the only authority. A literal anywhere else is a bug |

@@ -4,7 +4,7 @@ Things that stop the game working, as opposed to design questions. Balance
 contradictions live in [BALANCE-FINDINGS.md](BALANCE-FINDINGS.md). Art defects that
 do not stop the game live in [ART.md](ART.md) §7.
 
-Last verified: 2026-07-31, Unity 6000.3.21f1, macOS 24.3.0.
+Last verified: 2026-08-01, Unity 6000.3.21f1, macOS 24.3.0.
 
 ---
 
@@ -150,10 +150,31 @@ test in this repo claims otherwise. §14 says questions 1 and 2 decide the proje
 
 ## B-002 · The EditMode solo-match test fails on a broken Mirror package install
 
-**Status:** 🟠 open, environment · not a code regression · **re-confirmed 2026-07-31**
+**Status:** 🟢 **not reproducing** as of 2026-08-01 · was 🟠 open, environment ·
+never a code regression
 
-`SoloMatchLoopTests.Solo_match_runs_the_whole_round_trip` is the one red test in the
-project. It fails on an unhandled log message rather than an assertion:
+`SoloMatchLoopTests.Solo_match_runs_the_whole_round_trip` **passes**, and EditMode is
+green at 70 of 70:
+
+```
+total 70 passed 70 failed 0 result Passed
+  Passed HorrorGame.Gameplay.MatchEditor.SoloMatchLoopTests.Solo_match_runs_the_whole_round_trip
+```
+
+Nothing was done to fix it. The package cache was rewritten at some point during the
+map and art passes and the missing `.meta` stopped being reported, which is consistent
+with this always having been an environment fault rather than a code one. **Treat it
+as dormant, not closed** — B-004 says the Mirror package is an unofficial repack, and
+until that is replaced this can return on any reimport. If it does, the fix in the
+original write-up still applies:
+
+> Reinstall `com.mirrornetworking.mirror`, or have this one test `LogAssert.Expect`
+> this one message — but **not** by widening the test's log tolerance in general.
+
+<details>
+<summary>The failure as it was recorded on 2026-07-31</summary>
+
+It failed on an unhandled log message rather than an assertion:
 
 ```
 [TestRunner] Failed: HorrorGame.Gameplay.MatchEditor.SoloMatchLoopTests.Solo_match_runs_the_whole_round_trip
@@ -165,13 +186,53 @@ project. It fails on an unhandled log message rather than an assertion:
 ```
 
 **The loop it is testing works.** The same code path run outside the test harness
-passes end to end — see `SoloPlaytest.VerifyBatch` in [STATUS.md](STATUS.md) §1.4.
-What fails is the harness's zero-tolerance for unexpected `Debug.LogError`, and the
-error comes from the package cache, not from the match.
+passed end to end — see `SoloPlaytest.VerifyBatch` in [STATUS.md](STATUS.md) §1.4.
+What failed was the harness's zero-tolerance for unexpected `Debug.LogError`, and the
+error came from the package cache, not from the match.
 
-Fix: reinstall `com.mirrornetworking.mirror`, or have this one test
-`LogAssert.Expect` this one message — but **not** by widening the test's log
-tolerance in general, which would hide the errors it exists to catch.
+</details>
+
+---
+
+## B-005 · Regenerating the map unregistered the scene 시작 loads
+
+**Status:** 🟢 **CLOSED** 2026-08-01 · verified by
+`UiFlowTests.Menu_ComesUp_AndStartReachesTheMatchScene`
+
+**The main menu's 시작 button did nothing.** Found while integrating four parallel
+passes; it is a seam between the one that grew the map and the one that built the
+front end, and neither could see it alone.
+
+`MapSceneGenerator.RegisterScenes()` rewrites Build Settings **wholesale** rather than
+appending, and it named only `Bootstrap.unity` and `Map_FirstSketch.unity`. So
+regenerating the map deleted `Map_FirstSketch_Solo.unity` — the assembled scene with a
+player, a monster and a `MatchDirector` in it — from the build list.
+
+`SceneManager.LoadSceneAsync` returns `null` for a scene outside that list instead of
+throwing. `GameShell` therefore bounced silently back to the menu: no exception, no
+error line, no compile failure. The only symptom was a button that appeared to be
+unwired.
+
+```
+total 42 passed 41 failed 1 result Failed(Child)
+  Failed HorrorGame.Tests.PlayMode.UI.UiFlowTests.Menu_ComesUp_AndStartReachesTheMatchScene
+    Unhandled log message: '[Error] Scene 'Map_FirstSketch_Solo' couldn't be loaded
+    because it has not been added to the active build profile or shared scene list'
+```
+
+### The fix
+
+`SceneGenPaths.MatchScene` now names the scene in one place, `BootstrapSceneGenerator.
+MatchScenePath` aliases it, and `MapSceneGenerator.RegisterScenes()` includes it when
+it exists. The two writers can no longer disagree about which scene 시작 loads.
+
+```
+total 42 passed 42 failed 0 result Passed
+```
+
+The test was written by the front-end pass and is the reason this was caught at all —
+it exists precisely to notice a menu button that does nothing, which no compile check
+and no log line can see.
 
 ---
 
