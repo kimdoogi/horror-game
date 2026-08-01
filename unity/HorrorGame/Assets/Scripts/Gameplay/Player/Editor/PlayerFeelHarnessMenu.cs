@@ -234,6 +234,12 @@ namespace HorrorGame.Gameplay.PlayerEditor
             var view = body.AddComponent<PlayerFirstPersonView>();
             AssignSerialized(view, "_rigRoot", body.transform);
             view.Apply();
+
+            // The hands are drawn by the line above and legible because of this one: on a
+            // shipped frame they measured 3.5 of 255 against a floor at 16.0. §03 keeps
+            // the building dark; the fill reaches the arms' rendering layer and nothing
+            // else, so it cannot pay for that darkness.
+            body.AddComponent<PlayerHandFill>().Apply();
         }
 
         private static void Bind(PlayerFeelHarness harness, GameObject rig)

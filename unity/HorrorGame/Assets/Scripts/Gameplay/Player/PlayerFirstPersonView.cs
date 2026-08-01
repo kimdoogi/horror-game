@@ -97,6 +97,21 @@ namespace HorrorGame.Gameplay.Player
         }
 
         /// <summary>
+        /// The renderers that are the owner's own hands. Exposed for
+        /// <see cref="PlayerHandFill"/>, which has to reach exactly this set and no other:
+        /// it puts them on a rendering layer so a light can find them without finding the
+        /// building.
+        /// </summary>
+        public IReadOnlyList<SkinnedMeshRenderer> ArmRenderers
+        {
+            get
+            {
+                Collect();
+                return _armParts;
+            }
+        }
+
+        /// <summary>
         /// Applies the policy to every renderer under the rig.
         /// <para>
         /// Public and idempotent because three different callers need it: the editor rig

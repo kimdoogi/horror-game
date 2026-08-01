@@ -1166,6 +1166,81 @@ The two-handed states are the ones §03 defines *by* what they cost you, and nei
 shows the thing it costs you. `FirstPersonHandsShot`'s own table reports `torch -` for
 both, so the tool knows; there is no held-prop renderer in first person to report.
 
+#### 2026-08-01 · re-measured after the hand rebuild — three of the rows above are now stale
+
+The table above was written against the harvested-from-the-vessel hand.
+`gen_player_ai.py` now **builds** the hand instead of cutting one out, and
+`FirstPersonHandsShot -shotTag night01` plus a flat Blender render of
+`Player_Arms` out of `Player.fbx` say this much has changed:
+
+| the old row | what the mesh does now |
+|---|---|
+| "Fingers fused into a paddle — no knuckles, no nails, no creases" | **fixed.** Five separate digits, knuckles and a thumb that opposes, visible in isolation at `arms_front` |
+| "Forearms are bare, untextured, faceted tubes — no sleeve, no cuff" | **fixed.** Coverall sleeve, cuff and role band; `Player_Arms` is 3 376 polys |
+| "§08 대형 전리품, both hands → nothing in frame" | **fixed.** The crate is in frame and held |
+| "torch in hand → a near-black stub, no beam cone" | **still true.** `FirstPersonHandsShot` reports `torch -` in every state |
+
+#### The hands were invisible for a different reason, and it was measurable
+
+The rebuilt hand is good and nobody could see it. Mean luminance sampled off
+`night01_*` at native brightness, no gain:
+
+```
+                        left arm   right arm   far floor   near floor
+empty hands, torch off       3.9         3.5        52.7          8.3
+§08 대형 전리품, both hands    3.7         2.9        52.9          8.0
+§03 목표물, both hands        3.7         3.6        53.1          8.2
+```
+
+**3.5 of 255 against a floor at 52.7.** §05 asks for 손 and the renderer was drawing
+them; a fifteenth of the floor's exposure is not a hand, it is a rumour of one. Every
+render before this was read after a 3× brightness gain, which is why five rounds of
+looking at the hands never found it — the crop that makes the mesh judgeable is the
+crop that hides the defect.
+
+`PlayerHandFill` is the fix: a point light parented to the eye, 0.62 m of range and
+**0.055** intensity, which is where it stops lighting anything but the arms.
+
+```
+                     left arm   right arm   far floor   near floor
+before                    3.9         3.5        52.7          8.3
+after                    22.3        31.5        52.9          9.2
+```
+
+**The arms move 6~9×; the floor moves 0.2 of 255 and the corridor beyond it not at
+all.** §03's lock is still shut — that was the whole constraint, because a lamp at the
+camera that reached the corridor would open the objective for free.
+
+Its intensity is not linear anywhere near the working point: 2.2 and 0.40 both land the
+arms at 79~92, saturated, and only 0.055 lands them at 31.5. Anyone retuning this should
+sweep by an order of magnitude, not by a factor of two.
+
+**The rendering-layer restriction in that component does not currently do anything, and
+the file says so.** URP honours a light's `renderingLayers`, but a *renderer's*
+`renderingLayerMask` is only read when Rendering Layers are enabled on the renderer
+asset, which they are not here. Measured: with the light on the arms' layer alone the
+arms went back to 3.5 — the light matched nothing. The confinement that ships is the
+0.62 m range. Enabling Rendering Layers on `HorrorGame_URP_Renderer.asset` would make
+the mask real and is a project-wide render setting, so it was not flipped at 01:00.
+
+#### What is still wrong with the arms, now that they can be seen
+
+Read `fill06_20_loot.png`. The mesh is good and the framing is not:
+
+- **The forearms are far too large in frame.** Each runs from a bottom corner to
+  mid-height; the visible forearm is 4~5× the length of the hand against a human's
+  1.4×. The eye sits directly above the shoulders, so the real arms foreshorten into
+  long wedges. First-person arms in this genre are usually a separate asset posed for
+  the camera rather than the body's own.
+- **The hands do not touch what they are carrying.** In the 대형 전리품 state the crate
+  is between them and both hands are clear of it. §03 defines that state by what it
+  costs you; hands beside the object read as a bug rather than as a burden.
+- **The coverall reads as pale hospital white**, not work canvas — the role band on the
+  cuff is the only saturated thing on the arm.
+
+None of these are the mesh. All three are pose and framing, which is
+`gen_player_ai.py`'s four carry poses and the shoulder-to-eye offset in the rig.
+
 #### The torch does not gate anything
 
 §1 of this page: *"If a room is readable without the beam, the lock is open."*
