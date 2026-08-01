@@ -181,7 +181,7 @@ CROWN_Z = 1.75
 LEG_X = 0.090              # leg centre line
 SHOULDER_X = 0.155         # shoulder joint
 ELBOW_X = 0.475
-WRIST_X = 0.735
+WRIST_X = 0.7000          # see gen_player_ai.HAND_LENGTH — the span is capped at 1.785 m
 HAND_TIP_X = 0.845
 
 THIGH_LEN = HIP_Z - KNEE_Z          # 0.430
@@ -1140,15 +1140,30 @@ def leg(side: int, thigh: float, shank: float, foot: float = 0.0, toe: float = 0
 # fist 22° below the bottom edge. That was the whole defect: the hands were authored
 # correctly for the three teammates who look at this model and off-screen for the one
 # person inside it. `verify_first_person` now checks the second reading too.
-FLASHLIGHT_ARM = dict(up_down=31.0, up_swing=59.0, lo_down=-39.0, lo_swing=99.0,
-                      hand_down=-4.0, hand_swing=99.0)
+# Measured from the inside, not judged: `FirstPersonHandsShot` reports the viewport
+# coordinate of each hand, and at up_swing 59 the torch hand landed at **x = 0.79** — a
+# fist in the right-hand margin, half of it past the edge, with the same in the left. §05
+# promises 「손만 있으면 된다」 and two lumps in the corners is not that. Swinging the
+# upper arm forward and folding the elbow harder brings it to x ≈ 0.68 without moving the
+# lens, which `verify_first_person` and POSE_MEASURE both still check.
+FLASHLIGHT_ARM = dict(up_down=26.0, up_swing=76.0, lo_down=-46.0, lo_swing=106.0,
+                      hand_down=-10.0, hand_swing=106.0)
 
 # The free arm: raised to the same lower-chest height and slightly wider, so an empty
 # hand is a thing the owner can SEE rather than an absence they have to infer. §10 makes
 # switching the light off the most repeated trade in the game, and the state you switch
 # into has to look like something.
-FREE_ARM = dict(up_down=33.0, up_swing=52.0, lo_down=-41.0, lo_swing=95.0,
-                hand_down=-22.0, hand_swing=95.0)
+FREE_ARM = dict(up_down=28.0, up_swing=72.0, lo_down=-46.0, lo_swing=102.0,
+                hand_down=-26.0, hand_swing=102.0)
+
+# Crouched, the eye drops 0.38 m and the arm does not, so the same pose puts the lens
+# 0.11 m under the eye instead of the 0.15 m `verify_motion` requires — a torch held level
+# with your own face lights the inside of your view. Dropping the elbow is what a person
+# does when they take cover anyway: the light comes down and in.
+CROUCH_FLASHLIGHT_ARM = dict(FLASHLIGHT_ARM)
+CROUCH_FLASHLIGHT_ARM.update(up_down=FLASHLIGHT_ARM["up_down"] + 6.0,
+                             lo_down=FLASHLIGHT_ARM["lo_down"] + 6.0,
+                             hand_down=FLASHLIGHT_ARM["hand_down"] + 4.0)
 
 
 def stand_spec(**over) -> dict:
@@ -1451,14 +1466,22 @@ def clip_run(rig) -> Clip:
 # 못한다, and an object held where the owner can see it is the only version of that
 # sentence the owner experiences. From the inside the frame fills with two hands and the
 # objective between them, no beam anywhere, which is the state read without a HUD.
-CARRY_ARMS = dict(up_down=21.0, up_swing=78.0, lo_down=-47.0, lo_swing=104.0,
-                  hand_down=-49.0, hand_swing=116.0, shoulder_down=2.0, shoulder_swing=16.0)
+CARRY_ARMS = dict(up_down=16.0, up_swing=78.0, lo_down=-53.0, lo_swing=104.0,
+                  hand_down=-55.0, hand_swing=116.0, shoulder_down=2.0, shoulder_swing=16.0)
 
 # §08 w5, two carriers: WIDE on a crate edge and a clear step lower than the objective,
 # so the two two-handed states are never mistaken for each other — from the outside by
 # the grip, and from the inside by where the hands sit in the frame.
-HEAVY_ARMS = dict(up_down=32.0, up_swing=60.0, lo_down=-22.0, lo_swing=68.0,
-                  hand_down=-20.0, hand_swing=72.0, shoulder_down=4.0, shoulder_swing=10.0)
+# Two rules hold this pose in place and they pull against each other, which is why the
+# numbers are written down rather than left as taste. The hands must sit at least 0.12 m
+# below Carry's, so §08's two-person crate never reads as §03's objective; and they must
+# stay inside §05's 80° frame with 3° to spare, or the owner is carrying something they
+# cannot see. The band between the two is narrow — shortening the forearm to 0.2315 m for
+# the scale anchor (gen_player_ai.HAND_LENGTH) closed it by about 2° — and 34°/−32° is
+# where both hold: hand_z **1.314 m against Carry's 1.455**, worst key **36.6° below**
+# centre against a 37° limit.
+HEAVY_ARMS = dict(up_down=34.0, up_swing=70.0, lo_down=-32.0, lo_swing=86.0,
+                  hand_down=-28.0, hand_swing=90.0, shoulder_down=6.0, shoulder_swing=10.0)
 
 
 def carry_torso(i: int, twist_amp: float, sway_amp: float):
@@ -1564,10 +1587,10 @@ def clip_crouch(rig) -> Clip:
             # Both arms pulled in a little against the crouched torso, as deltas on the
             # standing pair. The eye drops 0.39 m in this clip, so the framing check has
             # to keep holding here and not only when standing up straight.
-            arm(1, **{**FREE_ARM, "up_down": FREE_ARM["up_down"] - 4.0,
-                      "up_swing": FREE_ARM["up_swing"] - 4.0}),
-            arm(-1, **{**FLASHLIGHT_ARM, "up_down": FLASHLIGHT_ARM["up_down"] - 4.0,
-                       "lo_down": FLASHLIGHT_ARM["lo_down"] - 4.0}),
+            arm(1, **{**FREE_ARM, "up_down": FREE_ARM["up_down"] + 6.0,
+                      "up_swing": FREE_ARM["up_swing"] - 4.0,
+                      "lo_down": FREE_ARM["lo_down"] + 14.0}),
+            arm(-1, **CROUCH_FLASHLIGHT_ARM),
             leg(1, 58.0, -50.6, 0.0, 0.0, out=6.0),
             leg(-1, 58.0, -50.6, 0.0, 0.0, out=6.0),
         )
@@ -1596,10 +1619,12 @@ def clip_crouch_walk(rig) -> Clip:
         spec = merge(
             torso(lean=26.0 + breath, twist=(-5.0, 0.0, 5.0, 0.0)[i], hips_tilt=sway * 60),
             head(lean=2.0, neck=28.0, yaw=(-2.0, 0.0, 2.0, 0.0)[i]),
-            arm(1, **{**FREE_ARM, "up_down": FREE_ARM["up_down"] - 3.0,
-                      "up_swing": FREE_ARM["up_swing"] - 3.0}),
-            arm(-1, **{**FLASHLIGHT_ARM, "up_down": FLASHLIGHT_ARM["up_down"] - 3.0,
-                       "lo_down": FLASHLIGHT_ARM["lo_down"] - 3.0}),
+            arm(1, **{**FREE_ARM, "up_down": FREE_ARM["up_down"] + 5.0,
+                      "lo_down": FREE_ARM["lo_down"] + 14.0}),
+            # Same drop as Crouch and for the same measured reason: the eye is 0.32 m
+            # lower here than standing, so the standing arm would hold the lens inside
+            # the crouched view.
+            arm(-1, **CROUCH_FLASHLIGHT_ARM),
         )
         return spec, (sway, 0.080)
 
@@ -2622,18 +2647,40 @@ def verify_mesh_split(body, arms, torch) -> None:
         for m in (body, arms, torch)))
 
 
-def write_surface_manifest(reports: list, uv_per_metre: float, res: int) -> None:
+def write_surface_manifest(reports: list, uv_per_metre: float, res: int,
+                           generated_by: str = "tools/blender/gen_player_model.py") -> None:
+    """Emits ``Player.textures.json`` — the contract ``PlayerMaterials`` builds from.
+
+    **The role colours are in here too, and they were not before.** FBX cannot carry a PBR
+    material — the format has a Lambert slot — so every one of this model's eight materials
+    imports as flat white, which is exactly the defect ART.md §7.11 recorded for the props
+    and nobody had recorded for the player. `PlayerMaterials` rebuilds all eight as URP Lit
+    assets and remaps the importer onto them, and to do that it needs the five role RGBs as
+    well as the three texture sets. Retyping them on the C# side would put §04's colour
+    contract in two places and let it drift; emitting them here means the values a
+    Principled BSDF was actually built with are the values Unity gets.
+    """
     import gen_monster_model as gmm  # noqa: PLC0415
     path = os.path.join(gmm.TEXTURE_DIR, "Player.textures.json")
     with open(path, "w", encoding="utf-8") as handle:
         json.dump({
-            "generated_by": "tools/blender/gen_player_model.py",
+            "generated_by": generated_by,
             "resolution": res,
             "uv_units_per_metre": round(uv_per_metre, 6),
             "fbx": "Assets/Models/Characters/Player.fbx",
             "note": "The five Role_* slots are flat colour by design — Unity swaps slot 0 "
                     "per RoleId and §05 picks those values for separation in the dark. "
                     "Only the three neutral surfaces carry maps.",
+            "roles": [
+                {
+                    "name": spec.name,
+                    "base_color_linear": [round(c, 5) for c in spec.color],
+                    "roughness": round(spec.roughness, 4),
+                    "metallic": 0.0,
+                    "luma": round(luma(spec.color), 4),
+                }
+                for spec in MATERIAL_SPECS if spec.name in ROLE_MATERIALS
+            ],
             "materials": reports,
         }, handle, indent=2)
         handle.write("\n")
@@ -2716,6 +2763,42 @@ def verify_surface_separation(reports: list) -> None:
 
 
 def main() -> None:
+    """Delegates to ``gen_player_ai.py``, which is what writes the player now.
+
+    **This file is a library.** Its pose solver, its nine clip authors, its gait tables,
+    its procedural surfaces and its ``verify_*`` gates are all still the ones the shipping
+    asset is built and checked with — ``gen_player_ai`` imports every one of them. What it
+    no longer owns is the *geometry*: the hands are cut out of a sculpt, because a hand is
+    made of the gaps between its fingers and a lofted tube has none, and §05 puts that
+    assembly 35 cm from the camera for the whole match.
+
+    ``main`` delegates rather than failing for one reason: ``tools/ci/run_blender_generators.sh``
+    names **this** file in its generator list, and that list belongs to the CI area rather
+    than to this one. Delegating keeps CI building the right asset with no edit outside
+    this area, and keeps the promise that matters — there is exactly one Player.fbx and
+    exactly one thing that writes it. Pointing that list at ``gen_player_ai`` directly is a
+    one-line change and would make this shim unnecessary.
+
+    ``-- --shell`` builds the old hull-and-tube model instead, into ``artifacts/`` and
+    never into ``Assets/``. It is kept the way ``gen_monster_model``'s hull creature is
+    kept: so the thing that was replaced can still be looked at, and so a reader who finds
+    it cannot mistake it for the player the game loads.
+    """
+    tail = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
+    if "--shell" not in tail:
+        print("DELEGATE gen_player_model.py is a library; gen_player_ai.py writes "
+              "Assets/Models/Characters/Player.fbx. Pass -- --shell for the old "
+              "hull-and-tube model, which goes to artifacts/ and never to Assets/.")
+        import gen_player_ai  # noqa: PLC0415 — deferred, or the two modules import in a cycle
+
+        gen_player_ai.main()
+        return
+
+    build_shell_variant()
+
+
+def build_shell_variant() -> None:
+    """The pre-sculpt model, written to ``artifacts/`` for comparison only."""
     blendkit.reset_scene()
     blendkit.set_frame_range(1, 93)
 
@@ -2849,8 +2932,11 @@ def main() -> None:
     print(f"BIND_POSE t_pose_confirmed wrist_x={bind_span:.3f}m "
           f"eye_z={bone_point(rig, 'HeadCameraAnchor', (0.0, 0.0, 0.0)).z:.3f}m")
 
-    fbx_path = blendkit.out_path("Characters", "Player.fbx")
-    glb_path = os.path.join(os.path.dirname(fbx_path), "Player.glb")
+    artifacts = os.path.abspath(os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "..", "..", "artifacts", "player_variants"))
+    os.makedirs(artifacts, exist_ok=True)
+    fbx_path = os.path.join(artifacts, "Player_Shell.fbx")
+    glb_path = os.path.join(artifacts, "Player_Shell.glb")
     blendkit.export_fbx(fbx_path, objects=[rig, body, arms, torch], with_animation=True)
 
     # Maps go on only now. Unity finds them under Assets/Textures/<material>/ by name,

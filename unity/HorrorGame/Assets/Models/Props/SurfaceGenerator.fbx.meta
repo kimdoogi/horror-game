@@ -22,6 +22,11 @@ ModelImporter:
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
+      name: Prop_PaintedSteel
+    second: {fileID: 2100000, guid: e059a67a9d3d64b04ba901dae0ef8e85, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
       name: Prop_Rust
     second: {fileID: 2100000, guid: e53c7a95213044a91a558d65f02d579d, type: 2}
   - first:

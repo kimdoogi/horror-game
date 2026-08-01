@@ -24,16 +24,28 @@ export DOTNET_ROOT="$HOME/.dotnet"; export PATH="$HOME/.dotnet:$PATH"
 
 ## The one-line answer
 
-**617 of 617 tests green (core 451, EditMode 100, PlayMode 66), the standalone IL2CPP
-player starts a match with no exceptions, and §01's 지상 — the 안전 지대, the shop, the
-보급소 and §02's win condition — is visible from inside the game for the first time. It
-had no physical presence at all: no line, no gate, no threshold, no change of light or
-sound, and one line of §14 guidance text carrying the whole boundary. The owner played
-the build and asked 앞마당이 어디야. It is now a painted hazard line at exactly
-`MatchMap.SurfaceRadius`, with lit crossings, warm practicals along the walk, and the
-차량 parked somewhere its own body fits (§3.27, §4.6). The one number this round was
-not set to move, the 주자 테스트, did not move; it is still 10/10 TooEasy against §12's
-5–7 band.**
+**624 of 624 tests green (core 451, EditMode 101, PlayMode 72), the standalone IL2CPP
+player starts a match with 0 exceptions, and the player now has a Humanoid model with
+harvested hands and the 차량 has a painted dielectric body instead of forged iron. Both
+landed clean: `AssetImportValidator` passes 86 models with 0 failing, so the rig, the
+1.750 m height, the four mount bones and the clip counts are all intact. The one number
+this round was not set to move, the 주자 테스트, did not move; it is still 10/10 TooEasy
+against §12's 5–7 band.**
+
+> 🔴 **Neither art pass is shippable yet, and the renders say so plainly.** The
+> first-person hands are cut out of the flayed monster vessel sculpt
+> (`gen_player_ai.py`), and they still read as it: fused mitten fingers, a stippled
+> raw-meat surface, bare untextured forearm tubes with no coverall, and on the right
+> hand a visible hole at the wrist where the hand and arm do not join. The 차량 is a
+> correctly painted box — two cuboids and four featureless black cylinders, no
+> windscreen, no grille, no wheel arches, no tread, and a flat lavender rectangle where
+> the cab window should be. **Read [ART.md §7.13](ART.md) before quoting either pass as done.**
+
+> 🔴 **ART.md's "all five zone views inside all four bands" is no longer true.** The
+> same command on the same scene now gives Zone A 41.1% crushed / 25.4% legible against
+> bands of 10–40 and 30–75. Three of five zones are below the legible floor and Zone A
+> is above the crushed ceiling. The frame got darker since that measurement was
+> recorded; nothing in this pass was aimed at it. See ART.md §1.
 
 > **The 차량 was parked inside a wall, and had been since it was first placed.** §12
 > marks the 출입구 on a stairwell cell in a **2.2 m** service corridor and the van is
@@ -459,12 +471,13 @@ python3 -c "import xml.etree.ElementTree as ET,sys; r=ET.parse(sys.argv[1]).getr
 Both exit 0.
 
 ```
-EditMode   total 100 passed 100 failed 0 result Passed
-PlayMode   total 66 passed 66 failed 0 result Passed
+EditMode   total 101 passed 101 failed 0 result Passed
+PlayMode   total 72 passed 72 failed 0 result Passed
 ```
 
-**166 of 166, against 126 of 126 two passes ago.** EditMode 71 → 100 and PlayMode
-55 → 64 → **66**. The two new PlayMode cases are `SurfaceApronTests`, and the first of
+**173 of 173, against 166 of 166 last pass.** EditMode 71 → 100 → **101** and PlayMode
+55 → 64 → 66 → **72**. The seven added this pass cover the crouch/hop verbs and the
+rebuilt player rig. The two PlayMode cases before them are `SurfaceApronTests`, and the first of
 them is the one to know about: it walks every stripe of §01's painted boundary and
 asserts each is within 0.35 m of `MatchMap.SurfaceRadius` measured from
 `MatchMap.Entrance` — the same two values `MatchMap.IsOnSurface` uses. Worst radial
@@ -485,7 +498,7 @@ inside geometry, and that the crosshair finds it again after walking back. Every
 interaction test called `OnPressed` directly, which is how a broken pickup key survived
 575 green tests for a day.
 
-**With core's 451, the project total is 617 of 617 green.**
+**With core's 451, the project total is 624 of 624 green.**
 
 Two earlier seams this suite caught, both still worth knowing about:
 
@@ -1176,9 +1189,9 @@ grep -cE '^Assets/.*error CS' /tmp/u.log                                  # §1.
 # §1.9 — the full Unity suite. NEVER -quit: the runner is async and -quit shuts the
 # editor down before results are written, which reports nothing and exits 0.
 $U -batchmode -projectPath $P -runTests -testPlatform EditMode \
-   -testResults /tmp/editmode.xml -logFile /tmp/edit.log                                 # §1.9  100/100
+   -testResults /tmp/editmode.xml -logFile /tmp/edit.log                                 # §1.9  101/101
 $U -batchmode -projectPath $P -runTests -testPlatform PlayMode \
-   -testResults /tmp/playmode.xml -logFile /tmp/play.log                                 # §1.9  64/64
+   -testResults /tmp/playmode.xml -logFile /tmp/play.log                                 # §1.9  72/72
 python3 -c "import xml.etree.ElementTree as ET,sys; r=ET.parse(sys.argv[1]).getroot(); \
   print(r.get('total'), r.get('passed'), r.get('failed'), r.get('result'))" /tmp/playmode.xml
 

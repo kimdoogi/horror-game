@@ -1,9 +1,66 @@
 {
-  "generated_by": "tools/blender/gen_player_model.py",
+  "generated_by": "tools/blender/gen_player_ai.py",
   "resolution": 1024,
-  "uv_units_per_metre": 0.593778,
+  "uv_units_per_metre": 0.515757,
   "fbx": "Assets/Models/Characters/Player.fbx",
   "note": "The five Role_* slots are flat colour by design \u2014 Unity swaps slot 0 per RoleId and \u00a705 picks those values for separation in the dark. Only the three neutral surfaces carry maps.",
+  "roles": [
+    {
+      "name": "Role_Listener",
+      "base_color_linear": [
+        0.1,
+        0.15,
+        0.34
+      ],
+      "roughness": 0.8,
+      "metallic": 0.0,
+      "luma": 0.1531
+    },
+    {
+      "name": "Role_Engineer",
+      "base_color_linear": [
+        0.18,
+        0.26,
+        0.11
+      ],
+      "roughness": 0.8,
+      "metallic": 0.0,
+      "luma": 0.2322
+    },
+    {
+      "name": "Role_Runner",
+      "base_color_linear": [
+        0.66,
+        0.21,
+        0.1
+      ],
+      "roughness": 0.78,
+      "metallic": 0.0,
+      "luma": 0.2977
+    },
+    {
+      "name": "Role_Observer",
+      "base_color_linear": [
+        0.72,
+        0.55,
+        0.14
+      ],
+      "roughness": 0.76,
+      "metallic": 0.0,
+      "luma": 0.5565
+    },
+    {
+      "name": "Role_Flasher",
+      "base_color_linear": [
+        0.78,
+        0.78,
+        0.74
+      ],
+      "roughness": 0.7,
+      "metallic": 0.0,
+      "luma": 0.7771
+    }
+  ],
   "materials": [
     {
       "name": "Player_Coverall",
@@ -23,7 +80,7 @@
         "occlusion": "Player_Coverall/Player_Coverall_ao.png",
         "metallic_smoothness": "Player_Coverall/Player_Coverall_ms.png"
       },
-      "tiling": 3.0621
+      "tiling": 3.5253
     },
     {
       "name": "Player_Skin",
@@ -43,7 +100,7 @@
         "occlusion": "Player_Skin/Player_Skin_ao.png",
         "metallic_smoothness": "Player_Skin/Player_Skin_ms.png"
       },
-      "tiling": 6.0148
+      "tiling": 6.9246
     },
     {
       "name": "Player_Gear",
@@ -63,7 +120,7 @@
         "occlusion": "Player_Gear/Player_Gear_ao.png",
         "metallic_smoothness": "Player_Gear/Player_Gear_ms.png"
       },
-      "tiling": 5.2629
+      "tiling": 6.0591
     }
   ]
 }

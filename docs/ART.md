@@ -50,7 +50,35 @@ cd unity/HorrorGame/Shots && python3 ../../../tools/render/frame_stats.py 'final
 | median luminance | 3–16 | The unlit room. Not zero. |
 | pixels above 250 ("blown") | < 0.5% | A clipped hotspot throws away the texture detail in the exact part of the frame the player is looking at. |
 
-**All five zone views are inside all four bands, for the first time.** Measured
+> 🔴 **This section's headline was "All five zone views are inside all four bands, for
+> the first time." It is no longer true, and the regression is recorded here rather
+> than deleted.** Re-measured 2026-08-01 with the identical command and viewpoints on
+> the identical scene, tag `land_main`:
+>
+> ```
+> shot                                     mean    p50    p90    p99  black%  legible%  blown%    sat
+> land_main_Zone_A_B2_Wood.png              6.9    2.6   15.7   62.2    41.1      25.4    0.00    5.6
+> land_main_Zone_B_B5_Tile.png              7.4    3.3   16.9   63.5    37.5      28.7    0.00    7.7
+> land_main_Zone_C_B4_Gravel.png            7.3    3.1   17.3   69.2    39.5      26.2    0.00    7.2
+> land_main_Zone_D_B1_Concrete.png          9.0    6.1   18.9   59.5    20.5      38.5    0.00   10.4
+> land_main_Zone_E_B3_Metal.png            12.7    8.4   31.0   49.7    17.3      52.3    0.00   14.5
+> ```
+>
+> | Shot | crushed % (10–40) | legible % (30–75) | median (3–16) |
+> |---|--:|--:|--:|
+> | Zone A · B2 · 나무 | 33.9 → **41.1 ✗** | 32.2 → **25.4 ✗** | 4.2 → 2.6 ✓ |
+> | Zone B · B5 · 타일 | 31.6 → 37.5 ✓ | 33.2 → **28.7 ✗** | 4.7 → 3.3 ✓ |
+> | Zone C · B4 · 자갈 | 30.9 → 39.5 ✓ | 34.3 → **26.2 ✗** | 5.1 → 3.1 ✓ |
+> | Zone D · B1 · 콘크리트 | 14.5 → 20.5 ✓ | 47.8 → 38.5 ✓ | 7.4 → 6.1 ✓ |
+> | Zone E · B3 · 금속 | 17.6 → 17.3 ✓ | 51.9 → 52.3 ✓ | 8.4 → 8.4 ✓ |
+>
+> **Every zone moved the same direction — darker and less legible — which says a global
+> lighting or exposure change, not a per-zone one.** Nothing in the player-model or van
+> pass was aimed at lighting, so the cause is upstream of both and is not yet found.
+> `Map_FirstSketch_Solo` reproduces these figures exactly, so it is not scene-specific.
+> Do not quote the table below as current.
+
+**Superseded — the reading when this section was written.** Measured
 2026-08-01 on `Shots/final_*`, which is the same command and the same viewpoints as
 the `map_*` figures it supersedes — only the tag differs:
 
@@ -1041,7 +1069,13 @@ Unity -batchmode -quit -silent-crashes -projectPath unity/HorrorGame \
 Run it WITHOUT `-nographics`. It also stands up any model the current seed did not
 place, so the 궤짝 is photographed on a seed that drew the 초상화.
 
-### 7.12 The 차량's body is a 90 % metal with an albedo of 0.11 — it renders as a hole
+### 7.12 ~~The 차량's body is a 90 % metal with an albedo of 0.11 — it renders as a hole~~ — MATERIAL FIXED
+
+> **Closed as a material, not as a vehicle.** `Prop_VanBody` and `Prop_VanLower` now
+> exist as URP Lit assets at metallic 0 and the van reads as painted steel instead of a
+> hole. `Prop_Iron` was left alone, as this section asked. The mesh under the new paint
+> is still two cuboids and four cylinders with no windscreen, grille or wheel arches —
+> **see §7.13**, which is where the van's remaining problem lives.
 
 §7.11 gave the 차량 a real 6.69 m model and left the last thing about it unfixed: its
 body material is **`Prop_Iron` — albedo (0.112, 0.116, 0.122), metallic 0.90,
@@ -1071,3 +1105,107 @@ every other iron thing in the game, all of which are meant to look like iron.
 
 Do not fix it by tinting the material at runtime. §7.11's whole lesson is that the
 material the player sees has to be an asset the build contains.
+
+### 7.13 The two art passes landed their materials and did not land their meshes
+
+**Both passes did what they set out to do, measured against the thing they were asked
+to measure, and the result still does not look like a game somebody would pay for.**
+That gap is the whole content of this section, and it is here because both passes are
+otherwise reportable as successes: §7.12's van paint exists as an asset, the player is a
+validated Humanoid, and `AssetImportValidator` passes 86 models with 0 failing.
+
+Measured 2026-08-01. Reproduce with:
+
+```bash
+U=/Applications/Unity/Hub/Editor/6000.3.21f1/Unity.app/Contents/MacOS/Unity
+$U -batchmode -quit -silent-crashes -projectPath unity/HorrorGame \
+   -executeMethod HorrorGame.Gameplay.PlayerEditor.FirstPersonHandsShot.Batch -shotTag land_hands
+$U -batchmode -quit -silent-crashes -projectPath unity/HorrorGame \
+   -executeMethod HorrorGame.Gameplay.PlayerEditor.PlayerBodyShot.Batch -shotTag land_body
+$U -batchmode -quit -silent-crashes -projectPath unity/HorrorGame \
+   -executeMethod HorrorGame.EditorTools.Props.PropShot.Batch -shotTag land_prop
+$U -batchmode -quit -silent-crashes -projectPath unity/HorrorGame \
+   -executeMethod HorrorGame.EditorTools.Playtest.GuidanceShot.Batch -shotTag land_guide
+```
+
+**Read `land_guide_van.png` and `land_guide_surface.png` first.** They are 1920×1080 and
+brighter than the gameplay captures, so they are the two frames where the hands can
+actually be judged. The 1280×720 `land_hands_*` set hides all of this.
+
+#### The hands are the worst thing in the frame, and they are in every frame
+
+`gen_player_ai.py` cuts them out of `monster_vessel_base.glb` — the flayed vessel the
+file's own docstring calls *"something that used to be a person"*, with *"torn skin at
+every joint"*. That decision is defensible on proportion and it is what produced the
+surface:
+
+| What the render shows | Where |
+|---|---|
+| Fingers fused into a paddle — no knuckles, no nails, no creases, no fingertips | both hands, every state |
+| A stippled, lumpy displacement that reads as raw meat or a knitted mitten, not skin | both hands |
+| **A hole at the right wrist** — the hand and forearm do not join; you can see through the seam to a dark void | `land_guide_van.png`, right hand |
+| Forearms are bare, untextured, visibly faceted low-poly tubes — no sleeve, no cuff, no coverall | both arms |
+| The first-person arms are bare skin; the third-person body wears a coverall. **The two do not match.** | `land_guide_*` vs `land_body_03m.png` |
+
+`gen_player_ai.py` already has a guard that fails the harvest if the hand *"is a tube,
+so it is a mitten"*. It passes, and the shipped hand still reads as a mitten. The guard
+is measuring span, and the defect is surface and topology.
+
+#### Nothing is held in any of §03's four carry states
+
+All four render identical empty hands:
+
+| State | What should be in frame | What is |
+|---|---|---|
+| empty hands, torch off | nothing | nothing ✓ |
+| torch in hand, lit | the flashlight | a near-black stub intersecting the hand, no beam cone |
+| §08 대형 전리품, both hands | the crate | nothing |
+| §03 목표물, both hands | the objective | nothing |
+
+The two-handed states are the ones §03 defines *by* what they cost you, and neither
+shows the thing it costs you. `FirstPersonHandsShot`'s own table reports `torch -` for
+both, so the tool knows; there is no held-prop renderer in first person to report.
+
+#### The torch does not gate anything
+
+§1 of this page: *"If a room is readable without the beam, the lock is open."*
+
+| | mean | legible % |
+|---|--:|--:|
+| `land_hands_00_empty.png` (torch **off**) | 10.6 | 40.3 |
+| `land_hands_10_torch.png` (torch **on**) | 11.1 | 40.6 |
+
+**Switching §03's flashlight on changes the frame's mean luminance by 0.5 of 255.** The
+corridor is equally readable either way. This is the §03 lock standing open, measured.
+
+#### The van is a correctly painted blockout
+
+`Prop_VanBody` and `Prop_VanLower` exist, import as URP Lit, and read as painted
+dielectric steel rather than §7.12's black hole. That part worked. The mesh under the
+paint is two cuboids and four cylinders:
+
+- No windscreen, no grille, no headlights, no bumper — **the cab has no front at all**.
+- No door lines, no handles, no mirrors, no wheel arches.
+- Wheels are featureless black cylinders: no tread, no sidewall, no rim, no hub.
+- The cab window is a flat pale-lavender rectangle with no frame, no glass and no
+  reflection — the cheapest pixels in the shot.
+- The specular response is a single soft untextured lobe. §7.9's point applies: **there
+  is still no reflection probe indoors**, so "painted" can only read as "slightly
+  shinier grey". The paint cannot finish the job the probe was deferred on.
+
+Measured, the van's own frames are also outside every band on this page — `black% 0.5`
+and `legible% 96.1` at 2 m against 10–40 and 30–75. The 하역 베이 it is now parked in is
+lit like a car park, not like this game.
+
+#### Two defects in the measuring tools themselves
+
+- **`PlayerBodyShot` has never photographed 15 m.** Line 138 clamps the wanted distance
+  to `stand.ClearMetres - 1.2`, and the corridor it picks is too short, so the run
+  writes `land_body_15m.png` at **10 m** — the filename takes the wanted distance and
+  the report table takes the actual. 15 m is `GameConstants.ObserverRange` and the whole
+  reason the distance is in the list. Either find a longer run or rename the output.
+- **A teammate's body contrast is an order of magnitude under the monster's floor.**
+  0.0013 at 3 m, 0.0084 at 8 m, 0.0038 at 10 m, against the 0.015 §6b holds the creature
+  to. The figure is legible in the picture because the coverall is bright, not because
+  it separates from the wall — and the coverall being bright is its own problem: it is
+  brighter than any wall in the building, so a teammate is self-lit.

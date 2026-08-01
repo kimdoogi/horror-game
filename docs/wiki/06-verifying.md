@@ -214,8 +214,10 @@ quoting**, and prefer STATUS.md over the others. Known drift as of 2026-08-01 06
 | "`Assets/Tests/EditMode/` and `Assets/Tests/PlayMode/` are still empty" | CI.md §4.2, §5 | six test assemblies exist and run |
 | "Nothing that needs the Unity editor has ever executed" | CI.md §5 | true of *CI*, not of this machine — STATUS.md quotes real editor runs |
 | "`dist/` contains logs and test results and **no player executable**" | STATUS.md §5 | corrected — an IL2CPP macOS player is built and verified to reach a match ([STATUS.md §1.10](../STATUS.md)). Read `dist/last-build-summary.txt` |
-| PlayMode is 27 tests, or 42, or 53, or 55 | anywhere | **64**; EditMode **100**; core **451**; 615 total ([STATUS.md §1.9](../STATUS.md)) |
+| PlayMode is 27 tests, or 42, or 53, or 55, or 64, or 66 | anywhere | **72**; EditMode **101**; core **451**; **624** total ([STATUS.md §1.9](../STATUS.md)) |
 | "16–39 % crushed, 31–57 % legible" | ART.md §1 | re-measured every art pass — [STATUS.md §4.3](../STATUS.md) is the current one |
+| "all five zone views are inside all four bands" | ART.md §1 | **no longer true** — three of five are below the 30 % legible floor and Zone A is above the 40 % crushed ceiling. Re-measured 2026-08-01 on `land_main_Zone_*`; see ART.md §1 |
+| "the player's first-person hands are done" / "the van repaint is done" | anywhere | the *materials* and the *rig* are done and validated; the *meshes* are not — ART.md §7.13 |
 | "matches finish in 2.5 min" / "0.6% inside the window" / "심야 1.2%" | anywhere | 7.2 min, 15.8%, 33.6% — the old figures were measured against a four-zone ring the game does not ship ([F-006](09-open-questions.md#f-006)) |
 | "주자 테스트 7/10, Balanced" | anywhere | 10/10 TooEasy on the five-storey map ([F-007](09-open-questions.md#f-007)) |
 

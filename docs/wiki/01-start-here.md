@@ -103,8 +103,8 @@ Last run recorded in [STATUS.md §1.3](../STATUS.md) and
 [`docs/STATUS.md`](../STATUS.md) is the authority and is rewritten each pass. As of
 its 2026-08-01 edition, in one paragraph:
 
-**Every test in the project is green — 617 of 617** (core 451, EditMode 100, PlayMode
-66). Unity compiles clean and so does the core solution. The monster crosses the map
+**Every test in the project is green — 624 of 624** (core 451, EditMode 101, PlayMode
+72). Unity compiles clean and so does the core solution. The monster crosses the map
 and catches you. A solo match runs end to end — descend, read clues, take loot,
 surface, sell, buy, descend, carry the objective out. The macOS IL2CPP player builds,
 launches and starts a match with no exceptions ([STATUS.md §1.10](../STATUS.md)).

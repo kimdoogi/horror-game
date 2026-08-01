@@ -97,11 +97,12 @@ python3 -c "import xml.etree.ElementTree as ET,sys; r=ET.parse('/tmp/playmode.xm
 
 ```
 EditMode   total 100 passed 100 failed 0 result Passed
-PlayMode   total 66 passed 66 failed 0 result Passed
+PlayMode   total 72 passed 72 failed 0 result Passed
 ```
 
-**166 of 166 as of 2026-08-01**, and 617 of 617 with core's 451. EditMode went 71 → 100
-and PlayMode 55 → 64 → 66; the last two are `SurfaceApronTests`, which pin §01's painted
+**173 of 173 as of 2026-08-01**, and 624 of 624 with core's 451. EditMode went 71 → 100
+→ 101 and PlayMode 55 → 64 → 66 → 72; the seven newest cover the crouch/hop verbs and the
+rebuilt player rig. Before them came `SurfaceApronTests`, which pin §01's painted
 지상 to the radius `MatchMap.IsOnSurface` measures. The pass before added: `DropPlacementTests` in EditMode,
 `InteractionDropTests` and `PlayerFirstPersonViewTests` in PlayMode, and the rewritten
 shop coverage in `UiTests`. Older revisions of this file said EditMode 55 and PlayMode
@@ -218,9 +219,16 @@ See `docs/BLOCKERS.md` B-008 for what this was written after.
 ```
 
 ```
-Audio import settings: 166 inspected, 0 failing, 0 warnings.
-Model import settings: 86 inspected, 0 failing, 0 warnings.
+[AssetImport] Audio import settings: 166 inspected, 0 excluded by marker, 0 failing, 0 warnings.
+[AssetImport] Model import settings: 86 inspected, 0 excluded by marker, 0 failing, 0 warnings.
 ```
+
+**This is the check that gates the player model, and it is the one to run first after
+touching it.** It enforces the Humanoid animation type, a valid `isHuman` Avatar, the
+four non-humanoid mount bones (`AssetImportPolicy.PlayerMountBones` — the Avatar does
+not protect them, so Optimize Game Objects strips exactly these), the 1.750 m
+`PlayerHeightMetres`, and `ExpectedAnimationClipCount`. If it fails after a regenerate,
+the model is wrong; the validator is not.
 
 This is not housekeeping. A positional clip imported as stereo will not be
 spatialised by Unity, and §04's Listener localises the monster **by ear alone**. One

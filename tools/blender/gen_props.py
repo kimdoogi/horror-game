@@ -207,7 +207,13 @@ FLARE = "Prop_FlareBurn"
 STONE = "Prop_Stone"
 CANVAS = "Prop_Canvas"
 PAINT = "Prop_Paint"
+VAN_BODY = "Prop_VanBody"
+VAN_LOWER = "Prop_VanLower"
+PAINTED_STEEL = "Prop_PaintedSteel"
 CLUE_FACE = "Clue_Face"
+
+VEHICLE_PAINT = (VAN_BODY, VAN_LOWER)
+"""The 차량's two livery coats. `check_the_vehicle_is_painted` reads this."""
 
 MATERIALS: dict[str, MaterialSpec] = {
     WOOD: MaterialSpec(WOOD, (0.196, 0.126, 0.072), roughness=0.85),
@@ -236,6 +242,36 @@ MATERIALS: dict[str, MaterialSpec] = {
     STONE: MaterialSpec(STONE, (0.302, 0.292, 0.271), roughness=0.90),
     CANVAS: MaterialSpec(CANVAS, (0.552, 0.512, 0.432), roughness=0.88),
     PAINT: MaterialSpec(PAINT, (0.221, 0.172, 0.132), roughness=0.62),
+    # ── Paint is a dielectric ──────────────────────────────────────────────
+    # ART.md §7.12. A painted panel returns light *diffusely*; its gloss comes
+    # from roughness and not from metallic, and putting metallic on it deletes
+    # the diffuse term and leaves a surface that renders whatever it reflects —
+    # which, in a basement with no reflection probe and a 12 m torch, is nothing.
+    # These three exist so the props that are painted stop borrowing `Prop_Iron`,
+    # which stays exactly as it is for the things that really are forged.
+    #
+    # The livery is a faded works green because the 하역 베이 is warm brick over
+    # grey concrete and §07 grades the building cold: green is the one hue in
+    # reach that separates from both, and §12's only other green is 저수조's
+    # glazed tile five storeys down. Luminance 0.276, deliberately *over* ART.md's
+    # 0.21 darkest corridor wall: §01 makes the apron the lit 안전 지대 rather than
+    # part of §03's dark building, and §08 wants a team able to run *toward* this
+    # from across a 20 m bay. At 0.221 it measured 0.61x the wall behind it at 12 m
+    # and read as a shape; at 0.276 it reads as a vehicle.
+    VAN_BODY: MaterialSpec(VAN_BODY, (0.222, 0.297, 0.231), roughness=0.45),
+    # The skirt. Dark, because road dirt collects at the bottom of every real
+    # panel and because a single flat colour over 3.4 m² is what makes a box
+    # read as a box; not black, because that is the defect being fixed.
+    VAN_LOWER: MaterialSpec(VAN_LOWER, (0.128, 0.152, 0.136), roughness=0.58),
+    # Institutional grey-green enamel for the things in the building that are
+    # sheet steel with a coat of paint on them rather than forged iron: the 금고's
+    # shell, the 전기 패널's breaker bank, the 발전기's engine block. Luminance 0.207
+    # — level with ART.md's darkest §12 wall and no brighter, because unlike the
+    # 차량 these three stand *inside* the building where §03 makes darkness the lock
+    # on progress. The change that matters to them is metallic 0.90 -> 0, which is
+    # the difference between a surface with no diffuse response and one with a
+    # diffuse response; the albedo lift is secondary.
+    PAINTED_STEEL: MaterialSpec(PAINTED_STEEL, (0.196, 0.212, 0.194), roughness=0.52),
     # The seam §13 binds to: the host renders one clue's glyph and stamps it here.
     CLUE_FACE: MaterialSpec(CLUE_FACE, (0.682, 0.641, 0.552), roughness=0.75),
 }
@@ -468,6 +504,118 @@ def mesh_volume(obj: bpy.types.Object) -> float:
     vol = bm.calc_volume(signed=False)
     bm.free()
     return vol
+
+
+def material_areas(obj: bpy.types.Object) -> dict[str, float]:
+    """Surface area in m² carried by each of the prop's materials.
+
+    This is the measurement ART.md §7.12 was missing. "Which material is this prop
+    *made of*" cannot be answered from the slot list — the 차량 carries seven
+    materials and two of them are a headlamp lens — and it is exactly the question
+    that decides whether a dark metal renders the object or renders a hole. Face
+    area answers it, and it costs one pass over the polygons.
+    """
+    out: dict[str, float] = {}
+    names = [m.name if m is not None else "" for m in obj.data.materials]
+    for poly in obj.data.polygons:
+        if 0 <= poly.material_index < len(names):
+            key = names[poly.material_index]
+            out[key] = out.get(key, 0.0) + poly.area
+    return out
+
+
+def largest_visible_panel(obj: bpy.types.Object) -> dict[str, tuple[float, float]]:
+    """Per material, its biggest visible flat slab as ``(area m², narrow span m)``.
+
+    Area alone does not separate a forged thing from a painted one: the 파이프 run
+    and the 차량's flank can carry the same number of square metres of the same
+    material and only one of them is a defect. **Flatness** is what separates them,
+    and it is physics rather than taste. A metal has no diffuse term, so all it can
+    return is a specular highlight — and a highlight needs the light to be in the
+    mirror direction. Curvature guarantees that: somewhere on a pipe or a bolt head
+    there is always a normal pointing at the lamp, which is why a dark pipe still
+    reads as a dark pipe. A flat slab has one normal, so it is lit at exactly one
+    viewing angle and is a hole from everywhere else — which is the frame ART.md
+    §7.12 photographed.
+
+    Two faces are dropped before anything is measured, and the first version of this
+    function had neither, which is why it reported the 차량's biggest iron panel as
+    its 10.47 m² **chassis plate** — a part no player has ever seen:
+
+    * **Downward-facing.** §05 puts the eye at 1.63 m and every prop here stands on
+      a floor, so a face pointing at the ground is not a surface the game has.
+    * **Occluded by the prop's own body.** A ray along the face's own normal that
+      lands back on the same mesh means something of this prop is in front of it —
+      the chassis top under the cargo floor, the inside of a sealed box.
+
+    What survives is then gathered by (material, normal, plane offset) rounded to
+    1 mm **and split into connected components**, so a bevelled face still measures
+    as the one panel it looks like — and the 선반's front does not. Merely coplanar
+    is not a slab: four shelf-edge rails and four legs all flush at the same y added
+    up to 0.57 m² of "panel" on a unit whose front is mostly timber and air. Sharing
+    an edge is the test, and after joining, separately-built boxes share none.
+
+    The **narrow span** comes back beside the area because area alone still cannot
+    tell a face from a strip, and the kit contains a decisive pair: the 금고's door is
+    0.55 m² and the 차량's front bumper is 0.50 m², and only one of them is a defect.
+    A 2.2 m × 0.24 m bumper is trim — it is read by its own long edge highlight and
+    by the shapes either side of it, which is what a dark metal can still do. A
+    0.72 m × 0.78 m door is a face, and a face made of dark metal has nothing.
+    """
+    names = [m.name if m is not None else "" for m in obj.data.materials]
+    planes: dict[tuple, list[int]] = {}
+    for poly in obj.data.polygons:
+        if not 0 <= poly.material_index < len(names):
+            continue
+        n = poly.normal
+        if n.z < -0.5:
+            continue
+        if obj.ray_cast(poly.center + n * 0.002, n, distance=8.0)[0]:
+            continue
+        key = (names[poly.material_index], round(n.x, 2), round(n.y, 2), round(n.z, 2),
+               round(n.dot(poly.center), 3))
+        planes.setdefault(key, []).append(poly.index)
+
+    out: dict[str, tuple[float, float]] = {}
+    polygons = obj.data.polygons
+    vertices = obj.data.vertices
+    for key, indices in planes.items():
+        axis_u, axis_v = _face_basis(Vector(key[1:4]))
+        by_vertex: dict[int, list[int]] = {}
+        for index in indices:
+            for vertex in polygons[index].vertices:
+                by_vertex.setdefault(vertex, []).append(index)
+        seen: set[int] = set()
+        for start in indices:
+            if start in seen:
+                continue
+            seen.add(start)
+            stack, area, corners = [start], 0.0, []
+            while stack:
+                index = stack.pop()
+                area += polygons[index].area
+                for vertex in polygons[index].vertices:
+                    corners.append(vertices[vertex].co)
+                    for neighbour in by_vertex.get(vertex, ()):
+                        if neighbour not in seen:
+                            seen.add(neighbour)
+                            stack.append(neighbour)
+            us = [c.dot(axis_u) for c in corners]
+            vs = [c.dot(axis_v) for c in corners]
+            span = min(max(us) - min(us), max(vs) - min(vs))
+            if area > out.get(key[0], (0.0, 0.0))[0]:
+                out[key[0]] = (area, span)
+    return out
+
+
+def albedo_luminance(name: str) -> float:
+    """Rec.709 luminance of a material's authored base colour, 0..1 linear.
+
+    The same weighting `tools/render/frame_stats.py` reads a rendered frame with,
+    so a material's number here and a measured frame's number are comparable.
+    """
+    r, g, b = MATERIALS[name].color
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
 
 
 def material_index(obj: bpy.types.Object, name: str) -> int | None:
@@ -914,14 +1062,23 @@ def _safe(name: str, door_angle: float) -> PropBuild:
     b = PropBuild(name)
     hw, hd, hh = SAFE_W / 2, SAFE_D / 2, SAFE_H
     inner_h = hh - 2 * SAFE_WALL
+    # Japanned sheet steel, not bare iron. A safe is a flat-panelled box, and
+    # `check_metal_is_not_a_panel` measured its door at 0.65 m² of `Prop_Iron` —
+    # the 차량's defect at a twelfth of the size, on the object §04 has the 정비공
+    # stand over for 8 s with a torch. Photographed at 2 m under the game's own beam
+    # it was a black cut-out on a lit tile floor with nothing on it but the brass
+    # dial. The dial, the handle and the hinges stay iron: they are the parts that
+    # really are bare, they are small and round, and a highlight is what reads them.
     body_parts = [
-        b.box((SAFE_W, SAFE_D, SAFE_WALL), (0.0, 0.0, SAFE_WALL / 2), mat=IRON, role="floor"),
-        b.box((SAFE_W, SAFE_D, SAFE_WALL), (0.0, 0.0, hh - SAFE_WALL / 2), mat=IRON, role="ceil"),
-        b.box((SAFE_W, SAFE_WALL, inner_h), (0.0, hd - SAFE_WALL / 2, hh / 2), mat=IRON,
+        b.box((SAFE_W, SAFE_D, SAFE_WALL), (0.0, 0.0, SAFE_WALL / 2), mat=PAINTED_STEEL,
+              role="floor"),
+        b.box((SAFE_W, SAFE_D, SAFE_WALL), (0.0, 0.0, hh - SAFE_WALL / 2), mat=PAINTED_STEEL,
+              role="ceil"),
+        b.box((SAFE_W, SAFE_WALL, inner_h), (0.0, hd - SAFE_WALL / 2, hh / 2), mat=PAINTED_STEEL,
               role="back"),
-        b.box((SAFE_WALL, SAFE_D, inner_h), (-hw + SAFE_WALL / 2, 0.0, hh / 2), mat=IRON,
+        b.box((SAFE_WALL, SAFE_D, inner_h), (-hw + SAFE_WALL / 2, 0.0, hh / 2), mat=PAINTED_STEEL,
               role="left"),
-        b.box((SAFE_WALL, SAFE_D, inner_h), (hw - SAFE_WALL / 2, 0.0, hh / 2), mat=IRON,
+        b.box((SAFE_WALL, SAFE_D, inner_h), (hw - SAFE_WALL / 2, 0.0, hh / 2), mat=PAINTED_STEEL,
               role="right"),
     ]
     b.pivot_part = body_parts[0]
@@ -934,9 +1091,9 @@ def _safe(name: str, door_angle: float) -> PropBuild:
     hinge = (-hw, -hd + SAFE_DOOR_T / 2, hh / 2)
     dl: list[bpy.types.Object] = []
     dl.append(b.box((SAFE_W, SAFE_DOOR_T, hh - 2 * SAFE_WALL + 0.04),
-                    (hw, 0.0, 0.0), mat=IRON, role="door_panel"))
+                    (hw, 0.0, 0.0), mat=PAINTED_STEEL, role="door_panel"))
     dl.append(b.box((SAFE_W - 0.06, 0.014, hh - 2 * SAFE_WALL - 0.02),
-                    (hw, -SAFE_DOOR_T / 2 - 0.007, 0.0), mat=IRON))
+                    (hw, -SAFE_DOOR_T / 2 - 0.007, 0.0), mat=PAINTED_STEEL))
     # Combination dial.
     dl.append(b.cyl(0.088, 0.030, (hw, -SAFE_DOOR_T / 2 - 0.015, 0.110), rot=(90.0, 0.0, 0.0),
                     verts=16, mat=BRASS_DULL, nobevel=True))
@@ -1011,8 +1168,9 @@ def build_electrical_panel() -> PropBuild:
         b.box((W, D - 0.030, 0.030), (0.0, lip_y, zc + lz), mat=RUST)
     for lx in (-W / 2 + 0.015, W / 2 - 0.015):
         b.box((0.030, D - 0.030, H), (lx, lip_y, zc), mat=RUST)
-    # Breaker bank.
-    b.box((W - 0.090, 0.040, H - 0.120), (0.0, -0.052, zc), mat=IRON)
+    # Breaker bank. Painted sheet, like every consumer unit ever made — and the
+    # 정비공 has to find this in a dark corridor, which a 90 % metal cannot help with.
+    b.box((W - 0.090, 0.040, H - 0.120), (0.0, -0.052, zc), mat=PAINTED_STEEL)
     for i in range(6):
         x = -0.170 + i * 0.068
         b.box((0.046, 0.024, 0.108), (x, -0.082, zc + 0.130), mat=CLOTH)
@@ -1064,7 +1222,9 @@ def build_surface_generator() -> PropBuild:
     # Fuel tank and engine.
     b.box((0.460, 0.420, 0.200), (-0.200, 0.0, 0.640), mat=RUST)
     b.cyl(0.040, 0.070, (-0.200, 0.0, 0.760), verts=12, mat=IRON)
-    b.box((0.360, 0.400, 0.300), (0.180, 0.0, 0.330), mat=IRON)
+    # Painted block. A field generator's engine wears enamel; the frame it is
+    # bolted to, its exhaust and its flywheel housing do not, and keep their iron.
+    b.box((0.360, 0.400, 0.300), (0.180, 0.0, 0.330), mat=PAINTED_STEEL)
     b.cyl(0.140, 0.160, (0.180, -0.240, 0.330), rot=(90.0, 0.0, 0.0), verts=16, mat=IRON)
     b.cyl(0.052, 0.030, (0.180, -0.330, 0.330), rot=(90.0, 0.0, 0.0), verts=12, mat=RUST)
     # Exhaust.
@@ -1077,7 +1237,7 @@ def build_surface_generator() -> PropBuild:
         y = -0.195 + i * 0.130
         b.box((0.120, 0.098, 0.070), (-0.340, y, 0.510), mat=CLOTH)
         b.box((0.020, 0.060, 0.016), (-0.404, y, 0.545), mat=LAMP, nobevel=True)
-    b.box((0.030, 0.520, 0.220), (-0.290, 0.0, 0.480), mat=IRON)
+    b.box((0.030, 0.520, 0.220), (-0.290, 0.0, 0.480), mat=PAINTED_STEEL)
     # Wheels, so it reads as a thing that was dragged here.
     for sy in (-1.0, 1.0):
         b.cyl(0.088, 0.048, (-0.420, sy * 0.250, 0.088), rot=(0.0, 90.0, 0.0), verts=12,
@@ -1099,32 +1259,86 @@ def build_vehicle() -> PropBuild:
     round trip ends by walking *in*). The side counter is the shop, where §08's
     shared wallet gets argued over. The only prop in the kit exempt from the 1500
     triangle ceiling, because it is the one object seen from 40 m.
+
+    **The bodywork is painted, and that is a material decision with a measurement
+    behind it** (ART.md §7.12). It used to be `Prop_Iron` — metallic 0.90 over an
+    albedo of 0.11 — and a 90 % metal has no diffuse response at all: it renders
+    what it reflects, and in a basement with no reflection probe and a 12 m torch
+    there is nothing to reflect. The owner's own frames are the evidence: with
+    *five* warm sources of its own the van still photographed as a black cut-out,
+    and adding a sixth could not have worked. A works van is painted steel, so the
+    panels are dielectric — metallic 0, a real albedo, gloss carried by roughness —
+    and the parts that really are bare metal keep `Prop_Iron`: chassis, bumper,
+    grille slats, wheel hubs, rubbing rails, ladder, ramp edges.
+
+    Three things beyond the colour, because a single flat coat over 3.4 m² is still
+    a slab: the flank is **two-tone** with a rubbing rail on the seam, so the box
+    has a waistline; there are **vertical body ribs**, which is what a real box body
+    is built from and what gives an untextured panel its own shading; and there is a
+    **grille**, so the face a player walks up to has something in it besides two
+    lamps. All of it is geometry the beam can find, which is the only kind of
+    surface detail this kit has — the props carry no textures.
     """
     b = PropBuild("Vehicle")
     body_w, wall = 2.200, 0.080
     bay_y0, bay_y1 = -2.900, 1.050          # cargo bay, open at -Y
     floor_z, roof_z = 0.750, 2.570
+    bay_mid, bay_len = (bay_y0 + bay_y1) / 2, bay_y1 - bay_y0
+    waist_z = floor_z + 0.620               # where the livery breaks to the skirt
     chassis = b.box((1.900, 5.560, 0.180), (0.0, -0.100, 0.620), mat=IRON, role="chassis")
     b.pivot_part = chassis
-    # Cargo bay: five panels, rear left open.
-    b.box((body_w, bay_y1 - bay_y0, wall), (0.0, (bay_y0 + bay_y1) / 2, floor_z), mat=WOOD)
-    b.box((body_w + 0.040, bay_y1 - bay_y0, wall), (0.0, (bay_y0 + bay_y1) / 2, roof_z), mat=IRON)
+    # Cargo bay: floor, roof, two flanks and the bulkhead behind the cab.
+    b.box((body_w, bay_len, wall), (0.0, bay_mid, floor_z), mat=WOOD)
+    b.box((body_w + 0.040, bay_len, wall), (0.0, bay_mid, roof_z), mat=VAN_BODY)
     for sx in (-1.0, 1.0):
-        b.box((wall, bay_y1 - bay_y0, roof_z - floor_z), (sx * (body_w / 2 - wall / 2),
-                                                          (bay_y0 + bay_y1) / 2,
-                                                          (floor_z + roof_z) / 2), mat=IRON)
+        x = sx * (body_w / 2 - wall / 2)
+        # Flank in two coats. The seam is a real waistline rather than a texture
+        # boundary, so it survives being lit from any direction.
+        b.box((wall, bay_len, waist_z - floor_z), (x, bay_mid, (floor_z + waist_z) / 2),
+              mat=VAN_LOWER)
+        b.box((wall, bay_len, roof_z - waist_z), (x, bay_mid, (waist_z + roof_z) / 2),
+              mat=VAN_BODY)
+        # Rubbing rail on the seam, and vertical body ribs above it. Both stand
+        # proud of the flank, so each one is a highlight and a shadow of its own.
+        b.box((0.034, bay_len, 0.070), (sx * (body_w / 2 + 0.006), bay_mid, waist_z),
+              mat=IRON, nobevel=True)
+        for i in range(5):
+            y = bay_y0 + bay_len * (i + 0.5) / 5.0
+            # The +X flank carries the shop hatch and its frame; a rib behind the
+            # frame would be two coincident faces fighting for the same pixels.
+            if sx > 0.0 and -1.80 < y < -0.20:
+                continue
+            b.box((0.026, 0.070, roof_z - waist_z - 0.090),
+                  (sx * (body_w / 2 + 0.004), y, (waist_z + roof_z) / 2 + 0.045),
+                  mat=VAN_BODY, nobevel=True)
     b.box((body_w, wall, roof_z - floor_z), (0.0, bay_y1 - wall / 2, (floor_z + roof_z) / 2),
-          mat=IRON)
+          mat=VAN_LOWER)
     # Cab.
-    b.box((2.100, 1.600, 1.400), (0.0, 1.900, 1.410), mat=IRON)
+    b.box((2.100, 1.600, 1.400), (0.0, 1.900, 1.410), mat=VAN_BODY)
     b.box((1.900, 0.060, 0.720), (0.0, 1.135, 1.760), rot=(-9.0, 0.0, 0.0), mat=GLASS)
     for sx in (-1.0, 1.0):
         b.box((0.060, 0.680, 0.560), (sx * 1.030, 1.900, 1.760), mat=GLASS)
+    # Cab skirt, carrying the flank's waistline forward so the two volumes read as
+    # one vehicle rather than as a box sitting on a box.
+    b.box((2.108, 1.604, 0.360), (0.0, 1.900, 0.890), mat=VAN_LOWER)
     b.box((2.200, 0.140, 0.240), (0.0, 2.740, 0.560), mat=IRON)
+    # Grille: a painted surround with bare steel slats, set between the headlamps
+    # and kept inside the bumper line so the van's own footprint does not grow.
+    b.box((1.320, 0.060, 0.600), (0.0, 2.715, 1.060), mat=VAN_BODY)
+    for i in range(5):
+        b.box((1.180, 0.056, 0.046), (0.0, 2.732, 0.850 + i * 0.105), mat=IRON, nobevel=True)
     # Headlamps — the first thing visible down a surface track.
     for sx in (-1.0, 1.0):
         b.cyl(0.110, 0.060, (sx * 0.740, 2.740, 0.920), rot=(90.0, 0.0, 0.0), verts=12,
               mat=LAMP, nobevel=True)
+    # Mudguards over each axle. The skirt above them is a flat 2.4 m² band and the
+    # wheels hang under it with daylight between; a guard closes that gap and is what
+    # stops the profile reading as a box that happens to have wheels near it. Painted,
+    # like the panel they hang off, and standing 4 cm proud so each one is its own
+    # highlight and its own shadow across the skirt.
+    for sx in (-1.0, 1.0):
+        for (y, span) in ((1.850, 1.240), (-1.465, 1.320)):
+            b.box((0.320, span, 0.052), (sx * 0.980, y, 0.880), mat=VAN_LOWER)
     # Wheels.
     for (x, y) in ((-0.980, 1.850), (0.980, 1.850), (-0.980, -1.150), (0.980, -1.150),
                    (-0.980, -1.780), (0.980, -1.780)):
@@ -1795,6 +2009,7 @@ def emit(spec: Spec) -> None:
         "volume": mesh_volume(obj), "sharp": sharp, "bevel_skipped": bevel_skipped,
         "face": face, "sym": sym, "emissive": emissive_material_count(obj),
         "materials": [m.name for m in obj.data.materials if m is not None],
+        "areas": material_areas(obj), "panels": largest_visible_panel(obj),
     })
     META[spec.name] = dict(b.meta)
     META[spec.name]["checks"] = spec.checks
@@ -1897,6 +2112,108 @@ def check_economy_is_legible(names: list[str]) -> list[str]:
     lines.append("conspicuous materials mirror-grade (roughness ≤ 0.20); watch case tarnished "
                  f"(roughness {MATERIALS[BRASS_DULL].roughness})  OK")
     return lines
+
+
+DARK_METAL_LUMINANCE = 0.20
+"""Above this, a metal's own base colour carries enough to survive having nothing
+to reflect. ART.md quotes 0.21 as the linear albedo of the darkest §12 corridor
+wall; a metal below that is darker than the wall it stands against before any light
+is applied, and metals have no diffuse term with which to catch up."""
+
+DARK_METAL_PANEL_AREA = 0.35
+DARK_METAL_PANEL_SPAN = 0.35
+"""When a flat slab of dark metal stops being trim and becomes a face: m² of area
+**and** metres across its narrow side, both.
+
+Measured against the kit rather than chosen. The two numbers exist because the kit
+contains a decisive pair that area alone cannot separate — the 금고's door is
+0.55 m² and the 차량's front bumper is 0.50 m². The door is 0.72 m across its narrow
+side and is a *face*; the bumper is 0.23 m and is a *strip*, read by its own long
+edge highlight and by the wheels and grille either side of it. With the 차량 and the
+금고 repainted, that bumper is the largest bare-iron slab left anywhere in the kit —
+0.50 m² over the area gate, 0.23 m under the span gate — and everything else is
+under both: the 발전기's flywheel housing at 0.05 m², the 노이즈 트랩 at 0.02 m²."""
+
+
+def check_metal_is_not_a_panel(names: list[str]) -> list[str]:
+    """Refuses to ship a large flat slab of dark metal. ART.md §7.12.
+
+    A metallic surface has no diffuse term: it renders what it reflects. There is no
+    reflection probe in this building and §03 lights it with a 12 m torch, so what a
+    90 % metal reflects is the 0.25-intensity night skybox — nothing. The 차량's
+    bodywork was `Prop_Iron` (albedo 0.112/0.116/0.122, metallic 0.90) and rendered
+    as a black cut-out from every angle and under every one of the five lamps
+    `SurfaceApron` gave it. Measured at 5 m with the torch on it, its flank came back
+    at **0.42×** the luminance of the brick behind it; at 2 m the panel's median was
+    **7/255** against the wall's 33, with 29 % of it crushed to black.
+
+    This is not "avoid metal". Bare iron is *correct* on a hinge, a hasp, a bumper, a
+    pipe run — see `largest_visible_panel` for why curvature is what rescues them.
+    It is wrong on a flat panel, and flatness is the thing measured here.
+    """
+    lines: list[str] = []
+    offenders: list[str] = []
+    worst_ok = ("", 0.0, 0.0)
+    for name in names:
+        for material, (area, span) in row(name)["panels"].items():
+            spec = MATERIALS.get(material)
+            if spec is None or spec.metallic <= 0.5:
+                continue
+            lum = albedo_luminance(material)
+            if lum >= DARK_METAL_LUMINANCE:
+                continue
+            if area > DARK_METAL_PANEL_AREA and span > DARK_METAL_PANEL_SPAN:
+                offenders.append(
+                    f"{name}: a {area:.2f} m² face of '{material}', {span:.2f} m across its "
+                    f"narrow side — metallic {spec.metallic:.2f} at luminance {lum:.3f}. One "
+                    "viewing angle lights it and it is a hole from every other")
+            elif area > worst_ok[1]:
+                worst_ok = (f"{name}/{material}", area, span)
+    if offenders:
+        blendkit.fail("these props are flat faces of dark metal and render as holes "
+                      "(ART.md §7.12). A painted panel is a dielectric — metallic 0 with a "
+                      "real albedo, gloss carried by roughness:\n  " + "\n  ".join(offenders))
+    lines.append(f"no dark-metal face exceeds {DARK_METAL_PANEL_AREA} m² AND "
+                 f"{DARK_METAL_PANEL_SPAN} m across; the largest left is {worst_ok[0]} at "
+                 f"{worst_ok[1]:.2f} m², {worst_ok[2]:.2f} m across — trim, not a face  OK")
+    return lines
+
+
+def check_the_vehicle_is_painted(name: str) -> list[str]:
+    """§08's 차량 is the one object §01 sends the team back to; it has to read.
+
+    Two halves, and both are the point. Its bodywork must be a **dielectric** —
+    §08 calls it 안전 지대 · 상점 · 보급소 and §01 sends the team to it 2.94 times a
+    match, so it is the one prop that must read as a surface from across a 20 m bay
+    with a torch on it. And it must **keep bare metal where the metal is bare** —
+    bumper, grille, wheel hubs, ladder, chassis — because the fix for a black van is
+    paint, not "make everything a dielectric", and a van with no metal on it at all
+    reads as a toy.
+    """
+    r = row(name)
+    areas = r["areas"]
+    total = sum(areas.values())
+    painted = sum(a for m, a in areas.items() if m in VEHICLE_PAINT)
+    if painted / total < 0.30:
+        blendkit.fail(f"{name}: only {painted / total * 100:.0f}% of the 차량's surface is painted "
+                      "bodywork. §08 makes it the 안전 지대 · 상점 · 보급소 and it has to read as a "
+                      "vehicle you could walk up to, not as a silhouette")
+    for paint in VEHICLE_PAINT:
+        spec = MATERIALS[paint]
+        if spec.metallic != 0.0:
+            blendkit.fail(f"'{paint}' is metallic {spec.metallic}. Paint is a dielectric — "
+                          "its gloss is roughness, not metallic (ART.md §7.12)")
+        if albedo_luminance(paint) < 0.08:
+            blendkit.fail(f"'{paint}' has a luminance of {albedo_luminance(paint):.3f}. Fixing a "
+                          "black van with black paint is the same frame")
+    metal = sum(a for m, a in areas.items()
+                if m in MATERIALS and MATERIALS[m].metallic > 0.5)
+    if metal <= 0.0:
+        blendkit.fail(f"{name}: nothing on the 차량 is bare metal any more. The bumper, the grille, "
+                      "the hubs and the ladder are steel and should answer a beam like steel")
+    return [f"{name}: {painted / total * 100:.0f}% painted dielectric bodywork "
+            f"({' · '.join(f'{p} L={albedo_luminance(p):.3f} rough={MATERIALS[p].roughness}' for p in VEHICLE_PAINT)}), "
+            f"{metal / total * 100:.0f}% bare metal  OK"]
 
 
 def check_two_person(name: str) -> list[str]:
@@ -2006,6 +2323,9 @@ def main() -> None:
     names = [s.name for s in todo]
     lines: list[str] = []
     lines += check_economy_is_legible(names)
+    lines += check_metal_is_not_a_panel(names)
+    if "Vehicle" in names:
+        lines += check_the_vehicle_is_painted("Vehicle")
 
     for spec in todo:
         if "two_person" in spec.checks:
@@ -2100,6 +2420,33 @@ def main() -> None:
         lid, w, val, _ = loot
         print(f"{r['name']:<28}{lid:<14}{w:>2}{val:>7}{val / w:>7.1f}"
               f"{longest_horizontal(r):>9.3f}{footprint(r):>11.4f}{r['volume']:>10.5f}")
+    # What each prop is actually *made of*, by surface area rather than by slot
+    # count. ART.md §7.12's defect is invisible in every other table in this
+    # report: the 차량 lists seven materials and two of them are a lens.
+    print()
+    print("what each prop's surface is made of, and its biggest flat slab (ART.md §7.12)")
+    print(f"{'prop':<28}{'dominant material':<22}{'share':>7}{'metal':>7}{'lum':>7}"
+          f"{'face m²':>9}{'narrow m':>10}  verdict")
+    for r in ROWS:
+        areas = r["areas"]
+        total = sum(areas.values())
+        if total <= 0.0:
+            continue
+        top, area = max(areas.items(), key=lambda kv: kv[1])
+        spec = MATERIALS.get(top)
+        if spec is None:
+            continue
+        lum = albedo_luminance(top)
+        face, span = r["panels"].get(top, (0.0, 0.0))
+        if spec.metallic > 0.5 and lum < DARK_METAL_LUMINANCE:
+            verdict = ("HOLE"
+                       if face > DARK_METAL_PANEL_AREA and span > DARK_METAL_PANEL_SPAN
+                       else "dark metal, but curved or trim")
+        else:
+            verdict = "metal, bright" if spec.metallic > 0.5 else "dielectric"
+        print(f"{r['name']:<28}{top:<22}{area / total * 100:6.0f}%{spec.metallic:7.2f}"
+              f"{lum:7.3f}{face:9.2f}{span:10.2f}  {verdict}")
+
     print()
     for line in lines:
         print("CHECK " + line)

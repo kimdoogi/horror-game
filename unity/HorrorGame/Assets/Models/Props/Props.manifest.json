@@ -157,6 +157,17 @@
       "emission": 0.0
     },
     {
+      "name": "Prop_PaintedSteel",
+      "color": [
+        0.196,
+        0.212,
+        0.194
+      ],
+      "roughness": 0.52,
+      "metallic": 0.0,
+      "emission": 0.0
+    },
+    {
       "name": "Prop_Paper",
       "color": [
         0.762,
@@ -197,6 +208,28 @@
         0.271
       ],
       "roughness": 0.9,
+      "metallic": 0.0,
+      "emission": 0.0
+    },
+    {
+      "name": "Prop_VanBody",
+      "color": [
+        0.222,
+        0.297,
+        0.231
+      ],
+      "roughness": 0.45,
+      "metallic": 0.0,
+      "emission": 0.0
+    },
+    {
+      "name": "Prop_VanLower",
+      "color": [
+        0.128,
+        0.152,
+        0.136
+      ],
+      "roughness": 0.58,
       "metallic": 0.0,
       "emission": 0.0
     },
