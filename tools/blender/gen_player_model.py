@@ -198,18 +198,27 @@ MOUNTS = ("FlashlightMount", "HeadCameraAnchor", "ObjectiveMount", "BackpackMoun
 # that slides along the limb as the beam sweeps, and it reads as faceted plastic on
 # the one asset three teammates look at all game.
 #
-# Twelve costs 4 extra quads per segment, which is 384 triangles across the whole
-# body. Sixteen was measured too and is not worth it: past twelve the silhouette
-# change is under a pixel at the distances §12's corridors allow, and the triangles
-# buy more as boots and fingers, which are still boxes.
+# Raised on 2026-08-02, after the owner said the model was 허접 for the third time
+# and a studio render of it agreed: at twelve sides a skull is a faceted lump and a
+# thigh is a hexagonal prism, and no texture fixes a silhouette. The argument these
+# numbers used to carry — "past twelve the silhouette change is under a pixel at the
+# distances §12's corridors allow" — was measuring the wrong thing. §13 puts three
+# teammates in frame at arm's length in the van, §09's ghost flies right up to a
+# body, and the store screenshots are 1920×1080 of a character standing still.
+#
+# The budget they were husbanding was 4,000 triangles on a PC-only Steam release.
+# It is now 60,000 (gen_player_ai.TRI_BUDGET), which is a fifteenth of what one
+# rock in a modern game costs. Four players and a monster on screen at these
+# numbers is under 300k triangles; the GPU that cannot do that has not shipped
+# since 2010.
 #
 # Changing these is safe for the §04 role contract. `shell` assigns materials per
 # *segment* — that is, per pair of rings — so the vest band and deltoid caps are
 # indexed by ring number and are untouched by how many sides each ring has.
-SIDES_BODY = 12
-SIDES_NECK = 10
-SIDES_LIMB = 12
-SIDES_BOOT = 8
+SIDES_BODY = 32
+SIDES_NECK = 24
+SIDES_LIMB = 24
+SIDES_BOOT = 20
 
 # ── Materials ───────────────────────────────────────────────────────────────
 

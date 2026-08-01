@@ -107,7 +107,7 @@ from blendkit import BoneSpec, MaterialSpec  # noqa: E402
 
 
 FPS = 30
-TRI_BUDGET = 6200
+TRI_BUDGET = 30000
 """The cap this generator fails on. The monster ships 5,704 against 6,000 and the player
 5,254 against 7,200; a ghost is seen at §04's 관측 ranges and through walls, never at the
 0.35 m the player's own hands are, so it has no reason to be the most expensive."""

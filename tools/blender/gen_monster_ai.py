@@ -104,8 +104,8 @@ from blendkit import BoneSpec  # noqa: E402
 
 FPS = 30
 TARGET_HEIGHT = 2.336      # AssetImportPolicy.MonsterHeightMetres
-TRI_BUDGET = 6000          # docs/ART.md §12 — darkness does the work, not triangles
-TRI_TARGET = 5600          # headroom, because the crest is added after decimation
+TRI_BUDGET = 50000         # PC-only on Steam; see docs/ART.md — the old 6000 was a mobile number
+TRI_TARGET = 46000         # headroom, because the crest is added after decimation
 TEX_RES = 1024             # matches Monster.textures.json "resolution"
 CORRIDOR_DARKEST = 0.21    # linear albedo of the darkest §12 wall
 ALBEDO_MEAN = 0.17         # what the hide must sit at: under the corridor, not over
