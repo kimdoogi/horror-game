@@ -104,6 +104,20 @@ namespace HorrorGame.Gameplay.Player
             // After the Animator, which is the whole point: it has to overwrite a pose
             // that has already been written this frame, and DefaultExecutionOrder(120)
             // is what puts it there.
+            Apply();
+        }
+
+        /// <summary>
+        /// Applies the drop once, over whatever pose is on the rig right now.
+        /// <para>
+        /// Public because <c>LateUpdate</c> does not run outside play mode and the film
+        /// and shot rigs pose the skeleton by sampling clips in the editor. A tool that
+        /// photographed the un-dropped arms would be photographing a pose no player ever
+        /// sees, which is the class of mistake this whole component exists to end.
+        /// </para>
+        /// </summary>
+        public void Apply()
+        {
             Collect();
 
             _view ??= GetComponent<PlayerFirstPersonView>();
