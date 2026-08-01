@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Builds the player from a sculpt's hands: mesh, Humanoid rig, mounts, nine clips.
+"""Builds the player: authored hands, a body, a Humanoid rig, mounts, nine clips.
 
 Run headless::
 
@@ -14,53 +14,51 @@ ones: ``PlayerFeelHarnessMenu``, ``AssetImportPolicy.ExpectedAnimationClipCount`
 (its clip authors, its pose solver, its surfaces and its verification are all imported
 here) and no longer writes a shipping asset.
 
-WHY THIS EXISTS ALONGSIDE gen_player_model.py
----------------------------------------------
-The same argument ``gen_monster_ai.py`` makes, applied to the one part of a person a
-first-person game shows constantly. That file's header says a hull-and-tube assembly
-has "no sunken flank, no hollow between two ribs". A hand is worse: the whole of what
-makes a hand read as a hand is **the gaps** — between two fingers, under the arch of
-the palm, in the web of the thumb — and every one of those is concave. The previous
-model made each finger a tapered box off a slab, and §05 puts that assembly 35 cm from
-the camera for the entire match. It photographed as a plank with prongs.
+THE HANDS WERE HARVESTED FROM A SCULPT AND ARE NOW BUILT — WHY IT CHANGED
+-------------------------------------------------------------------------
+Until this pass the hands were **cut out of** ``tools/blender/source/monster_vessel_base
+.glb``, the flayed Rodin variant ``gen_monster_ai.py`` calls *"something that used to be
+a person"*, with *"torn skin at every joint"*. The argument was ``gen_monster_ai``'s own
+— a hull-and-tube assembly can only make bulges, and a hand is all gaps: between two
+fingers, under the arch of the palm, in the web of the thumb.
 
-So the hands here are not built, they are **cut out of a sculpt**:
+**The argument was right about hulls and wrong about what it was rejecting.** The gaps
+between fingers are not concavities in one surface; they are the space between five
+separate surfaces, and five separate lofted solids have them for free. What genuinely
+defeated the creature was its flank, which really is one surface with a hollow in it.
+A hand is not one surface.
 
-    vessel sculpt → isolate the +X hand → derive its own frame → orient into the
-    T-pose → rescale to a human hand → decimate → segment the five digits →
-    fit finger bones to them → weld onto a generated arm
+What the harvest shipped, measured on ``Shots/land_guide_van.png`` and recorded in
+ART.md §7.13: fingers fused into a paddle with no knuckles, no nails and no creases; a
+stippled displacement that reads as raw meat; bare untextured forearms; and **a hole at
+the right wrist you could see through**. Its own guard — *"the hand is a tube, so it is
+a mitten"* — passed the whole time, because the guard measured span and the defect was
+topology. The sculpt's five separated masses are real, and they are 4 mm across at the
+fingertips *only*; over the rest of their length the digits are modelled in contact, and
+decimating to a triangle budget welds what is left.
 
-WHAT THE SCULPT IS, AND WHAT IT IS NOT — MEASURED
---------------------------------------------------
-``tools/blender/source/monster_vessel_base.glb`` is the human-shaped Rodin variant
-``gen_monster_ai.py`` describes as *"something that used to be a person"*. Scaled to
-1.75 m and measured with ``monster_fit.measure`` it splits cleanly in two:
+So the hands are authored now:
 
-* **Its hands are human and they are the reason this file exists.** Wrist to fingertip
-  measures **0.184 m** against 0.189 m for a 1.75 m adult — 97 %. Slicing the hand
-  perpendicular to its own axis finds **five separated masses 4–19 mm across** at the
-  fingertips and five again at the knuckles: fingers, an opposed thumb, and knuckles,
-  none of which anything in this repo could have built.
-* **Its body is not a person and cannot be made into one cheaply.** Acromion to wrist
-  measures **0.910 m** on a 1.75 m frame where a human is ~0.49 m — the arm is
-  **1.9×** too long, and its fingertips hang at z = 0.337 m, *below its own knee at
-  0.416 m*. The torso carries flayed skin flaps at the collarbone, ribs, waist and
-  thigh, and the face below the brow is torn open. §05 needs three teammates to tell a
-  player from a 2.336 m monster down a 12 m beam; a naked flayed humanoid is on the
-  wrong side of that line, and the arm length alone puts it there.
+    anthropometry → a lofted palm with a knuckle arch → five separate digits on their
+    own curved centre lines → nails → the three pads → weights written down, not fitted
 
-So the sculpt is taken for the hands and rejected for the body, and the body is built
-— because what a body has to do at the 3–15 m §12 corridors allow is carry a
-**silhouette and a role colour**, not a sculpted flank. ART.md §4.1 measured that
-directly on the creature: *"the sculpt detail the art pass added is invisible past
-about 5 m"*. Nobody is ever more than a hand's length from these hands.
+A hand is one of the best-documented shapes there is. Every number ``build_hand`` uses
+is a measurement somebody already took, and what that buys, in the order it shows up at
+the 0.35 m §05 puts it at: daylight between five digits, four knuckles, five nails,
+three visible segments per finger, a thumb that opposes, and a wrist that is closed
+because it is a capped solid rather than a cut through somebody else's arm.
+
+The **body** is still built and always was, for the reason ART.md §4.1 measured on the
+creature: *"the sculpt detail the art pass added is invisible past about 5 m"*, and what
+a teammate has to carry at the 3–15 m §12 corridors allow is a silhouette and a role
+colour. Nobody is ever more than a hand's length from these hands.
 
 THE TRIANGLE BUDGET, AND WHERE IT GOES
 ---------------------------------------
 The monster ships 5,704 against a 6,000 cap. This model is allowed the same order and
 spends it very differently, because the two are looked at from different distances:
 
-    Player_Arms    shoulders → fingertips, and 2 × HAND_TRIS of that is the hands
+    Player_Arms    shoulders → fingertips, and two built hands of that
     Player_Body    head, torso, legs, helmet, harness, pack, boots
     Player_Torch   the flashlight in the fist
 
@@ -68,14 +66,26 @@ The hands take the largest single share of any part of this model on purpose. Th
 the only geometry in the game a camera is ever 0.35 m from; the body is never closer
 than about 1.5 m to anybody, and at §04's 관측 range it is sixty pixels tall.
 
+THE SLEEVE IS PART OF THE HAND'S JOB
+-------------------------------------
+§05 shows the owner their own forearms and shows three teammates a coverall, and until
+this pass those were different garments — first person had bare skin tubes, third person
+had cloth. They are the same coverall now, with a **role-coloured cuff** at the wrist:
+§04's colour is the one thing about a teammate that has to survive a beam finding only
+part of them, and putting it where the owner also sees it costs eight triangles.
+
 WHAT IS LOAD-BEARING AND NOT NEGOTIABLE
 ----------------------------------------
 * ``AssetImportPolicy.PlayerHeightMetres`` pins 1.750 m and ``ScaleTolerance`` is 2 %.
+  On a T-posed figure the largest extent is the **span**, not the height — see
+  ``HAND_LENGTH``.
 * ``AssetImportPolicy.PlayerMountBones`` — HeadCameraAnchor, FlashlightMount,
   ObjectiveMount, BackpackMount. They are not humanoid bones, so nothing but this
   generator and ``AssetImportValidator`` protects them.
 * ``ExpectedAnimationClipCount`` says 9 clips, and ``LoopingAnimationClips`` /
   ``OneShotAnimationClips`` say which loop.
+* ``PlayerRigParts`` classifies the three meshes by their MATERIAL SLOTS, never by
+  name — ``gen_player_model.verify_mesh_split`` is where that contract is asserted.
 * Unity Humanoid bone names throughout, including the fingers — see FINGERS below.
 * ``PlayerStance`` sizes the crouched capsule from ``GameConstants``; the Crouch clip
   must keep ``HeadCameraAnchor`` at or below 1.28 m and this file fails its own build
@@ -89,6 +99,7 @@ something Unity's auto-mapper recognises, so they use the ``HumanBodyBones`` spe
 verbatim — ``LeftThumbProximal``, ``LeftIndexIntermediate`` and so on. Two joints per
 digit, not three: the distal phalanx is optional in Humanoid, it is 12 mm long at this
 scale, and its own bone would cost 10 more bones to move something no camera resolves.
+The distal segment is still *modelled*, with a nail on it; only the bone is dropped.
 
 Even so the rest pose is a **relaxed half-curl rather than a flat splay**, and that is
 insurance rather than styling: if the mapping ever fails the hands freeze at rest, and
@@ -110,13 +121,10 @@ import bpy  # noqa: E402
 from mathutils import Matrix, Vector  # noqa: E402
 
 import blendkit  # noqa: E402
-import monster_fit  # noqa: E402
 import gen_player_model as gpm  # noqa: E402
 from blendkit import BoneSpec  # noqa: E402
 
 
-SOURCE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "source")
-VESSEL = "monster_vessel_base.glb"
 MANIFEST_SOURCE = "tools/blender/gen_player_ai.py"
 
 # ── Hand geometry ───────────────────────────────────────────────────────────
@@ -161,709 +169,7 @@ def digit_bones(side: str) -> list[str]:
             for j in ("Proximal", "Intermediate")]
 
 
-# ── Loading and cutting the sculpt ──────────────────────────────────────────
-
-
-def load_sculpt(path: str) -> bpy.types.Object:
-    """Imports the glb, drops the importer's debris, stands it up, scales to 1.75 m.
-
-    Same contract as ``gen_monster_ai.load_base`` plus the normalise: what comes back is
-    one mesh at the origin, Z-up, facing -Y, feet on z = 0, at the player's own height.
-    Working on mesh data rather than the object transform is deliberate and is
-    ``gen_monster_ai.normalise``'s hard-won note — ``transform_apply`` is an operator and
-    operators silently do nothing under ``--background``.
-    """
-    if not os.path.exists(path):
-        blendkit.fail(f"missing base sculpt {path}. §05's hands are cut out of it; there is "
-                      "nothing to fall back to that would not be the mitten this replaced.")
-
-    before = set(bpy.data.objects)
-    bpy.ops.import_scene.gltf(filepath=path)
-    added = [o for o in bpy.data.objects if o not in before]
-
-    meshes = [o for o in added if o.type == "MESH" and not o.name.startswith("Icosphere")]
-    if not meshes:
-        blendkit.fail(f"{os.path.basename(path)} contains no mesh")
-    obj = max(meshes, key=lambda o: len(o.data.vertices))
-    for junk in added:
-        if junk is not obj:
-            bpy.data.objects.remove(junk, do_unlink=True)
-
-    obj.matrix_world = Matrix.Identity(4)
-    obj.parent = None
-    weld(obj)
-
-    me = obj.data
-
-    def bounds():
-        lo = Vector((1e9,) * 3)
-        hi = Vector((-1e9,) * 3)
-        for v in me.vertices:
-            for i in range(3):
-                lo[i] = min(lo[i], v.co[i])
-                hi[i] = max(hi[i], v.co[i])
-        return lo, hi
-
-    lo, hi = bounds()
-    if (hi.z - lo.z) < max(hi.x - lo.x, hi.y - lo.y):
-        me.transform(Matrix.Rotation(math.radians(90.0), 4, "X"))   # Rodin returns Y-up
-        lo, hi = bounds()
-    me.transform(Matrix.Scale(gpm.HEIGHT / (hi.z - lo.z), 4))
-    lo, hi = bounds()
-    me.transform(Matrix.Translation(Vector((-(lo.x + hi.x) * 0.5,
-                                            -(lo.y + hi.y) * 0.5, -lo.z))))
-    me.update()
-    return obj
-
-
-def weld(obj: bpy.types.Object, distance: float = 1e-5) -> tuple[int, int]:
-    """Merges coincident vertices. Returns (before, after).
-
-    **Not tidying — the sculpt arrives cut into 3,505 pieces without it.** glTF stores one
-    vertex per (position, normal, UV) tuple, so every UV seam and every hard edge on
-    Rodin's unwrap is a duplicated position, and Blender's importer keeps them apart. The
-    measured file: 25,670 vertices and 45,616 edges over 23,332 triangles, where a closed
-    triangle mesh would have 34,998 edges. Everything downstream of here reads the hand as
-    *the connected component that is a hand* — the cut, the digit segmentation, the check
-    that a mitten has been rejected — and on unwelded geometry the largest component in the
-    whole hand region is 55 vertices, which is one finger pad.
-    """
-    before = len(obj.data.vertices)
-    bm = bmesh.new()
-    bm.from_mesh(obj.data)
-    bmesh.ops.remove_doubles(bm, verts=bm.verts[:], dist=distance)
-    bm.to_mesh(obj.data)
-    bm.free()
-    obj.data.update()
-    after = len(obj.data.vertices)
-    print(f"WELD {obj.name} verts {before}->{after} (glTF splits every UV seam)")
-    return before, after
-
-
-WRIST_CUT = -0.006
-"""Where the hand is cut off, as metres distal of the measured wrist crease.
-
-Just proximal of it, which is as far back as the cut can go without keeping the vessel's
-torn wrist skin and as far forward as it can go without moving the palm centroid every
-other measurement is taken from. Two alternatives were tried and both cost more than they
-bought: cutting 11 mm *into* the palm to clear the flaps moved the centring and the digit
-segmentation came back with a ring finger longer than a middle finger, and eroding the
-flaps by boundary took the fingertips with them and squared off the index and the little
-finger — which is exactly the geometry this file exists to harvest.
-
-What is left of the torn skin sits inside the sleeve: ``cuff_rings`` runs the forearm 26
-mm past this plane and into the palm.
-"""
-
-FOREARM_STUB = 0.006
-"""Metres of forearm kept above the wrist on the harvested hand.
-
-Almost nothing, and deliberately: a longer stub was tried and abandoned. The cut plane is
-oblique to a hanging hand and the thumb's base sits on it, so the proximal face measures
-**98 x 50 mm** whatever is kept — it is never a tidy forearm section, and a sleeve sized
-to swallow it is a bell. What closes the joint instead is a **glove cuff** built onto the
-hand's own measured cross-sections a centimetre further out, where the geometry is a palm
-and behaves. See ``cuff_rings``."""
-
-
-def _largest_island(bm: bmesh.types.BMesh) -> set:
-    """The biggest edge-connected group of vertices. Returns a set of BMVert."""
-    bm.verts.ensure_lookup_table()
-    seen: set = set()
-    best: set = set()
-    for start in bm.verts:
-        if start in seen:
-            continue
-        stack = [start]
-        island = set()
-        seen.add(start)
-        while stack:
-            v = stack.pop()
-            island.add(v)
-            for edge in v.link_edges:
-                other = edge.other_vert(v)
-                if other not in seen:
-                    seen.add(other)
-                    stack.append(other)
-        if len(island) > len(best):
-            best = island
-    return best
-
-
-def cut_out_hand(obj: bpy.types.Object, m: dict) -> bpy.types.Object:
-    """Separates the sculpt's +X hand into an object of its own.
-
-    Two planes and then connectivity, in that order, because each alone is wrong. The
-    horizontal plane at the measured wrist keeps the hands, the feet and the shins; the
-    vertical one at ``x_gate`` drops everything inboard of the arm, which on this sculpt
-    means the legs — its ankles sit at x = 0.148 m and its wrists at x = 0.318 m, so the
-    gate has 17 cm of daylight either side and is not a tuned number. What is left on the
-    +X side is the hand plus whatever shards the flayed thigh contributed, and the
-    largest island is the hand.
-    """
-    x_gate = (m["arm_x_wrist"] + m["leg_x_ankle"]) * 0.5
-    ceiling = m["wrist"] + FOREARM_STUB
-    if x_gate <= m["leg_x_ankle"] * 1.15:
-        blendkit.fail(f"the sculpt's wrist (x={m['arm_x_wrist']:.3f}) and ankle "
-                      f"(x={m['leg_x_ankle']:.3f}) are too close to separate the hand from "
-                      "the leg with a plane. The arms are not hanging clear of the body.")
-
-    bm = bmesh.new()
-    bm.from_mesh(obj.data)
-    doomed = [v for v in bm.verts if v.co.z > ceiling or v.co.x < x_gate]
-    bmesh.ops.delete(bm, geom=doomed, context="VERTS")
-
-    keep = _largest_island(bm)
-    if len(keep) < 200:
-        blendkit.fail(f"the largest island below the wrist and outboard of x={x_gate:.3f} has "
-                      f"{len(keep)} vertices. That is not a hand — the sculpt's landmarks and "
-                      "its geometry disagree.")
-    bmesh.ops.delete(bm, geom=[v for v in bm.verts if v not in keep], context="VERTS")
-
-    mesh = bpy.data.meshes.new("HarvestedHand")
-    bm.to_mesh(mesh)
-    bm.free()
-    hand = bpy.data.objects.new("HarvestedHand", mesh)
-    bpy.context.collection.objects.link(hand)
-    return hand
-
-
-# ── Orienting the hand ──────────────────────────────────────────────────────
-
-
-def hand_frame(hand: bpy.types.Object, wrist_z: float) -> tuple[Vector, Vector, Vector, Vector]:
-    """The hand's own axes, read off its geometry. Returns (wrist, distal, palm_n, across).
-
-    **Derived, never typed.** ``gen_monster_ai.add_eyes`` makes this argument at length
-    and it applies here for the same reason: a hand-picked rotation is correct for one
-    sculpt and silently wrong for the next, and the symptom — a hand rolled 20° — is
-    exactly the kind of thing that reads as "cheap" without reading as "broken".
-
-    * **distal** is wrist-slab centroid → tip-slab centroid. The hand hangs, so those are
-      the top and bottom of its own z range.
-    * **palm normal** is the direction of least variance in the plane perpendicular to
-      distal. A hand is a flattened thing; that is its defining shape and it is what the
-      covariance finds. Taking the bounding box instead reads the *thumb* as the thin
-      axis on a relaxed hand, which rolls the result 90°.
-    * The sign of the palm normal is settled by the thumb, in ``orient_hand`` — the two
-      candidate frames are palm-down-thumb-forward and palm-up-thumb-back, and only one
-      of those is a left hand in a T-pose.
-    """
-    everything = [hand.matrix_world @ v.co for v in hand.data.vertices]
-    # The hand proper. The piece also carries FOREARM_STUB of arm above the wrist, and
-    # every axis below has to be the hand's — a forearm is round, so including it drops
-    # the measured flatness and tilts the long axis toward the arm.
-    pts = [p for p in everything if p.z <= wrist_z]
-    if len(pts) < 100:
-        blendkit.fail(f"only {len(pts)} vertices lie below the measured wrist; the cut kept "
-                      "an arm and no hand.")
-    z_hi = max(p.z for p in pts)
-    z_lo = min(p.z for p in pts)
-    span = z_hi - z_lo
-    if span < 0.05:
-        blendkit.fail(f"the harvested hand spans {span * 100:.1f} cm along its own axis; "
-                      "it is a shard, not a hand.")
-
-    def slab_centroid(lo, hi):
-        band = [p for p in pts if lo <= p.z <= hi]
-        return sum(band, Vector((0, 0, 0))) / len(band)
-
-    wrist = slab_centroid(z_hi - span * 0.10, z_hi)
-    tip = slab_centroid(z_lo, z_lo + span * 0.12)
-    distal = (tip - wrist).normalized()
-
-    # Covariance of the cloud projected into the plane ⊥ distal, in a 2-D basis of that
-    # plane. The smaller eigenvector, lifted back to 3-D, is the palm normal.
-    ref = Vector((0.0, 0.0, 1.0))
-    if abs(distal.dot(ref)) > 0.9:
-        ref = Vector((1.0, 0.0, 0.0))
-    e1 = (ref - distal * ref.dot(distal)).normalized()
-    e2 = distal.cross(e1)
-
-    sxx = sxy = syy = 0.0
-    centre = sum(pts, Vector((0, 0, 0))) / len(pts)
-    for p in pts:
-        d = p - centre
-        a, b = d.dot(e1), d.dot(e2)
-        sxx += a * a
-        sxy += a * b
-        syy += b * b
-    n = float(len(pts))
-    sxx, sxy, syy = sxx / n, sxy / n, syy / n
-
-    # Smaller eigenvalue of the symmetric 2×2 [[sxx, sxy], [sxy, syy]].
-    tr, det = sxx + syy, sxx * syy - sxy * sxy
-    disc = max(0.0, tr * tr * 0.25 - det) ** 0.5
-    lam_small = tr * 0.5 - disc
-    lam_big = tr * 0.5 + disc
-    if abs(sxy) > 1e-12:
-        vec = Vector((lam_small - syy, sxy)).normalized()
-    else:
-        vec = Vector((1.0, 0.0)) if sxx < syy else Vector((0.0, 1.0))
-    palm_n = (e1 * vec.x + e2 * vec.y).normalized()
-
-    flatness = (lam_big / max(lam_small, 1e-12)) ** 0.5
-    if flatness < 1.35:
-        blendkit.fail(f"the hand's cross-section is {flatness:.2f}:1 — too round for the "
-                      "covariance to say which way the palm faces. A hand is a flattened "
-                      "thing; this one is a tube, so it is a mitten and harvesting it buys "
-                      "nothing.")
-    print(f"HAND_FRAME span={span:.4f}m flatness={flatness:.2f}:1 "
-          f"distal=({distal.x:+.3f},{distal.y:+.3f},{distal.z:+.3f}) "
-          f"palm_n=({palm_n.x:+.3f},{palm_n.y:+.3f},{palm_n.z:+.3f})")
-    return wrist, distal, palm_n, distal.cross(palm_n)
-
-
-def _apply_frame(hand: bpy.types.Object, wrist: Vector, distal: Vector,
-                 palm_n: Vector) -> None:
-    """Rotates and translates the hand so distal → +X, palm normal → −Z, and scales it.
-
-    The target frame is the T-pose left hand: the arm runs out along +X, the palm faces
-    the floor, and the thumb therefore points forward, which in this project is −Y
-    (``gen_player_model``'s axis note: the model faces −Y and its LEFT is +X).
-    """
-    across = distal.cross(palm_n).normalized()
-    src = Matrix((distal, palm_n, across)).transposed()      # columns = the source axes
-    dst = Matrix(((1.0, 0.0, 0.0), (0.0, 0.0, 1.0), (0.0, -1.0, 0.0)))
-    # dst's columns are (+X, −Z, +Y): distal → +X, palm normal → −Z, across → +Y.
-    rot = dst @ src.transposed()
-    me = hand.data
-    me.transform(Matrix.Translation(-wrist))
-    me.transform(rot.to_4x4())
-    me.update()
-
-
-def trim_wrist(hand: bpy.types.Object) -> None:
-    """Cuts the hand off at the wrist plane, drops the debris and closes the stump.
-
-    The sculpt is flayed — ``gen_monster_ai`` calls the vessel *"something that used to
-    be a person"* and models torn skin at every joint — so the harvested hand arrives
-    with loose flaps hanging off its wrist that render as shards floating beside the
-    forearm. They also break the size measurements: they reach further back than the
-    wrist does, so the hand measures longer than it is and is then scaled down to
-    compensate.
-
-    Cut at x = 0, which after ``_apply_frame`` is the centroid of the wrist-end slab and
-    therefore the wrist by construction; keep the largest island, which is the hand;
-    fill the boundary, because an open mesh is a hole in the player the first time the
-    sleeve rides up.
-    """
-    bm = bmesh.new()
-    bm.from_mesh(hand.data)
-    bmesh.ops.bisect_plane(bm, geom=bm.verts[:] + bm.edges[:] + bm.faces[:],
-                           plane_co=Vector((WRIST_CUT, 0.0, 0.0)),
-                           plane_no=Vector((1.0, 0.0, 0.0)),
-                           clear_inner=True)
-    keep = _largest_island(bm)
-    bmesh.ops.delete(bm, geom=[v for v in bm.verts if v not in keep], context="VERTS")
-    # Filled repeatedly rather than once: `holes_fill` closes a simple loop and leaves
-    # anything self-touching open, and the sculpt has a few of those where a torn skin
-    # flap meets the wrist. Each pass simplifies what is left.
-    for _ in range(3):
-        holes = [e for e in bm.edges if len(e.link_faces) < 2]
-        if not holes:
-            break
-        bmesh.ops.holes_fill(bm, edges=holes, sides=0)
-    bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
-    remaining = [e for e in bm.edges if len(e.link_faces) < 2]
-    bm.to_mesh(hand.data)
-    bm.free()
-    hand.data.update()
-    if remaining:
-        blendkit.fail(f"the harvested hand still has {len(remaining)} boundary edge(s) after "
-                      "the stump was filled. An open mesh renders as a hole into the inside "
-                      "of the player's own arm, 35 cm from the camera.")
-    print(f"HAND_TRIM verts={len(hand.data.vertices)} closed=yes")
-
-
-WRIST_RADIUS = 0.030
-"""Radius the harvested hand is squeezed into at the wrist, before scaling, in metres.
-
-**The vessel's wrist is torn open and the flaps are geometry.** Measured, the hand's
-cross-section 8 mm past the wrist is 86 mm across where a wrist is about 56, and the
-excess is hanging skin: in first person it read as a crumpled paper collar round both
-wrists, which was the single most obviously wrong thing in the frame.
-
-Pulling those vertices *in* rather than deleting them is what makes this safe. Deleting
-opens holes and eroding by boundary takes fingertips with it — both were tried. Clamping
-the radius changes no topology at all: the flaps land on the wrist's surface and become
-tendons, which is what they should have been.
-"""
-
-TAPER_LENGTH = 0.016
-"""Metres over which the wrist clamp releases back to the hand's own shape.
-
-Short, and the limit is the **thumb**, not the knuckles: its base sits 20 mm past the
-wrist, and a taper that reached it squeezed the thenar eminence into the wrist and took
-2 cm off the thumb's measured length. The flaps are all inside the first centimetre
-anyway.
-"""
-
-
-def taper_wrist(hand: bpy.types.Object) -> None:
-    """Squeezes the wrist end of the harvested hand into a cylinder. See ``WRIST_RADIUS``."""
-    palm = [v.co for v in hand.data.vertices
-            if TAPER_LENGTH <= v.co.x <= TAPER_LENGTH + 0.014]
-    if not palm:
-        blendkit.fail("no geometry at the far end of the wrist taper, so there is nothing "
-                      "to release it into.")
-    cy = (max(p.y for p in palm) + min(p.y for p in palm)) * 0.5
-    cz = (max(p.z for p in palm) + min(p.z for p in palm)) * 0.5
-    palm_r = max(math.hypot(p.y - cy, p.z - cz) for p in palm)
-
-    moved = 0
-    for vertex in hand.data.vertices:
-        p = vertex.co
-        if p.x > TAPER_LENGTH:
-            continue
-        t = _smoothstep(0.0, TAPER_LENGTH, max(0.0, p.x))
-        limit = WRIST_RADIUS + (palm_r - WRIST_RADIUS) * t
-        dy, dz = p.y - cy, p.z - cz
-        radius = math.hypot(dy, dz)
-        if radius <= limit or radius < 1e-9:
-            continue
-        scale = limit / radius
-        vertex.co = Vector((p.x, cy + dy * scale, cz + dz * scale))
-        moved += 1
-    hand.data.update()
-    print(f"WRIST_TAPER pulled {moved} vertices onto a {WRIST_RADIUS * 2000:.0f} mm wrist "
-          f"releasing to {palm_r * 2000:.0f} mm over {TAPER_LENGTH * 1000:.0f} mm")
-
-
-def orient_hand(hand: bpy.types.Object, wrist_z: float) -> dict:
-    """Puts the harvested hand in the T-pose, at human scale, wrist at the origin.
-
-    Returns the measurements the rest of the file needs: the hand's length, the palm
-    plane, and which way the thumb came out — which is also the test that settles the
-    palm normal's sign.
-    """
-    wrist, distal, palm_n, _ = hand_frame(hand, wrist_z)
-    _apply_frame(hand, wrist, distal, palm_n)
-    trim_wrist(hand)
-    taper_wrist(hand)
-
-    # Scale to a human hand. Measured along the hand's own axis after orientation, so a
-    # sculpt whose fingers are curled is still scaled by its real reach rather than by a
-    # bounding box that happens to be short.
-    pts = [v.co for v in hand.data.vertices]
-    length = max(p.x for p in pts) - min(p.x for p in pts)
-    hand.data.transform(Matrix.Scale(HAND_LENGTH / length, 4))
-    hand.data.update()
-
-    thumb_y = _thumb_side(hand)
-    if thumb_y > 0.0:
-        # The other candidate frame: palm up, thumb back. Rotating 180° about the hand's
-        # own axis is the only difference between them and it preserves handedness, which
-        # mirroring would not — a mirrored left hand is a right hand and no amount of
-        # posing recovers from that.
-        hand.data.transform(Matrix.Rotation(math.pi, 4, "X"))
-        hand.data.update()
-        thumb_y = _thumb_side(hand)
-        if thumb_y > 0.0:
-            blendkit.fail("neither orientation of the harvested hand puts the thumb forward. "
-                          "The thumb was not found where the palm normal says it should be, so "
-                          "the frame is wrong and the hand would ship rolled.")
-
-    # X is left alone: `_apply_frame` already put the wrist crease at the origin and the
-    # forearm stub behind it, and every station downstream — the cuff, the digit sweep,
-    # `_hand_world` — is measured from that plane.
-    pts = [v.co for v in hand.data.vertices]
-    palm = [p for p in pts if 0.0 <= p.x < HAND_LENGTH * 0.30]
-    centre = sum(palm, Vector((0, 0, 0))) / max(1, len(palm))
-    hand.data.transform(Matrix.Translation(Vector((0.0, -centre.y, -centre.z))))
-    hand.data.update()
-
-    pts = [v.co for v in hand.data.vertices]
-    out = {
-        "length": max(p.x for p in pts),
-        "width": max(p.y for p in pts) - min(p.y for p in pts),
-        "thickness": max(p.z for p in pts) - min(p.z for p in pts),
-        "thumb_y": thumb_y,
-    }
-    print(f"HAND_ORIENTED length={out['length']:.4f}m width={out['width']:.4f}m "
-          f"thickness={out['thickness']:.4f}m thumb_y={out['thumb_y']:+.4f}m")
-    return out
-
-
-def _thumb_side(hand: bpy.types.Object) -> float:
-    """Signed Y of the lobe sticking out of the palm nearest the wrist — the thumb.
-
-    Taken over the proximal half of the hand only, and that restriction is the whole
-    method. Distally the four fingers occupy both sides of the palm and their spread
-    swamps everything; proximally the hand is a single block with exactly one lobe on
-    it, and that lobe is the thenar eminence. Returns the signed distance from the
-    median Y to whichever tail reaches further, so the sign is the side the thumb is on.
-    """
-    pts = [v.co for v in hand.data.vertices]
-    x0, x1 = min(p.x for p in pts), max(p.x for p in pts)
-    band = [p for p in pts if x0 + (x1 - x0) * 0.10 <= p.x <= x0 + (x1 - x0) * 0.45]
-    if not band:
-        return 0.0
-    ys = sorted(p.y for p in band)
-    mid = ys[len(ys) // 2]
-    above, below = ys[-1] - mid, mid - ys[0]
-    return above if above > below else -below
-
-
-def subdivide_smooth(obj: bpy.types.Object, cuts: int = 1) -> int:
-    """One smoothed subdivision. Returns the new triangle count.
-
-    The sculpt only spends **745 triangles** on a whole hand, measured after welding, and
-    that is not enough for the one surface §05 puts 0.35 m from the camera: at that range
-    a 1280-wide frame at 80° FOV resolves 0.43 mm per pixel, so a 6 mm facet across a
-    finger is fourteen pixels of flat shading and the knuckles read as chamfers.
-
-    Subdividing with ``smooth=1.0`` and then collapsing back to the budget is not a way of
-    spending more triangles — the count afterwards is set by ``HAND_TRIS`` either way. It
-    is a way of spending them on a *rounder surface*: the subdivision moves every new
-    vertex onto the limit surface of the original, and collapse decimation then keeps the
-    silhouette of the rounded form rather than the silhouette of the faceted one.
-    """
-    bm = bmesh.new()
-    bm.from_mesh(obj.data)
-    bmesh.ops.subdivide_edges(bm, edges=bm.edges[:], cuts=cuts,
-                              use_grid_fill=True, smooth=1.0,
-                              smooth_falloff="SMOOTH")
-    bm.to_mesh(obj.data)
-    bm.free()
-    obj.data.update()
-    obj.data.calc_loop_triangles()
-    return len(obj.data.loop_triangles)
-
-
-def decimate_to(obj: bpy.types.Object, target: int) -> int:
-    """Collapses to a triangle budget, baking the result. Returns the triangle count."""
-    obj.data.calc_loop_triangles()
-    have = len(obj.data.loop_triangles)
-    if have > target:
-        mod = obj.modifiers.new("Budget", "DECIMATE")
-        mod.decimate_type = "COLLAPSE"
-        mod.ratio = target / have
-        mod.use_collapse_triangulate = True
-        depsgraph = bpy.context.evaluated_depsgraph_get()
-        baked = bpy.data.meshes.new_from_object(obj.evaluated_get(depsgraph))
-        old = obj.data
-        obj.data = baked
-        obj.modifiers.remove(mod)
-        bpy.data.meshes.remove(old)
-    obj.data.calc_loop_triangles()
-    return len(obj.data.loop_triangles)
-
-
-# ── Segmenting the digits ───────────────────────────────────────────────────
-
-
-def _islands_beyond(mesh: bpy.types.Mesh, keep) -> list[list[int]]:
-    """Edge-connected groups of the vertices ``keep`` accepts, as lists of mesh indices.
-
-    Connectivity, not proximity, and that distinction is the whole method. The first
-    attempt clustered the vertices past a cut plane by distance in the (y, z) projection
-    and it could not be made to work at any tolerance: the sweep found 1, 2, 3, 5 and 6
-    groups but never a stable 4, because a relaxed hand's fingers *overlap in projection*
-    — the little finger curls under the ring finger and the two share a column. Two
-    fingers are two separate volumes whatever they do in projection, so the mesh's own
-    edges answer the question exactly and with nothing to tune.
-    """
-    chosen = [i for i, v in enumerate(mesh.vertices) if keep(v.co)]
-    inside = set(chosen)
-    adjacency: dict[int, list[int]] = {i: [] for i in chosen}
-    for edge in mesh.edges:
-        a, b = edge.vertices
-        if a in inside and b in inside:
-            adjacency[a].append(b)
-            adjacency[b].append(a)
-
-    seen: set[int] = set()
-    groups: list[list[int]] = []
-    for start in chosen:
-        if start in seen:
-            continue
-        stack = [start]
-        seen.add(start)
-        group: list[int] = []
-        while stack:
-            v = stack.pop()
-            group.append(v)
-            for other in adjacency[v]:
-                if other not in seen:
-                    seen.add(other)
-                    stack.append(other)
-        groups.append(group)
-    return groups
-
-
-def segment_digits(hand: bpy.types.Object, size: dict) -> list[dict]:
-    """Finds the five digits and returns a base/tip axis for each.
-
-    Two different cuts, because the thumb is not a fifth finger. The four fingers leave
-    the palm together at the knuckle line and are separate volumes past it, so a plane
-    across the hand isolates them by connectivity alone. The thumb leaves the palm 40 %
-    further back and on the other axis, so it is found on a plane along the hand instead.
-
-    Everything is expressed as fractions of the hand's own measured length and width, so
-    the numbers survive a different sculpt; the counts are asserted rather than assumed,
-    which is the whole reason to do it by connectivity instead of by hand-written
-    coordinates.
-    """
-    length = size["length"]
-    co = [v.co.copy() for v in hand.data.vertices]
-
-    # ── four fingers ────────────────────────────────────────────────────────
-    # The cut plane is swept rather than fixed. Where the fingers separate depends on how
-    # curled the sculpt's hand is, and the right plane is simply the one that leaves four
-    # islands — asserted, not assumed, which is what makes this a measurement of the
-    # sculpt rather than a set of coordinates that happen to suit one. The lowest such
-    # plane is taken, so each finger keeps as much of its own knuckle as the separation
-    # allows.
-    best = None
-    tried = []
-    steps = 34
-    for step in range(steps + 1):
-        cut = length * (0.40 + 0.42 * step / steps)
-        islands = [g for g in _islands_beyond(hand.data, lambda p, c=cut: p.x >= c)
-                   if len(g) >= 6]
-        tried.append((cut / length, len(islands)))
-        if not 1 <= len(islands) <= 4 or len(islands) == 1:
-            continue
-        groups = _split_touching(islands, co)
-        if len(groups) == 4 and best is None:
-            best = (cut, groups)
-
-    if best is None:
-        blendkit.fail(
-            "no plane across the harvested hand yields four fingers, before or after "
-            "separating the ones that touch. Islands per cut: "
-            + " ".join(f"{f:.2f}:{n}" for f, n in tried) + ". That sweep is the "
-            "measurement that decides whether this sculpt is worth harvesting at all: a "
-            "hand whose digits are not distinguishable volumes is a mitten, and building "
-            "one of those was already possible without importing anything.")
-
-    cut_x, groups = best
-    print(f"DIGIT_CUT at {cut_x / length:.2f} of the hand's length; islands per cut "
-          + " ".join(f"{f:.2f}:{n}" for f, n in tried))
-
-    # ── the thumb ───────────────────────────────────────────────────────────
-    # The thumb does not leave the hand on the finger cut's axis — it branches off the
-    # palm 40 % further back and across it — so it is cut on Y instead and then taken by
-    # connectivity for the same reason as above. The gate sits halfway between the palm's
-    # own front face and the thumb's reach, both read off this hand's Y distribution.
-    prox = [i for i in range(len(co)) if co[i].x < cut_x]
-    ys = sorted(co[i].y for i in prox)
-    gate = (ys[int(len(ys) * 0.04)] + ys[int(len(ys) * 0.32)]) * 0.5
-    lobes = _islands_beyond(hand.data, lambda p: p.x < cut_x and p.y <= gate)
-    thumb = max(lobes, key=len) if lobes else []
-    if len(thumb) < 12:
-        blendkit.fail(f"only {len(thumb)} vertices lie forward of the palm on the proximal "
-                      "half of the hand, so there is no thumb to oppose. §03's grip on the "
-                      "torch and §08's grip on a 전리품 are both a thumb closing on four "
-                      "fingers; without one the hand cannot hold anything.")
-
-    digits = [_digit_axis(g, co, cut_x, length) for g in groups]
-    digits.sort(key=lambda d: d["tip"].y)          # thumb side (−Y) first
-    digits.insert(0, _digit_axis(thumb, co, None, length, thumb=True))
-    for digit in digits:
-        reach = digit["tip"] - digit["base"]
-        span = reach.length_squared
-        starts = [(co[i] - digit["base"]).dot(reach) / span for i in digit["indices"]]
-        digit["u0"] = max(0.0, min(starts)) if starts else 0.0
-
-    for name, d in zip(DIGIT_NAMES, digits):
-        d["name"] = name
-        print(f"DIGIT {name:7s} verts={d['n']:4d} base=({d['base'].x:+.3f},"
-              f"{d['base'].y:+.3f},{d['base'].z:+.3f}) "
-              f"tip=({d['tip'].x:+.3f},{d['tip'].y:+.3f},{d['tip'].z:+.3f}) "
-              f"length={(d['tip'] - d['base']).length * 100:5.1f}cm")
-    return digits
-
-
-def _spread(indices, co) -> tuple[float, Vector, Vector]:
-    """Extent of a digit island across the hand, plus the axis and centre it was on.
-
-    Measured in the (y, z) plane — across and through the palm — because that is the
-    plane fingers are side by side in whatever they are doing along their own length.
-    Returns (extent, unit axis in y/z as a 3-vector with x = 0, centroid).
-    """
-    pts = [co[i] for i in indices]
-    centre = _mean(pts)
-    syy = szz = syz = 0.0
-    for p in pts:
-        dy, dz = p.y - centre.y, p.z - centre.z
-        syy += dy * dy
-        szz += dz * dz
-        syz += dy * dz
-    n = float(len(pts))
-    syy, szz, syz = syy / n, szz / n, syz / n
-    tr, det = syy + szz, syy * szz - syz * syz
-    disc = max(0.0, tr * tr * 0.25 - det) ** 0.5
-    lam = tr * 0.5 + disc
-    axis = (Vector((0.0, lam - szz, syz)).normalized() if abs(syz) > 1e-12
-            else Vector((0.0, 1.0, 0.0)) if syy >= szz else Vector((0.0, 0.0, 1.0)))
-    projected = [(p - centre).dot(axis) for p in pts]
-    return max(projected) - min(projected), axis, centre
-
-
-def _split_touching(islands, co) -> list[list[int]]:
-    """Splits any island wide enough to be two fingers touching, into that many.
-
-    **This sculpt's fingers are not all separate volumes and pretending otherwise was
-    the first version's mistake.** Swept across its whole length the cut plane never
-    leaves more than three islands, because two of the four fingers are modelled in
-    contact and welded there. Rejecting the sculpt on that would throw away the only
-    hand in the repository with knuckles in it.
-
-    So the width decides, against the narrowest island in the same cut rather than
-    against a typed millimetre: one finger is one finger wide, and an island 1.9 times
-    that is two fingers. Splitting is 1-D k-means along the island's own principal axis
-    across the palm — which is where two touching fingers differ and along which one
-    finger has no structure at all.
-    """
-    measured = [(_spread(g, co), g) for g in islands]
-    unit = min(s[0] for s, _ in measured)
-    out: list[list[int]] = []
-    for (extent, axis, centre), group in measured:
-        parts = max(1, min(4, int(round(extent / max(unit, 1e-9)))))
-        if parts == 1:
-            out.append(group)
-            continue
-        keyed = sorted(group, key=lambda i: (co[i] - centre).dot(axis))
-        # Equal-count slices rather than equal-width: fingers taper, so the outer one
-        # of a touching pair covers less width and a width split cuts through it.
-        step = len(keyed) / parts
-        for k in range(parts):
-            out.append(keyed[int(k * step):int((k + 1) * step)])
-    return out
-
-
-def _mean(points) -> Vector:
-    total = Vector((0.0, 0.0, 0.0))
-    for p in points:
-        total = total + p
-    return total / max(1, len(points))
-
-
-def _digit_axis(indices, co, cut_x, length: float, thumb: bool = False) -> dict:
-    """A base → tip segment for one digit, from the vertices that belong to it."""
-    pts = [co[i] for i in indices]
-    if thumb:
-        # The thumb's own direction, not a guess: the far end of its point cloud against
-        # the near end, ordered along the diagonal a relaxed thumb actually lies on. A
-        # thumb pinned to −Y would have its bones outside its own geometry, and skinning
-        # by distance to a bone that misses the mesh weights the palm instead.
-        along = sorted(pts, key=lambda p: p.x - p.y)
-        take = max(3, len(along) // 6)
-        base, tip = _mean(along[:take]), _mean(along[-take:])
-    else:
-        along = sorted(pts, key=lambda p: p.x)
-        tip = _mean(along[-max(3, len(along) // 8):])
-        base = _mean(along[: max(3, len(along) // 8)])
-        # The knuckle sits proximal of the plane that separated the fingers: that plane is
-        # chosen for separation, and a bone starting on it would leave the knuckle welded
-        # to the palm, so a curl would fold the finger a centimetre too far out.
-        base.x = cut_x - length * 0.075
-    return {"n": len(indices), "indices": list(indices), "base": base, "tip": tip}
-
-
-# ── Skinning and relaxing the hand ──────────────────────────────────────────
+# ── The shared blends ───────────────────────────────────────────────────────
 
 KNUCKLE_BLEND = 0.20
 """Fraction of a digit's length over which it hands back to the palm. Below this the
@@ -874,144 +180,6 @@ WRIST_BLEND = 0.030
 """Metres over which the palm hands back to the forearm. A wrist has no crease in the
 skin at the joint, so a hard boundary here creases one in."""
 
-
-def _segment_u(p: Vector, a: Vector, b: Vector) -> tuple[float, float]:
-    """Parameter along a→b and distance to it, clamped to the segment."""
-    ab = b - a
-    denom = ab.length_squared
-    if denom < 1e-12:
-        return 0.0, (p - a).length
-    t = (p - a).dot(ab) / denom
-    clamped = max(0.0, min(1.0, t))
-    return t, (p - (a + ab * clamped)).length
-
-
-def _smoothstep(lo: float, hi: float, x: float) -> float:
-    if hi <= lo:
-        return 0.0 if x < lo else 1.0
-    t = max(0.0, min(1.0, (x - lo) / (hi - lo)))
-    return t * t * (3.0 - 2.0 * t)
-
-
-def skin_hand(hand: bpy.types.Object, digits: list[dict], side: str) -> list[dict]:
-    """Per-vertex bone weights for the harvested hand, from the digit segmentation.
-
-    **Scoped by the segmentation rather than by distance alone**, which is the difference
-    between this and ``gen_monster_ai.skin_by_proximity``. That function has to guess
-    which limb a vertex belongs to, and its own note records the failure mode — a thigh
-    picking up the opposite leg. Here the digits are already known exactly, so a vertex
-    on the index finger is only ever weighted to the index chain and the palm. Two
-    adjacent fingertips are 6 mm apart on this hand and inverse-distance weighting cannot
-    keep them apart at that spacing: the ring finger would drag the little one halfway
-    through every grip.
-
-    The two blends that are not "one bone, weight 1" are the two joints a hand actually
-    has skin over — see ``KNUCKLE_BLEND`` and ``WRIST_BLEND``.
-    """
-    thumb = next(d for d in digits if d["name"] == "Thumb")
-    fingers = [d for d in digits if d["name"] != "Thumb"]
-    in_thumb = set(thumb["indices"])
-
-    weights: list[dict[str, float]] = []
-    for i, vertex in enumerate(hand.data.vertices):
-        p = vertex.co
-        candidates = [thumb] if i in in_thumb else fingers
-
-        # Inverse distance to each candidate digit's axis, sharply weighted. **Not a hard
-        # assignment**, and that is the fix for the worst defect this pass produced: two of
-        # this sculpt's fingers are modelled in contact, `_split_touching` divides that
-        # shared volume down the middle, and giving each half weight 1 on a different bone
-        # shears the surface apart the moment the hand closes. Twenty millimetres apart and
-        # at this exponent a separate finger's neighbour contributes about five parts per
-        # million, so nothing blends that should not; where two fingers genuinely touch,
-        # the blend is exactly what keeps the skin between them whole.
-        share = []
-        for digit in candidates:
-            u, d = _segment_u(p, digit["base"], digit["tip"])
-            share.append((1.0 / (d + 0.004) ** 6, max(0.0, min(1.0, u)), digit))
-        total = sum(x for x, _, _ in share)
-        share = [(x / total, u, digit) for x, u, digit in share]
-        lead = max(share)[2]
-        u = sum(x * u for x, u, _ in share)
-
-        # The palm ramp starts where the digit's own geometry starts, not at its bone's
-        # head. The segmentation cut runs 14 % of the way up a finger, so a ramp from zero
-        # gives the first digit vertex 79 % finger weight while the palm vertex sharing an
-        # edge with it has none — a 79 % step across one edge, which is a tear.
-        start = lead.get("u0", 0.0)
-        to_palm = 1.0 - _smoothstep(start, start + KNUCKLE_BLEND, u)
-        distal = _smoothstep(DIGIT_SPLIT - 0.14, DIGIT_SPLIT + 0.14, u)
-
-        w: dict[str, float] = {}
-        if to_palm > 1e-4:
-            # One ramp across the wrist: all forearm at the sleeve's cut, half and half on
-            # the crease, all hand a wrist's width past it.
-            arm = to_palm * (1.0 - _smoothstep(-0.004, WRIST_BLEND, p.x))
-            w[f"{side}Hand"] = to_palm - arm
-            if arm > 1e-4:
-                w[f"{side}LowerArm"] = arm
-        for x, _, digit in share:
-            hold = x * (1.0 - to_palm)
-            if hold <= 1e-4:
-                continue
-            name = digit["name"]
-            w[f"{side}{name}Proximal"] = w.get(f"{side}{name}Proximal", 0.0) \
-                + hold * (1.0 - distal)
-            w[f"{side}{name}Intermediate"] = w.get(f"{side}{name}Intermediate", 0.0) \
-                + hold * distal
-        weights.append({k: v for k, v in w.items() if v > 1e-4})
-
-    for w in weights:
-        total = sum(w.values())
-        for k in w:
-            w[k] /= total
-    return smooth_weights(hand.data, weights)
-
-
-WEIGHT_SMOOTHING = 4
-"""Laplacian passes over the hand's weights. **Not polish — without it the hand tears.**
-
-The segmentation assigns every vertex to exactly one digit, which is right, and then
-every vertex on a boundary between two digits jumps from weight 1 on one bone to weight 1
-on the other across a single edge. Where two of this sculpt's fingers are modelled in
-contact (see ``_split_touching``) that boundary runs down the middle of a solid volume,
-and the first render showed the result exactly: the closed hand came apart into shards.
-
-Smoothing over the **mesh's own edges** rather than over distance is what makes this
-safe. Two separate fingers share no edge, so no amount of smoothing bleeds the index into
-the middle; the places it does reach are the webbing, the knuckle line and the seam
-between two touching fingers — which are the three places a hand's skin genuinely does
-belong to two bones at once.
-"""
-
-
-def smooth_weights(mesh: bpy.types.Mesh, weights: list[dict]) -> list[dict]:
-    """Averages each vertex's weights with its edge neighbours', then renormalises."""
-    neighbours: list[list[int]] = [[] for _ in range(len(mesh.vertices))]
-    for edge in mesh.edges:
-        a, b = edge.vertices
-        neighbours[a].append(b)
-        neighbours[b].append(a)
-
-    for _ in range(WEIGHT_SMOOTHING):
-        out = []
-        for i, w in enumerate(weights):
-            blended = {k: v * 0.45 for k, v in w.items()}
-            share = 0.55 / max(1, len(neighbours[i]))
-            for j in neighbours[i]:
-                for k, v in weights[j].items():
-                    blended[k] = blended.get(k, 0.0) + v * share
-            total = sum(blended.values())
-            out.append({k: v / total for k, v in blended.items() if v > 1e-3})
-        weights = out
-
-    for w in weights:
-        total = sum(w.values())
-        for k in w:
-            w[k] /= total
-    return weights
-
-
 DIGIT_SPLIT = 0.52
 """Where a digit's proximal bone hands over to its intermediate one, as a fraction of
 the digit's length. A finger's proximal phalanx is about half of it and the middle and
@@ -1019,65 +187,11 @@ distal together are the other half; with the distal dropped (see FINGERS) the
 intermediate bone stands in for both, so the split stays near the middle."""
 
 
-def relax_hand(hand: bpy.types.Object, digits: list[dict], weights: list[dict],
-               side: str) -> None:
-    """Brings the sculpt's splayed fingers together and opens the thumb, in the rest mesh.
-
-    The sculpt's hand hangs at the end of a dead arm with its four fingers **fanned 36 mm
-    apart at the tips against 26 mm at the knuckles**, and its thumb lying flat alongside
-    the index finger rather than opposing it. Measured on the harvest; it is a corpse's
-    hand and it reads as one.
-
-    Applied to the rest mesh rather than to every clip because the rest pose is what
-    Unity's Humanoid mapper sees, what a dropped finger curve falls back to, and what
-    the ``.glb`` shows — three places a splayed hand would leak through. It is applied
-    **through the skin weights**, so the knuckles deform instead of shearing, and the
-    bones are moved by the same rotation so they stay inside the geometry they drive.
-    """
-    rotations = {}
-    for digit in digits:
-        base, tip = digit["base"], digit["tip"]
-        reach = tip - base
-        if digit["name"] == "Thumb":
-            # Abduction and opposition. A thumb that lies along the fingers cannot close
-            # on anything, and §03's torch, §08's 전리품 and §03's objective are all a
-            # thumb closing on four fingers.
-            rot = (Matrix.Rotation(math.radians(-THUMB_ABDUCT), 3, "Z")
-                   @ Matrix.Rotation(math.radians(THUMB_OPPOSE), 3, "X"))
-        else:
-            # Rotate the fan out of the finger: the tip lands at the same Y as its own
-            # knuckle, so the four run parallel. Then a shared flexion, because a
-            # relaxed hand is not flat.
-            yaw = math.atan2(reach.y, max(reach.x, 1e-6))
-            rot = (Matrix.Rotation(-yaw, 3, "Z")
-                   @ Matrix.Rotation(math.radians(FINGER_FLEX), 3, "Y"))
-        rotations[digit["name"]] = (rot, base.copy())
-        digit["tip"] = base + rot @ reach
-
-    for i, vertex in enumerate(hand.data.vertices):
-        p = vertex.co.copy()
-        moved = Vector((0.0, 0.0, 0.0))
-        for bone, w in weights[i].items():
-            name = _digit_of(bone, side)
-            if name is None:
-                moved += p * w
-            else:
-                rot, base = rotations[name]
-                moved += (base + rot @ (p - base)) * w
-        vertex.co = moved
-    hand.data.update()
-
-
-THUMB_ABDUCT = 26.0
-"""Degrees the thumb swings away from the index finger in the palm's plane."""
-
-THUMB_OPPOSE = 34.0
-"""Degrees the thumb rolls so its pad faces the fingers rather than the floor. Without
-it the thumb is a fifth finger and a grip has nothing on the far side of the barrel."""
-
-FINGER_FLEX = 9.0
-"""Degrees of flexion in the rest pose. A live hand at rest is never flat; a flat one
-photographs as a plank, which is the defect this whole file exists to fix."""
+def _smoothstep(lo: float, hi: float, x: float) -> float:
+    if hi <= lo:
+        return 0.0 if x < lo else 1.0
+    t = max(0.0, min(1.0, (x - lo) / (hi - lo)))
+    return t * t * (3.0 - 2.0 * t)
 
 
 def _digit_of(bone: str, side: str) -> str | None:
@@ -1091,68 +205,795 @@ def _digit_of(bone: str, side: str) -> str | None:
     return None
 
 
-def harvest_hand(path: str) -> dict:
-    """The whole harvest: sculpt in, an oriented human hand and five digit axes out."""
-    sculpt = load_sculpt(path)
-    landmarks = monster_fit.measure(sculpt)
-    print(f"SCULPT_FIT height={landmarks['height']:.3f} shoulder={landmarks['shoulder']:.3f} "
-          f"wrist={landmarks['wrist']:.3f} fingertip={landmarks['fingertip']:.3f} "
-          f"knee={landmarks['knee']:.3f} arm_drop="
-          f"{landmarks['shoulder'] - landmarks['wrist']:.3f}m")
+WRIST_RADIUS = 0.030
+"""Radius the sleeve's cuff is sized off, in metres.
 
-    hand = cut_out_hand(sculpt, landmarks)
-    bpy.data.objects.remove(sculpt, do_unlink=True)
+A wrist is about 56 mm across on a hand this size and the cuff has to enclose it with
+slack rather than meet it — see ``cuff_rings``, where the 15 % is spent."""
 
-    raw = decimate_to(hand, 10 ** 9)
-    size = orient_hand(hand, landmarks["wrist"])
-    dense = subdivide_smooth(hand)
-    tris = decimate_to(hand, HAND_TRIS)
-    print(f"HAND_BUDGET tris={raw}->{dense}(subdivided)->{tris} "
-          f"verts={len(hand.data.vertices)}")
 
-    digits = segment_digits(hand, size)
-    weights = skin_hand(hand, digits, "Left")
-    relax_hand(hand, digits, weights, "Left")
+# ── Building the hand ───────────────────────────────────────────────────────
+#
+# THE FRAME. Everything below is in hand-local coordinates and every consumer in this
+# file agrees on them, so they are stated once:
+#
+#     +X   distal. The wrist crease is x = 0 and the middle fingertip is x = HAND_LENGTH.
+#     -Y   the thumb side (anterior in the T-pose).
+#     -Z   palmar. `flex()` curls a digit toward -Z and `solve_grip` inscribes the
+#          handle under the palm, so the sign is load-bearing, not a convention.
+#
+# `_hand_world` maps this into armature space and mirrors X for the right hand.
 
-    # Re-scaled after relaxing, not before. The subdivision pulls the surface onto its own
-    # limit shape and the relax swings four fingers, so the reach measured on the raw cut
-    # is not the reach that ships — and the T-pose span, which ``verify_span`` holds to a
-    # human ratio, is the wrist plus exactly this number.
-    reach = max(v.co.x for v in hand.data.vertices)
-    hand.data.transform(Matrix.Scale(HAND_LENGTH / reach, 4))
-    hand.data.update()
+
+def _spow(x: float, power: float) -> float:
+    """Signed |x|^(2/power) — the superellipse exponent, written so power=2 is a circle.
+
+    A palm is not an ellipse. It is flat on the back, flat across the front and rounded
+    only at the two edges, and an elliptical cross-section reads as a sausage from the
+    one distance §05 puts this geometry at. Raising the exponent pushes the section
+    toward a rounded rectangle at no triangle cost at all.
+    """
+    if x == 0.0:
+        return 0.0
+    return math.copysign(abs(x) ** (2.0 / power), x)
+
+
+def _section(centre: Vector, hy: float, z_up: float, z_down: float,
+             sides: int, power: float, frame=None):
+    """One cross-section: half-width in Y, and separate rises above and below the axis.
+
+    Two half-depths rather than one radius because every part of a hand is asymmetric
+    through its thickness — the dorsum is flat and close to the bone, the palmar side
+    carries pads. A single radius makes a finger a cylinder, and a cylinder with a
+    fingernail on it is a cylinder with a fingernail on it.
+
+    ``z_up`` and ``z_down`` are both **magnitudes**; the sign comes from where round the
+    section a vertex is. Passing a signed z_down negates twice and folds the lower half
+    of every ring onto the upper one, which is a solid that looks plausible in a vertex
+    count and is a crumpled sheet in a render.
+
+    ``frame`` is (along, across, up) for geometry that does not run along +X — the
+    digits, which are built on their own curved centre lines.
+    """
+    if frame is None:
+        across, up = Vector((0.0, 1.0, 0.0)), Vector((0.0, 0.0, 1.0))
+    else:
+        _, across, up = frame
+    out = []
+    for i in range(sides):
+        a = 2.0 * math.pi * i / sides
+        cy, sz = math.cos(a), math.sin(a)
+        t = _spow(sz, power)
+        out.append(centre + across * (hy * _spow(cy, power))
+                   + up * ((z_up if t >= 0.0 else z_down) * t))
+    return out
+
+
+def _centroid(hand, ring: list[int]) -> Vector:
+    total = Vector((0.0, 0.0, 0.0))
+    for i in ring:
+        total = total + hand.co[i]
+    return total / float(len(ring))
+
+
+class _Hand:
+    """Vertices, per-vertex bone weights and quads for one hand, built ring by ring.
+
+    The same accumulator idea as ``gen_player_model.Body`` and for the same reason —
+    **the weights are authored, not inferred.** The version this replaces harvested a
+    sculpt and then had to *guess* which bone every vertex belonged to by inverse
+    distance, which needed a k-means split for two fingers modelled in contact, four
+    passes of Laplacian smoothing to stop the guess tearing the mesh, and still shipped
+    a hand whose fingers were one paddle. Here every ring is placed on a known digit at
+    a known parameter along it, so its weights are simply written down and there is
+    nothing left to go wrong at a knuckle.
+    """
+
+    def __init__(self) -> None:
+        self.co: list[Vector] = []
+        self.w: list[dict[str, float]] = []
+        self.faces: list[tuple] = []
+        self.thumb: set[int] = set()
+
+    def ring(self, points, weights: dict[str, float], thumb: bool = False) -> list[int]:
+        first = len(self.co)
+        for p in points:
+            self.co.append(Vector(p))
+            self.w.append(dict(weights))
+            if thumb:
+                self.thumb.add(len(self.co) - 1)
+        return list(range(first, len(self.co)))
+
+    def bridge(self, a: list[int], b: list[int]) -> None:
+        n = len(a)
+        for i in range(n):
+            j = (i + 1) % n
+            self.faces.append((a[i], a[j], b[j], b[i]))
+
+    def cap(self, ring: list[int], weights: dict[str, float], thumb: bool = False,
+            dome: Vector = None) -> None:
+        """Closes a ring with a fan from its own centroid.
+
+        A fan and not an n-gon: an n-gon at a fingertip shades as one flat disc and
+        catches the beam as a highlight with a straight edge, which is the single most
+        obvious way to say *this is a cylinder*. The centre vertex is pushed a little
+        along the ring's own normal so the tip is domed rather than cut off.
+        """
+        centre = Vector((0.0, 0.0, 0.0))
+        for i in ring:
+            centre = centre + self.co[i]
+        centre /= float(len(ring))
+        if dome is not None:
+            radius = sum((self.co[i] - centre).length for i in ring) / float(len(ring))
+            centre = centre + dome.normalized() * (radius * 0.62)
+        idx = self.ring([centre], weights, thumb)[0]
+        n = len(ring)
+        for i in range(n):
+            self.faces.append((ring[i], ring[(i + 1) % n], idx))
+
+    def loft(self, rings, cap_start: bool = True, cap_end: bool = True,
+             thumb: bool = False) -> list[list[int]]:
+        """`rings` is a list of (points, weights). Returns the index rings."""
+        idx = [self.ring(points, weights, thumb) for points, weights in rings]
+        for a, b in zip(idx, idx[1:]):
+            self.bridge(a, b)
+        # The dome direction is taken from the loft's own run rather than from a face
+        # normal, because a ring's winding is not fixed until `recalc_face_normals` and a
+        # cap pushed the wrong way is a dimple in a fingertip at 0.35 m.
+        if cap_start:
+            self.cap(list(reversed(idx[0])), rings[0][1], thumb,
+                     _centroid(self, idx[0]) - _centroid(self, idx[1]))
+        if cap_end:
+            self.cap(idx[-1], rings[-1][1], thumb,
+                     _centroid(self, idx[-1]) - _centroid(self, idx[-2]))
+        return idx
+
+    def bulge(self, centre_x: float, centre_y: float, sigma_x: float, sigma_y: float,
+              amount: float, dorsal: bool, only=None) -> float:
+        """Raises one soft mound out of the surface. Returns the largest rise applied.
+
+        The knuckles, the thenar and the hypothenar are all this: a local swelling of an
+        otherwise smooth solid, on one side of it only. Applying it as a displacement
+        after the loft rather than as a shaped ring is what keeps the ring list readable
+        — a knuckle is not a cross-section of anything, it is a lump on one.
+
+        Scaled by how far a vertex already is from the mid-plane, so the silhouette
+        edge, which sits *on* that plane, does not balloon: a bump that moved the outline
+        as much as the surface would read as a swollen hand rather than a knuckled one.
+        """
+        peak = 0.0
+        for i, p in enumerate(self.co):
+            if only is not None and i not in only:
+                continue
+            side = (p.z / 0.010) if dorsal else (-p.z / 0.010)
+            if side <= 0.0:
+                continue
+            fall = math.exp(-((p.x - centre_x) / sigma_x) ** 2
+                            - ((p.y - centre_y) / sigma_y) ** 2)
+            rise = amount * fall * min(1.0, side)
+            if rise <= 1e-6:
+                continue
+            p.z += rise if dorsal else -rise
+            peak = max(peak, rise)
+        return peak
+
+    def finish(self, name: str) -> bpy.types.Object:
+        mesh = bpy.data.meshes.new(name)
+        mesh.from_pydata([tuple(p) for p in self.co], [], [list(f) for f in self.faces])
+        mesh.update()
+        obj = bpy.data.objects.new(name, mesh)
+        bpy.context.collection.objects.link(obj)
+
+        bm = bmesh.new()
+        bm.from_mesh(mesh)
+        bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+        bm.to_mesh(mesh)
+        bm.free()
+        mesh.update()
+        return obj
+
+
+# ── The measurements ────────────────────────────────────────────────────────
+# Anthropometry, scaled to this hand. A 1.75 m adult's hand is 0.189 m wrist crease to
+# middle fingertip; HAND_LENGTH is 0.181 because the T-pose span is capped (see its own
+# note), so every dimension below is the human figure times 181/189 = 0.958. They are
+# written as absolute metres rather than as ratios because that is how they were
+# checked — against a ruler and a hand.
+
+PALM_LENGTH = 0.0985
+"""Wrist crease to the middle finger's knuckle. 54 % of the hand, which is the ratio
+that decides at a glance whether a hand reads as a hand or as a glove: too short and the
+fingers are spider legs, too long and it is a paddle with notches."""
+
+PALM_WIDTH = 0.0855
+"""Across the four metacarpal heads. The four fingers are laid out to fill exactly this,
+so a finger's width is not a free parameter — it is this divided among them."""
+
+WRIST_WIDTH, WRIST_DEPTH = 0.0555, 0.0395
+"""The wrist's own section. Narrower than the palm in Y and *deeper* in Z, which is the
+change of direction that says wrist; a hand tapering evenly into the sleeve reads as a
+mitten however good the fingers are."""
+
+KNUCKLE_RISE = 0.0046
+"""Metres the four metacarpal heads stand out of the back of the hand.
+
+The row of four bumps is most of what a knuckled hand has that a mitten does not, and
+at §05's 0.35 m it is about ten pixels of relief under a light that moves with the
+camera. Set by rendering: at 3.4 mm the back of the hand photographed flat under a light
+coming from the camera's own direction, which — §05 holding the torch at the eye — is
+the only direction this geometry is ever lit from. It is weighted to ``Hand`` rather than to the fingers on purpose — see
+``KNUCKLE_BLEND`` — so it stays put when the fist closes, which is when it matters."""
+
+THENAR_RISE = 0.0052
+HYPOTHENAR_RISE = 0.0034
+"""The two pads of the palm. Without them the palmar surface is flat, and a flat palm
+cannot hold anything: §03's torch is inscribed in the cavity *between* these two."""
+
+FINGERS = (
+    # name,   mcp_x,  mcp_y,   length, width,  yaw,  curl
+    ("Index",  0.0958, -0.0315, 0.0726, 0.0202, -1.8, 0.90),
+    ("Middle", 0.0985, -0.0103, 0.0845, 0.0204, 0.0, 1.00),
+    ("Ring",   0.0942, 0.0107, 0.0778, 0.0192, 1.4, 1.08),
+    ("Little", 0.0855, 0.0301, 0.0602, 0.0170, 3.2, 1.18),
+)
+"""The four fingers: knuckle position, length, width at the proximal phalanx, the yaw
+that fans them, and how much of the rest curl each takes.
+
+``mcp_x`` is not the same for all four and that is the point — the knuckle line is an
+**arch**, running from the middle finger forward of the index and 13 mm forward of the
+little. A straight knuckle line is the second thing after fused fingers that makes a
+built hand read as a mitten, and it costs nothing to avoid.
+
+``curl`` rises across the hand because a relaxed hand's little finger is the most
+flexed and its index the least; four fingers at identical flexion read as a salute.
+
+``yaw`` fans them **apart**, not together. The four widths sum to 0.0768 against a
+0.0855 palm, so they touch at the knuckles and the fan opens daylight between them from
+there out — which is what a relaxed hand does and what ``verify_hand`` measures. An
+earlier revision converged them by 2° and closed the index-to-middle clearance to 0.3 mm
+at the middle joint, which is the fused paddle this whole file exists to stop shipping,
+rebuilt out of separate solids."""
+
+THUMB_BASE = Vector((0.0215, -0.0205, -0.0055))
+THUMB_TIP = Vector((0.0932, -0.0602, -0.0318))
+"""The thumb's bone chain, carpometacarpal to tip.
+
+Unity's ``ThumbProximal`` **is the first metacarpal**, not a phalanx, so the chain that
+maps onto the Humanoid avatar starts in the middle of the palm — which is also where a
+thumb genuinely hinges. ``DIGIT_SPLIT`` then lands the second joint at (0.062, -0.043,
+-0.019), within 3 mm of a real MCP.
+
+The tip is set where an opposed thumb's is: forward of the palm, well below its plane,
+and reaching to about the index knuckle. That last one is the check anybody can make on
+their own hand, and it is what makes the thumb read as opposed rather than as a fifth
+finger lying alongside the others."""
+
+THUMB_WIDTH = 0.0224
+"""Widest across the proximal phalanx. A thumb is thicker than any finger and reads
+wrong if it is not."""
+
+PALM_SIDES = 16
+DIGIT_SIDES = 10
+"""Twelve is enough for a limb at 1.5 m (``gen_player_model.SIDES_LIMB``) and is not
+enough here. At 0.35 m a ten-sided finger is about four degrees per facet across a
+20 mm cylinder, which is under a pixel of silhouette break; eight showed as a visible
+hexagon on the index finger's near edge in the first render of this pass."""
+
+DIGIT_POWER = 2.05
+"""Superellipse exponent for a digit's cross-section. Just off a circle.
+
+A finger is very slightly flattened on its pad and almost round everywhere else. At 2.4
+— the value the palm wants — a ten-sided section squares up enough to put a visible
+ridge down the back of every finger, which under a light at the camera reads as a bevel
+and makes the hand look moulded."""
+
+REST_MCP, REST_PIP, REST_DIP = 9.0, 17.0, 12.0
+"""Degrees of flexion at the three joints in the **rest mesh**, before any clip.
+
+A live hand at rest is never flat. This is also insurance and not styling: if Unity's
+Humanoid mapping ever drops the finger curves the hands freeze here, and a resting hand
+already shaped like a hand is a far cheaper failure than five flat spars. Kept modest so
+the two-bone chain, which is straight base→tip, stays inside geometry that is not."""
+
+PHALANX = (0.44, 0.29, 0.27)
+"""Proximal / intermediate / distal, as fractions of a finger's length. Real ratios are
+about 45/28/27; the creases between them are where the joint bulges go, and those are
+what make a finger read as three segments rather than as a taper."""
+
+NAIL_LENGTH = 0.46
+NAIL_WIDTH = 0.62
+NAIL_PROUD = 0.0009
+"""The nail plate: fraction of the distal phalanx it covers, fraction of the finger's
+half-width it spans, and how far it stands off the surface.
+
+0.9 mm is small enough to be honest and large enough that ``shade_smooth``'s 44° crease
+angle breaks the shading at the nail fold, which is the whole trick — what reads as a
+nail at 0.35 m is not the plate, it is the hard line round it."""
+
+
+def _digit_frame(direction: Vector, yaw: float) -> tuple:
+    """(along, across, up) for a digit pointing `direction`, yawed `yaw` degrees.
+
+    ``up`` comes out dorsal (+Z-ish) by construction, which is what the nails and the
+    joint bulges are placed against."""
+    across = Matrix.Rotation(math.radians(yaw), 3, "Z") @ Vector((0.0, 1.0, 0.0))
+    along = direction.normalized()
+    up = along.cross(across).normalized()
+    return along, across.normalized(), up
+
+
+def _digit_path(base: Vector, length: float, yaw: float, curl: float,
+                joints=(REST_MCP, REST_PIP, REST_DIP)) -> list:
+    """The centre line of one digit: four points and the frame at each.
+
+    Built as a chain rather than as a straight axis because a straight finger is the
+    other half of the mitten problem — fused *and* flat. Each segment turns by its
+    joint's angle about the digit's own across-axis, which is the axis a real finger
+    bends about, so the curl stays in the plane the yaw put it in.
+    """
+    mcp, pip, dip = (a * curl for a in joints)
+    out = []
+    here = Vector(base)
+    for i, share in enumerate(PHALANX):
+        pitch = (mcp, mcp + pip, mcp + pip + dip)[i]
+        # +pitch about Y leans +X toward -Z, and -Z is palmar. Getting this sign wrong
+        # curls the fingers over the BACK of the hand, which renders as a claw and
+        # leaves `solve_grip` inscribing the torch handle in a cavity that is not there.
+        direction = (Matrix.Rotation(math.radians(yaw), 3, "Z")
+                     @ Matrix.Rotation(math.radians(pitch), 3, "Y")
+                     @ Vector((1.0, 0.0, 0.0)))
+        out.append((here.copy(), _digit_frame(direction, yaw), length * share))
+        here = here + direction * (length * share)
+    out.append((here.copy(), out[-1][1], 0.0))
+    return out
+
+
+def _along_path(path: list, s: float) -> tuple:
+    """Point and frame at fraction `s` of a digit's total length. `s` may be negative,
+    which runs back down the first segment's direction and into the palm — where a
+    finger's first ring belongs, so that the join is a lap and not a butt."""
+    total = sum(seg[2] for seg in path)
+    want = s * total
+    if want < 0.0:
+        origin, frame, _ = path[0]
+        return origin + frame[0] * want, frame
+    walked = 0.0
+    for origin, frame, seg_length in path:
+        if seg_length <= 0.0:
+            continue
+        if want <= walked + seg_length:
+            return origin + frame[0] * (want - walked), frame
+        walked += seg_length
+    origin, frame, _ = path[-1]
+    return origin.copy(), frame
+
+
+DIGIT_STATIONS = (
+    # s along the digit, half-width scale, dorsal rise scale, palmar rise scale
+    (-0.17, 1.00, 0.96, 1.02),      # buried in the palm
+    (0.02, 0.99, 0.94, 1.02),       # knuckle
+    (0.22, 0.90, 0.84, 0.94),       # proximal shaft
+    (0.42, 0.96, 0.90, 0.99),       # PIP — the joint stands proud
+    (0.55, 0.85, 0.80, 0.90),
+    (0.72, 0.88, 0.84, 0.90),       # DIP
+    (0.86, 0.80, 0.76, 0.80),
+    (0.94, 0.68, 0.64, 0.66),
+    (1.00, 0.30, 0.26, 0.26),       # the pad; the cap domes it
+)
+"""Nine sections down a finger. The two swells at 0.42 and 0.72 are the interphalangeal
+joints and they are the reason a finger reads as segmented: a monotonic taper is a cone,
+and a cone with a nail on it is a claw."""
+
+
+def _digit_weights(name: str, s: float, side: str = "Left") -> dict[str, float]:
+    """Bone weights at fraction `s` along a digit — authored, not fitted.
+
+    Two ramps and nothing else. Proximal hands over to intermediate across
+    ``DIGIT_SPLIT``, and the whole digit hands back to the palm below the knuckle over
+    ``KNUCKLE_BLEND`` — which is what leaves the metacarpal head on the hand, so the
+    four dorsal bumps stay where they are when the fist closes.
+    """
+    to_palm = 1.0 - _smoothstep(-KNUCKLE_BLEND * 0.5, KNUCKLE_BLEND, s)
+    distal = _smoothstep(DIGIT_SPLIT - 0.16, DIGIT_SPLIT + 0.16, s)
+    out: dict[str, float] = {}
+    if to_palm > 1e-4:
+        out[side + "Hand"] = to_palm
+    hold = 1.0 - to_palm
+    if hold > 1e-4:
+        out[side + name + "Proximal"] = hold * (1.0 - distal)
+        out[side + name + "Intermediate"] = hold * distal
+    return {k: v for k, v in out.items() if v > 1e-4}
+
+
+def _build_digit(hand: _Hand, name: str, base: Vector, length: float, width: float,
+                 yaw: float, curl: float, thumb: bool = False) -> dict:
+    """One digit: nine lofted sections down its own curved centre line, plus a nail."""
+    path = _digit_path(base, length, yaw, curl)
+    half = width * 0.5
+    rings = []
+    for s, w_scale, up_scale, down_scale in DIGIT_STATIONS:
+        centre, frame = _along_path(path, s)
+        rings.append((_section(centre, half * w_scale, half * 0.95 * up_scale,
+                               half * 1.02 * down_scale, DIGIT_SIDES, DIGIT_POWER, frame),
+                      _digit_weights(name, s)))
+    hand.loft(rings, cap_start=True, cap_end=True, thumb=thumb)
+
+    # The nail. A closed lens of its own resting on the finger rather than a
+    # displacement of the finger's vertices, because what has to exist is the FOLD — a
+    # crease all the way round the plate — and a displaced ring shares its neighbours'
+    # normals and produces a bump. Closed, and it overlaps the finger by the same
+    # interpenetration argument the cuff makes; an open band is 8 boundary edges per
+    # digit and 40 holes in a hand is worse than the one this pass set out to close.
+    at = 0.845
+    centre, frame = _along_path(path, at)
+    along, across, up = frame
+    plate = half * 0.95 * 0.78
+    outer, inner = [], []
+    for i in range(8):
+        a = 2.0 * math.pi * i / 8.0
+        du = length * PHALANX[2] * NAIL_LENGTH * 0.5 * _spow(math.cos(a), 3.4)
+        dv = half * NAIL_WIDTH * _spow(math.sin(a), 3.4)
+        foot = centre + along * du + across * dv
+        outer.append(foot + up * (plate * 0.98))
+        inner.append(centre + along * (du * 0.86) + across * (dv * 0.86)
+                     + up * (plate + NAIL_PROUD))
+    weights = _digit_weights(name, at)
+    hand.loft([(outer, weights), (inner, weights)], thumb=thumb)
+
+    tip, _ = _along_path(path, 1.0)
+    return {"name": name, "base": Vector(base), "tip": tip, "path": path, "half": half,
+            "n": len(DIGIT_STATIONS) * DIGIT_SIDES, "indices": [], "u0": 0.0}
+
+
+PALM_STATIONS = (
+    # x, half-width, dorsal rise, palmar rise, how much of the knuckle arch, dorsal pull
+    # The three middle columns are fractions of PALM_WIDTH, so half-width 0.500 is
+    # exactly half the palm and the whole hand scales from one number.
+    (-0.0125, 0.325, 0.232, 0.232, 0.0, 0.0),      # the wrist, capped inside the sleeve
+    (0.0080, 0.335, 0.211, 0.222, 0.0, 0.0),
+    (0.0290, 0.390, 0.197, 0.216, 0.10, 0.0),
+    (0.0520, 0.455, 0.178, 0.206, 0.30, 0.0),
+    (0.0740, 0.492, 0.165, 0.190, 0.62, 0.0),
+    (0.0910, 0.502, 0.157, 0.175, 0.90, 0.0),
+    (0.0995, 0.500, 0.146, 0.166, 1.00, 0.0),      # the knuckle line
+    (0.1085, 0.470, 0.099, 0.149, 1.00, 0.0055),   # the web starts, dorsal side first
+    (0.1155, 0.428, 0.041, 0.117, 1.00, 0.0115),   # the commissure, capped
+)
+"""Nine sections from the wrist to the interdigital web. Widths are fractions of
+``PALM_WIDTH`` and rises are fractions of it too, so the whole palm scales together.
+
+The last two rows are the thing a built hand usually gets wrong. **Fingers separate at
+the knuckle on the back of the hand and about 15 mm further out on the palm**, so the
+web is not a plane: the dorsal side is pulled back (``dorsal pull``) while the palmar
+side runs on. Cut square instead and the back of the hand has a shelf across it."""
+
+
+def _knuckle_x(y: float) -> float:
+    """The knuckle line's own X at a given Y — the arch, interpolated across the four
+    metacarpal heads and held flat past the outer two."""
+    points = [(f[2], f[1]) for f in FINGERS]
+    if y <= points[0][0]:
+        return points[0][1]
+    if y >= points[-1][0]:
+        return points[-1][1]
+    for (y0, x0), (y1, x1) in zip(points, points[1:]):
+        if y0 <= y <= y1:
+            t = (y - y0) / max(1e-9, y1 - y0)
+            return x0 + (x1 - x0) * t
+    return points[-1][1]
+
+
+def _palm_weights(x: float, side: str = "Left") -> dict[str, float]:
+    """Palm weights: all hand, ramping to the forearm across the wrist.
+
+    One ramp, and it is the reason a wrist has no crease: all forearm at the sleeve's
+    cut, half and half on the crease, all hand a wrist's width past it."""
+    arm = 1.0 - _smoothstep(-0.006, WRIST_BLEND, x)
+    out = {side + "Hand": 1.0 - arm}
+    if arm > 1e-4:
+        out[side + "LowerArm"] = arm
+    return {k: v for k, v in out.items() if v > 1e-4}
+
+
+def _build_palm(hand: _Hand) -> list[int]:
+    """The palm, wrist cap to interdigital web. Returns its vertex indices."""
+    first = len(hand.co)
+    rings = []
+    for x, w, up, down, arch, pull in PALM_STATIONS:
+        half = PALM_WIDTH * w
+        # The wrist is its own section and the palm's is a rounded slab; blending
+        # between the two by x is what puts the change of direction at the crease
+        # instead of smearing it over the whole hand.
+        to_wrist = 1.0 - _smoothstep(-0.012, 0.030, x)
+        half = half * (1.0 - to_wrist) + (WRIST_WIDTH * 0.5) * to_wrist
+        rise_up = PALM_WIDTH * up * (1.0 - to_wrist) + (WRIST_DEPTH * 0.5) * to_wrist
+        rise_dn = PALM_WIDTH * down * (1.0 - to_wrist) + (WRIST_DEPTH * 0.5) * to_wrist
+        power = 2.2 + 1.1 * (1.0 - to_wrist)
+
+        points = []
+        for i in range(PALM_SIDES):
+            a = 2.0 * math.pi * i / PALM_SIDES
+            cy, sz = math.cos(a), math.sin(a)
+            y = half * _spow(cy, power)
+            t = _spow(sz, power)
+            z = (rise_up if t >= 0.0 else rise_dn) * t
+            at = x + arch * (_knuckle_x(y) - FINGERS[1][1])
+            if pull > 0.0 and sz > 0.0:
+                at -= pull * abs(_spow(sz, power))
+            points.append(Vector((at, y, z)))
+        rings.append((points, _palm_weights(x)))
+    hand.loft(rings, cap_start=True, cap_end=True)
+    return list(range(first, len(hand.co)))
+
+
+def build_hand() -> dict:
+    """Builds one left hand and returns what the rest of this file consumes.
+
+    WHY THIS IS BUILT AND NOT HARVESTED
+    -----------------------------------
+    It used to be cut out of ``monster_vessel_base.glb`` — the flayed vessel
+    ``gen_monster_ai.py`` calls *"something that used to be a person"*, with *"torn skin
+    at every joint"* — on the argument that a hand is all concavity and a hull-and-tube
+    assembly can only make bulges. The argument was right about hulls and wrong about
+    what was being proposed. **The gaps between fingers are not concavities in one
+    surface; they are the space between five separate surfaces**, and five separate
+    lofted solids have them for free. What defeated the creature was its flank, which
+    genuinely is one surface with a hollow in it. A hand is not.
+
+    What the harvest actually shipped, measured on ``land_guide_van.png``: fingers fused
+    into a paddle, no knuckles, no nails, no creases, a stippled displacement that reads
+    as raw meat, and a hole at the right wrist you could see through. Its own guard —
+    *"the hand is a tube, so it is a mitten"* — passed, because the guard measured span
+    and the defect was topology. The sculpt's five separated masses are real and they are
+    4 mm across at the fingertips only; over the other 80 % of their length the digits
+    are welded, and decimating to a budget welds the rest.
+
+    So the hand is authored. A hand is one of the best-documented shapes in
+    anthropometry and every number this file needs is a measurement somebody has already
+    taken. What that buys, in the order it shows up at 0.35 m: five digits with daylight
+    between them, four knuckles, five nails, three visible segments per finger, a thumb
+    that opposes, and a wrist that is closed because it is a capped solid rather than a
+    cut through somebody else's arm.
+
+    Returns the same dictionary the harvest did — ``object``, ``size``, ``digits``,
+    ``tris``, ``weights`` — so the rig, the grip solver, the sleeve and the nine clips
+    are all unchanged. That seam is deliberate: this pass is allowed to change what the
+    hand *is* and not what anything downstream believes about it.
+    """
+    hand = _Hand()
+    palm = _build_palm(hand)
+
+    # Thumb first, so it owns the low vertex indices `hand.thumb` records and
+    # `hand_sections` excludes. DIGIT_NAMES order is thumb-to-little and `bone_specs`
+    # reads this list in order, so it is also the order the rig is built in.
+    digits = [_build_thumb(hand, THUMB_TIP - THUMB_BASE)]
+    for name, mcp_x, mcp_y, length, width, yaw, curl in FINGERS:
+        digits.append(_build_digit(hand, name, Vector((mcp_x, mcp_y, 0.0008)),
+                                   length, width, yaw, curl))
+
+    # The three mounds. Applied to the palm only — a bulge that reached the fingers
+    # would swell the proximal phalanx, and a swollen finger is a sausage.
+    on_palm = set(palm)
+    knuckles = max(hand.bulge(f[1] - 0.0045, f[2], 0.0125, 0.0108, KNUCKLE_RISE,
+                              dorsal=True, only=on_palm) for f in FINGERS)
+    thenar = hand.bulge(0.0455, -0.0255, 0.0265, 0.0175, THENAR_RISE,
+                        dorsal=False, only=on_palm)
+    hypo = hand.bulge(0.0545, 0.0295, 0.0250, 0.0150, HYPOTHENAR_RISE,
+                      dorsal=False, only=on_palm)
+    print(f"HAND_RELIEF knuckles={knuckles * 1000:.2f}mm thenar={thenar * 1000:.2f}mm "
+          f"hypothenar={hypo * 1000:.2f}mm")
+
+    obj = hand.finish("Hand_Left")
+
+    # Scale so the middle fingertip lands exactly on HAND_LENGTH. The rest curl shortens
+    # the reach by about 4 mm and the correction is under 3 %, but it is applied rather
+    # than absorbed because the T-pose span this decides is the number
+    # AssetImportValidator anchors to PlayerHeightMetres.
+    span = max(v.co.x for v in obj.data.vertices)
+    gain = HAND_LENGTH / span
+    obj.data.transform(Matrix.Scale(gain, 4))
+    obj.data.update()
     for digit in digits:
-        digit["base"] *= HAND_LENGTH / reach
-        digit["tip"] *= HAND_LENGTH / reach
-    size["length"] = HAND_LENGTH
-    for name, digit in zip(DIGIT_NAMES, digits):
-        print(f"DIGIT_RELAXED {name:7s} tip=({digit['tip'].x:+.3f},{digit['tip'].y:+.3f},"
-              f"{digit['tip'].z:+.3f})")
-    thumb = next(d["indices"] for d in digits if d["name"] == "Thumb")
-    size["sections"] = hand_sections(hand, exclude=set(thumb))
+        digit["base"] = digit["base"] * gain
+        digit["tip"] = digit["tip"] * gain
+        digit["half"] *= gain
+        digit["path"] = [(origin * gain, frame, length * gain)
+                         for origin, frame, length in digit["path"]]
+
+    points = [v.co for v in obj.data.vertices]
+    size = {
+        "length": max(p.x for p in points),
+        "width": max(p.y for p in points) - min(p.y for p in points),
+        "thickness": max(p.z for p in points) - min(p.z for p in points),
+        "thumb_y": min(p.y for p in points),
+    }
+    size["sections"] = hand_sections(obj, exclude=hand.thumb)
+    verify_hand(obj, digits, size, hand.thumb)
+
+    tris = sum(len(f) - 2 for f in hand.faces)
+    print(f"HAND_BUILT tris={tris} verts={len(obj.data.vertices)} scale_gain={gain:.4f}")
+    print(f"HAND_SIZE length={size['length']:.4f}m width={size['width']:.4f}m "
+          f"thickness={size['thickness']:.4f}m")
+    for digit in digits:
+        reach = digit["tip"] - digit["base"]
+        print(f"DIGIT {digit['name']:7s} base=({digit['base'].x:+.3f},{digit['base'].y:+.3f},"
+              f"{digit['base'].z:+.3f}) tip=({digit['tip'].x:+.3f},{digit['tip'].y:+.3f},"
+              f"{digit['tip'].z:+.3f}) length={reach.length * 100:5.1f}cm")
     for at, sec in sorted(size["sections"].items()):
         print(f"HAND_SECTION x={at * 1000:5.1f}mm  y={sec['y0'] * 1000:+6.1f}..{sec['y1'] * 1000:+6.1f} "
               f"z={sec['z0'] * 1000:+6.1f}..{sec['z1'] * 1000:+6.1f}")
-    return {"object": hand, "size": size, "digits": digits, "tris": tris,
-            "weights": weights, "landmarks": landmarks}
+
+    return {"object": obj, "size": size, "digits": digits, "tris": tris,
+            "weights": hand.w, "thumb": hand.thumb}
 
 
-def stump_section(hand: bpy.types.Object) -> dict:
-    """The wrist cut's own cross-section, taken from the geometry within 2 mm of it.
+def _build_thumb(hand: _Hand, reach: Vector) -> dict:
+    """The thumb, on the line THUMB_BASE → THUMB_TIP, already opposed.
 
-    Not a slab and not a guess: ``trim_wrist`` cut the hand on the plane x = 0 and this
-    is the material sitting on that plane, so a cuff sized from it meets the hand's cap
-    exactly. Sizing the cuff from an 8 mm slab instead measured 85 × 57 mm — the palm on
-    an oblique section, not the wrist — and produced a flared collar that read as a torn
-    cone in every first-person frame.
+    Opposition is built into the rest mesh rather than applied as a rotation afterwards.
+    The version this replaces had to swing a harvested thumb 26° of abduction and 34° of
+    opposition through the skin weights to get it off the index finger, because the
+    sculpt's thumb lay alongside the fingers like a corpse's. Stating where the thumb is
+    is both shorter and the only version in which ``DIGIT_SPLIT`` lands the middle joint
+    on an anatomical MCP.
     """
-    edge = min(v.co.x for v in hand.data.vertices)
-    band = [v.co for v in hand.data.vertices if v.co.x <= edge + 0.009]
-    if len(band) < 6:
-        blendkit.fail(f"only {len(band)} vertices lie on the wrist cut, so the sleeve has "
-                      "nothing to be joined to.")
-    return {"y0": min(p.y for p in band), "y1": max(p.y for p in band),
-            "z0": min(p.z for p in band), "z1": max(p.z for p in band)}
+    yaw = math.degrees(math.atan2(reach.y, reach.x))
+    pitch = math.degrees(math.asin(max(-1.0, min(1.0, reach.z / reach.length))))
+    length = reach.length
+    # The thumb's own rest curl is small: the metacarpal is straight and the one joint
+    # that shows is the interphalangeal.
+    # The metacarpal is straight — the first "joint" is just the aim onto the base→tip
+    # line — and the two that follow are the MCP and the IP. Both were 6°/10° and the
+    # thumb photographed as a spar: a straight thumb is the second thing after fused
+    # fingers that makes a built hand read as a mannequin's.
+    path = _digit_path(THUMB_BASE, length, yaw, 1.0,
+                       joints=(-pitch, 15.0, 21.0))
+    half = THUMB_WIDTH * 0.5
+    stations = (
+        (-0.10, 1.26, 1.55, 2.05),      # inside the palm, and thick: this is the thenar
+        (0.06, 1.18, 1.30, 1.75),
+        (0.30, 1.00, 0.98, 1.22),       # the metacarpal, narrowing
+        (0.50, 0.98, 0.94, 1.02),       # MCP
+        (0.66, 0.88, 0.82, 0.88),
+        (0.80, 0.90, 0.84, 0.86),       # IP
+        (0.92, 0.80, 0.74, 0.74),
+        (1.00, 0.42, 0.38, 0.38),
+    )
+    rings = []
+    for s, w_scale, up_scale, down_scale in stations:
+        centre, frame = _along_path(path, s)
+        rings.append((_section(centre, half * w_scale, half * 0.95 * up_scale,
+                               half * 1.02 * down_scale, DIGIT_SIDES, DIGIT_POWER, frame),
+                      _digit_weights("Thumb", s)))
+    hand.loft(rings, cap_start=True, cap_end=True, thumb=True)
+
+    at = 0.86
+    centre, frame = _along_path(path, at)
+    along, across, up = frame
+    plate = half * 0.95 * 0.80
+    outer, inner = [], []
+    for i in range(8):
+        a = 2.0 * math.pi * i / 8.0
+        du = length * 0.20 * NAIL_LENGTH * 0.5 * _spow(math.cos(a), 3.4)
+        dv = half * NAIL_WIDTH * _spow(math.sin(a), 3.4)
+        foot = centre + along * du + across * dv
+        outer.append(foot + up * (plate * 0.98))
+        inner.append(centre + along * (du * 0.86) + across * (dv * 0.86)
+                     + up * (plate + NAIL_PROUD))
+    weights = _digit_weights("Thumb", at)
+    hand.loft([(outer, weights), (inner, weights)], thumb=True)
+
+    tip, _ = _along_path(path, 1.0)
+    return {"name": "Thumb", "base": Vector(THUMB_BASE), "tip": tip, "path": path,
+            "half": half, "n": len(stations) * DIGIT_SIDES, "indices": [], "u0": 0.0}
+
+
+# ── What the pictures could not settle ──────────────────────────────────────
+
+MIN_DIGIT_GAP = 0.0030
+"""Metres of daylight required between two adjacent fingers, at their widest separation.
+
+**This is the check the harvest's own guard should have been.** That one measured the
+hand's span, concluded the sculpt's fingers were separate volumes, and passed on a hand
+that shipped as one paddle — because span is not separation. So separation is what is
+measured here, and on the **surfaces**: the distance between two digits' centre lines
+minus the two radii, which is the daylight a camera actually sees.
+
+Taken as the *maximum* over the distal two thirds rather than the minimum, because
+fingers are supposed to touch at the knuckles. What has to be true is that somewhere
+along their length there is air between them; 3 mm at 0.35 m is about seven pixels, and
+below that the two shade as one mass whatever the topology says."""
+
+
+def _digit_radius(digit: dict, s: float) -> float:
+    """The digit's own half-width at fraction `s`, interpolated between its stations."""
+    stations = DIGIT_STATIONS
+    if s <= stations[0][0]:
+        return digit["half"] * stations[0][1]
+    for (u0, w0, _, _), (u1, w1, _, _) in zip(stations, stations[1:]):
+        if u0 <= s <= u1:
+            t = (s - u0) / max(1e-9, u1 - u0)
+            return digit["half"] * (w0 + (w1 - w0) * t)
+    return digit["half"] * stations[-1][1]
+
+
+def digit_clearance(a: dict, b: dict, from_s: float = 0.30) -> float:
+    """Closest approach between two digits' **surfaces**, distal of `from_s`, in metres.
+
+    Every point on one against every point on the other, because two fingers of
+    different lengths are not closest at the same fraction along themselves — comparing
+    matched fractions reports the index and middle fingers 21 mm apart when the gap
+    between their surfaces is two.
+    """
+    worst = 1e9
+    for i in range(25):
+        sa = from_s + (1.0 - from_s) * i / 24.0
+        pa, _ = _along_path(a["path"], sa)
+        ra = _digit_radius(a, sa)
+        for j in range(25):
+            sb = from_s + (1.0 - from_s) * j / 24.0
+            pb, _ = _along_path(b["path"], sb)
+            worst = min(worst, (pa - pb).length - ra - _digit_radius(b, sb))
+    return worst
+
+
+def verify_hand(obj: bpy.types.Object, digits: list[dict], size: dict,
+                thumb: set[int]) -> None:
+    """Everything about this hand a render would only show after twenty minutes."""
+    if abs(size["length"] - HAND_LENGTH) > 1e-4:
+        blendkit.fail(f"the hand measures {size['length']:.4f} m, not {HAND_LENGTH:.4f}. "
+                      "The span this sets is what AssetImportValidator anchors to "
+                      "PlayerHeightMetres.")
+
+    ratio = PALM_LENGTH / HAND_LENGTH
+    if not 0.50 <= ratio <= 0.58:
+        blendkit.fail(f"the palm is {ratio:.3f} of the hand; a human's is 0.52-0.56. "
+                      "Outside that it reads as a glove or as a paddle.")
+
+    by_name = {d["name"]: d for d in digits}
+    gaps = []
+    for a, b in (("Index", "Middle"), ("Middle", "Ring"), ("Ring", "Little")):
+        gap = digit_clearance(by_name[a], by_name[b])
+        gaps.append(f"{a[0]}{b[0]}={gap * 1000:.1f}")
+        if gap < MIN_DIGIT_GAP:
+            blendkit.fail(f"the {a} and {b} fingers approach to {gap * 1000:.1f} mm "
+                          "of one another distal of their knuckles. Under "
+                          f"{MIN_DIGIT_GAP * 1000:.0f} mm they shade as one mass, which is "
+                          "the exact defect this file was rewritten to remove.")
+    print("DIGIT_CLEARANCE mm, surface to surface, distal of the knuckles: "
+          + " ".join(gaps))
+
+    # The thumb has to be on the other side of the hand, not alongside the index — the
+    # difference between a hand and a mitten with a spare finger. Measured as the angle
+    # between the two digits, because a thumb that is merely offset in Y but parallel is
+    # still not opposed.
+    thumb_reach = (by_name["Thumb"]["tip"] - by_name["Thumb"]["base"]).normalized()
+    index_reach = (by_name["Index"]["tip"] - by_name["Index"]["base"]).normalized()
+    degrees = math.degrees(math.acos(max(-1.0, min(1.0, thumb_reach.dot(index_reach)))))
+    if degrees < 22.0:
+        blendkit.fail(f"the thumb lies {degrees:.1f}deg off the index finger. Under 22deg it "
+                      "is a fifth finger and §03's grip on the torch, §08's on a 전리품 and "
+                      "§03's on the objective all have nothing on the far side of them.")
+
+    # A closed solid. A hole in the mesh is not a style: the shipped hand had one at the
+    # right wrist and it was the first thing anybody saw.
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    boundary = [e for e in bm.edges if len(e.link_faces) != 2]
+    count = len(boundary)
+    bm.free()
+    if count:
+        blendkit.fail(f"the hand has {count} edge(s) with other than two faces on them, so "
+                      "it is not a closed surface. That is the hole at the wrist, and the "
+                      "sleeve cannot hide one it does not know about.")
+
+    if not thumb:
+        blendkit.fail("no vertices were recorded as belonging to the thumb, so "
+                      "`hand_sections` would size the sleeve's cuff over the thenar "
+                      "eminence and the cuff would come out a bell.")
+
+    print(f"HAND_VERIFY palm={ratio:.3f}of_hand thumb_opposition={degrees:.1f}deg "
+          f"closed=yes thumb_verts={len(thumb)}")
 
 
 def hand_sections(hand: bpy.types.Object, exclude: set,
@@ -1231,23 +1072,38 @@ FINGER_BONES = tuple(f"{side}{d}{j}" for side in ("Left", "Right")
 # ── Geometry: the arms ──────────────────────────────────────────────────────
 
 
+CUFF_SEGMENTS = 2
+"""How many of the sleeve's segments are the role-coloured cuff band.
+
+§04's colour is repeated on the helmet, the collar, the vest, the deltoid caps and the
+bicep bands because a beam finds *part* of a teammate, never all of one. The cuff is the
+sixth place and the only one the owner also sees — in first person it is the widest
+thing in the lower third of the frame for the whole match, and until this pass what was
+there instead was an untextured tube that read as a bare arm."""
+
+
 def cuff_rings(side: int, sections: dict):
-    """The last three rings of the sleeve: a wrist that tapers and ends *inside* the palm.
+    """The sleeve's wrist: a cuff band, a mouth that tapers, and an end *inside* the palm.
 
-    **Four rounds of renders went into this being three ordinary rings.** Every attempt to
-    make the sleeve *meet* the hand failed for the same reason: a hanging hand's wrist cut
-    is oblique and the thumb's base lies on it, so the hand's section at the wrist measures
-    around 92 x 57 mm however it is taken. A cuff wide enough to enclose that is a flared
-    collar; a cuff narrower than it leaves a slot into the inside of the arm; and a cuff
-    that tries to do both spikes through the skin.
+    **Four rounds of renders went into the join being an interpenetration rather than a
+    weld.** Every attempt to make the sleeve *meet* the hand failed the same way: a
+    hand's section at the wrist is oblique and the thumb's base lies on it, so a cuff
+    wide enough to enclose it is a flared collar, a cuff narrower than it leaves a slot
+    into the inside of the arm, and a cuff that tries to do both spikes through the skin.
 
-    Two closed surfaces that simply **interpenetrate** have none of those problems. The
-    sleeve tapers to a real wrist, carries on 30 mm into the palm and is capped there, and
-    the hand is closed in its own right. There is no seam to open because there is no
-    seam: what a camera sees is the curve where two solids cross, which is what a wrist
-    looks like. The only thing that has to be true is that the last ring is genuinely
-    inside the hand, and that is why it is sized from the hand's own 26 mm section rather
-    than chosen.
+    Two closed surfaces that simply overlap have none of those problems. The sleeve
+    tapers to a real wrist, carries on 26 mm into the palm and is capped there, and the
+    hand is closed in its own right (``verify_hand`` asserts it, which is the check the
+    shipped hole at the right wrist did not have). There is no seam to open because there
+    is no seam: what a camera sees is the curve where two solids cross, which is what a
+    wrist looks like. The only thing that has to be true is that the last ring is
+    genuinely inside the hand, and that is why it is sized from the hand's own 26 mm
+    section rather than chosen.
+
+    The **cuff band** is the two rings before that, and it is a band rather than a taper
+    for the same reason the vest is: a cuff on a work coverall is a doubled-over hem with
+    a hard edge at each end, and a hard edge is what makes a sleeve read as clothing
+    instead of as a tube the arm was extruded into.
     """
     s = "Left" if side > 0 else "Right"
     palm = sections[0.026]
@@ -1256,12 +1112,15 @@ def cuff_rings(side: int, sections: dict):
     pcy = (palm["y1"] + palm["y0"]) * 0.5
     pcz = (palm["z1"] + palm["z0"]) * 0.5
     return [
-        (gpm.WRIST_X - 0.056, 0.0, 0.0, 0.036, 0.033, {f"{s}LowerArm": 1.0}),
-        # Sized off WRIST_RADIUS with 15 % of slack, not by eye: the taper leaves the
-        # hand's wrist a cylinder of exactly that radius, and a sleeve narrower than it
-        # lets the skin ring stand proud all the way round — which photographed as a
-        # crumpled paper cuff on both wrists in first person.
-        (gpm.WRIST_X - 0.008, 0.0, 0.0, WRIST_RADIUS * 1.15, WRIST_RADIUS * 1.10,
+        (gpm.WRIST_X - 0.078, 0.0, 0.0, 0.0345, 0.0330, {f"{s}LowerArm": 1.0}),
+        # The cuff proper: 26 mm of hem standing about 2 mm proud of the sleeve, then a
+        # hard step back down at its mouth. Both edges are creases at shade_smooth's 44°.
+        (gpm.WRIST_X - 0.070, 0.0, 0.0, 0.0375, 0.0358, {f"{s}LowerArm": 1.0}),
+        (gpm.WRIST_X - 0.044, 0.0, 0.0, 0.0368, 0.0352, {f"{s}LowerArm": 1.0}),
+        # Sized off WRIST_RADIUS with 15 % of slack, not by eye: a sleeve narrower than
+        # the wrist lets the skin ring stand proud all the way round, which photographed
+        # as a crumpled paper cuff on both wrists in first person.
+        (gpm.WRIST_X - 0.010, 0.0, 0.0, WRIST_RADIUS * 1.15, WRIST_RADIUS * 1.10,
          {f"{s}LowerArm": 0.86, f"{s}Hand": 0.14}),
         (gpm.WRIST_X + 0.026, pcy * 0.55, pcz * 0.55, py * 0.44, pz * 0.52,
          {f"{s}Hand": 1.0}),                              # capped, inside the palm
@@ -1293,31 +1152,35 @@ def arm_rings(side: int):
     ]
 
 
-def build_arm(b: gpm.Body, side: int, harvest: dict) -> None:
-    """One sleeve, and the harvested hand welded into its cuff."""
+def build_arm(b: gpm.Body, side: int, hand: dict) -> None:
+    """One coverall sleeve, its role-coloured cuff, and the built hand inside it."""
     rings = [(x, 0.0, 0.0, ru, rv, w) for x, ru, rv, w in arm_rings(side)]
-    rings += cuff_rings(side, harvest["size"]["sections"])
+    cuff = cuff_rings(side, hand["size"]["sections"])
+    first_cuff = len(rings)
+    rings += cuff
     mats = [gpm.M_COVERALL] * (len(rings) - 1)
     mats[1] = gpm.M_ROLE            # the deltoid cap, above the shoulder line
+    for seg in range(first_cuff, first_cuff + CUFF_SEGMENTS):
+        mats[seg] = gpm.M_ROLE      # §04's colour where the owner can see it too
     # Capped at both ends. The far cap sits inside the palm where nothing can see it, and
     # it is there because an *open* tube whose mouth strays a millimetre outside the hand
     # renders as a black hole at the wrist — which is what the first two rounds showed.
     b.shell([(gpm.ellipse((side * x, cy, gpm.SHOULDER_Z + cz), gpm.Y, gpm.Z, ru, rv,
                           gpm.SIDES_LIMB), w)
              for x, cy, cz, ru, rv, w in rings], mats)
-    weld_hand(b, side, harvest)
+    weld_hand(b, side, hand)
 
 
 def weld_hand(b: gpm.Body, side: int, harvest: dict) -> None:
-    """Copies the harvested hand into the arms mesh at the wrist, weights and all.
+    """Copies the built hand into the arms mesh at the wrist, weights and all.
 
     Fed through ``Body.vert``/``Body.face`` rather than joined as an object, because the
     material slot ORDER is a contract — §04 swaps ``renderer.materials[0]`` per role, and
     Blender's join merges slot lists in join order. The accumulator keeps SLOTS order by
     construction, so the hand cannot be the thing that shuffles it.
 
-    The cuff overlaps the stump by design: the sleeve's last ring sits 6 mm past the
-    wrist plane and the hand's own stump is closed, so there is a lap joint rather than a
+    The cuff overlaps the wrist by design: the sleeve's last ring sits 26 mm past the
+    wrist plane and the hand is a closed solid, so there is a lap joint rather than a
     butt joint and no amount of wrist flexion opens a seam.
     """
     s = "Left" if side > 0 else "Right"
@@ -1621,35 +1484,53 @@ def build_collar(b: gpm.Body) -> None:
 
 # ── The grip, solved rather than typed ──────────────────────────────────────
 
-GRIP_MCP = 70.0
-GRIP_PIP = 88.0
-"""Degrees of flexion at the two modelled finger joints when the fist is closed.
+MCP_LIMIT, PIP_LIMIT = 95.0, 110.0
+"""Anatomical ceilings on the two modelled finger joints, in degrees. A
+metacarpophalangeal joint reaches about 90-100 and a proximal interphalangeal about
+110. They are limits the solve is clamped to, not the pose it aims for."""
 
-Anatomy, not taste: a metacarpophalangeal joint reaches about 90° and a proximal
-interphalangeal about 110°, and a power grip on anything hand-sized uses most of both.
-They are **inputs** here — the fist closes to these and the torch's handle is then
-inscribed in the cavity that leaves (``inscribe_handle``), rather than the handle being
-chosen and the fingers bent until they reach it. Solving it the other way round asks the
-sculpt's 55 mm proximal phalanx to put its far end on a 24 mm circle, which has no
-solution at any angle, and the generator said so.
+PIP_OVER_MCP = 1.18
+"""How much more the middle joint flexes than the knuckle, closing on a handle.
 
-**The torch had to become an angle-head lamp for any of this to exist, and the reason is
-anatomy rather than taste.** Fingers flex about one axis: the knuckle line, across the
-palm. Whatever a fist encircles therefore has its axis across the palm too. The previous
-model held a straight barrel running *along* the arm, from the heel of the hand out past
-the fingertips, and that is a shape no fist can close on. It survived review only because
-the hand it passed through was a flat slab with four prongs, where nothing could be seen
-to intersect anything.
+Fingers do not curl one joint at a time — the two flex together in a roughly fixed
+ratio, which is why a relaxed hand and a fist are the same shape at different scales.
+Fixing the ratio leaves **one unknown per digit**, and one unknown is what makes the
+grip solvable in closed form instead of by search."""
 
-A right-angle work lamp settles §05 as well: 「손전등이 포인터가 된다」 wants the beam
-along the arm, and on this shape the beam leaves perpendicular to the grip — i.e. exactly
-along the arm — with no wrist contortion in any of the nine clips."""
+HANDLE_OVER_HAND = 0.190
+"""Handle diameter as a fraction of hand length: 34.4 mm on this 181 mm hand.
+
+Every tool handle in the world is sized to the cavity a hand makes, and the ratio is
+stable across hand sizes because the cavity is. 22 mm is a pen and 56 mm is a fence
+post; a work lamp is in the middle of the band and so is this."""
+
+HANDLE_SEAT_X = 0.415
+"""Where along the palm the handle lies, as a fraction of the hand's length.
+
+Under the metacarpal heads and along the distal transverse crease, which is where a
+hand puts anything it means to keep hold of. Further out and the fingers cannot get
+round it; further back and it sits in the hollow of the palm where nothing grips."""
+
+SKIN_COMPRESSION = 0.0020
+"""Metres the palm's skin gives under a held object. Small, and it is the difference
+between a handle resting *on* the palm and one floating a visible millimetre off it."""
 
 HEAD_RADIUS = 0.0262
 """Half the lamp head's diameter. Larger than the handle on purpose: in first person the
 head points almost straight down the line of sight, so what the owner sees past their own
 knuckles is its end-on disc, and that disc is the whole cue that says *the torch is in
-your hand* (§03's four states, §10's most-repeated decision)."""
+your hand* (§03's four states, §10's most-repeated decision).
+
+**The torch is an angle-head lamp and that is anatomy, not taste.** Fingers flex about
+one axis: the knuckle line, across the palm. Whatever a fist encircles therefore has its
+axis across the palm too. The model before this one held a straight barrel running
+*along* the arm, from the heel of the hand out past the fingertips, and that is a shape
+no fist can close on. It survived review only because the hand it passed through was a
+flat slab with four prongs, where nothing could be seen to intersect anything.
+
+A right-angle work lamp settles §05 as well: 「손전등이 포인터가 된다」 wants the beam
+along the arm, and on this shape the beam leaves perpendicular to the grip — i.e.
+exactly along the arm — with no wrist contortion in any of the nine clips."""
 
 
 def flex(reach: Vector, sign: float) -> Vector:
@@ -1679,7 +1560,7 @@ def _curled_tip(digit: dict, proximal: float, intermediate: float) -> Vector:
     return _curled(digit, proximal, intermediate)[1]
 
 
-def _wrap_angle(radius_of, target: float) -> float | None:
+def _wrap_angle(radius_of, target: float, limit: float) -> float | None:
     """The angle at which a joint leaves a circle of radius ``target``, coming back out.
 
     A joint swinging toward a barrel gets closer, passes it and gets further away again,
@@ -1688,10 +1569,16 @@ def _wrap_angle(radius_of, target: float) -> float | None:
     hold a torch. The minimum is found by a coarse scan first, and the root taken on the
     far side of it, which is the one that means *wrapped around* rather than
     *not there yet*.
+
+    ``limit`` is the joint's own anatomical ceiling, and it bounds the search rather
+    than decorating it. Scanning to 180deg finds the tip coming back round to the handle
+    from the other side, reports the distance as still under target at the far end, and
+    concludes there is no root — which is how a hand that grips perfectly well at 80deg
+    came back as unable to hold anything at all.
     """
-    scan = [(radius_of(a), a) for a in [i * 2.0 for i in range(0, 91)]]
+    scan = [(radius_of(a), a) for a in [limit * i / 90.0 for i in range(0, 91)]]
     _, at_min = min(scan)
-    lo, hi = at_min, 180.0
+    lo, hi = at_min, limit
     if radius_of(lo) > target or radius_of(hi) < target:
         return None
     for _ in range(48):
@@ -1703,6 +1590,23 @@ def _wrap_angle(radius_of, target: float) -> float | None:
     return (lo + hi) * 0.5
 
 
+def _closest_angle(radius_of, target: float, limit: float) -> float:
+    """The flexion inside `limit` whose fingertip comes nearest `target`.
+
+    The fallback when there is no root at all — a digit too short to reach round the
+    handle, or the thumb, which is not trying to. Returning the closest approach is
+    better than clamping to the anatomical limit: a finger held at its limit because the
+    solve gave up is a finger visibly curled past the thing it is holding.
+    """
+    best, at = 1e9, 0.0
+    for i in range(361):
+        theta = limit * i / 360.0
+        error = abs(radius_of(theta) - target)
+        if error < best:
+            best, at = error, theta
+    return at
+
+
 def _point_segment(px: float, pz: float, ax: float, az: float,
                    bx: float, bz: float) -> float:
     dx, dz = bx - ax, bz - az
@@ -1711,106 +1615,111 @@ def _point_segment(px: float, pz: float, ax: float, az: float,
     return math.hypot(px - (ax + dx * t), pz - (az + dz * t))
 
 
-def solve_grip(harvest: dict) -> dict:
-    """Closes the fist to anatomical limits and **inscribes the torch's handle in it**.
+def solve_grip(hand: dict) -> dict:
+    """Seats a handle on the palm and closes each finger onto it. Returns the grip.
 
-    This is the inverse of the obvious thing and it is the only formulation that works.
-    Choosing a handle first and bending the fingers until they reach it has no solution
-    at any angle: the sculpt's proximal phalanx is 55 mm and the grip cavity's radius is
-    around 24 mm, so the far end of that segment can never lie on the circle — it is
-    always further out. The generator found that itself, and the fix is to stop asking.
+    **This is the inverse of what it used to be, and the reason is that the hands are
+    now anatomically proportioned.** The previous version closed the fist to anatomical
+    *limits* and then inscribed the largest cylinder that fitted in whatever cavity was
+    left. That worked on a harvested sculpt whose proximal phalanx was 55 mm — half
+    again what a 181 mm hand has — because an over-long finger curls into a wide arc and
+    leaves a hole in the middle of it. On a correctly proportioned hand a fist closed to
+    the limit is a **fist**: the fingertips reach the palm, the cavity is a few
+    millimetres, and the solver reported a handle 4 mm across the wrong side of zero.
+    Which is true. You cannot hold a torch in a clenched fist.
 
-    So the fingers close to ``GRIP_MCP``/``GRIP_PIP``, and the handle becomes **the
-    largest cylinder that fits inside the closed hand**: a grid search for the centre
-    that maximises the smallest clearance to the two phalange segments and to the palm
-    it is pressed against. The torch is then sized by the hand rather than the other way
-    round, which is also why it comes out at a plausible 31–37 mm — the diameter of a
-    hand's own grip cavity is what every tool handle in the world is sized to.
+    So the handle is placed where a hand puts one — on the palm, under the metacarpal
+    heads, sized by the hand itself (``HANDLE_OVER_HAND``) — and each digit's flexion is
+    solved so that **its fingertip lands on the handle's surface**. One unknown per digit
+    because ``PIP_OVER_MCP`` fixes the ratio between the two joints, and ``_wrap_angle``
+    finds it on the far side of the closest approach, which is the root that means
+    *wrapped around* rather than *not there yet*.
+
+    Solved per digit rather than once, and that is most of what it buys: the four fingers
+    are 60-85 mm long, so at a shared angle their tips land in four different places and
+    the short ones never reach. Each one now closes exactly as far as it has to, which is
+    also what a hand does and what a picture at 0.35 m shows.
     """
-    digits = {d["name"]: d for d in harvest["digits"]}
-    middle = digits["Middle"]
-    knuckle = middle["base"]
+    digits = {d["name"]: d for d in hand["digits"]}
+    length = hand["size"]["length"]
 
-    palm = [v.co for v in harvest["object"].data.vertices
-            if knuckle.x * 0.40 <= v.co.x <= knuckle.x * 1.00]
+    # The thumb is excluded for the same reason `hand_sections` excludes it: an opposed
+    # thumb hangs 40 mm below the palm, so a palmar surface read over every vertex
+    # reports the thumb's own pad as the roof of the grip cavity. Measured: -44 mm
+    # against the palm's real -22.
+    thumb_verts = hand["thumb"]
+    knuckle = digits["Middle"]["base"]
+    palm = [v.co for i, v in enumerate(hand["object"].data.vertices)
+            if i not in thumb_verts and knuckle.x * 0.40 <= v.co.x <= knuckle.x * 1.05]
     underside = min(p.z for p in palm)
 
-    # Every finger, not just the middle one. The four are 8.5–10.6 cm long on this sculpt,
-    # so at the same joint angles their tips land in four different places, and a cavity
-    # inscribed in the longest alone puts the index finger 14 mm inside the handle —
-    # measured, on the first version that used the middle finger by itself.
-    segments = []
-    for digit in harvest["digits"]:
+    radius = length * HANDLE_OVER_HAND * 0.5
+    centre_x = length * HANDLE_SEAT_X
+    centre_z = underside + SKIN_COMPRESSION - radius
+    target = radius + FINGER_HALF_THICKNESS
+
+    angles: dict[str, tuple] = {}
+    reached: dict[str, float] = {}
+    for digit in hand["digits"]:
         if digit["name"] == "Thumb":
-            continue          # it closes over the fingers, not around the handle
-        base = digit["base"]
-        joint, end = _curled(digit, GRIP_MCP, GRIP_PIP)
-        segments.append((base.x, base.z, joint.x, joint.z))
-        segments.append((joint.x, joint.z, end.x, end.z))
-    mid, tip = _curled(middle, GRIP_MCP, GRIP_PIP)
+            continue
 
-    def clearance(cx: float, cz: float) -> float:
-        """Largest handle radius centred here: limited by the fingers or by the palm."""
-        if cz >= underside:
-            return -1.0
-        skin = min(_point_segment(cx, cz, *s) for s in segments) - FINGER_HALF_THICKNESS
-        return min(skin, underside - cz)
+        def radius_of(theta: float, d=digit) -> float:
+            tip = _curled_tip(d, theta, theta * PIP_OVER_MCP)
+            return math.hypot(tip.x - centre_x, tip.z - centre_z)
 
-    # The search box IS the cavity, and bounding it is load-bearing rather than tidy:
-    # clearance to a finger grows without limit as the circle walks away from the hand,
-    # so an unbounded search "inscribes" a 165 mm handle floating below the fist. The
-    # box is the closed fist's own corners — proximal of the fingertip, distal of the
-    # knuckle, under the palm and above the closed fingers.
-    box_x = (min(tip.x, mid.x) - 0.006, max(knuckle.x, mid.x))
-    box_z = (min(mid.z, tip.z) + 0.002, underside - 0.004)
-    if box_x[1] <= box_x[0] or box_z[1] <= box_z[0]:
-        blendkit.fail(f"the closed fist encloses no cavity at all: x {box_x[0]:.3f}..{box_x[1]:.3f}, "
-                      f"z {box_z[0]:.3f}..{box_z[1]:.3f}. The fingers are not curling toward the "
-                      "palm, which means the flexion axis derived from the digit is wrong.")
+        theta = _wrap_angle(radius_of, target, MCP_LIMIT)
+        if theta is None:
+            theta = _closest_angle(radius_of, target, MCP_LIMIT)
+        theta = max(0.0, min(MCP_LIMIT, theta))
+        angles[digit["name"]] = (theta, min(PIP_LIMIT, theta * PIP_OVER_MCP))
+        reached[digit["name"]] = radius_of(theta) - target
 
-    lo_x, hi_x = box_x
-    lo_z, hi_z = box_z
-    best = (-1.0, (lo_x + hi_x) * 0.5, (lo_z + hi_z) * 0.5)
-    for _ in range(4):
-        for i in range(41):
-            for j in range(41):
-                cx = lo_x + (hi_x - lo_x) * i / 40.0
-                cz = lo_z + (hi_z - lo_z) * j / 40.0
-                d = clearance(cx, cz)
-                if d > best[0]:
-                    best = (d, cx, cz)
-        span_x, span_z = (hi_x - lo_x) * 0.25, (hi_z - lo_z) * 0.25
-        lo_x = max(box_x[0], best[1] - span_x)
-        hi_x = min(box_x[1], best[1] + span_x)
-        lo_z = max(box_z[0], best[2] - span_z)
-        hi_z = min(box_z[1], best[2] + span_z)
+    # The thumb closes OVER the fingers rather than round the handle — it is shorter
+    # than they are and it comes at the grip from the other side — so its target is the
+    # handle plus a wrapped finger's thickness, and it is solved for the *closest*
+    # approach rather than for wrapping past. A share of the index finger's angle was
+    # tried first and left the thumb 66 mm clear of the torch, pointing at nothing.
+    thumb = digits["Thumb"]
 
-    radius, centre_x, centre_z = best
-    if not 0.011 <= radius <= 0.028:
-        blendkit.fail(
-            f"the closed fist's cavity inscribes a {radius * 2000:.0f} mm handle. Under 22 mm "
-            "is a pen and over 56 mm is a fence post; either says the digit segmentation or "
-            "the hand's scale is wrong, and §05 hands every player this object for the whole "
-            "match.")
+    def thumb_radius(theta: float) -> float:
+        tip = _curled_tip(thumb, theta, theta * PIP_OVER_MCP * THUMB_GRIP_SCALE)
+        return math.hypot(tip.x - centre_x, tip.z - centre_z)
+
+    over = radius + FINGER_HALF_THICKNESS * 3.0
+    theta = _closest_angle(thumb_radius, over, MCP_LIMIT)
+    angles["Thumb"] = (theta, min(PIP_LIMIT, theta * PIP_OVER_MCP * THUMB_GRIP_SCALE))
+    reached["Thumb"] = thumb_radius(theta) - over
 
     # Measured on the CURLED fingertips, not the relaxed ones. The lamp is only ever
-    # drawn while the fist is closed on it, so clearing the open hand's reach put 26 mm of
-    # head past fingers that are not there — and the T-pose span that produced is the
-    # largest extent on the whole model, which is the number AssetImportValidator anchors
-    # to PlayerHeightMetres.
-    reach = max(_curled_tip(d, GRIP_MCP, GRIP_PIP).x
-                for d in harvest["digits"] if d["name"] != "Thumb")
+    # drawn while the fist is closed on it, so clearing the open hand's reach put 26 mm
+    # of head past fingers that are not there — and the T-pose span that produced is the
+    # largest extent on the whole model, which is the number AssetImportValidator
+    # anchors to PlayerHeightMetres.
+    reach = max(_curled_tip(d, *angles[d["name"]]).x
+                for d in hand["digits"] if d["name"] != "Thumb")
     grip = {
-        "proximal": GRIP_MCP, "intermediate": GRIP_PIP,
+        "angles": angles,
+        "proximal": angles["Middle"][0], "intermediate": angles["Middle"][1],
         "centre_x": centre_x, "centre_z": centre_z,
         "radius": radius, "half_width": HANDLE_HALF_WIDTH,
         "head_z": centre_z + radius + HEAD_RADIUS * 0.62,
         "lens_x": reach + 0.086,
     }
-    print(f"GRIP mcp={GRIP_MCP:.0f}deg pip={GRIP_PIP:.0f}deg inscribed_handle_r="
-          f"{radius * 1000:.1f}mm at ({centre_x:+.4f},{centre_z:+.4f}) "
-          f"knuckle_z={knuckle.z * 1000:+.1f}mm palm_underside={underside * 1000:+.1f}mm "
-          f"head_z={grip['head_z'] * 1000:+.1f}mm lens_x={grip['lens_x']:.4f}")
+    print(f"GRIP handle_r={radius * 1000:.1f}mm at ({centre_x:+.4f},{centre_z:+.4f}) "
+          f"palm_underside={underside * 1000:+.1f}mm head_z={grip['head_z'] * 1000:+.1f}mm "
+          f"lens_x={grip['lens_x']:.4f}")
+    print("GRIP_ANGLES deg mcp/pip: " + " ".join(
+        f"{n}={angles[n][0]:.0f}/{angles[n][1]:.0f}" for n in DIGIT_NAMES))
+
+    strays = {n: v for n, v in reached.items() if abs(v) > 0.006}
+    if strays:
+        blendkit.fail(
+            "these fingertips do not close onto the handle: "
+            + " ".join(f"{n}={v * 1000:+.1f}mm" for n, v in sorted(strays.items()))
+            + f". The handle is {radius * 2000:.0f} mm and every finger has to reach it "
+            "at some flexion inside its own anatomical limit; one that cannot is a digit "
+            "whose length or whose knuckle position is wrong.")
     return grip
 
 
@@ -1819,10 +1728,13 @@ FINGER_HALF_THICKNESS = 0.008
 than the handle, so the *skin* touches it rather than the *bone* — the difference is 8 mm
 and at 0.35 m from the camera 8 mm is twenty pixels of finger inside a torch."""
 
-THUMB_GRIP_SCALE = 1.0
-"""How much of the fingers' curl the thumb takes when the fist closes. Less than one,
-because a thumb on a tool handle lies **over the fingers** rather than round the handle —
-it is shorter than they are and it comes at the grip from the other side."""
+THUMB_GRIP_SCALE = 0.72
+"""How much of the index finger's solved curl the thumb takes when the fist closes.
+
+Less than one, because a thumb on a tool handle lies **over the fingers** rather than
+round the handle — it is shorter than they are and it comes at the grip from the other
+side. At 1.0 the thumb wrapped past the barrel and its tip finished inside the index
+finger's middle phalanx, which `measure_grip` reports and a render at 0.35 m shows."""
 
 HANDLE_HALF_WIDTH = 0.046
 """Half the handle's length across the palm. It has to run past the little finger and
@@ -1902,10 +1814,10 @@ def finger_pose(clip: str, grip: dict) -> dict:
     free["Thumb"] = (12.0, 16.0)
 
     if clip in GRIP_CLIPS:
-        closed = {d: (grip["proximal"], grip["intermediate"]) for d in DIGIT_NAMES}
-        closed["Thumb"] = (grip["proximal"] * THUMB_GRIP_SCALE,
-                           grip["intermediate"] * THUMB_GRIP_SCALE)
-        return {"Left": free, "Right": closed}
+        # Per digit, because `solve_grip` closes each finger exactly as far as its own
+        # length needs to reach the handle. One shared angle put the little finger 9 mm
+        # short of the barrel and the middle finger 5 mm inside it.
+        return {"Left": free, "Right": dict(grip["angles"])}
     if clip in CARRY_CLIPS:
         flat = {d: (14.0, 6.0) for d in DIGIT_NAMES}
         flat["Thumb"] = (4.0, 4.0)
@@ -2014,7 +1926,7 @@ def main() -> None:
         blendkit.make_material(spec)
     gpm.verify_materials()
 
-    harvest = harvest_hand(os.path.join(SOURCE_DIR, VESSEL))
+    harvest = build_hand()
     grip = solve_grip(harvest)
     grip_report = measure_grip(harvest, grip)
     body, arms, torch = build_meshes(harvest, grip)
@@ -2262,9 +2174,7 @@ def measure_grip(harvest: dict, grip: dict) -> str:
     parts = []
     worst = 0.0
     for digit in harvest["digits"]:
-        thumb = digit["name"] == "Thumb"
-        _, tip = _curled(digit, grip["proximal"] * (THUMB_GRIP_SCALE if thumb else 1.0),
-                         grip["intermediate"] * (THUMB_GRIP_SCALE if thumb else 1.0))
+        _, tip = _curled(digit, *grip["angles"][digit["name"]])
         gap = (math.hypot(tip.x - grip["centre_x"], tip.z - grip["centre_z"]) - lay) * 1000.0
         parts.append(f"{digit['name']}={gap:+.1f}")
         worst = gap if abs(gap) > abs(worst) else worst

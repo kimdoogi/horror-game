@@ -100,6 +100,11 @@ namespace HorrorGame.Gameplay.PlayerEditor
                 view.Apply();
                 view.SetHandPropVisible(true);
 
+                // See FirstPersonHandsShot: the night comes from the code, not from
+                // whatever AtmosphereSetup last baked into this scene file.
+                HorrorGame.Rendering.NightAtmosphere.ApplyEnvironment(
+                    HorrorGame.Rendering.NightAtmosphere.ForTier(0));
+
                 var stand = ViewMotionShot.FindStandingSpot(scene);
                 var heading = Quaternion.Euler(0f, stand.HeadingDegrees, 0f) * Vector3.forward;
 
@@ -165,8 +170,25 @@ namespace HorrorGame.Gameplay.PlayerEditor
                         }
                     }
 
+                    // Named after the distance TAKEN, not the distance wanted. ART.md
+                    // §7.13: the clamp above is correct and the filename was not, so every
+                    // run since this tool existed has written land_body_15m.png at 10 m —
+                    // GameConstants.ObserverRange, the whole reason 15 is in the list, has
+                    // never actually been photographed and the file said it had. A shot
+                    // that lies about where it was taken from is worse than a missing one.
                     var name = string.Format(CultureInfo.InvariantCulture,
-                        "{0}_{1:00}m", tag, Mathf.RoundToInt(wanted));
+                        "{0}_{1:00}m", tag, Mathf.RoundToInt(distance));
+                    if (distance < wanted - 0.05f)
+                    {
+                        Debug.LogWarning(string.Format(CultureInfo.InvariantCulture,
+                            "[PlayerBodyShot] wanted {0:0} m and the longest clear run here "
+                            + "is {1:0.0} m, so this frame is {2:0.0} m and is named for it. "
+                            + "GameConstants.ObserverRange is {3:0} m; until a stand with "
+                            + "{4:0.0} m of run is found, §04's 관측자 range is not being "
+                            + "photographed at all.",
+                            wanted, stand.ClearMetres, distance, GameConstants.ObserverRange,
+                            wanted + 1.2f));
+                    }
                     var pixels = Render(camera, Path.Combine(root, name + ".png"));
                     lines.Add(Measure(name, distance, camera, subject, pixels));
                 }

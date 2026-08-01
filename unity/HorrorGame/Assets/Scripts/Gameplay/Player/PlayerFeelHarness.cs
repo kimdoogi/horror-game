@@ -285,6 +285,9 @@ namespace HorrorGame.Gameplay.Player
             _motor = body.AddComponent<PlayerMotor>();
             _cameraRig = body.AddComponent<PlayerCameraRig>();
             body.AddComponent<PlayerFlashlight>();
+            // §03's two two-handed states are defined by what they cost, and the cost
+            // is only visible if the thing that costs it is in the hands.
+            body.AddComponent<PlayerHeldProp>();
             _footsteps = body.AddComponent<PlayerFootsteps>();
             _viewMotion = body.AddComponent<PlayerViewMotion>();
 

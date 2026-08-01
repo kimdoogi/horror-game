@@ -3,6 +3,7 @@
     "rootNamespace": "HorrorGame.Gameplay.PlayerEditor",
     "references": [
         "HorrorGame.Core",
+        "HorrorGame.Rendering",
         "HorrorGame.Gameplay.Player",
         "Unity.InputSystem",
         "Unity.RenderPipelines.Core.Runtime",

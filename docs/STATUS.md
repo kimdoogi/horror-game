@@ -32,20 +32,44 @@ landed clean: `AssetImportValidator` passes 86 models with 0 failing, so the rig
 this round was not set to move, the 주자 테스트, did not move; it is still 10/10 TooEasy
 against §12's 5–7 band.**
 
-> 🔴 **Neither art pass is shippable yet, and the renders say so plainly.** The
-> first-person hands are cut out of the flayed monster vessel sculpt
-> (`gen_player_ai.py`), and they still read as it: fused mitten fingers, a stippled
-> raw-meat surface, bare untextured forearm tubes with no coverall, and on the right
-> hand a visible hole at the wrist where the hand and arm do not join. The 차량 is a
-> correctly painted box — two cuboids and four featureless black cylinders, no
-> windscreen, no grille, no wheel arches, no tread, and a flat lavender rectangle where
-> the cab window should be. **Read [ART.md §7.13](ART.md) before quoting either pass as done.**
+> ~~🔴 **Neither art pass is shippable yet, and the renders say so plainly.**~~ **The
+> hands are answered; the 차량 is not.** `gen_player_ai.py` no longer harvests hands
+> out of the flayed vessel sculpt — `build_hand()` authors them from anthropometry:
+> five separate lofted digits with 3.0–4.3 mm of measured daylight between them, a
+> knuckle arch, four knuckles, five nails, a thumb built already opposed, and a wrist
+> that is a **capped solid** the generator fails the build over. The forearm is the
+> third-person coverall with a role-coloured cuff. 1,328 triangles a hand; 5,254 for
+> the model against a 7,200 cap. The 차량 is untouched and is still a correctly painted
+> box — no windscreen, no grille, no wheel arches, no tread. See
+> [ART.md §7.14](ART.md) for what changed and §7.13 for what has not.
 
-> 🔴 **ART.md's "all five zone views inside all four bands" is no longer true.** The
-> same command on the same scene now gives Zone A 41.1% crushed / 25.4% legible against
-> bands of 10–40 and 30–75. Three of five zones are below the legible floor and Zone A
-> is above the crushed ceiling. The frame got darker since that measurement was
-> recorded; nothing in this pass was aimed at it. See ART.md §1.
+> 🔴 **`MatchDirector.cs` references a `GhostSession` type that is not in the tree.**
+> `Assets/Scripts/Gameplay/Ghost/` was deleted by the art pass by mistake — see the
+> commit message — and nothing in the project compiles until it is back. Every Unity
+> check below therefore has a date on it from *before* that, and the art pass's own
+> Unity verification did not run. Re-run [§2's list](TESTING.md) once it compiles.
+
+> **ART.md's "all five zone views inside all four bands" is no longer true, and the
+> cause is now known.** It was never *"the identical scene"*: `Map_FirstSketch.unity`
+> was regenerated twice between the two measurements (`47bc2d8`, `9b75a08`) and the
+> atmosphere art pass was never re-run afterwards, so **all 44 of `ContactDecals`' and
+> `PracticalGlow`'s meshes are gone from the scene** — 44 `Mesh`/`MeshRenderer`/
+> `MeshFilter` at `ba3e482` against 0 at HEAD. The signature agrees: Zone C's p99 is
+> 69.2 → 69.2 and Zone D's p90 18.9 → 18.9, so the beam-lit region is *identical* and
+> only the mid-tone tail collapsed. Fixed by one command —
+> `AtmosphereSetup.Batch` — which was **not run here** because it re-saves every
+> `Map_*` scene and another workflow has uncommitted changes in
+> `Map_FirstSketch_Solo.unity`. See ART.md §7.14.
+
+> 🔴 **§03's lock stood open and the flashlight was not the reason.** §7.13 measured
+> torch-off 10.6 mean / 40.3 % legible against torch-on 11.1 / 40.6 and read it as a
+> broken beam. Differencing the two frames shows a clean 44° cone lighting the corridor
+> floor and the far locker — the torch works. What was wrong is that the **torch-off**
+> frame already shows readable brick courses, floor cracks and pipework:
+> `NightAtmosphere`'s ambient was raised ~2.6× in sRGB (eight times in linear) to
+> replace a daytime skybox and went about twice too far, and nothing measured a
+> torch-off frame afterwards because every band on ART.md §1 is measured with the beam
+> on. `NightAtmosphere.AmbientGain` is the one number that fixes it. See ART.md §7.14.
 
 > **The 차량 was parked inside a wall, and had been since it was first placed.** §12
 > marks the 출입구 on a stairwell cell in a **2.2 m** service corridor and the van is

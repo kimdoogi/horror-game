@@ -411,6 +411,11 @@ namespace HorrorGame.EditorTools
         {
             "Idle", "Walk", "Run", "Crouch", "CrouchWalk", "Carry", "CarryHeavy", "CarryIdle",
             "Patrol", "Alert", "Chase", "Search", "Standstill",
+
+            // §09's 유령. Drift is the hover it is always in: there is no such thing as a
+            // ghost standing still, and there is no other looping state because §09 gives
+            // it 「탈출 불가능」 and no way to travel of its own.
+            "Drift",
         };
 
         /// <summary>
@@ -422,6 +427,12 @@ namespace HorrorGame.EditorTools
         public static readonly HashSet<string> OneShotAnimationClips = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "Death", "Grab", "Stunned",
+
+            // §09's two events. Rattle is 「근처 물건을 아주 약하게 흔든다」 on its 45 s
+            // cooldown — the only thing a ghost can do — and Wail is the thing it cannot:
+            // 「말하기 불가능」, attempted. Neither loops, and the cooldown is the reason
+            // Rattle must not: a signal that repeats is not a signal that costs 45 seconds.
+            "Rattle", "Wail",
         };
 
         /// <summary>

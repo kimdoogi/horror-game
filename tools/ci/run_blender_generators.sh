@@ -66,7 +66,10 @@ LOG_DIR="${BLENDER_LOG_DIR:-${REPO}/artifacts/blender}"
 # the procedural skin pipeline, both imported by gen_monster_ai) and refuses to write a
 # shipping asset unless asked with `-- --hull`. Listing it would have both generators
 # writing the same four files, with the winner decided by list order.
-DEFAULT_GENERATORS="gen_mapkit gen_dressing gen_props gen_player_model gen_monster_ai"
+# gen_ghost writes §09's 유령 and is listed AFTER gen_player_model, because it imports
+# gen_player_ai for the hands: a ghost is a dead player and building it a second, worse
+# hand would be shipping the defect that pass removed, twice.
+DEFAULT_GENERATORS="gen_mapkit gen_dressing gen_props gen_player_model gen_monster_ai gen_ghost"
 GENERATORS="${*:-${DEFAULT_GENERATORS}}"
 
 resolve_blender() {

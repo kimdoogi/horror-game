@@ -173,6 +173,8 @@ namespace HorrorGame.Gameplay.PlayerEditor
             var motor = body.AddComponent<PlayerMotor>();
             body.AddComponent<PlayerCameraRig>();
             var flashlight = body.AddComponent<PlayerFlashlight>();
+            // §03's 목표물 and §08's 대형 전리품, as the models they actually are.
+            body.AddComponent<PlayerHeldProp>();
             var animator = body.AddComponent<PlayerAnimatorDriver>();
             var footsteps = body.AddComponent<PlayerFootsteps>();
 

@@ -99,6 +99,18 @@ namespace HorrorGame.Gameplay.PlayerEditor
 
             try
             {
+                // The night, from the code, before anything is measured. Ambient and fog
+                // are scene state — URP has no fog override and ambient is a lighting
+                // setting — so a review shot otherwise photographs whatever
+                // AtmosphereSetup last baked into this file. That is exactly how ART.md
+                // §1's five zone views drifted out of band without anybody being able to
+                // name a change: the map was regenerated twice and the atmosphere pass was
+                // never re-run, so the scene and NightAtmosphere.cs disagreed and only the
+                // scene was ever photographed. A measurement that cannot be reproduced from
+                // the source is not a measurement.
+                HorrorGame.Rendering.NightAtmosphere.ApplyEnvironment(
+                    HorrorGame.Rendering.NightAtmosphere.ForTier(0));
+
                 var stand = ViewMotionShot.FindStandingSpot(scene);
                 ViewMotionShot.Teleport(rig, stand.Position);
                 rig.GetComponent<PlayerLook>().SetLook(stand.HeadingDegrees, 0f);
@@ -400,6 +412,12 @@ namespace HorrorGame.Gameplay.PlayerEditor
                 // The component's own call, not a re-implementation of it: this is what
                 // decides the beam and whether the torch is in the fist.
                 flashlight.RefreshPresentation();
+
+                // Same again for what is in the other two states' hands. There is no
+                // LateUpdate outside play mode, so a state that puts a crate in both
+                // fists would otherwise photograph as the empty hands ART.md §7.13
+                // measured — a carry pose holding nothing.
+                _rig.GetComponent<PlayerHeldProp>().RefreshPresentation();
 
                 var state = Pose(driveTime, objective, oversize);
                 var pixels = RenderPixels(Camera);

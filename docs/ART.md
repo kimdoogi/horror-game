@@ -1209,3 +1209,203 @@ lit like a car park, not like this game.
   to. The figure is legible in the picture because the coverall is bright, not because
   it separates from the wall — and the coverall being bright is its own problem: it is
   brighter than any wall in the building, so a teammate is self-lit.
+
+### 7.14 The hands, the two empty carry states, and why the beam gated nothing
+
+Answers §7.13. Everything below is a change to a **generator or to a renderer**, never a
+tint written at runtime — §7.11's lesson holds.
+
+#### The hands are built now, not harvested
+
+`gen_player_ai.py` cut them out of `monster_vessel_base.glb` on the argument that a hand
+is all concavity and a hull-and-tube assembly can only make bulges. That argument is
+right about hulls and was applied to the wrong thing: **the gaps between fingers are not
+concavities in one surface, they are the space between five separate surfaces**, and five
+separate lofted solids have them for free. What genuinely defeated the creature was its
+flank, which really is one surface with a hollow in it. A hand is not one surface.
+
+`build_hand()` authors it from anthropometry scaled to `HAND_LENGTH`:
+
+| | |
+|---|---|
+| palm | nine lofted superelliptical sections, wrist to interdigital web, on a **knuckle arch** — the four metacarpal heads are at four different distances out, which is the second thing after fused fingers that makes a built hand read as a mitten |
+| web | the dorsal side is pulled back 11 mm at the commissure while the palmar side runs on, because fingers separate at the knuckle on the back of a hand and ~15 mm further out on the palm |
+| digits | five, each nine sections on its **own curved centre line** with a rest curl of 9°/17°/12°, so a finger reads as three segments rather than as a taper |
+| nails | five closed plates 0.9 mm proud, sized off the distal phalanx. What reads as a nail at 0.35 m is not the plate, it is the hard line round it — `shade_smooth`'s 44° crease |
+| relief | four knuckles at 4.0 mm, a thenar at 4.7 mm and a hypothenar at 3.1 mm, applied as one-sided displacements so the silhouette does not balloon |
+| thumb | built already opposed: `THUMB_BASE`→`THUMB_TIP`, and `DIGIT_SPLIT` lands its middle joint within 3 mm of a real MCP |
+| wrist | a **capped solid**. `verify_hand` fails the build on any edge with other than two faces on it |
+
+1,328 triangles per hand against the harvest's 1,400, and the whole model is 5,254
+against a 7,200 cap.
+
+**Two guards were added and one of them is the one §7.13 asked for.** The harvest's own
+check — *"the hand is a tube, so it is a mitten"* — measured **span**, passed the whole
+time, and shipped a paddle. `digit_clearance` measures the thing that was actually wrong:
+closest approach between two digits' **surfaces**, distal of the knuckles, every point of
+one against every point of the other. Currently `IM=3.0 MR=3.2 RL=4.3` mm. The other is
+the closed-surface check above, which is what the hole at the right wrist needed.
+
+**The grip solver was inverted, and that was forced by the hands being correct.** It used
+to close the fist to anatomical limits and inscribe the largest cylinder in whatever
+cavity was left. That works on a sculpt whose proximal phalanx is 55 mm — half again what
+a 181 mm hand has — because an over-long finger curls into a wide arc with a hole in the
+middle of it. On correct proportions a fist closed to the limit is a **fist**: the
+fingertips reach the palm and the solver reported a handle 4 mm the wrong side of zero,
+which is true. You cannot hold a torch in a clenched fist. So the handle is now placed
+where a hand puts one — on the palm, under the metacarpal heads, sized by the hand at
+`HANDLE_OVER_HAND` — and each digit's flexion is solved so its own fingertip lands on it.
+Per digit, because the four fingers are 60–85 mm long and at a shared angle the short
+ones never reach: `Index=86/101 Middle=83/98 Ring=80/94 Little=76/89` degrees, every one
+landing within 0.05 mm of the handle's surface.
+
+#### The sleeve is the coverall now, with a role-coloured cuff
+
+§7.13's *"first-person arms are bare skin; the third-person body wears a coverall"* is
+closed by `cuff_rings` growing a **cuff band**: two extra rings standing 2 mm proud of
+the sleeve with a hard step at each end, painted `M_ROLE`. §04's colour was already on the
+helmet, the collar, the vest, the deltoid caps and the bicep bands; this is the sixth
+place and the only one the owner also sees.
+
+#### §03's four carry states now hold what they cost you
+
+`PlayerHeldProp` puts the actual model from `InteractablePropLibrary` on
+`ObjectiveMount` — the 목표물 for §03's carry, `Loot_LargePiece_Chest` for §08's 대형
+전리품 — and nothing for the other two. Never a primitive: §7.11.
+
+It lives in `HorrorGame.Gameplay.Player` and the library lives in `Assembly-CSharp`,
+which references every asmdef and is referenced by none, so the lookup crosses that
+boundary through one static hook installed by `HeldPropModels`. The lower layer declares
+the hole; the upper one fills it. Inverting it would put the component that reads
+`PlayerLoadout` every `LateUpdate` in the one assembly the shot tools cannot reference.
+
+#### The lock: the beam was never the problem, the ambient was
+
+§7.13 measured torch-off 10.6 / 40.3 % against torch-on 11.1 / 40.6 %, and read it as the
+flashlight failing. **Differencing the two frames shows a clean 44° cone reaching down
+the corridor with a lit floor and a lit locker at the end.** The torch works exactly as
+specified. It had nothing to reveal, because `land_hands_00_empty.png` — the **torch-off**
+frame — shows brick courses, floor cracks, pipework and the far wall all readable.
+
+The cause is in this file's own history. `NightAtmosphere.EarlyEvening`'s remarks record
+that its ambient colours were raised ~2.6× in sRGB, about eight times in linear, to
+compensate for removing a daytime skybox that had been carrying the room. That correction
+was right in direction and roughly twice too far, and **nothing measured the torch-off
+frame afterwards** — every band on §1 of this page is measured with the beam on, so a room
+that is readable without one passes all four.
+
+`NightAtmosphere.AmbientGain` is the fix: one number, applied in `ApplyEnvironment`, so
+the two tiers and the ramp between them keep every note explaining how they were tuned.
+
+**The shot tools now apply the atmosphere from the code rather than trusting the scene.**
+Ambient and fog are scene state, so a review frame otherwise photographs whatever
+`AtmosphereSetup` last baked — which is exactly how §1's five zone views drifted out of
+band with nobody able to name a change.
+
+#### The zone regression's cause, found and not fixed
+
+§1 says *"every zone moved the same direction, which says a global lighting change"* and
+that it was measured *"on the identical scene"*. It was not the identical scene.
+`Map_FirstSketch.unity` was regenerated twice between the two measurements — `47bc2d8`
+(*"Wrote … from seed 1204"*) and `9b75a08` — and **the atmosphere art pass was never
+re-run afterwards.** Comparing the same file at `ba3e482` against HEAD:
+
+| | `ba3e482` (the good `final_*` numbers) | HEAD (`land_main`) |
+|---|--:|--:|
+| Mesh / MeshRenderer / MeshFilter | **44** | **0** |
+| Light | 123 | 123 |
+
+The 44 are, by name, the whole output of `AtmosphereSetup.WriteEnvironment`: 42
+`Decal_*` meshes from `ContactDecals`, plus `Glow_Point_*` and `Glow_Shaft_*` from
+`PracticalGlow`. Corroborating: `CastShadowsFromEveryFitting` would set all 123 lights to
+`LightShadows.Hard` and all 123 still read `m_Type: 0`, so the pass has definitively not
+run on this scene. It also matches the signature — Zone C's p99 is 69.2 → 69.2 and Zone
+D's p90 18.9 → 18.9, i.e. **the beam-lit region is identical** and only the dark tail
+collapsed, which is lost mid-tone geometry and not a multiplier.
+
+**Fixed for `Map_FirstSketch.unity` and not for the Solo scene.**
+`ApplyEnvironmentToMapScenes` rewrites and re-saves *every* scene whose name starts with
+`Map_`, and `Map_FirstSketch_Solo.unity` had another workflow's uncommitted changes in
+it. So the pass was run in a throwaway worktree at HEAD and only the one scene copied
+back. `Map_FirstSketch_Solo.unity` still has no decals, no glow and 123 shadowless
+fittings; on a clean tree the whole thing is one command:
+
+```bash
+Unity -batchmode -quit -projectPath unity/HorrorGame \
+  -executeMethod HorrorGame.EditorTools.Rendering.AtmosphereSetup.Batch
+```
+
+**The shadowless fittings were the other half of the open lock.** All 123 point lights in
+the map were authored `LightShadows.None` and `CastShadowsFromEveryFitting` had never run
+on this scene, so an 18 m entrance light was lighting the corridor *through the walls*.
+Ambient was never going to close a lock that a light shining through brickwork was
+holding open.
+
+#### `PlayerBodyShot` no longer lies about where it stood
+
+The clamp was correct and the filename was not. It now names the file after the distance
+**taken** and warns with `GameConstants.ObserverRange` and the run length that would be
+needed. `land_body_15m.png` was 10 m; the file is now called what it is.
+
+#### What it measures at, and the number that matters is not the frame mean
+
+`FirstPersonHandsShot -shotTag h3`, `frame_stats.py`, against `land_hands` on the same
+viewpoints:
+
+| | mean | p50 | black % | legible % |
+|---|--:|--:|--:|--:|
+| before, torch **off** | 10.6 | 6.1 | 27.7 | 40.3 |
+| before, torch **on** | 11.1 | 6.1 | 27.6 | 40.6 |
+| after, torch **off** | 7.4 | 2.1 | 47.8 | 20.4 |
+| after, torch **on** | 7.9 | 2.1 | 47.6 | 21.1 |
+
+**The whole-frame mean still barely moves when the torch goes on, and that is not the
+defect it looks like.** The beam covers **2.5 % of the frame** — `innerSpotAngle` is 0
+on purpose, because `LightCone.QualityAt` models a falloff from the axis and §03 wants
+aiming to matter — so it cannot move a whole-frame average however well it works. §7.13
+read a 0.5 change as a broken flashlight; it is a beam doing its job to 2.5 % of the
+pixels.
+
+The measurement that answers ART.md §1's actual rule — *"if a room is readable without
+the beam, the lock is open"* — is the **room outside the beam**, and it is the one that
+moved:
+
+| the frame, split by where the beam reaches | before | after |
+|---|--:|--:|
+| outside the beam, torch off — mean | 10.07 | **6.80** |
+| outside the beam, torch off — legible % | 39.3 | **19.1** |
+| outside the beam, torch off — crushed % | 28.3 | **48.7** |
+| inside the beam — mean, off → on | 32.2 → 50.0 (1.55×) | 29.0 → 47.6 (**1.64×**) |
+| inside the beam — legible %, off → on | 82.5 → 99.9 | 71.0 → **99.6** |
+
+The room you have to read without the torch lost **half its legible pixels** and gained
+72 % more crushed ones, and the beam got *better* at what it lights. That is the lock.
+
+Reproduce both halves with:
+
+```bash
+Unity … -executeMethod HorrorGame.Gameplay.PlayerEditor.FirstPersonHandsShot.Batch -shotTag h3
+cd unity/HorrorGame/Shots && python3 ../../../tools/render/frame_stats.py 'h3_*.png'
+```
+
+#### 7.15 What this pass did NOT finish
+
+Written here rather than left for the next render to discover.
+
+- **The two-handed carry states still show empty hands.** `PlayerHeldProp` instantiates
+  the right model on `ObjectiveMount` at the right scale — brightening
+  `h4_20_loot.png` 7× shows its shadow — and it is **outside the camera frustum**. The
+  offset is a typed guess; it should come from `gen_player_model.pose_metrics`'s
+  `objective_reach` for the Carry clip. Shadow casting is forced Off until it is placed,
+  so the component cannot make a frame worse than it found it. §7.13's row is still open.
+- **The ghost is over-bright.** `g4_03m_dark.png` reports `brightest 236.8` at 3 m and
+  `253.6` at 10 m: it clips. `EMISSION_SCALE` in `gen_ghost.py` came down 4× after the
+  first render and has not come down far enough — the bands' *ratios* are right and their
+  level is still about three times too high, so the vertical gradient, the drained role
+  colour and the maw are all washing out into one white cut-out. One number, one render.
+- **`PlayerBodyShot` still cannot reach 15 m.** The filename no longer lies about it, and
+  the warning now names `GameConstants.ObserverRange` and the run length needed
+  (16.2 m), but `ViewMotionShot.FindStandingSpot` scores toward a 14 m run and rejects
+  any heading with under 5 m behind it. §04's 관측자 range has still never been
+  photographed.
+- **The 차량 is untouched** — §7.13's blockout list stands in full.

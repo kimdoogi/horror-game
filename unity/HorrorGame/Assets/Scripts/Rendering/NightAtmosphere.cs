@@ -299,6 +299,48 @@ namespace HorrorGame.Rendering
         public const float ReflectionIntensity = 0.25f;
 
         /// <summary>
+        /// What every ambient colour in the table above is multiplied by before it
+        /// reaches the scene. §03's lock lives here.
+        /// <para>
+        /// <b>The flashlight gated nothing and this is why.</b> Measured on the
+        /// shipped build with <c>FirstPersonHandsShot</c>: torch off gave frame mean
+        /// 10.6 and 40.3% of pixels legible; torch on gave 11.1 and 40.6%. Half a
+        /// code value out of 255. ART.md §1 states the rule the other way round —
+        /// <i>"if a room is readable without the beam, the lock is open"</i> — and
+        /// <c>land_hands_00_empty.png</c> shows a corridor with its brick courses,
+        /// its floor cracks, its pipework and its far wall all readable with the
+        /// torch switched off. §03 builds the clue reading, the battery economy, the
+        /// §08 shop and the whole round trip on darkness gating progress, and none of
+        /// it was gating anything.
+        /// </para>
+        /// <para>
+        /// <b>The beam was never the problem.</b> Differencing the two frames shows a
+        /// clean 44° cone reaching down the corridor with a lit floor and a lit
+        /// locker at the end — the torch works exactly as specified. It simply had
+        /// nothing to reveal, because the ambient had already revealed it.
+        /// </para>
+        /// <para>
+        /// <b>Where the ambient came from.</b> <see cref="EarlyEvening"/>'s own
+        /// remarks record it: those colours were raised about 2.6× in sRGB, eight
+        /// times in linear, to compensate for removing a daytime skybox that had been
+        /// carrying the room. That correction was right in direction and roughly
+        /// twice too far, and nothing measured the torch-off frame afterwards — the
+        /// bands on ART.md §1 are all measured with the beam on, so a room that is
+        /// readable without one passes every check on that page.
+        /// </para>
+        /// <para>
+        /// A gain rather than new numbers in the table, and deliberately: the two
+        /// tiers, the ramp between them and every note explaining how they were tuned
+        /// stay exactly as they were, and the one thing this pass actually measured
+        /// is one number that can be re-measured. Not zero, and not close to it —
+        /// ART.md's first target is <i>"outside the beam, shape only: enough to know
+        /// a corridor turns, not enough to read a clue"</i>, and this file's own
+        /// history has the other failure recorded too, at 89% pure black.
+        /// </para>
+        /// </summary>
+        public const float AmbientGain = 0.62f;
+
+        /// <summary>
         /// Writes <paramref name="settings"/> into the scene's environment lighting.
         /// <para>
         /// Fog and ambient are scene state, not Volume state — URP has no fog
@@ -314,9 +356,9 @@ namespace HorrorGame.Rendering
             // diagram; a darker ground colour costs nothing and puts a shading
             // gradient on every surface the beam is not touching.
             RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Trilight;
-            RenderSettings.ambientSkyColor = settings.AmbientSky;
-            RenderSettings.ambientEquatorColor = settings.AmbientEquator;
-            RenderSettings.ambientGroundColor = settings.AmbientGround;
+            RenderSettings.ambientSkyColor = settings.AmbientSky * AmbientGain;
+            RenderSettings.ambientEquatorColor = settings.AmbientEquator * AmbientGain;
+            RenderSettings.ambientGroundColor = settings.AmbientGround * AmbientGain;
             RenderSettings.ambientIntensity = 1f;
             RenderSettings.reflectionIntensity = ReflectionIntensity;
 
