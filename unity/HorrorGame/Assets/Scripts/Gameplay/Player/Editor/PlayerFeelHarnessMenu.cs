@@ -240,6 +240,12 @@ namespace HorrorGame.Gameplay.PlayerEditor
             // the building dark; the fill reaches the arms' rendering layer and nothing
             // else, so it cannot pay for that darkness.
             body.AddComponent<PlayerHandFill>().Apply();
+
+            // And the other half of the same disagreement. §05 holds the forearms up so
+            // the owner can see their own hands at 80° FOV; from outside that is a person
+            // standing with their elbows flared. This lowers them on the copy other
+            // players look at, after the Animator, and leaves the owner's alone.
+            body.AddComponent<PlayerWorldArms>();
         }
 
         private static void Bind(PlayerFeelHarness harness, GameObject rig)
