@@ -165,6 +165,22 @@ namespace HorrorGame.Gameplay.MatchEditor
             var map = director.Map;
             Require(map != null, "the match has no map");
 
+            // ---------------------------------------------------------------
+            // §01's 지상, as something a player can see. The safe zone, §08's shop
+            // and §02's win condition were one radius test around a light with no
+            // presence in the world — the owner played the build and asked
+            // 앞마당이 어디야. SurfaceApron paints the boundary at exactly the
+            // radius MatchMap.IsOnSurface measures against.
+            // ---------------------------------------------------------------
+            var apron = director.Apron;
+            Require(apron != null, "§01's 지상 was not painted; the 안전 지대 has no physical edge");
+            Require(apron!.PaintedStripes > 0, "the apron ring found no floor under any of it");
+            Require(apron.Gates > 0, "the apron ring crosses nowhere walkable, so no threshold was framed or lit");
+            log.AppendLine("  §01 지상 painted at "
+                + MatchMap.SurfaceRadius.ToString("0.#", CultureInfo.InvariantCulture) + " m — "
+                + apron.PaintedStripes + " stripes, " + apron.Gates + " lit crossing(s) over "
+                + apron.WalkableMetres.ToString("0.#", CultureInfo.InvariantCulture) + " m of the ring");
+
             var clues = UnityEngine.Object.FindObjectsByType<CluePropInteractable>(
                 FindObjectsInactive.Include, FindObjectsSortMode.None);
             Require(

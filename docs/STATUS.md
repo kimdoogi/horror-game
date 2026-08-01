@@ -24,12 +24,25 @@ export DOTNET_ROOT="$HOME/.dotnet"; export PATH="$HOME/.dotnet:$PATH"
 
 ## The one-line answer
 
-**615 of 615 tests green (core 451, EditMode 100, PlayMode 64), the standalone IL2CPP
-player starts a match with no exceptions, and the four defects the owner found by
-playing are fixed and photographed — the piece put down now lands on the floor, the
-player has hands, the torch is in one of them, and the shop no longer opens itself on
-arrival at the 차량. The one number this round was set to move, the 주자 테스트, did
-not move. It is still 10/10 TooEasy against §12's 5–7 band.**
+**617 of 617 tests green (core 451, EditMode 100, PlayMode 66), the standalone IL2CPP
+player starts a match with no exceptions, and §01's 지상 — the 안전 지대, the shop, the
+보급소 and §02's win condition — is visible from inside the game for the first time. It
+had no physical presence at all: no line, no gate, no threshold, no change of light or
+sound, and one line of §14 guidance text carrying the whole boundary. The owner played
+the build and asked 앞마당이 어디야. It is now a painted hazard line at exactly
+`MatchMap.SurfaceRadius`, with lit crossings, warm practicals along the walk, and the
+차량 parked somewhere its own body fits (§3.27, §4.6). The one number this round was
+not set to move, the 주자 테스트, did not move; it is still 10/10 TooEasy against §12's
+5–7 band.**
+
+> **The 차량 was parked inside a wall, and had been since it was first placed.** §12
+> marks the 출입구 on a stairwell cell in a **2.2 m** service corridor and the van is
+> **2.81 m** wide and 6.69 m long, so §08's 안전 지대 · 상점 · 보급소 stood 0.3 m inside
+> the brickwork on both sides with 3.4 m of itself up the stairwell. Photographed from
+> the corridor it was not a vehicle: an unlit black slab spanning the passage with two
+> headlamps in it. It is now parked by measurement — the nearest point to the 출입구
+> that is inside §01's 지상, on the NavMesh, and whose box sweep comes back empty — which
+> on this map is the 20 × 20 m 하역 베이, 11.5 m away. See §4.6.
 
 > **One residual, measured rather than assumed.** A 대형 전리품 released while facing a
 > wall lands on the player's side of it and stays pickable, but overlaps the wall by
@@ -447,10 +460,17 @@ Both exit 0.
 
 ```
 EditMode   total 100 passed 100 failed 0 result Passed
-PlayMode   total 64 passed 64 failed 0 result Passed
+PlayMode   total 66 passed 66 failed 0 result Passed
 ```
 
-**164 of 164, against 126 of 126 last pass.** EditMode 71 → 100 and PlayMode 55 → 64.
+**166 of 166, against 126 of 126 two passes ago.** EditMode 71 → 100 and PlayMode
+55 → 64 → **66**. The two new PlayMode cases are `SurfaceApronTests`, and the first of
+them is the one to know about: it walks every stripe of §01's painted boundary and
+asserts each is within 0.35 m of `MatchMap.SurfaceRadius` measured from
+`MatchMap.Entrance` — the same two values `MatchMap.IsOnSurface` uses. Worst radial
+error on this map is **0.000 m**. A line on the floor that disagreed with the rule it
+draws would be worse than the invisible boundary it replaced. The second drives the
+crossing beat both ways and asserts it settles back to rest.
 The thirty-eight new cases are the four-defect pass: `DropPlacementTests` (EditMode,
 ten cases over the five §12 floor materials, stairs, slopes, another interactable's
 trigger box and the dropper's own body), the rewritten `UiTests` shop coverage,
@@ -465,7 +485,7 @@ inside geometry, and that the crosshair finds it again after walking back. Every
 interaction test called `OnPressed` directly, which is how a broken pickup key survived
 575 green tests for a day.
 
-**With core's 451, the project total is 615 of 615 green.**
+**With core's 451, the project total is 617 of 617 green.**
 
 Two earlier seams this suite caught, both still worth knowing about:
 
@@ -666,6 +686,12 @@ numbers.
 | 3.24 | ~~The torch was never in the hand — the only cue for §03's four states was the lighting~~ **fixed** — `PlayerFlashlight.InHand` draws it on `IsOn`, and it is legible at the game's own exposure | §4.5 | art |
 | 3.25 | ~~The shop opened itself on walking into the 차량's apron — 갑자기 상점이 열림, mouse and camera taken on a position test~~ **fixed** — `MatchDirector.Surfaced` sells and says so; `SurfaceVehicleInteractable`'s key is the only thing that opens the panel | §1.4 | ui |
 | 3.26 | A 대형 전리품 dropped facing a wall overlaps it by **0.138 m**. `DropPlacement.ClearanceRadiusMetres` is `Interactable.MinimumTargetMetres * 0.5` = 0.15 m — the crosshair's aim tolerance, not the piece's own half-size, so anything wider than the sweep touches. Still on the floor, upright and pickable; reads as leaning | §1 · `DropPlacement.cs` | gameplay |
+| 3.27 | ~~§01's 지상 had no physical presence — no line, no gate, no threshold, no light or sound change. One line of §14 text was the only thing telling a player which side of the 안전 지대 they were on~~ **fixed** — `SurfaceApron` paints the boundary at `MatchMap.SurfaceRadius`, frames and lights every walkable crossing, and lights the walk. §4.6 | `SurfaceApron.cs` · §1.9 | design |
+| 3.28 | ~~§08's 차량 was parked inside the 출입구 corridor's walls — a 2.81 m body in a 2.2 m passage~~ **fixed** — `SurfaceApron.Park` measures a fit and puts it in the 하역 베이 11.5 m out | §4.6 · `SurfaceApron.cs` | gameplay · art |
+| 3.29 | **The 차량's body is `Prop_Iron` — albedo 0.11, metallic 0.90.** A 90 % metallic surface has almost no diffuse response, so the shop the team returns to 2.94 times a match renders as a black silhouette from every angle no matter what is shining on it. Its shape reads; its surface does not. §4.6 | [ART.md §7.12](ART.md) · `Props.manifest.json` | art |
+| 3.30 | **`PlayerSpawn_0` sits at exactly 15.000 m from the 출입구 — precisely on §01's boundary.** `MatchMap.IsOnSurface` uses `<=`, so which side the player starts on is decided by float rounding. `BeginMatch` forces `_onSurface = true` afterwards, so nothing breaks today; a spawn one epsilon out would fire a spurious 잠입 on the first tick | `MapSketch.cs:1552` · `MatchMap.cs:156` | latent |
+| 3.31 | **§03's room labels are not written on any room.** `MatchMap.SignFor` derives a `SiteLabel` per 후보 지점, the chain narrows to it, and `ClueReadingView` renders it — *「ㅁ-6 좌」* — but **nothing in the world draws it.** Grep: `SiteLabel` appears in Core, Net and one UI readout and in no scene object. §03 says the sign "is part of the building… which is what lets a veteran hear ㅁ-6 좌 and already know where to run", and §12 makes 맵 구조 the fixed column precisely so it can be learned. So the clue chain converges on a name with no referent: a player who reads all three marks correctly still has no way to identify the room. The dressing pass scatters generic `Sign` props at a 15 % chance and none of them carries a label | §3a · `MatchMap.cs:376` · `ScatterSession.cs:953` | design — same class as 3.27, and larger |
+| 3.32 | **The 출입구 is marked by one burning point light and nothing else.** The stairwell shaft is built (`FirstMapSketch.cs:193`) but its upper flight deliberately lands off-plan because the surface is not modelled, so the way out of the building is a lit dead end. The apron now says *where the safe zone is*; nothing says *these are the stairs up* | `MapSceneBuilder.BuildLight` · §4.6 | design |
 
 ### 3a · The floor-material chain — previously S-001, now wired
 
@@ -923,7 +949,87 @@ One cosmetic thing in every shop frame: two pale HUD bar segments show below the
 bottom edge, bottom-left and bottom-centre. The panel does not quite cover the HUD it is
 drawn over. Not filed as a defect — it is a two-pixel inset — but it is in the pictures.
 
-### 4.6 The verdict — could this be sold?
+### 4.6 §01's 지상 now exists as geometry — photographed from five viewpoints
+
+The boundary the whole loop turns on had **no physical presence whatsoever**. §01 makes
+the ground around the 출입구 the 안전 지대, §08 puts the shop, the sale and the 보급소 on
+it, §02 ends the match when the objective crosses into it — and it was a
+`sqrMagnitude` test against a light, on the same unbroken concrete as the rest of B1
+하역장. No line, no gate, no threshold, no lighting change. The only thing telling a
+player which side of it they stood on was one line of §14 guidance text, which read
+「출입구 **앞마당**을 벗어나면 잠입입니다」. The owner played the build and asked
+**앞마당이 어디야**. That is the correct question, and it should not have been possible.
+
+`SurfaceApron` builds four things into the match world at `BeginMatch`, all measured
+against `MatchMap.Entrance` and `MatchMap.SurfaceRadius` rather than authored:
+
+```
+[Apron] §08 차량 parked at (52.4, 0.1, 93.3), yaw 0°, 11.5 m from the 출입구 with 0.55 m
+        of clearance — inside §01's 15 m 지상. Its body is 2.8 × 6.7 m and the 출입구
+        corridor is 2.2 m wide, which is why it could not stay where §12 marks the door.
+[Apron] gate 0 — 21.2 m wide, from (55.5, 0.1, 100.9) to (48.8, 0.1, 83.3)
+[Apron] gate 1 —  3.1 m wide, from (44.4, 0.1,  81.6) to (42.0, 0.1, 81.3)
+[Apron] §01 지상 painted at 15 m — 33 of 120 stripes found floor, 2 walkable crossing(s)
+        over 25.1 m of the ring, 7 practical(s) inside it, 15 warm source(s) in all.
+```
+
+**A painted hazard line.** 120 steps round the ring, each raycast for floor, a surface
+facing up, a height within one step of the door and clear headroom; 33 survive. §12 put
+the 출입구 in the north-west corner of B1, so three-quarters of a 15 m circle is outside
+the building — what is left is a 26 m arc sweeping out of the service corridor and
+across the 20 × 20 m 하역 베이, which is the one 개방 공간 on the storey and the best
+place in the building to see a line from. Alternating amber and bone, 0.40 m wide, 5 cm
+proud of the floor, emissive at 0.45 of its own colour so it still reads where no lamp
+reaches (0.30 was tried first and the far half of the arc disappeared at 25 m).
+
+**Lit crossings.** Every run of ring that is on the NavMesh gets a bollard at each jamb
+and a warm lamp every 5 m over it. Two on this map: the 21.2 m mouth of the bay and the
+3.1 m service passage at `PlayerSpawn_0`.
+
+**Warm inside, cold out.** §07 cools the grade as the night advances and §12's zone
+fittings are a blue that starts switched off; the apron is the opposite. A bay lamp over
+the door, and practicals every 4.5 m along the NavMesh path from the door to each gate —
+*along the walk, not on a circle*. A ring of practicals was tried and fitted 2 of 16,
+because the apron here is mostly a 2.2 m corridor and a circle drawn through it is
+mostly wall. Path-based fits 7, and the difference is the whole read from the spawn:
+before it, the frame was a cold corridor with two headlamps at the end.
+
+**The crossing, both ways.** The threshold lamps swell 55 % on 귀환 and dip 45 % on
+잠입, over 1.4 s. Cosmetic by construction — the only thing it writes is
+`Light.intensity` on lamps the class made, so §13's replay cannot see it. The audio half
+already existed and was already wired: `AudioCueId.SurfaceReached` / `Descend` fire off
+the same edge in `MatchAudioBridge`, and `amb_surface_vehicle_loop` is the surface bed
+`ZoneAmbienceDirector` crossfades to. Nothing there needed changing.
+
+Photographed with `StoreShotRig.Shoot` — the only rig that can see any of this, because
+it is the only one that begins a match; `SceneShot` opens the raw map, which has no
+`MatchDirector` and therefore no apron. Five rounds, `unity/HorrorGame/Shots/apron5`:
+
+| Frame | What it answers |
+|---|---|
+| `12_spawn_looking_down` | Standing at the spawn, the stripes are under the boots. `PlayerSpawn_0` is exactly 15.000 m out — on the line (defect 3.30) |
+| `10_spawn_toward_the_door` | Looking in: a warm lit run of practicals up the corridor. Cold behind, warm ahead |
+| `11_spawn_toward_the_way_out` | Looking out: bollard and paint in the foreground, darkness past them |
+| `21_bay_from_ten_out` | Ten metres outside, across the bay: the arc, and the van inside it with its headlamps on |
+| `22_bay_far_corner` | From the far corner, ~28 m: line, bollard, van, roof beacon, all still legible |
+| `41_the_van_rear` | The line at eye level beside the shop end |
+| `60_bay_from_above` | The whole ring, its two bollards and the parked van in one frame |
+
+`frame_stats.py` over those frames: mean 16–73, black 0–20 %, blown ≤ 0.1 % except two
+frames where the camera is a metre from a wall with the torch on it. **ART.md's zone
+bands are untouched** — `SceneShot`'s `final_Zone_*` views contain no apron, by
+construction.
+
+**What is still wrong in these frames.** The van reads as a *shape* — cab, box, wheels,
+loading ramp — and not as a *surface*: its body is `Prop_Iron`, albedo 0.11 at metallic
+0.90, and a 90 % metallic material has almost no diffuse response, so it is a black
+silhouette however many lamps are on it. That is defect 3.29 and it is an asset
+decision, not a lighting one; the fix belongs in `gen_props.py`, not in the runtime.
+And the van is not visible from the 출입구 itself — the corridor east of the door is a
+dead end, so a player surfacing through the small gate walks to the door and has to
+turn into the bay to find the shop.
+
+### 4.7 The verdict — could this be sold?
 
 **The menu could ship tomorrow. The corridors could ship after a dressing pass. The
 open rooms could not, and the game as a whole could not — but not for visual

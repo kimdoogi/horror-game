@@ -104,6 +104,7 @@ namespace HorrorGame.Gameplay.Match
 
         private GameObject? _worldRoot;
         private ObjectivePropInteractable? _objectiveProp;
+        private SurfaceApron? _apron;
 
         private ClueReadContext _clueContext;
         private int _revealedClueId = -1;
@@ -165,6 +166,15 @@ namespace HorrorGame.Gameplay.Match
         public ObjectivePropInteractable? ObjectiveProp
         {
             get { return _objectiveProp; }
+        }
+
+        /// <summary>
+        /// §01's 지상, as painted geometry. Null before <see cref="BeginMatch"/> and on a
+        /// scene the apron could find no floor in.
+        /// </summary>
+        public SurfaceApron? Apron
+        {
+            get { return _apron; }
         }
 
         /// <summary>The seat the person at the keyboard is in.</summary>
@@ -897,6 +907,11 @@ namespace HorrorGame.Gameplay.Match
             state.PlayerAt(LocalPlayerIndex).TrySurface();
             _clock.SetTeamOnSurface(true);
 
+            // §01's 숨 돌리기, said by the apron rather than by a line of text. The lamps
+            // over the threshold swell as the player walks under them; the ambience bed
+            // and the 귀환 cue are MatchAudioBridge's half of the same edge.
+            _apron?.SetOnSurface(true);
+
             SellOversizeCarry();
 
             var sold = Shop.SellAll(_loadout != null ? _loadout.Inventory : null);
@@ -933,6 +948,12 @@ namespace HorrorGame.Gameplay.Match
         {
             _state?.PlayerAt(LocalPlayerIndex).TryDescend();
             _clock.SetTeamOnSurface(false);
+
+            // The warmth draws back behind the player as they step over the line. §01
+            // calls this the commitment, and until the apron existed it was the one
+            // moment in the loop that changed nothing anybody could see.
+            _apron?.SetOnSurface(false);
+
             CloseShopAtVehicle();
         }
 
@@ -1105,6 +1126,17 @@ namespace HorrorGame.Gameplay.Match
             }
         }
 
+        /// <summary>
+        /// §08's 차량 and the ground it is parked on.
+        /// <para>
+        /// The two belong in one step because they are one place. §08 calls the vehicle
+        /// "안전 지대 + 상점 + 보급소" and §01 makes the ground around it the half of the
+        /// loop that is safe; <see cref="SurfaceApron"/> is that ground given an edge,
+        /// and it takes the van so it can hang the headlamps and the beacon on it. Both
+        /// go under the match's world root, so <see cref="ClearWorld"/> takes them
+        /// together.
+        /// </para>
+        /// </summary>
         private void PlaceVehicle()
         {
             var map = _map;
@@ -1114,7 +1146,16 @@ namespace HorrorGame.Gameplay.Match
                 return;
             }
 
-            SurfaceVehicleInteractable.Spawn(map.Entrance, root.transform);
+            var vehicle = SurfaceVehicleInteractable.Spawn(map.Entrance, root.transform);
+            var body = vehicle != null ? vehicle.gameObject : null;
+
+            // §12 marks the 출입구 on a stairwell cell in a 2.2 m service corridor and the
+            // van is 2.81 m wide, so spawning it there stood it inside the brickwork. It
+            // is moved to the nearest place inside §01's 지상 that its own footprint fits
+            // — see SurfaceApron.Park.
+            SurfaceApron.Park(body, map.Entrance, MatchMap.SurfaceRadius);
+
+            _apron = SurfaceApron.Build(map.Entrance, MatchMap.SurfaceRadius, body, root.transform);
         }
 
         private void MovePlayerToSpawn()
@@ -1454,6 +1495,7 @@ namespace HorrorGame.Gameplay.Match
             // Before the despawn, while the props it releases still exist.
             ClearHands();
             _objectiveProp = null;
+            _apron = null;
 
             if (_worldRoot != null)
             {

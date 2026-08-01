@@ -277,7 +277,13 @@ namespace HorrorGame.Gameplay.Guidance
             switch (phase)
             {
                 case GuidancePhase.Descend:
-                    return "아래로 내려가세요 — 출입구 앞마당을 벗어나면 잠입입니다";
+                    // The line names what is under the player's feet. It used to say
+                    // 앞마당, which is a word for a place the game did not draw — the
+                    // owner played the build and asked where it was, which is how
+                    // SurfaceApron came to exist. Now that §01's 지상 is painted at
+                    // MatchMap.SurfaceRadius, the text points at the paint instead of
+                    // carrying the whole boundary on its own.
+                    return "아래로 내려가세요 — 바닥의 노란 선을 넘으면 잠입입니다";
 
                 case GuidancePhase.ReadClues:
                     return "표식을 찾아 손전등을 고정하세요 ("
@@ -294,7 +300,9 @@ namespace HorrorGame.Gameplay.Guidance
                         + ", 위치는 기억에만 남습니다";
 
                 case GuidancePhase.CarryObjectiveOut:
-                    return "출입구로 운반하세요 — 손전등을 들 수 없습니다";
+                    // §02's terminal row, named by something visible: the match ends when
+                    // the objective crosses the painted line, so that is what to say.
+                    return "출입구로 운반하세요 — 노란 선 안이 지상입니다, 손전등을 들 수 없습니다";
 
                 case GuidancePhase.SellLoot:
                     return "차량에 팔고 상점을 여세요";

@@ -97,11 +97,12 @@ python3 -c "import xml.etree.ElementTree as ET,sys; r=ET.parse('/tmp/playmode.xm
 
 ```
 EditMode   total 100 passed 100 failed 0 result Passed
-PlayMode   total 64 passed 64 failed 0 result Passed
+PlayMode   total 66 passed 66 failed 0 result Passed
 ```
 
-**164 of 164 as of 2026-08-01**, and 615 of 615 with core's 451. EditMode went 71 → 100
-and PlayMode 55 → 64 on the four-defect pass: `DropPlacementTests` in EditMode,
+**166 of 166 as of 2026-08-01**, and 617 of 617 with core's 451. EditMode went 71 → 100
+and PlayMode 55 → 64 → 66; the last two are `SurfaceApronTests`, which pin §01's painted
+지상 to the radius `MatchMap.IsOnSurface` measures. The pass before added: `DropPlacementTests` in EditMode,
 `InteractionDropTests` and `PlayerFirstPersonViewTests` in PlayMode, and the rewritten
 shop coverage in `UiTests`. Older revisions of this file said EditMode 55 and PlayMode
 27, then 70 and 42, then 71 and 55; all were stale in turn. Re-read the XML rather than

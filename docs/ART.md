@@ -1040,3 +1040,34 @@ Unity -batchmode -quit -silent-crashes -projectPath unity/HorrorGame \
 
 Run it WITHOUT `-nographics`. It also stands up any model the current seed did not
 place, so the 궤짝 is photographed on a seed that drew the 초상화.
+
+### 7.12 The 차량's body is a 90 % metal with an albedo of 0.11 — it renders as a hole
+
+§7.11 gave the 차량 a real 6.69 m model and left the last thing about it unfixed: its
+body material is **`Prop_Iron` — albedo (0.112, 0.116, 0.122), metallic 0.90,
+roughness 0.55**. A surface that metallic has almost no diffuse term, so it returns
+essentially nothing to a point light; what little it does return is a specular lobe
+that has nothing to reflect, because §7.9's argument applies here too — there is no
+reflection probe indoors.
+
+The result is measured rather than felt. `Shots/apron5/21_bay_from_ten_out.png` and
+`41_the_van_rear.png` were taken after the van was given **five** of its own warm
+sources — two headlamps, a rear work lamp standing 1.1 m clear of the doors, a bay fill
+lamp 1.5 m above the roof and 2.4 m off its flank, and a roof beacon — and it is a
+black silhouette in both. Its *shape* reads perfectly: cab, load box, wheels, loading
+ramp. Its *surface* does not exist. The brightest thing on it is the cab glass.
+
+This matters more than the other props on this page. §08 makes the 차량 the 안전 지대,
+the 상점 and the 보급소 in one object and §01 sends the team back to it 2.94 times a
+match; `SurfaceApron` now parks it in the 하역 베이 and lights it precisely so that it
+is the thing a surfacing player sees first (STATUS §4.6).
+
+**The fix is an asset decision and belongs in `tools/blender/gen_props.py`, not in the
+runtime.** A works van is painted, not bare iron: it wants its own material — something
+near `Prop_Paint`'s albedo (0.221, 0.172, 0.132) at **metallic 0** and roughness ~0.6,
+assigned to the body while the chassis, wheel arches and ramp keep `Prop_Iron`.
+Changing `Prop_Iron` itself is not the fix; it is shared with the 금고, the conduit and
+every other iron thing in the game, all of which are meant to look like iron.
+
+Do not fix it by tinting the material at runtime. §7.11's whole lesson is that the
+material the player sees has to be an asset the build contains.
