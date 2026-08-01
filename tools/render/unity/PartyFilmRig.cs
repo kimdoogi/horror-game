@@ -190,6 +190,29 @@ namespace HorrorGame.EditorTools.Film
                 party.Add((rig, walker, clip, rig.GetComponent<PlayerWorldArms>()));
             }
 
+            // Does the sample actually land on the skeleton? Two takes have now shipped
+            // with the legs frozen, and looking at dark frames cannot tell "the clip did
+            // nothing" from "the clip is subtle". This prints the thigh angle at three
+            // points of the cycle: three identical numbers mean the sample is not landing
+            // and nothing downstream is worth debugging.
+            if (party.Count > 0 && party[0].clip != null)
+            {
+                var probe = party[0].rig;
+                var thigh = HorrorGame.Gameplay.Player.PlayerRigBones.Find(probe.transform, "LeftUpperLeg");
+                var animator = probe.GetComponentInChildren<Animator>();
+                Debug.Log("[PartyFilm] probe rig: animator=" + (animator != null)
+                          + " avatar=" + (animator != null && animator.avatar != null)
+                          + " human=" + (animator != null && animator.avatar != null && animator.avatar.isHuman)
+                          + " thighBone=" + (thigh != null));
+                for (var k = 0; k < 3; k++)
+                {
+                    Sample(probe, party[0].clip!, party[0].clip!.length * k / 3f);
+                    Debug.Log("[PartyFilm] t=" + (k / 3f).ToString("0.00")
+                              + " LeftUpperLeg local euler "
+                              + (thigh != null ? thigh.localEulerAngles.ToString("F2") : "n/a"));
+                }
+            }
+
             var monster = spec.monster ? StageMonster() : null;
             var monsterClips = monster != null ? ClipsOf(MonsterModelPath) : new Dictionary<string, AnimationClip>();
             monsterClips.TryGetValue("Chase", out var chase);
@@ -212,7 +235,7 @@ namespace HorrorGame.EditorTools.Film
                     if (clip != null)
                     {
                         var cycle = clip.length <= 0f ? 1f : clip.length;
-                        clip.SampleAnimation(rig, ((t * spec.frames / 24f) + walker.phase * cycle) % cycle);
+                        Sample(rig, clip, ((t * spec.frames / 24f) + walker.phase * cycle) % cycle);
                     }
 
                     // LateUpdate does not run in edit mode. Without this the footage shows
@@ -227,7 +250,7 @@ namespace HorrorGame.EditorTools.Film
                     if (chase != null)
                     {
                         var cycle = chase.length <= 0f ? 1f : chase.length;
-                        chase.SampleAnimation(monster, (t * spec.frames / 24f) % cycle);
+                        Sample(monster, chase, (t * spec.frames / 24f) % cycle);
                     }
                 }
 
@@ -237,7 +260,43 @@ namespace HorrorGame.EditorTools.Film
                 written++;
             }
 
+            if (AnimationMode.InAnimationMode())
+            {
+                AnimationMode.StopAnimationMode();
+            }
+
             return written;
+        }
+
+        /// <summary>
+        /// Poses one rig at one time in a clip, through the editor's animation mode.
+        /// <para>
+        /// <b>Not <c>AnimationClip.SampleAnimation</c>.</b> That call goes through the
+        /// legacy path and does nothing useful to a <b>Humanoid</b> rig, which is what
+        /// <c>Player.fbx</c> imports as. The first cut of this film used it and the
+        /// footage showed exactly that: four bodies sliding down the corridor in their
+        /// bind pose, legs still, while the creature — Generic, so it sampled fine —
+        /// waddled along beside them at the wrong stride rate. The owner's words were
+        /// "사람은 떠다니고 괴물은 뒤뚱뒤뚱", and both halves of that were one bug each.
+        /// </para>
+        /// <para>
+        /// <c>AnimationMode.SampleAnimationClip</c> runs the retargeting the avatar
+        /// describes, so a humanoid clip lands on the humanoid skeleton.
+        /// </para>
+        /// </summary>
+        private static void Sample(GameObject rig, AnimationClip clip, float time)
+        {
+            var animator = rig.GetComponentInChildren<Animator>();
+            var target = animator != null ? animator.gameObject : rig;
+
+            if (!AnimationMode.InAnimationMode())
+            {
+                AnimationMode.StartAnimationMode();
+            }
+
+            AnimationMode.BeginSampling();
+            AnimationMode.SampleAnimationClip(target, clip, time);
+            AnimationMode.EndSampling();
         }
 
         /// <summary>

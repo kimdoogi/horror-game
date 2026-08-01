@@ -62,28 +62,43 @@ def v(x, y, z):
     return {"x": x, "y": y, "z": z}
 
 
-def spec_for(args):
-    """The shot, in metres from the scene's own player: +Z ahead, +X right, Y up.
+RUN_SPEED = 4.5
+"""GameConstants.RunSpeed. The Run clip's stance is authored against it — the planted
+foot travels backward at exactly this — so a rig translated at any other speed skates."""
 
-    Two takes were lost to world coordinates picked off the trailer's shot list — the
-    first put three of the four off-screen, the second put all four through a wall.
-    PartyFilmRig.AnchorOnScenePlayer converts everything here into world space around
-    the player Map_FirstSketch_Solo already spawns, which is a spot the map generator
-    cleared for a body.
+MONSTER_CHASE_SPEED = 4.6729
+"""Monster.clips.json, measured from the weight-bearing foot rather than derived. The
+first cut moved the creature at 2.0 m/s while playing a 4.67 m/s stride, which is the
+waddle: two and a half strides of foot travel for every stride of ground."""
+
+
+def spec_for(args):
+    """A chase, in metres from the scene's own player: +Z ahead, +X right, Y up.
+
+    Everything that moves travels at the speed its clip was authored at. That is not
+    polish — it is the difference between running and skating, and it is the same rule
+    MonsterAnimationDriver already applies at runtime ("the previous version assumed
+    every clip was authored at 4.8 m/s, which is why the patrolling monster skated").
     """
-    # They walk toward the camera, so they face back down -Z and the camera looks +Z.
+    seconds = args.frames / float(args.fps)
+    run = RUN_SPEED * seconds
+    chase = MONSTER_CHASE_SPEED * seconds
+
+    # They start far enough out to still be running when they reach the lens.
+    lead = run + 1.6
+
     roles = ("Listener", "Observer", "Runner", "Engineer")
-    layout = ((5.6, -0.85), (6.3, 0.80), (8.4, -0.55), (9.1, 0.60))
-    phases = (0.0, 0.37, 0.62, 0.15)
+    layout = ((0.0, -0.95), (0.9, 0.85), (2.3, -0.55), (3.0, 0.70))
+    phases = (0.0, 0.41, 0.66, 0.18)
 
     walkers = [{
         "role": role,
-        "start": v(lateral, 0.0, ahead),
-        "travel": 4.4,
+        "start": v(lateral, 0.0, lead + back),
+        "travel": run,
         "yaw": 180.0,
-        "clip": "Walk",
+        "clip": "Run",
         "phase": phase,
-    } for role, (ahead, lateral), phase in zip(roles, layout, phases)]
+    } for role, (back, lateral), phase in zip(roles, layout, phases)]
 
     return {
         "anchorOnScenePlayer": True,
@@ -92,21 +107,21 @@ def spec_for(args):
         "width": args.width,
         "height": args.height,
         "frames": args.frames,
-        # Eye height above the spawn point, backing off slightly as they approach.
-        # The camera holds. A 1.5 m dolly back looked fine on paper and put the lens
-        # inside a wall by frame 90 — the spawn point is clear, the metre and a half
-        # behind it is not, and nothing here knows where the walls are.
-        "cameraFrom": v(0.0, 1.62, 0.2),
-        "cameraTo": v(0.0, 1.64, 0.2),
-        "cameraEulerFrom": v(2.0, 0.0, 0.0),
-        "cameraEulerTo": v(2.5, 2.0, 0.0),
-        "fov": 62.0,
+        # Held. A dolly back put the lens inside a wall on an earlier take: the spawn
+        # point is cleared, the metre behind it is not, and nothing here knows that.
+        "cameraFrom": v(0.0, 1.58, 0.2),
+        "cameraTo": v(0.0, 1.60, 0.2),
+        "cameraEulerFrom": v(3.0, 0.0, 0.0),
+        "cameraEulerTo": v(4.0, 2.0, 0.0),
+        "fov": 66.0,
         "walkDirection": v(0.0, 0.0, -1.0),
         "walkers": walkers,
         "torches": True,
         "monster": True,
-        "monsterStart": v(0.3, 0.0, 15.0),
-        "monsterTravel": 7.0,
+        # Five metres behind the rearmost runner, and gaining: 4.67 against 4.5 is
+        # §06's whole argument, and over this shot it closes 0.5 m of it.
+        "monsterStart": v(0.25, 0.0, lead + 3.0 + 5.0 + (chase - run)),
+        "monsterTravel": chase,
         "monsterYaw": 180.0,
     }
 
