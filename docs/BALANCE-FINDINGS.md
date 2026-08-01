@@ -768,6 +768,70 @@ already has.
 
 ---
 
+### 5b · Recommendation 2 was attempted on 2026-08-01 and costs more than this entry priced
+
+`BatterySecondsPerCell` was raised 210 → 700 s, the bottom of the range recommended
+above. **The core suite failed in three places, and every one of them is §08 rather than
+§03.** The numbers, verbatim:
+
+```
+LightTests.OneCell_LastsItsRatedTime_MinusTheSwitchOnCharge
+    Assert.That(BatterySecondsPerCell * EconomyReferenceCellsPerDescent,
+                Is.LessThan(TargetMatchSecondsMin))
+    Expected: less than 1500.0f
+    But was:  2800.0f
+```
+
+That assertion is not incidental — it is §03's 왕복 구조 written down: "four cells must
+not cover a whole match, or the team would never have to surface." At 700 s a reference
+restock carries **46 minutes** of light into a 25-minute match, so the light stops being
+the thing that sends anybody back up.
+
+Re-deriving the reference restock to match (a descent is ~7 min, a 700 s cell covers one,
+two lit players → `EconomyReferenceCellsPerDescent` 4 → 2) fixes that assertion and breaks
+two more, because §08's growth table is derived from the restock **cost**, not from the
+cell count:
+
+```
+EconomyTests.GrowthCurve_AfterTheFirstReturn_BuysConsumablesAndNothingMore
+    §08: after 1차 the team has 소모품 몇 개 and no 강화 아이템.
+    Expected: less than 50      But was: 85
+
+EconomyTests.GrowthCurve_AfterTheSecondReturn_ForcesSection08sOwnArgument
+    §08's quoted negotiation only exists if the flashlight and the batteries
+    cannot both be bought.
+    Expected: less than 340     But was: 360
+```
+
+Halving the cells halves the restock — `4 × 25 + 40 = 140` becomes `2 × 25 + 40 = 90` —
+and 50 credits of slack per descent is enough to buy 밧줄 (75) after the first return,
+which §08 says is exactly what must not happen yet. The two ways out both cost something
+the design has written down:
+
+| way out | what it keeps | what it breaks |
+|---|---|---|
+| `ShopCostBattery` 25 → 50 | restock stays 140, growth table intact | §08's pricing unit, "one 회중시계 pays for one cell" — the line that makes selling loot feel like buying time |
+| re-pin the growth table | §08's pricing unit | every row of the table in `GameConstants`' §08 derivation, which is §16-2's top open question |
+
+**So recommendation 2 is a §08 pass, not a §03 constant.** It was reverted rather than
+half-landed. The suite is the reason this entry can say that precisely instead of
+discovering it after a playtest.
+
+### 5c · The version of recommendation 2 that does not touch §08
+
+Light the team **finds** is priced by nobody, so it moves §01's length without moving
+§08's table: a 배터리 that spawns in the building the way §12's 막힌 길 보상 already does.
+It also happens to be recommendation 1 — "put 전리품 on the first descent's route" — with
+the one payload that addresses the 40.6 % directly, because the thing those matches ran
+out of was not money.
+
+It is additive: `ShopItemId.Battery` already exists, `BatteryState.AddCells` already
+exists, `LightReadout.SpareCells` already renders, and `MapMarkerKind.LootSpawn` already
+places objects at every dead end. What is missing is a spawn rule that puts some of them
+on the route rather than at the end of a detour, and the simulator agents' willingness to
+pick one up. **Not attempted on 2026-08-01 — recorded here as the cheapest untried
+option, and the one this entry should have recommended first.**
+
 ### 6 · What to measure in the first real playtest — §14 Q3, 「지금 나갈까?」
 
 Five numbers, in the order they decide things. Every one of them has a simulated value to
@@ -1326,3 +1390,174 @@ the monster. Read this finding as still open after the 그늘 lands.
 `PresenceTests.TheDarkCoversEveryZone_WhereThePatrolTableCoversOne` asserts the 초저녁 row
 is an absolute count that does not grow with the map, so this entry fails a test if
 anybody makes it proportional without updating the page.
+
+---
+
+## F-011 · §12's 실전 검증 has not been measuring the map — it has been measuring one sprint against 12 metres
+
+**Sections:** §12 (실전 검증 · 개방 공간/미로 공간) × §06 (어그로 해제) × §05 (질주)
+· **Priority:** 🔴 the map's only quality metric is blind to the map
+· **Status:** measured and open. It supersedes [F-008](#f-008)'s option 1, which is now
+disproved rather than untried
+· **Source:** a harness over `FirstMapSketch.Build(1204)` and `RunnerTest`, sweeping
+`RunnerTestAggroStartDistance` and the 개방 공간 share
+· **Found:** 2026-08-01, while trying to act on F-008's recommendation
+
+### The mechanism
+
+`RunnerTest` calls the Runner covered whenever **any** sight-breaking bend lies between
+the monster's arc position and the Runner's:
+
+```csharp
+if (monster < arc[i] && arc[i] < runner) covered = true;   // RunnerTest.cs:675
+```
+
+The shipped building has **79 bends at a mean nearest-neighbour spacing of 4.1 m** — the
+map report's own last line, and 0 of them inside §12's 15~25 m rule. So from the first
+tick of any chase there is always a bend in between, `brokenFor` never resets, and cover
+stops being something a Runner *reaches*. It is the ambient condition of the whole
+building.
+
+When cover never lapses, the escape collapses to one inequality with no geometry in it:
+
+```
+SprintStaminaSeconds × (RunnerSprintSpeed − MonsterBaseSpeed)  ≥  AggroReleaseDistance − aggroStart
+              12 s   ×            0.8 m/s            = 9.6 m   ≥        12 m − aggroStart
+                                                     aggroStart ≥ 2.4 m
+```
+
+**That is the whole test.** Every one of the ten sampled escapes in the map report
+releases at 3.4~10.6 s, and every one reports exactly `3 s of unbroken cover` — the
+minimum §06 asks for, reached because the clock started at t=0 and never stopped.
+
+### The prediction, and the measurement that confirms it
+
+If the inequality above is the test, then the aggro start distance should behave as a
+**cliff at 2.4 m** and be flat everywhere above it, rather than as the gradient F-008
+assumed. Measured over every one of the 164 places:
+
+| aggro start | §12's ten samples | every place (164) |
+|:--:|:--:|:--:|
+| 3.0 m | 0/10 TooHard | 0 (0.0 %) |
+| 4.0 m | 9/10 TooEasy | 159 (97.0 %) |
+| 5.0 m | 10/10 TooEasy | 163 (99.4 %) |
+| 5.8 m | 10/10 TooEasy | 164 (100.0 %) |
+| **10.0 m — shipped** | **10/10 TooEasy** | **164 (100.0 %)** |
+| 15.0 m | 10/10 TooEasy | 164 (100.0 %) |
+
+**There is no aggro start distance that produces §12's 5~7/10 band.** The dial goes from
+0 % to 97 % between 3 m and 4 m and is saturated thereafter.
+
+> This retires [F-008](#f-008)'s option 1. That option's arithmetic was right — the
+> largest aggro start that keeps a *single* bend under §06's 3 s is
+> `SingleCornerMinDistance − (sprintGain ÷ sprintSpeed) × SprintMaxTravelDistance` =
+> **5.83 m**, against the shipped 10 m — but it does not matter, because on this
+> building the release does not come from a single bend. It comes from all 79 at once.
+
+### The one term that can make cover lapse
+
+`BuildRoute` skips a bend that sits inside an 개방 공간 node, for a reason it states in
+the source: "§12 gives 개방 공간 15~25 m sight lines on purpose — that is where aggro is
+taken — so a bend drawn inside one hides nobody." 개방 공간 is therefore the only thing
+in the model that can interrupt cover, and the escape rate should be a function of how
+much of the building is 개방 공간 rather than of where its bends are.
+
+Measured three ways, because the authoring primitive is a **rectangle** (`MapSketch.OpenRoom`)
+and an answer that only holds for scattered nodes is not an answer a level author can act on:
+
+| 개방 공간 share | promoted by id | by named room | by growing the existing halls |
+|:--:|:--:|:--:|:--:|
+| **32.3 % — shipped** | **100.0 %** | **100.0 %** | **100.0 %** |
+| 52.4 % | 100.0 % | 100.0 % | 98.8 % |
+| 62.8 % | 79.9 % | 100.0 % | 87.8 % |
+| 66.5 % | **73.2 %** | 100.0 % | 87.8 % |
+| 69.5 % | 45.1 % | 100.0 % | **75.0 %** |
+| 73.2 % | 45.1 % | 98.2 % | **49.4 %** |
+| 79.9 % | 45.1 % | **79.3 %** | 40.2 % |
+| 100 % | 0.0 % | 0.0 % | 0.0 % |
+
+Every policy has a band; they disagree only on where it sits, which is what "it depends
+how the space is distributed" looks like when it is measured instead of asserted. The
+building would need its 개방 공간 to roughly **double**, from 32.3 % to somewhere in
+65~80 % of places, for §12's own grade to come back.
+
+### Why the building is 68 % corridor in the first place
+
+| storey | places | 개방 공간 |
+|---|:--:|:--:|
+| B1 D 하역장 | 35 | the 20 × 20 m bay, ~10 |
+| B2 A 기록보관소 | 34 | **none** |
+| B3 E 기계실 | 43 | all 43 (hall + gallery) |
+| B4 C 저탄장 | 28 | **none** |
+| B5 B 저수조 | 24 | **none** |
+
+**Three of the five storeys contain no 개방 공간 at all.** That is a defect on §12's own
+terms and independently of this finding's band: §12 endorses 15~25 m as the aggro start
+distance a Runner survives, and 개방 공간 is where the section says that distance exists.
+On 86 of 164 places there is nowhere in the storey to take aggro from a distance §12 calls
+safe — the Runner's whole role, on three floors out of five, has no stage.
+
+### Options
+
+1. **Give each storey one real room.** 기록보관소 is a hall of stacks, 저탄장 is a bunker,
+   저수조 is a vaulted tank — every one of them is a large volume in its own fiction, and
+   all three are currently drawn as nothing but corridor. This is worth doing whatever the
+   band says, and it is the cheapest step toward it.
+2. **Then re-measure and see how far short of 65~80 % it lands.** One 15 × 15 m room per
+   storey is roughly +18 places, or 32 % → 43 %. Reaching the band means the storeys are
+   *mostly* room, which is a different building from the one §12's 첫 맵 스케치 sketches.
+3. **Or state the band as scale-dependent** — [F-008](#f-008) option 2 — and grade a
+   five-storey building against a number derived for a 100 × 100 m single-storey one only
+   after re-deriving it. The band 5~7/10 has never been checked against a map this size.
+
+Options 1 and 2 are level authoring; option 3 is a design decision. **All three are left
+open**, and the paragraph below is why option 1 turned out not to be the cheap step it
+looks like.
+
+### Option 1 is blocked by B-003, and the geometry says so exactly
+
+There is one 개방 공간 piece in the kit — `HallOpen20x20`, **8 × 8 cells and 6.3 m to the
+roof** — against a `StoreyMetres` of 3.75. A hall therefore rises **2.55 m into the storey
+above it** and may only be placed where that storey is solid ground, which is B-003: the
+defect that used to drop two of these rooms with a `LogError` on every generation, because
+1.99 m of headroom does not admit a 2.30 m monster.
+
+Checking the three storeys that have no 개방 공간 against the footprint stacked on top of
+each one:
+
+| storey | needs 20 × 20 m of solid ground above | verdict |
+|---|---|---|
+| B2 A 기록보관소 (x 8–19, z 21–30) | B1 D 하역장 occupies x 16–27, z 29–38 | **a hall fits at x 8–15, z 21–28** |
+| B4 C 저탄장 (x 8–19, z 8–17) | B3 E 기계실 occupies x 15–27, z 15–23 | **no 8 × 8 block avoids it** — clear of E needs x ≤ 14 (7 wide) or z ≤ 14 (7 deep) |
+| B5 B 저수조 (x 14–26, z 2–10) | B4 C 저탄장 occupies x 8–19, z 8–17 | **no 8 × 8 block avoids it** — clear of C needs x ≥ 20 (7 wide) or z ≤ 7 (6 deep) |
+
+Two of the three are off by **one cell**, which is not bad luck: the storeys are stacked
+with deliberately overlapping footprints so that every descent is a traverse, and that
+same overlap is what leaves no 20 × 20 m column of solid ground beneath it.
+
+And the one place a hall *does* fit — A at x 8–15, z 21–28 — is the stacks lattice
+itself: 배전반 Q, 후보 지점 4 and 5, 예배실, 등사실 and the aisles between them all sit
+inside that rectangle. Putting a hall there does not add a room to 기록보관소, it deletes
+기록보관소.
+
+**So option 1 costs either a second 개방 공간 piece smaller than 20 × 20 m, or a re-stack
+of the storey footprints.** Both are real work with a design decision inside them, which
+is why this entry ends here rather than in a commit.
+
+### What is honest to doubt here
+
+The measurement grades a **graph**, and the graph's notion of cover is cruder than the
+engine's raycast. `MonsterChaseTests` on baked geometry disagrees with the graph in the
+direction this finding predicts: there, an S-corridor (10 m × 2) yields 3.02 s and
+releases, while a **single corner yields 1.98 s and the player is caught**. The engine
+does not hand out continuous cover; the graph does. So the real building is somewhere
+between 100 % escapable and whatever the geometry says, and nobody has measured the real
+one at scale. That measurement — `MonsterChaseTests` run from every place rather than from
+two hand-picked routes — is the missing instrument, and it is the honest next step before
+anyone rebuilds a storey.
+
+### Pinned by
+
+Nothing yet. It should be: a test asserting that the 개방 공간 share of `FirstMapSketch`
+is inside whatever band the designer picks would fail the moment a storey is re-authored
+past it.
