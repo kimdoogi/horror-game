@@ -1,6 +1,6 @@
 # Project status
 
-Where this game actually stands, on 2026-08-01 06:40.
+Where this game actually stands, on 2026-08-02 01:20.
 
 > New since the last edition, and the shortest path into it:
 > **[OVERNIGHT.md](OVERNIGHT.md)** — what changed overnight, in one page.
@@ -41,6 +41,24 @@ measured chase by a single decimal.**
 > ever lost their voice to it and none can until it is wired.** It is landed here as a
 > tested, unwired subsystem, deliberately and not silently — see [§1.11](#111-the-그늘-is-tested-photographed-and-not-connected-to-anything).
 > Do not read the 660 as evidence that this entity exists in a match.
+
+> ✅ **The player can see their own hands.** They were being drawn correctly all along
+> and measured **3.5 of 255** against a floor at 52.7 — present and invisible. Every
+> render before this was read after a 3× brightness gain, which is exactly the crop that
+> hides it. `PlayerHandFill` puts a 0.62 m point light on the eye and takes them to
+> **31.5**, moving the far floor by 0.2 of 255 and nothing beyond a metre at all, so
+> §03's lock is untouched. See [ART.md](ART.md) — and read the same section for the three
+> things about the arms that are still wrong, which are pose and framing rather than mesh.
+
+> 🟠 **§12's 실전 검증 has never been measuring this map.** `RunnerTest` calls a Runner
+> covered whenever *any* sight-breaking bend is between them and the monster, and the
+> building has 79 bends at a mean spacing of 4.1 m — so cover never lapses and the escape
+> reduces to `12 s × 0.8 m/s ≥ 12 m − aggroStart`, an inequality with no geometry in it.
+> Measured over all 164 places: 3 m gives 0 %, 4 m gives 97 %, and 5~15 m all give 100 %.
+> **No aggro start distance reaches §12's 5~7/10 band.** The lever is the 개방 공간 share
+> (32.3 % today, 65~80 % needed) and it is blocked by B-003's headroom rule — see
+> [BALANCE-FINDINGS F-011](BALANCE-FINDINGS.md#f-011). B-007 and F-007 are one defect and
+> this is it.
 
 > ~~🔴 **Neither art pass is shippable yet, and the renders say so plainly.**~~ **The
 > hands are answered; the 차량 is not.** `gen_player_ai.py` no longer harvests hands
