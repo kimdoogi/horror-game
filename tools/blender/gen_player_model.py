@@ -474,9 +474,113 @@ def build_torso(b: Body) -> None:
              for z, rx, ry, w in rings], seg_mats)
 
 
+def _skull_ring(z: float, rx: float, ry: float, y0: float, sides: int = None,
+                chin: float = 1.5400, crown: float = 1.7500) -> list:
+    """One cross-section of the head, shaped by what is at that height.
+
+    The head this replaced was an egg with a brow, a nose and a jaw stuck to the
+    front of it as separate boxes. Rendered close — which §13 does, in the van, and
+    §09's ghost does, at any range it likes — the boxes read as exactly that: loose
+    dark chunks with shadowed gaps between them where a face should be. The owner
+    called the whole model 허접 three times and this is the part they were looking at.
+
+    A skull is one surface. So this modulates the radius of a single ring by the
+    angle around it, and the brow, the eye sockets, the cheekbones, the nose and the
+    jaw all fall out of the same loop — no seams, no floating rects, and the normals
+    are continuous, which is what makes a beam travel across a face instead of
+    stopping at an edge.
+
+    Angle convention follows `ellipse`: a point sits at ``X·rx·cos a + Y·ry·sin a``
+    and the face looks down −Y, so ``f = −sin a`` is 1 dead ahead and −1 at the back
+    of the head, and ``s = cos a`` is +1 at the right ear.
+    """
+    sides = SIDES_BODY if sides is None else sides
+    # The feature bands below are written against a 1.540~1.750 m head. A caller
+    # whose skull is a different height — gen_player_ai's is 1.572~1.722, because
+    # the helmet takes 34 mm off the crown — maps into that frame rather than
+    # having a second copy of the numbers drift away from this one.
+    z = 1.5400 + (z - chin) * (1.7500 - 1.5400) / max(1e-6, crown - chin)
+    out = []
+    for i in range(sides):
+        a = 2.0 * math.pi * (i + 0.5) / sides
+        f = -math.sin(a)
+        s = math.cos(a)
+        u, v = rx, ry
+        dy = 0.0
+
+        # Brow ridge. A shelf over the eyes is the single strongest read a head has
+        # under a torch held at chest height, because it is the one feature lit from
+        # below rather than washed out.
+        brow = _band(z, 1.6555, 1.6640, 1.6720, 1.6790) * _front(f, 0.15, 0.55)
+        dy -= 0.0085 * brow
+
+        # Eye sockets, inboard of the cheekbone and under the brow.
+        socket = (_band(z, 1.6360, 1.6440, 1.6520, 1.6590)
+                  * _front(f, 0.05, 0.45) * _side(abs(s), 0.22, 0.34, 0.72, 0.86))
+        dy += 0.0075 * socket
+
+        # Cheekbones, which are what stop a head reading as a tube.
+        cheek = _band(z, 1.6100, 1.6220, 1.6340, 1.6440) * _side(abs(s), 0.30, 0.48, 0.86, 0.97)
+        u += 0.0055 * cheek
+
+        # The nose, as part of the surface rather than a box in front of it. Narrow:
+        # only the two or three vertices nearest dead ahead move.
+        nose = _band(z, 1.6080, 1.6260, 1.6480, 1.6560) * _front(f, 0.80, 0.955)
+        dy -= 0.0185 * nose
+
+        # The jaw squares off toward the chin: a rounded rectangle rather than an
+        # ellipse, so there is a corner where a jaw has one.
+        square = _band(z, 1.5400, 1.5620, 1.5900, 1.6120)
+        if square > 0.0:
+            k = 0.55 * square
+            u *= (1.0 - k) + k * (abs(math.cos(a)) ** 0.55 + 0.30)
+            v *= (1.0 - k) + k * (abs(math.sin(a)) ** 0.55 + 0.30)
+
+        # And the chin itself projects.
+        dy -= 0.0075 * _band(z, 1.5380, 1.5520, 1.5700, 1.5860) * _front(f, 0.55, 0.90)
+
+        # The back of the skull is fuller than the front — the ellipse alone puts the
+        # widest point at the ear, and a person's is behind it.
+        dy += 0.0060 * _band(z, 1.6200, 1.6700, 1.7200, 1.7500) * max(0.0, -f) ** 1.4
+
+        out.append(Vector((0.0, y0, z)) + X * (u * math.cos(a)) + Y * (v * math.sin(a) + dy))
+    return out
+
+
+def _band(x: float, a: float, b: float, c: float, d: float) -> float:
+    """Trapezoid: 0 below a, 1 between b and c, 0 above d. The feature envelopes."""
+    if x <= a or x >= d:
+        return 0.0
+    if x < b:
+        t = (x - a) / (b - a)
+        return t * t * (3 - 2 * t)
+    if x <= c:
+        return 1.0
+    t = (d - x) / (d - c)
+    return t * t * (3 - 2 * t)
+
+
+def _front(f: float, lo: float, hi: float) -> float:
+    if f <= lo:
+        return 0.0
+    if f >= hi:
+        return 1.0
+    t = (f - lo) / (hi - lo)
+    return t * t * (3 - 2 * t)
+
+
+def _side(s: float, a: float, b: float, c: float, d: float) -> float:
+    return _band(s, a, b, c, d)
+
+
 def build_neck_head(b: Body) -> None:
-    """Neck, skull, nose and ears. The nose is 12 triangles that tell three teammates
-    which way a head is facing — cheaper than any other cue at that job."""
+    """Neck, skull and ears — one surface for the head, plus two eyes set into it.
+
+    §04 asks three teammates to tell at a glance which way a head is facing. That was
+    a 12-triangle nose; it is now a brow, two sockets, cheekbones, a nose and a jaw
+    carved out of the same shell by `_skull_ring`, which costs about 900 triangles at
+    SIDES_BODY = 32 against a 60,000 budget.
+    """
     neck = [
         (1.44, 0.060, 0.056, {"UpperChest": 1.0}),          # tucked inside the torso
         (1.50, 0.055, 0.052, {"UpperChest": 0.40, "Neck": 0.60}),
@@ -486,35 +590,44 @@ def build_neck_head(b: Body) -> None:
     b.shell([(ellipse((0, -0.004 * i, z), X, Y, rx, ry, SIDES_NECK), w)
              for i, (z, rx, ry, w) in enumerate(neck)], M_SKIN)
 
+    # Chin to crown in fourteen rings. The old head used six and was 0.175 m tall
+    # against the 0.225 m a 1.75 m person's head is; both are fixed here, and the
+    # extra rings are what let the features above have anywhere to land.
     head = [
-        (1.575, -0.020, 0.058, 0.062),
-        (1.615, -0.015, 0.072, 0.082),
-        (1.655, -0.012, 0.079, 0.090),
-        (1.700, -0.008, 0.077, 0.088),
-        (1.735, -0.005, 0.055, 0.062),
-        (1.750, -0.005, 0.026, 0.030),
+        (1.5400, -0.020, 0.030, 0.030),
+        (1.5560, -0.020, 0.044, 0.046),
+        (1.5720, -0.019, 0.055, 0.058),
+        (1.5880, -0.018, 0.062, 0.066),
+        (1.6040, -0.017, 0.068, 0.073),
+        (1.6200, -0.016, 0.072, 0.078),
+        (1.6360, -0.015, 0.075, 0.082),
+        (1.6520, -0.014, 0.077, 0.085),
+        (1.6680, -0.013, 0.078, 0.086),
+        (1.6840, -0.012, 0.077, 0.085),
+        (1.7000, -0.011, 0.073, 0.080),
+        (1.7160, -0.010, 0.065, 0.071),
+        (1.7340, -0.009, 0.048, 0.053),
+        (1.7500, -0.008, 0.020, 0.022),
     ]
-    b.shell([(ellipse((0, y, z), X, Y, rx, ry, SIDES_BODY), {"Head": 1.0})
-             for z, y, rx, ry in head], M_SKIN)
+    b.shell([(_skull_ring(z, rx, ry, y), {"Head": 1.0}) for z, y, rx, ry in head], M_SKIN)
 
-    # Jaw: a short wedge under the front of the skull. Without it the head is an egg,
-    # and an egg reads as a mannequin's head no matter how many sides it has — the
-    # eye finds a jawline long before it finds a nose 12 mm across.
-    b.shell([(rect((0, -0.030, 1.622), X, Y, 0.052, 0.036), {"Head": 1.0}),
-             (rect((0, -0.040, 1.592), X, Y, 0.042, 0.030), {"Head": 1.0}),
-             (rect((0, -0.044, 1.572), X, Y, 0.028, 0.020), {"Head": 1.0})], M_SKIN)
-
-    # Brow: a shelf over the eye line, so the beam catches a hard edge above the nose.
-    b.shell([(rect((0, -0.052, 1.664), X, Y, 0.062, 0.020), {"Head": 1.0}),
-             (rect((0, -0.058, 1.650), X, Y, 0.058, 0.014), {"Head": 1.0})], M_SKIN)
-
-    # Nose: a wedge off the eye line, pointing -Y (forward).
-    b.shell([(rect((0, -0.074, 1.652), X, Z, 0.015, 0.017), {"Head": 1.0}),
-             (rect((0, -0.104, 1.634), X, Z, 0.010, 0.010), {"Head": 1.0})], M_SKIN)
+    # Eyes. Two spheres in Player_Gear, which is the darkest material on the model —
+    # at the ranges §13 and §09 look at a face from, a dark disc in a lit socket is
+    # what an eye is. Anything lighter reads as a doll.
+    for side in (1, -1):
+        cx, cy, cz = side * 0.0295, -0.0480, 1.6470
+        rings = []
+        steps = 7
+        for k in range(1, steps):
+            phi = math.pi * k / steps
+            rings.append((ellipse((cx, cy - 0.0090 * math.cos(phi), cz), X, Z,
+                                  0.0115 * math.sin(phi), 0.0100 * math.sin(phi),
+                                  SIDES_NECK), {"Head": 1.0}))
+        b.shell(rings, M_GEAR)
 
     for side in (1, -1):
-        b.shell([(rect((side * 0.078, 0.004, 1.662), Y, Z, 0.012, 0.022), {"Head": 1.0}),
-                 (rect((side * 0.092, 0.004, 1.660), Y, Z, 0.009, 0.018), {"Head": 1.0})],
+        b.shell([(rect((side * 0.078, 0.004, 1.660), Y, Z, 0.013, 0.024), {"Head": 1.0}),
+                 (rect((side * 0.090, 0.006, 1.658), Y, Z, 0.010, 0.019), {"Head": 1.0})],
                 M_SKIN)
 
 

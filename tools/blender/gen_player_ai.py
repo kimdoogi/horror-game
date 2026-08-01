@@ -1309,40 +1309,47 @@ def build_neck_head(b: gpm.Body) -> None:
     b.shell([(gpm.ellipse((0, -0.004 * i, z), gpm.X, gpm.Y, rx, ry, gpm.SIDES_NECK), w)
              for i, (z, rx, ry, w) in enumerate(neck)], gpm.M_SKIN)
 
+    # Eleven rings instead of six, through gpm._skull_ring rather than a plain
+    # ellipse, so the brow, the cheekbones and the jaw are part of the same surface.
+    # They used to be three rects stuck on the front of an egg, and rendered close —
+    # which §13 does in the van and §09's ghost does at any range it likes — that is
+    # what they looked like: loose dark chunks with shadowed gaps behind them. The
+    # nose band in _skull_ring still fires and is still worth its triangles: the
+    # respirator sits ON the face, so the shape under it decides the mask's outline.
     skull = [
-        (1.572, -0.020, 0.057, 0.061),
-        (1.610, -0.015, 0.070, 0.080),
-        (1.648, -0.012, 0.076, 0.087),
-        (1.686, -0.008, 0.073, 0.083),
-        (1.712, -0.005, 0.050, 0.056),
-        (1.722, -0.005, 0.022, 0.026),
+        (1.5720, -0.020, 0.048, 0.052),
+        (1.5870, -0.019, 0.058, 0.063),
+        (1.6020, -0.018, 0.066, 0.072),
+        (1.6170, -0.017, 0.071, 0.078),
+        (1.6320, -0.016, 0.074, 0.082),
+        (1.6480, -0.014, 0.076, 0.086),
+        (1.6630, -0.013, 0.076, 0.086),
+        (1.6780, -0.012, 0.074, 0.083),
+        (1.6950, -0.010, 0.067, 0.075),
+        (1.7110, -0.007, 0.049, 0.055),
+        (1.7220, -0.005, 0.021, 0.025),
     ]
-    b.shell([(gpm.ellipse((0, y, z), gpm.X, gpm.Y, rx, ry, gpm.SIDES_BODY), {"Head": 1.0})
+    b.shell([(gpm._skull_ring(z, rx, ry, y, chin=1.5720, crown=1.7220), {"Head": 1.0})
              for z, y, rx, ry in skull], gpm.M_SKIN)
-
-    # Jaw: a wedge under the front of the skull. Without it the head is an egg, and an
-    # egg reads as a mannequin however many sides it has.
-    b.shell([(gpm.rect((0, -0.030, 1.618), gpm.X, gpm.Y, 0.050, 0.035), {"Head": 1.0}),
-             (gpm.rect((0, -0.040, 1.590), gpm.X, gpm.Y, 0.041, 0.029), {"Head": 1.0}),
-             (gpm.rect((0, -0.044, 1.572), gpm.X, gpm.Y, 0.027, 0.019), {"Head": 1.0})],
-            gpm.M_SKIN)
-
-    # Brow: a shelf over the eye line, so the beam catches a hard edge and the eyes sit
-    # in shadow. The one piece of face left uncovered, and the one that carries facing.
-    b.shell([(gpm.rect((0, -0.050, 1.658), gpm.X, gpm.Y, 0.060, 0.019), {"Head": 1.0}),
-             (gpm.rect((0, -0.057, 1.645), gpm.X, gpm.Y, 0.056, 0.013), {"Head": 1.0})],
-            gpm.M_SKIN)
 
     # Respirator: a half-mask over nose and mouth with a filter each side. Its outline is
     # what makes a head at 15 m read as a person in equipment rather than as a pale oval.
-    b.shell([(gpm.rect((0, -0.048, 1.618), gpm.X, gpm.Z, 0.052, 0.030), {"Head": 1.0}),
-             (gpm.rect((0, -0.078, 1.616), gpm.X, gpm.Z, 0.048, 0.028), {"Head": 1.0}),
-             (gpm.rect((0, -0.096, 1.612), gpm.X, gpm.Z, 0.034, 0.020), {"Head": 1.0})],
+    #
+    # Moved forward 30 mm on 2026-08-02, when the skull under it stopped being an
+    # ellipse. _skull_ring projects a brow 8.5 mm and a nose 18.5 mm past where the
+    # old egg's surface was, so a mask authored against the egg ended up buried in
+    # the face with only its tip out — three dark fragments floating on a cheek,
+    # which is worse than the three boxes it replaced. The back plate is also wider
+    # now (60 mm against 52) so it meets the cheekbones instead of hovering inboard
+    # of them.
+    b.shell([(gpm.rect((0, -0.078, 1.618), gpm.X, gpm.Z, 0.060, 0.032), {"Head": 1.0}),
+             (gpm.rect((0, -0.108, 1.616), gpm.X, gpm.Z, 0.050, 0.029), {"Head": 1.0}),
+             (gpm.rect((0, -0.126, 1.612), gpm.X, gpm.Z, 0.035, 0.021), {"Head": 1.0})],
             gpm.M_GEAR)
     for side in (1, -1):
-        b.shell([(gpm.rect((side * 0.052, -0.062, 1.612), gpm.Y, gpm.Z, 0.022, 0.021),
+        b.shell([(gpm.rect((side * 0.056, -0.092, 1.612), gpm.Y, gpm.Z, 0.024, 0.022),
                   {"Head": 1.0}),
-                 (gpm.rect((side * 0.078, -0.062, 1.610), gpm.Y, gpm.Z, 0.019, 0.018),
+                 (gpm.rect((side * 0.082, -0.092, 1.610), gpm.Y, gpm.Z, 0.020, 0.019),
                   {"Head": 1.0})], gpm.M_GEAR)
 
     # Helmet: role-coloured, brimmed, with a lamp bracket over the brow.
