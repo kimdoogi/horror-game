@@ -48,6 +48,25 @@ namespace HorrorGame.Audio
         private float _movementNoise;
         private float _transient;
         private float _transientHold;
+        private float _stanceNoiseMultiplier = 1f;
+
+        /// <summary>
+        /// Multiplier on the continuous movement term for the player's posture —
+        /// <c>GameConstants.CrouchNoiseMultiplier</c> while crouched, 1 standing.
+        /// Written by the stance, which is the only thing that knows.
+        /// <para>
+        /// It scales the movement term and nothing else, on purpose. §04's rule is about
+        /// the noise a player <em>makes</em>, and crouching changes how you walk; it does
+        /// not change how loud a door is, or a 조명탄, or the floor arriving under your
+        /// boots at the end of a jump. Those are transients and they are left alone, so
+        /// the free version of §08's 소음기 stays strictly weaker than the bought one.
+        /// </para>
+        /// </summary>
+        public float StanceNoiseMultiplier
+        {
+            get { return _stanceNoiseMultiplier; }
+            set { _stanceNoiseMultiplier = Mathf.Clamp01(float.IsNaN(value) ? 1f : value); }
+        }
 
         /// <summary>
         /// The current level, 0 to 1. The louder of the movement term and any live
@@ -55,7 +74,7 @@ namespace HorrorGame.Audio
         /// you are audible at all, and a running player who also opens a door is not
         /// twice as blind.
         /// </summary>
-        public float Noise01 => Mathf.Clamp01(Mathf.Max(_movementNoise, _transient));
+        public float Noise01 => Mathf.Clamp01(Mathf.Max(_movementNoise * _stanceNoiseMultiplier, _transient));
 
         /// <summary>
         /// True when this player is loud enough to lose the Listener feed. §04.
@@ -167,6 +186,7 @@ namespace HorrorGame.Audio
             _movementNoise = 0f;
             _transient = 0f;
             _transientHold = 0f;
+            _stanceNoiseMultiplier = 1f;
 
             if (isLocalPlayer)
             {

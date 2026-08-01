@@ -6,6 +6,7 @@
         "UnityEditor.TestRunner",
         "HorrorGame.Core",
         "HorrorGame.Gameplay.Player",
+        "HorrorGame.Audio",
         "Unity.InputSystem"
     ],
     "includePlatforms": [],

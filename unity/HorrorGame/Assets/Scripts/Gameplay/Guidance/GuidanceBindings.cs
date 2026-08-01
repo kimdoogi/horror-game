@@ -163,6 +163,8 @@ namespace HorrorGame.Gameplay.Guidance
                 case "Look": return "시점 — 이것이 \"앞\"을 정합니다";
                 case "Sprint": return "달리기 · 주자는 질주";
                 case "Flashlight": return "손전등 on/off";
+                case "Crouch": return "웅크리기 (토글) — 절반 속도, 절반 소음";
+                case "Jump": return "뛰기 — 낮게. 착지 소리가 크다";
                 default: return actionName;
             }
         }

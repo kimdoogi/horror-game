@@ -11,7 +11,12 @@ namespace HorrorGame.Gameplay.Player
     /// <para>
     /// §05's table is short — 마우스 for the view, W/S/A/D relative to it, Shift to run,
     /// F for the flashlight — and this component is the only place in the game that
-    /// knows a key is involved. Everything downstream reads a
+    /// knows a key is involved. Two more actions are bound that §05 does not list,
+    /// <c>Crouch</c> and <c>Jump</c>; <see cref="PlayerStance"/> owns both and its
+    /// remarks carry the argument for why they are allowed to exist at all. They are
+    /// edges here, like <see cref="FlashlightToggled"/>, because <see cref="MoveInput"/>
+    /// is a core type and cannot grow fields for verbs the core does not have.
+    /// Everything downstream reads a
     /// <see cref="MoveInput"/>, which is exactly what the Mirror layer will deserialise
     /// from a client, so local play and networked play feed the same rules through the
     /// same door (ARCHITECTURE §3, §4).
@@ -38,6 +43,8 @@ namespace HorrorGame.Gameplay.Player
         private const string LookStickActionName = "LookStick";
         private const string SprintActionName = "Sprint";
         private const string FlashlightActionName = "Flashlight";
+        private const string CrouchActionName = "Crouch";
+        private const string JumpActionName = "Jump";
 
         [Header("Bindings")]
         [Tooltip("§05's scheme. Left empty, the copy under Gameplay/Player/Resources is loaded.")]
@@ -69,10 +76,14 @@ namespace HorrorGame.Gameplay.Player
         private InputAction? _lookStick;
         private InputAction? _sprint;
         private InputAction? _flashlight;
+        private InputAction? _crouch;
+        private InputAction? _jump;
 
         private MoveInput _moveInput;
         private Vector2 _lookDeltaDegrees;
         private bool _flashlightToggled;
+        private bool _crouchToggled;
+        private bool _jumpPressed;
 
         /// <summary>
         /// This frame's movement intent, already sanitised. Camera-local: §05 makes the
@@ -102,6 +113,22 @@ namespace HorrorGame.Gameplay.Player
         public bool SprintHeld
         {
             get { return _moveInput.SprintHeld; }
+        }
+
+        /// <summary>
+        /// The crouch key went down this frame. An edge, not a level:
+        /// <see cref="PlayerStance"/> makes it a toggle, and its remarks carry the
+        /// argument for toggle over hold.
+        /// </summary>
+        public bool CrouchToggled
+        {
+            get { return _crouchToggled; }
+        }
+
+        /// <summary>The jump key went down this frame. An edge — a held key must not bounce the player.</summary>
+        public bool JumpPressed
+        {
+            get { return _jumpPressed; }
         }
 
         /// <summary>
@@ -156,11 +183,15 @@ namespace HorrorGame.Gameplay.Player
             _lookStick = map.FindAction(LookStickActionName, false);
             _sprint = map.FindAction(SprintActionName, false);
             _flashlight = map.FindAction(FlashlightActionName, false);
+            _crouch = map.FindAction(CrouchActionName, false);
+            _jump = map.FindAction(JumpActionName, false);
 
             WarnIfMissing(_move, MoveActionName);
             WarnIfMissing(_look, LookActionName);
             WarnIfMissing(_sprint, SprintActionName);
             WarnIfMissing(_flashlight, FlashlightActionName);
+            WarnIfMissing(_crouch, CrouchActionName);
+            WarnIfMissing(_jump, JumpActionName);
         }
 
         private void OnEnable()
@@ -175,6 +206,8 @@ namespace HorrorGame.Gameplay.Player
             _moveInput = new MoveInput(0f, 0f);
             _lookDeltaDegrees = Vector2.zero;
             _flashlightToggled = false;
+            _crouchToggled = false;
+            _jumpPressed = false;
         }
 
         private void OnDestroy()
@@ -192,6 +225,8 @@ namespace HorrorGame.Gameplay.Player
                 _moveInput = new MoveInput(0f, 0f);
                 _lookDeltaDegrees = Vector2.zero;
                 _flashlightToggled = false;
+                _crouchToggled = false;
+                _jumpPressed = false;
                 return;
             }
 
@@ -210,6 +245,8 @@ namespace HorrorGame.Gameplay.Player
 
             _lookDeltaDegrees = new Vector2(yaw, _invertLookY ? -pitch : pitch);
             _flashlightToggled = _flashlight != null && _flashlight.WasPressedThisFrame();
+            _crouchToggled = _crouch != null && _crouch.WasPressedThisFrame();
+            _jumpPressed = _jump != null && _jump.WasPressedThisFrame();
         }
 
         private void ApplyCursorState()

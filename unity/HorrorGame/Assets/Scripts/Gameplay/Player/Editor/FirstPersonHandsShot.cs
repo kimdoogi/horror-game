@@ -150,6 +150,12 @@ namespace HorrorGame.Gameplay.PlayerEditor
                 session.Shoot("01_empty_level", "empty hands, level view", torchOn: false);
                 session.Shoot("11_torch_level", "torch in hand, level view", torchOn: true);
 
+                // The two verbs §05's table does not have, from inside. A crouch that
+                // the owner cannot tell they are in is a state they will fight, and a
+                // hop with no camera response reads as a teleport — neither is a thing
+                // an assertion can catch, which is why they are frames.
+                CaptureStance(session);
+
                 // Is the hidden body still casting? Measured, not asserted — see
                 // MeasureShadow.
                 MeasureShadow(session);
@@ -191,6 +197,95 @@ namespace HorrorGame.Gameplay.PlayerEditor
             // §03 says the shadow is worth having.
             session.ShootShadowPair("50_shadow_ahead", "own shadow, facing the clear run", 0f);
             session.ShootShadowPair("51_shadow_behind", "own shadow, facing back", 180f);
+        }
+
+        /// <summary>
+        /// Photographs the two stances §05's control table does not have: crouched still,
+        /// crouched moving, and the top of a hop.
+        /// <para>
+        /// Everything here is driven through the game's own components — the stance
+        /// toggles itself, the motor takes the jump, and <see cref="Session.Shoot"/> poses
+        /// the rig through <c>PlayerAnimatorDriver.Resolve</c>. So the eye height in the
+        /// crouched frames is the one the <c>Crouch</c> clip's <c>HeadCameraAnchor</c>
+        /// gives, and the eye height in the airborne frame is
+        /// <see cref="GameConstants.JumpApexMetres"/> of real controller travel, not a
+        /// camera moved by this file.
+        /// </para>
+        /// </summary>
+        private static void CaptureStance(Session session)
+        {
+            var stance = session.Rig.GetComponent<PlayerStance>();
+            if (stance == null)
+            {
+                Debug.LogWarning("[FirstPersonHandsShot] The built rig has no PlayerStance; "
+                    + "the crouch and jump frames were skipped.");
+                return;
+            }
+
+            session.Motor.Stamina.Reset();
+            session.View.ResetMotion();
+            Settle(session, stance, new MoveInput(0f, 0f, false), 40);
+
+            stance.Crouch();
+            Settle(session, stance, new MoveInput(0f, 0f, false), 40);
+            session.Shoot("60_crouch", "§12 은폐 — crouched, still", torchOn: true, pitch: PlayingPitch);
+            session.Shoot("61_crouch_level", "§12 은폐 — crouched, level view", torchOn: true);
+
+            Settle(session, stance, new MoveInput(1f, 0f, true), 60);
+            session.Shoot("62_crouch_walk", "crouch-walking — Shift is ignored down here",
+                torchOn: true, pitch: PlayingPitch, driveTime: 0.25f);
+
+            if (!stance.TryStand())
+            {
+                Debug.LogWarning("[FirstPersonHandsShot] Could not stand up at the shot spot; "
+                    + "the airborne frame was skipped.");
+                return;
+            }
+
+            Settle(session, stance, new MoveInput(0f, 0f, false), 40);
+
+            // Up to the apex and no further. Stepping until the vertical velocity turns
+            // over is the honest way to find it — it is where the hop actually peaks
+            // rather than where the arithmetic says it should.
+            var floor = session.Rig.transform.position.y;
+            stance.RequestJump();
+
+            var rise = 0f;
+            for (var i = 0; i < 200; i++)
+            {
+                session.Motor.Step(new MoveInput(0f, 0f, false), Step);
+                stance.Tick(Step);
+                session.View.Tick(Step);
+
+                rise = session.Rig.transform.position.y - floor;
+                if (session.Motor.VerticalVelocity <= 0f)
+                {
+                    break;
+                }
+            }
+
+            Debug.Log("[FirstPersonHandsShot] apex reached: " + rise.ToString("0.000", CultureInfo.InvariantCulture)
+                + " m against GameConstants.JumpApexMetres " + GameConstants.JumpApexMetres.ToString(
+                    "0.000", CultureInfo.InvariantCulture)
+                + " and PlayerStepOffsetMetres " + GameConstants.PlayerStepOffsetMetres.ToString(
+                    "0.000", CultureInfo.InvariantCulture)
+                + ". §12: a hop must not reach a ledge walking cannot.");
+
+            session.Shoot("70_airborne", "mid-air at the apex of a hop", torchOn: true, pitch: PlayingPitch);
+
+            // Down again, so nothing after this photographs a player still in the air.
+            Settle(session, stance, new MoveInput(0f, 0f, false), 80);
+        }
+
+        /// <summary>Drives the motor, the stance and the view together for a number of fixed steps.</summary>
+        private static void Settle(Session session, PlayerStance stance, MoveInput input, int steps)
+        {
+            for (var i = 0; i < steps; i++)
+            {
+                session.Motor.Step(input, Step);
+                stance.Tick(Step);
+                session.View.Tick(Step);
+            }
         }
 
         /// <summary>
@@ -252,6 +347,12 @@ namespace HorrorGame.Gameplay.PlayerEditor
             internal PlayerViewMotion View { get; }
 
             internal Camera Camera { get; }
+
+            /// <summary>The rig being photographed. Needed by the stance frames, which drive components this class does not hold.</summary>
+            internal GameObject Rig
+            {
+                get { return _rig; }
+            }
 
             /// <summary>
             /// Sets a §03 state, poses the rig through the same components the game uses,
@@ -382,7 +483,7 @@ namespace HorrorGame.Gameplay.PlayerEditor
                 var burdened = oversize || loadout.SpeedMultiplier <= GameConstants.WeightMulOverloaded;
 
                 var state = PlayerAnimatorDriver.Resolve(
-                    Motor.GroundSpeed, objective, burdened, driver.Crouching, driver.Dead);
+                    Motor.GroundSpeed, objective, burdened, driver.CrouchingNow, driver.Dead);
 
                 var clip = driver.ClipFor(state);
                 var animator = _rig.GetComponentInChildren<Animator>();

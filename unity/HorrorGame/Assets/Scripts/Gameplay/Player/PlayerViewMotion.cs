@@ -62,6 +62,10 @@ namespace HorrorGame.Gameplay.Player
         [SerializeField]
         private PlayerAnimatorDriver? _animator;
 
+        [Tooltip("Supplies the crouch edge and whether the feet left the floor on purpose. Left empty, found on this object. Optional.")]
+        [SerializeField]
+        private PlayerStance? _stance;
+
         [Tooltip("The transform the offset is written to. Left empty, the first camera in children.")]
         [SerializeField]
         private Transform? _cameraTransform;
@@ -89,6 +93,10 @@ namespace HorrorGame.Gameplay.Player
 
         private float _flinchElapsed = float.MaxValue;
         private float _trembleTime;
+
+        private bool _wasCrouched;
+        private float _settleElapsed = float.MaxValue;
+        private float _settleSign;
 
         private Vector3 _translation;
         private Quaternion _rotation = Quaternion.identity;
@@ -166,6 +174,21 @@ namespace HorrorGame.Gameplay.Player
             get { return _flinchElapsed < ViewMotionTuning.FlinchSeconds; }
         }
 
+        /// <summary>
+        /// Whether the body is still absorbing a change of stance. Positive
+        /// <see cref="SettleSign"/> is going down, negative is coming back up.
+        /// </summary>
+        public bool Settling
+        {
+            get { return _settleElapsed < ViewMotionTuning.CrouchSettleSeconds; }
+        }
+
+        /// <summary>+1 while a crouch is being absorbed, −1 while a stand is, 0 between.</summary>
+        public float SettleSign
+        {
+            get { return Settling ? _settleSign : 0f; }
+        }
+
         /// <summary>The offset written to the camera this step, in the pivot's local space, metres.</summary>
         public Vector3 Translation
         {
@@ -215,6 +238,9 @@ namespace HorrorGame.Gameplay.Player
             _landingCooldown = 0f;
             _previousDescent = 0f;
             _flinchElapsed = float.MaxValue;
+            _settleElapsed = float.MaxValue;
+            _settleSign = 0f;
+            _wasCrouched = _stance != null && _stance.IsCrouched;
             _translation = Vector3.zero;
             _rotation = Quaternion.identity;
         }
@@ -243,12 +269,18 @@ namespace HorrorGame.Gameplay.Player
             // in the game. So the flag is taken as sufficient and a genuine descent is
             // taken as the disqualifier, which agrees with it everywhere except the
             // flicker.
-            var onFoot = grounded || descent <= ViewMotionTuning.LandingIgnoredBelowMps;
+            //
+            // A hop is the one case the descent test cannot see: on the way up the
+            // player is not descending at all, so without this the stride would keep
+            // bobbing while the feet are in the air.
+            var jumping = _motor != null && _motor.IsJumping;
+            var onFoot = !jumping && (grounded || descent <= ViewMotionTuning.LandingIgnoredBelowMps);
 
             AdvanceLanding(descent, deltaSeconds);
             AdvanceStride(speed, onFoot, deltaSeconds);
             AdvanceDrag(speed, deltaSeconds);
             AdvanceBreath(deltaSeconds);
+            AdvanceSettle(deltaSeconds);
 
             _flinchElapsed += deltaSeconds;
             _trembleTime += deltaSeconds;
@@ -346,6 +378,7 @@ namespace HorrorGame.Gameplay.Player
         {
             _motor = GetComponent<PlayerMotor>();
             _animator = GetComponent<PlayerAnimatorDriver>();
+            _stance = GetComponent<PlayerStance>();
             var camera = GetComponentInChildren<Camera>();
             _cameraTransform = camera != null ? camera.transform : null;
         }
@@ -361,6 +394,13 @@ namespace HorrorGame.Gameplay.Player
             {
                 _animator = GetComponentInParent<PlayerAnimatorDriver>();
             }
+
+            if (_stance == null)
+            {
+                _stance = GetComponentInParent<PlayerStance>();
+            }
+
+            _wasCrouched = _stance != null && _stance.IsCrouched;
 
             if (_cameraTransform == null)
             {
@@ -505,6 +545,32 @@ namespace HorrorGame.Gameplay.Player
             _previousDescent = descent;
         }
 
+        /// <summary>
+        /// Watches the stance for an edge and starts a settle on it.
+        /// <para>
+        /// An edge and not the blend value, because the two carry different
+        /// information. <c>PlayerStance.Crouch01</c> is where the body <em>is</em>, and
+        /// the animation already moves the eye there through the head bone; what the
+        /// camera owes the player is the moment the decision was taken. The same
+        /// asymmetric impulse the landing and the flinch use, so a crouch reads as a
+        /// reaction rather than as decoration.
+        /// </para>
+        /// </summary>
+        private void AdvanceSettle(float deltaSeconds)
+        {
+            _settleElapsed += deltaSeconds;
+
+            var crouched = _stance != null && _stance.IsCrouched;
+            if (crouched == _wasCrouched)
+            {
+                return;
+            }
+
+            _wasCrouched = crouched;
+            _settleSign = crouched ? 1f : -ViewMotionTuning.StandSettleShare;
+            _settleElapsed = 0f;
+        }
+
         private void AdvanceBreath(float deltaSeconds)
         {
             // §06's bar, inverted: a full bar is a person who has not run yet.
@@ -564,6 +630,13 @@ namespace HorrorGame.Gameplay.Player
                 var shape = Impulse(_landingElapsed / ViewMotionTuning.LandingRecoverSeconds, 0.18f) * landing;
                 vertical -= ViewMotionTuning.LandingDipMetres * shape;
                 pitch += ViewMotionTuning.LandingPitchDegrees * shape;
+            }
+
+            if (Settling)
+            {
+                var shape = Impulse(_settleElapsed / ViewMotionTuning.CrouchSettleSeconds, 0.30f) * _settleSign;
+                vertical -= ViewMotionTuning.CrouchSettleDipMetres * shape;
+                pitch += ViewMotionTuning.CrouchSettlePitchDegrees * shape;
             }
 
             if (Flinching)

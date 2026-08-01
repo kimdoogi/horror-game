@@ -236,6 +236,45 @@ namespace HorrorGame.Gameplay.Player
         public const float LandingRefractorySeconds = 0.12f;
 
         // ====================================================================
+        // Changing stance. The height itself is the animation's job — the
+        // Crouch clip drops the HeadCameraAnchor about 0.41 m and
+        // PlayerCameraRig follows it — so what is left for this file is the
+        // jolt of getting down there and back up.
+        // ====================================================================
+
+        /// <summary>
+        /// How far the eye dips past the crouched pose on the way down, metres.
+        /// <para>
+        /// Deliberately an impulse and not a height. If this held a sustained offset
+        /// it would be a second opinion about where the eye sits, fighting the
+        /// <c>Crouch</c> clip that <c>PlayerCameraRig</c> is already tracking, and
+        /// the two would disagree by whatever the animator happened to be blending.
+        /// Bigger than <see cref="LandingDipMetres"/>×⅓ and smaller than a landing:
+        /// dropping into a crouch is a controlled fall, not an impact.
+        /// </para>
+        /// </summary>
+        public const float CrouchSettleDipMetres = 0.030f;
+
+        /// <summary>Pitch of the same settle, degrees. Down on the way down, up on the way up.</summary>
+        public const float CrouchSettlePitchDegrees = 1.3f;
+
+        /// <summary>
+        /// Seconds the settle takes to spring back. Longer than a landing —
+        /// <see cref="LandingRecoverSeconds"/> — because a knee bend is a slower
+        /// thing than a floor arriving, and because the crouch blend underneath it
+        /// runs for about a tenth of a second and a settle that finished first would
+        /// read as two separate events.
+        /// </summary>
+        public const float CrouchSettleSeconds = 0.30f;
+
+        /// <summary>
+        /// Share of the settle that standing back up gets, against crouching down.
+        /// Under one: pushing a body upright is work rather than a drop, and the
+        /// overshoot at the top is smaller than the give at the bottom.
+        /// </summary>
+        public const float StandSettleShare = 0.6f;
+
+        // ====================================================================
         // §06's stamina bar, made visible without a HUD element.
         // ====================================================================
 

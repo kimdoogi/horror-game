@@ -93,6 +93,151 @@ namespace HorrorGame.Core
         public const float FovMax = 90f;
 
         // ====================================================================
+        // §05 · §12 — 웅크리기 and a hop. Two verbs §05's control table does not
+        // list, and the bounds that stop them changing what §06 and §12 mean.
+        //
+        // §05 names 마우스 · WASD · Shift · F and stops. Neither verb below is in
+        // that table, so none of these numbers is quoted from the design document;
+        // every one of them is *derived* from a rule the document does state, and
+        // the derivation is in the member's own remarks. The rule they all serve is
+        // the same one: §06's chase arithmetic and §12's geometry are both
+        // statements about a player moving along the ground, and a new verb is only
+        // allowed if it leaves both of them saying exactly what they said before.
+        // ====================================================================
+
+        /// <summary>
+        /// Speed multiplier while crouched. §05's 배율표 composes multiplicatively —
+        /// §08 states the rule for its own penalties, "§05 배율에 곱연산으로
+        /// 적용된다" — so this stacks onto the directional multiplier and the carry
+        /// weight rather than replacing either.
+        /// <para>
+        /// Half. §12 asks for 은폐 지점 near the 출입구 for §07's 새벽 stage, and §07
+        /// makes the price of everything the same currency: "시간이 유일한 통화다."
+        /// So concealment is bought with time at the bluntest exchange rate there
+        /// is — a crouched player covers a corridor in twice the seconds. The value
+        /// is checked in <see cref="Validate"/> against §05's own worst row rather
+        /// than asserted on its own: crouching forward has to be slower than 후진,
+        /// the most expensive thing §05's table charges for, or it is not a real
+        /// trade.
+        /// </para>
+        /// </summary>
+        public const float CrouchSpeedMultiplier = 0.50f;
+
+        /// <summary>
+        /// Multiplier on a crouched player's own movement noise, on the 0~1 scale
+        /// <see cref="ListenerSelfNoiseThreshold"/> is quoted against. §04.
+        /// <para>
+        /// §04 prices the 청음사 with one constraint — "자기가 소리를 내면 못
+        /// 듣는다" — and §08 sells a 소음기 for <see cref="ShopCostSuppressor"/> to
+        /// buy out of it. Crouching is the free version of that trade and is
+        /// deliberately weaker than the bought one: it costs half the player's speed
+        /// and it does not silence a door, a landing or anything else
+        /// <c>NoiseMeter</c> raises as a transient. Only the continuous term from
+        /// moving is scaled.
+        /// </para>
+        /// </summary>
+        public const float CrouchNoiseMultiplier = 0.45f;
+
+        /// <summary>
+        /// Crouched standing height as a fraction of the player's own height. §12.
+        /// <para>
+        /// Not chosen — measured off the asset. <c>tools/blender/gen_player_model.py</c>
+        /// fails its own build if the <c>Crouch</c> clip leaves the eye above 1.28 m
+        /// against a 1.635 m standing eye, so the pose the other three players see
+        /// drops about 0.41 m of a 1.75 m body. The collider is sized to agree with
+        /// it: a capsule that crouched deeper than the animation would fit through
+        /// gaps the visible body does not, and §12's 은폐 지점 would then be a
+        /// different size for the person hiding and for the person looking.
+        /// </para>
+        /// </summary>
+        public const float CrouchHeightFraction = 0.75f;
+
+        /// <summary>
+        /// How high the player's own step carries them, metres — the
+        /// <c>CharacterController.stepOffset</c> every rig is built with.
+        /// <para>
+        /// It lives here because §12 depends on it. The map's geometry is derived
+        /// from what a player <em>cannot</em> climb, and a stairwell whose riser
+        /// exceeded this number is the shape of map defect that has already cost
+        /// this project a blocker. A literal in two rig builders and one Blender
+        /// generator is a §12 constraint nobody can grep for.
+        /// </para>
+        /// </summary>
+        public const float PlayerStepOffsetMetres = 0.40f;
+
+        /// <summary>
+        /// Apex of a jump, metres, measured from the floor the player left.
+        /// <para>
+        /// <b>Deliberately below <see cref="PlayerStepOffsetMetres"/>, and that is
+        /// the whole design.</b> A player can already walk up anything 0.40 m or
+        /// less, so a jump that peaks at 0.35 m reaches a strict <em>subset</em> of
+        /// what walking reaches and adds no traversal at all. Everything §12
+        /// assumes a player cannot climb stays unclimbable by construction rather
+        /// than by playtesting: the stairwell riser, the crates, the debris and the
+        /// 차량 are all taller than a step, therefore taller than this.
+        /// </para>
+        /// <para>
+        /// §06's chase arithmetic — 0.8 m/s of gain, 3 s of cover, 12 m of release —
+        /// is arithmetic about ground movement, and <c>MonsterChaseTests</c> measures
+        /// it to 1 %. A hop that cannot mount anything cannot shorten a route, so
+        /// none of those numbers has anything to answer for. It reads as stepping
+        /// over a puddle or a pipe, which is what it is for.
+        /// </para>
+        /// </summary>
+        public const float JumpApexMetres = 0.35f;
+
+        /// <summary>
+        /// Gravity the jump is sized against, m/s². Unity's default magnitude,
+        /// declared so <see cref="JumpTakeoffSpeed"/> and
+        /// <see cref="JumpAirtimeSeconds"/> are arithmetic rather than guesses. The
+        /// engine adapter derives the actual impulse from the actual
+        /// <c>Physics.gravity</c>, so the apex is honoured even if a project setting
+        /// moves it.
+        /// </summary>
+        public const float JumpGravity = 9.81f;
+
+        /// <summary>
+        /// Upward speed, m/s, that reaches exactly <see cref="JumpApexMetres"/>.
+        /// v = √(2gh).
+        /// </summary>
+        public static readonly float JumpTakeoffSpeed = MathF.Sqrt(2f * JumpGravity * JumpApexMetres);
+
+        /// <summary>Seconds a jump spends off the floor, up and back down. 2v/g.</summary>
+        public static readonly float JumpAirtimeSeconds = 2f * JumpTakeoffSpeed / JumpGravity;
+
+        /// <summary>
+        /// Shortest interval between two jumps, seconds.
+        /// <para>
+        /// A cooldown rather than a stamina cost, and the choice is a §04 one: the
+        /// bar belongs to the 주자 alone, so charging a jump to it would price the
+        /// same verb differently for five roles and would spend the twelve seconds
+        /// §06's entire aggro-release calculation is built on. A cooldown costs
+        /// every role the same and touches none of §06's numbers.
+        /// </para>
+        /// <para>
+        /// Sized against <see cref="JumpAirtimeSeconds"/> and checked in
+        /// <see cref="Validate"/>: it is longer than the hop, so there is always a
+        /// grounded beat between two jumps and no chain of them can become a way of
+        /// travelling.
+        /// </para>
+        /// </summary>
+        public const float JumpCooldownSeconds = 0.60f;
+
+        /// <summary>
+        /// Noise a landing raises, on <see cref="ListenerSelfNoiseThreshold"/>'s
+        /// 0~1 scale. §04.
+        /// <para>
+        /// The opposite sign of <see cref="CrouchNoiseMultiplier"/> and the other
+        /// half of the same idea: a jump buys a little height and pays the loudest
+        /// price a body can pay in the one channel §04 charges in. Set above
+        /// <see cref="ListenerSelfNoiseThreshold"/> — checked in
+        /// <see cref="Validate"/> — so a 청음사 who jumps loses their feed for the
+        /// transient, exactly as if they had opened a door.
+        /// </para>
+        /// </summary>
+        public const float PlayerLandingNoiseLevel = 0.65f;
+
+        // ====================================================================
         // §06 — Aggro, stamina, release.
         // ====================================================================
 
@@ -1119,6 +1264,30 @@ namespace HorrorGame.Core
                 "§05: the 45° peek must still out-pace the monster, or the skill ceiling disappears.");
 
             Require(FovMin < FovDefault && FovDefault < FovMax, "§05: the default FOV must sit inside the allowed range.");
+
+            Require(CrouchSpeedMultiplier > 0f && CrouchSpeedMultiplier < 1f,
+                "§05: crouching must cost speed without stopping the player.");
+            Require(WalkSpeed * CrouchSpeedMultiplier < WalkSpeed * MulBackward,
+                "§05: crouching forward must be slower than 후진 65%, the most expensive row in §05's own "
+                + "table — otherwise concealment is cheaper than looking behind you and §12's 은폐 지점 "
+                + "cost nothing.");
+            Require(CrouchNoiseMultiplier > 0f && CrouchNoiseMultiplier < 1f,
+                "§04: crouching is the free 소음기 — it has to be quieter than walking and it must not be "
+                + "silent, or §08 could not sell the bought version.");
+            Require(CrouchHeightFraction > 0f && CrouchHeightFraction < 1f,
+                "§12: a crouch must lower the player without removing them.");
+
+            Require(JumpApexMetres < PlayerStepOffsetMetres,
+                "§12: a jump must not reach a ledge walking cannot already reach. The map's geometry is "
+                + "derived from what a player cannot climb, so the apex has to stay under the step the "
+                + "controller already takes for free.");
+            Require(JumpCooldownSeconds > JumpAirtimeSeconds,
+                "§06: two jumps must be separated by time on the ground. §06's chase arithmetic is about "
+                + "ground movement, and a chain of hops with no grounded beat between them would be a "
+                + "second way to travel.");
+            Require(PlayerLandingNoiseLevel > ListenerSelfNoiseThreshold,
+                "§04: a landing has to cut the 청음사's feed. A jump that is silent is a free verb, and "
+                + "§04 charges for 뛰거나 문을 열면 정보가 끊긴다.");
 
             var gain = (RunnerSprintSpeed - MonsterBaseSpeed) * SprintStaminaSeconds;
             Require(gain < AggroReleaseDistance,

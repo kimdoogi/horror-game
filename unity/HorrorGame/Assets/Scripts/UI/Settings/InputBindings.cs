@@ -494,6 +494,18 @@ namespace HorrorGame.UI.Settings
                 return "손전등";
             }
 
+            if (string.Equals(actionName, "Crouch", StringComparison.Ordinal))
+            {
+                // Named as a toggle because that is what it is, and because a player who
+                // wants hold rebinds it to a key they can hold — which this screen is for.
+                return "웅크리기 (토글)";
+            }
+
+            if (string.Equals(actionName, "Jump", StringComparison.Ordinal))
+            {
+                return "뛰기";
+            }
+
             return string.IsNullOrEmpty(partName) ? actionName : actionName + " · " + partName;
         }
 

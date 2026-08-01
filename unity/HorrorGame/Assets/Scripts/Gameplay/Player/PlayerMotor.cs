@@ -44,6 +44,10 @@ namespace HorrorGame.Gameplay.Player
         [SerializeField]
         private PlayerLoadout? _loadout;
 
+        [Tooltip("Owns 웅크리기 and the hop. Optional — a rig without one stands up and never leaves the floor.")]
+        [SerializeField]
+        private PlayerStance? _stance;
+
         [Header("Role")]
         [Tooltip("§04. Only the Runner's Shift buys 질주 5.6; everyone else gets 달리기 4.5.")]
         [SerializeField]
@@ -57,6 +61,9 @@ namespace HorrorGame.Gameplay.Player
         private float _resolvedSpeed;
         private float _verticalVelocity;
         private Vector3 _worldVelocity;
+        private Vector3 _airHorizontalVelocity;
+        private bool _airborne;
+        private float _descentAtLastStep;
 
         /// <summary>
         /// The Runner's bar (§06). Exposed because the HUD shows it, §05 syncs it, and
@@ -123,7 +130,7 @@ namespace HorrorGame.Gameplay.Player
             get { return new Vector2(_worldVelocity.x, _worldVelocity.z).magnitude; }
         }
 
-        /// <summary>Standing on something. No jump exists — §05's scheme has no key for it.</summary>
+        /// <summary>Standing on something.</summary>
         public bool IsGrounded
         {
             get
@@ -131,6 +138,29 @@ namespace HorrorGame.Gameplay.Player
                 var controller = Controller;
                 return controller != null && controller.isGrounded;
             }
+        }
+
+        /// <summary>
+        /// Off the floor because the player asked to be — <see cref="PlayerStance"/>'s
+        /// hop, not a stairwell or a ledge. What suspends steering; see
+        /// <see cref="Step"/>.
+        /// </summary>
+        public bool IsJumping
+        {
+            get { return _airborne; }
+        }
+
+        /// <summary>Vertical velocity, m/s, up positive. Exposed so a test can watch the hop leave and return.</summary>
+        public float VerticalVelocity
+        {
+            get { return _verticalVelocity; }
+        }
+
+        /// <summary>The stance component, if this rig has one. Null on a bare test capsule.</summary>
+        public PlayerStance? Stance
+        {
+            get { return _stance; }
+            set { _stance = value; }
         }
 
         /// <summary>
@@ -150,6 +180,7 @@ namespace HorrorGame.Gameplay.Player
                 if (_controller == null)
                 {
                     _controller = GetComponent<CharacterController>();
+                    ConfigureController(_controller);
                 }
 
                 return _controller;
@@ -269,6 +300,16 @@ namespace HorrorGame.Gameplay.Player
                 sanitized = new MoveInput(0f, 0f, false);
             }
 
+            if (_stance != null && _stance.IsCrouched)
+            {
+                // Shift is dropped before the rules see it rather than after. §06's ladder
+                // is 걷기 · 달리기 · 질주 and a crouch is none of them, so the base speed
+                // has to come out as 걷기 — and the bar must not be asked for a sprint it
+                // is not going to be paid for, because §06 sizes those twelve seconds by
+                // the distance they cover.
+                sanitized = new MoveInput(sanitized.Forward, sanitized.Strafe, false);
+            }
+
             var context = BuildContext();
             var sprintUnlocked = _role == RoleId.Runner && !context.CarryingObjective && CanSprintUnderLoad();
 
@@ -294,17 +335,116 @@ namespace HorrorGame.Gameplay.Player
             _lastContext = context;
             _resolvedSpeed = SpeedResolver.Resolve(sanitized, context);
 
+            var groundedBefore = controller.isGrounded;
             ApplyGravity(deltaSeconds);
+
+            // The jump is taken after gravity, not before: ApplyGravity's whole job on a
+            // grounded step is to press a step of gravity into the floor, and it would
+            // overwrite an impulse written ahead of it.
+            if (_stance != null && groundedBefore && _stance.ConsumeJump())
+            {
+                // Half a step of gravity taken off the impulse. Integrating v then p — the
+                // order every controller uses — overshoots the true apex by v·Δt/2, which
+                // at 50 Hz measured 0.374 m against §12's 0.350 and at 20 Hz would have
+                // been 0.415, i.e. past PlayerStepOffsetMetres. The bound that keeps the
+                // map's geometry meaningful must not depend on the frame rate, so the
+                // launch speed is corrected instead of the constant being shaved.
+                var gravity = Mathf.Abs(Physics.gravity.y);
+                _verticalVelocity = Mathf.Max(0f, _stance.TakeoffSpeed - (0.5f * gravity * deltaSeconds));
+                _airborne = true;
+                _airHorizontalVelocity = new Vector3(velocity.x, 0f, velocity.z);
+            }
+
+            if (_airborne)
+            {
+                // The fall speed the hop reached, kept as it happens: by the time the
+                // controller reports isGrounded the speed that mattered has already been
+                // thrown away, which is the same reason PlayerViewMotion sizes its landing
+                // dip from the previous frame.
+                var falling = -_verticalVelocity;
+                if (falling > _descentAtLastStep)
+                {
+                    _descentAtLastStep = falling;
+                }
+
+                if (groundedBefore && _verticalVelocity <= 0f)
+                {
+                    // Back on something. Only a hop reports a landing — walking down one
+                    // of §12's seven stairwells must not fire §04's transient on every
+                    // riser, and the player did not choose to make that noise.
+                    _airborne = false;
+                    _airHorizontalVelocity = Vector3.zero;
+
+                    if (_stance != null)
+                    {
+                        _stance.NotifyLanded(_descentAtLastStep);
+                    }
+
+                    _descentAtLastStep = 0f;
+                }
+                else
+                {
+                    // No air control worth the name. §06's chase arithmetic and §12's
+                    // geometry are both about a route walked on the ground; steering in
+                    // mid-air is the property that turns a hop into a movement technique,
+                    // so the horizontal velocity is frozen at whatever left the floor. The
+                    // player can still look — §05 keeps the view and the feet separate,
+                    // and freezing the view would be the "화면이 얼면 조작감 최악" §05
+                    // rejects for §04's Observer.
+                    velocity.x = _airHorizontalVelocity.x;
+                    velocity.z = _airHorizontalVelocity.z;
+                }
+            }
+
             velocity.y = _verticalVelocity;
 
             var before = transform.position;
-            controller.Move(velocity * deltaSeconds);
+            var flags = controller.Move(velocity * deltaSeconds);
             _worldVelocity = (transform.position - before) / deltaSeconds;
+
+            if (_airborne && (flags & CollisionFlags.Sides) != 0)
+            {
+                // Hit something in mid-air: the hop stops pushing.
+                //
+                // This is the second half of keeping §12's geometry meaningful, and it was
+                // found by measurement rather than by reasoning. Zeroing the step offset
+                // for the duration of the hop is not enough on its own, because a capsule
+                // has a rounded bottom: a player pressed against a 0.58 m crate who jumps
+                // 0.35 m gets the bottom sphere level with the crate's top edge, and
+                // collide-and-slide then carries them up and over it. Measured — they
+                // arrived on top of the box and jumped again from there. Dropping the
+                // frozen velocity on contact means a hop into a ledge is a hop into a
+                // ledge: the player stops and falls, which is what §12 assumes about
+                // anything taller than a step.
+                _airHorizontalVelocity = Vector3.zero;
+            }
+        }
+
+        /// <summary>
+        /// Clears <c>CharacterController.minMoveDistance</c>.
+        /// <para>
+        /// Unity ships it at 1 mm and <b>silently discards any step shorter than that</b>,
+        /// which turns into a player who does not move at all when the per-frame distance
+        /// falls under it. §05's slowest speed used to be 걷기 2.0 m/s; it is now a crouch
+        /// at half of that, and §08's 대형 전리품 takes another 30 % off, so the frame rate
+        /// at which the game stops responding halves and halves again. It was measured
+        /// here rather than reasoned about: at batch-mode frame rates a crouched player
+        /// pressing W resolved 1.000 m/s out of the rules and travelled 0.000 m in a
+        /// second, every frame, for five thousand frames.
+        /// </para>
+        /// </summary>
+        private static void ConfigureController(CharacterController? controller)
+        {
+            if (controller != null && controller.minMoveDistance > 0f)
+            {
+                controller.minMoveDistance = 0f;
+            }
         }
 
         private void Awake()
         {
             _controller = GetComponent<CharacterController>();
+            ConfigureController(_controller);
 
             if (_input == null)
             {
@@ -321,6 +461,22 @@ namespace HorrorGame.Gameplay.Player
                 _loadout = GetComponentInChildren<PlayerLoadout>();
             }
 
+            if (_stance == null)
+            {
+                _stance = GetComponent<PlayerStance>();
+            }
+
+            if (_stance == null)
+            {
+                // Added rather than left null, the same way PlayerFootsteps adds its own
+                // AudioSource. Every rig in the game is assembled by
+                // PlayerFeelHarnessMenu.BuildRig, which wires one — but a rig is also
+                // *saved into a scene*, and a scene written before this component existed
+                // is a player with no crouch and no jump, in a build, with 617 green
+                // tests. That is the exact shape of the defect that hid a broken pickup
+                // key for a day, and it costs one AddComponent to make impossible.
+                _stance = gameObject.AddComponent<PlayerStance>();
+            }
         }
 
         private void Reset()
@@ -328,6 +484,7 @@ namespace HorrorGame.Gameplay.Player
             _input = GetComponentInChildren<PlayerInputRouter>();
             _look = GetComponentInChildren<PlayerLook>();
             _loadout = GetComponentInChildren<PlayerLoadout>();
+            _stance = GetComponent<PlayerStance>();
         }
 
         private void Update()
@@ -348,9 +505,17 @@ namespace HorrorGame.Gameplay.Player
             // CarryLoad.Resolve(weight, bag), which has already applied §08's −10% strap
             // penalty; setting the flag here would apply it a second time and quietly cost
             // the player another 10% of every speed in §05's table.
+            //
+            // The stance rides in on the same term, and that is the composition rule
+            // rather than a shortcut. §08 states it for every penalty at once —
+            // "§05 배율에 곱연산으로 적용된다" — and SpeedResolver.ContextMultiplier is
+            // exactly that product. Multiplying the crouch into it puts 웅크리기 on the
+            // same rail as the carry weight, the bag and the objective: it composes with
+            // §05's directional curve instead of being a branch that skips it, so a
+            // player crouching backwards still pays 후진's 65 % on top.
             return new MovementContext(
                 GameConstants.WalkSpeed,
-                load.SpeedMultiplier,
+                load.SpeedMultiplier * StanceMultiplier(),
                 load.CarryingObjective,
                 bagEquipped: false);
         }
@@ -358,6 +523,12 @@ namespace HorrorGame.Gameplay.Player
         private bool CanSprintUnderLoad()
         {
             return ResolveLoad().CanSprint;
+        }
+
+        /// <summary>§05's stance multiplier, or the identity on a rig with no stance component.</summary>
+        private float StanceMultiplier()
+        {
+            return _stance != null ? _stance.SpeedMultiplier : 1f;
         }
 
         private IPlayerLoad ResolveLoad()

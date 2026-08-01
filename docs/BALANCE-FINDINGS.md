@@ -1133,3 +1133,103 @@ changes what "a good map" means.
 `MapValidator`'s `sight-break-spacing` rule and Core's `RunnerTest`. The experiment
 was reverted — `FirstMapSketch.cs` is unchanged — because a recipe that provably
 cannot reach the band should not be applied to four more storeys first.
+
+---
+
+## F-009 · A jump reaches its apex *plus* the free step — §12's climbing constraint is the sum of two numbers, not one
+
+**Sections:** §12 (맵 설계 규칙) × §06 (추격 수치) × §05 (조작과 이동)
+· **Priority:** 🟢 the defect is fixed; the finding is the arithmetic
+· **Status:** closed by measurement, but the *shape* of it is open
+
+§05's control table lists 마우스 · WASD · Shift · F and no jump. One was added
+anyway, so the first question was how high it may go without changing what §12's
+geometry means — the map is derived from what a player **cannot** climb.
+
+### The arithmetic that looked sufficient, and was not
+
+The apex was set at `GameConstants.JumpApexMetres = 0.35 m`, below
+`PlayerStepOffsetMetres = 0.40 m`, on the reasoning that a player already walks up
+anything 0.40 m or shorter — so a 0.35 m hop reaches a strict *subset* of what
+walking reaches and adds no traversal at all.
+
+**That reasoning is wrong, and it is wrong by 0.40 m.** A `CharacterController`
+takes its free step wherever it is, including in mid-air. Measured on a 0.58 m box
+— `Crate`'s own modelled height, `tools/blender/gen_props.py:1654`:
+
+```
+[StanceTest] t=0.28 rise 0.414 at (0.00, 0.51, 0.10)   ← apex, feet 0.35 m up
+[StanceTest] t=0.30 rise 0.654 at (0.00, 0.73, 0.34)   ← standing on the crate
+[StanceTest] t=1.07 rise 1.010 at (0.00, 1.09, 4.65)   ← jumping again from on top of it
+```
+
+**apex 0.35 + step 0.40 = 0.75 m of reachable ledge.** That is above `Crate` (0.58),
+above `Dress_BarrelToppled` (0.62), above `Loot_LargePiece_Chest` (0.73), and exactly
+at the 차량's cargo-deck height (0.750, `gen_props.py:1107`). Every one of them
+became a place to stand.
+
+A second, independent path was measured after the step offset was zeroed: a capsule
+has a rounded bottom, so a player pressed against a ledge and rising past it is
+carried up and over by ordinary collide-and-slide, with no step logic involved at
+all.
+
+### The fix, and the two properties it buys
+
+`PlayerStance` zeroes `stepOffset` for the duration of a hop and restores it on
+landing; `PlayerMotor` drops the frozen horizontal velocity the moment a mid-air
+step reports `CollisionFlags.Sides`. Together they make the constant's claim true
+rather than merely stated, and `PlayerStanceTests.The_hop_cannot_mount_a_ledge_a_walk_cannot`
+fails the build if either is undone.
+
+The apex is also corrected for the integration step — `v₀ − ½gΔt`. Uncorrected it
+measured **0.374 m at 50 Hz and would have been 0.415 m at 20 Hz**, i.e. past
+`PlayerStepOffsetMetres`, which would have made the bound a function of the player's
+frame rate. It now measures 0.349 m
+(`FirstPersonHandsShot`, `-shotTag stance`).
+
+### The chase numbers did not move
+
+Run on the same commit as this entry:
+
+```
+[ChaseTest]   route            189.6 m of NavMesh path
+[ChaseTest]   reached          38.86 s
+[ChaseTest]   closing speed    4.85 m/s of route, against §06's 4.8 m/s
+[ChaseTest]   monster speed    4.80 m/s of corridor, against §06's 4.8 m/s
+[ChaseTest]   gap opened at    0.80 m/s while sprinting, against §06's 0.8 m/s
+[ChaseTest]   caught           12.54 s   (single-corner control)
+```
+
+Identical, to every digit, to the figures in [STATUS.md §1.3](STATUS.md). The
+simulator is likewise unmoved — median 7.2 min, 15.8 % inside §01's window, 33.6 %
+reaching 심야 — and it *cannot* move, because `HorrorGame.Sim` models the objective
+loop and not a controller. **That is the reason this entry exists rather than a
+sentence in a commit message:** a verb that touches §05's table and §06's ladder and
+leaves both numerically identical is a claim that has to be pinned, not assumed.
+
+### What is still open — the 차량's rear ladder
+
+Not caused by the jump, and found while bounding it.
+`tools/blender/gen_props.py:1176` builds four rear rungs at **z = 0.980, 1.380,
+1.780, 2.180 — a pitch of exactly 0.400 m**, which is exactly
+`PlayerStepOffsetMetres`. The deck below them folds to the ground as a 41° ramp
+(`gen_props.py:1141`), under the rig's 50° `slopeLimit`, and `Vehicle` is in
+`AssetImportPolicy.ConcaveProps` so every rung is real per-triangle geometry.
+
+Read as a ladder of steps: ground → ramp → cargo floor 0.750 → 0.980 (+0.23) →
+1.380 (+0.40) → 1.780 (+0.40) → 2.180 (+0.40) → box roof 2.570 (+0.39). **A player
+may already be able to walk onto the roof of the 차량 without jumping**, which would
+put them on top of §01's 안전 지대 · 상점 · 보급소 at 2.94 m.
+
+Measured from the generator source, **not reproduced in-engine** — whether a 40 mm
+bar supports a 0.30 m-radius capsule is a question for PhysX, not for arithmetic.
+The jump does not change the answer either way: 0.35 < 0.40, so every rung that is
+reachable with a hop is reachable without one. Worth an hour of somebody's time and
+one PlayMode test.
+
+### Pinned by
+
+`PlayerStanceTests` (PlayMode, 6 cases, presses the real keys),
+`GameConstants.Validate`'s `JumpApexMetres < PlayerStepOffsetMetres` and
+`JumpCooldownSeconds > JumpAirtimeSeconds`, and `MonsterChaseTests` 4/4 for the
+figures above.

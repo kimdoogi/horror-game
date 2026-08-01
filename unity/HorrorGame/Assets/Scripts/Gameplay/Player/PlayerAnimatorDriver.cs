@@ -45,6 +45,10 @@ namespace HorrorGame.Gameplay.Player
         [SerializeField]
         private PlayerLoadout? _loadout;
 
+        [Tooltip("Drives the Crouch/CrouchWalk clips from the crouch key. Optional — a locker can still set Crouching by hand.")]
+        [SerializeField]
+        private PlayerStance? _stance;
+
         [Header("Clips (Player.fbx)")]
         [SerializeField]
         private AnimationClip? _idle;
@@ -106,11 +110,27 @@ namespace HorrorGame.Gameplay.Player
         }
 
         /// <summary>
-        /// Crouching. §05's control table has no crouch key, so nothing in movement sets
-        /// this — the clips exist for the hiding-spot and clue-reading work, which can
-        /// drive them from outside without this file learning what a locker is.
+        /// Crouching, as set from outside. There is a crouch key now, and a wired
+        /// <see cref="PlayerStance"/> is ORed with this rather than replacing it: the
+        /// clips also serve the hiding-spot and clue-reading work, which drives them
+        /// without this file having to learn what a locker is.
+        /// <para>
+        /// §05 requires the other three players to be able to read what someone is
+        /// doing, so a crouch that changed the collider and the speed but left the
+        /// visible body standing would be the worst of both — a player who looks
+        /// walkable, moves at half speed, and reads to a teammate as nothing at all.
+        /// </para>
         /// </summary>
         public bool Crouching { get; set; }
+
+        /// <summary>
+        /// Whether the pose is crouched this frame, from either source. What
+        /// <see cref="Resolve"/> is actually asked.
+        /// </summary>
+        public bool CrouchingNow
+        {
+            get { return Crouching || (_stance != null && _stance.IsCrouched); }
+        }
 
         /// <summary>§09: dead players play <see cref="PlayerAnimationState.Death"/> and stop being posed by movement.</summary>
         public bool Dead { get; set; }
@@ -214,6 +234,7 @@ namespace HorrorGame.Gameplay.Player
             _animator = GetComponentInChildren<Animator>();
             _motor = GetComponentInParent<PlayerMotor>();
             _loadout = GetComponentInParent<PlayerLoadout>();
+            _stance = GetComponentInParent<PlayerStance>();
         }
 
         private void Awake()
@@ -231,6 +252,11 @@ namespace HorrorGame.Gameplay.Player
             if (_loadout == null)
             {
                 _loadout = GetComponentInParent<PlayerLoadout>();
+            }
+
+            if (_stance == null)
+            {
+                _stance = GetComponentInParent<PlayerStance>();
             }
         }
 
@@ -257,7 +283,7 @@ namespace HorrorGame.Gameplay.Player
                 && (_loadout.CarryingOversizePiece
                     || _loadout.SpeedMultiplier <= GameConstants.WeightMulOverloaded);
 
-            var next = Resolve(speed, carrying, burdened, Crouching, Dead);
+            var next = Resolve(speed, carrying, burdened, CrouchingNow, Dead);
             _state = next;
 
             AdvanceWeights(next, Time.deltaTime);

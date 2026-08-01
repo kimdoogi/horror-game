@@ -4,6 +4,7 @@
     "references": [
         "HorrorGame.Core",
         "HorrorGame.Rendering",
+        "HorrorGame.Audio",
         "Unity.InputSystem"
     ],
     "includePlatforms": [],

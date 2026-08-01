@@ -1404,6 +1404,51 @@ namespace HorrorGame.Tests.EditMode.UI
             }
         }
 
+        /// <summary>
+        /// The settings screen draws one row per <c>InputBindings.Rebindable()</c> entry,
+        /// so a key that is missing here is a key a player cannot move.
+        /// <para>
+        /// §05's table stops at 마우스 · WASD · Shift · F, and 웅크리기 and 뛰기 were added
+        /// on top of it. Both are labelled in §05's own language rather than falling
+        /// through to the raw action name, because a row reading "Crouch" in a Korean
+        /// screen is the kind of thing that ships.
+        /// </para>
+        /// </summary>
+        [Test]
+        public void The_settings_key_list_carries_the_two_controls_section05_does_not_list()
+        {
+            var entries = InputBindings.Rebindable();
+            var labels = new System.Text.StringBuilder();
+            var crouch = default(InputBindings.Entry);
+            var jump = default(InputBindings.Entry);
+
+            for (var i = 0; i < entries.Count; i++)
+            {
+                var entry = entries[i];
+                labels.Append(entry.Label).Append(" = ").Append(entry.KeyText).Append(" · ");
+
+                if (string.Equals(entry.Action.name, "Crouch", StringComparison.Ordinal))
+                {
+                    crouch = entry;
+                }
+                else if (string.Equals(entry.Action.name, "Jump", StringComparison.Ordinal))
+                {
+                    jump = entry;
+                }
+            }
+
+            Assert.That(crouch.Action, Is.Not.Null,
+                "웅크리기 has no rebindable row, so a player who wants it on a key they can hold cannot "
+                + "move it. Rows were: " + labels);
+            Assert.That(jump.Action, Is.Not.Null, "뛰기 has no rebindable row. Rows were: " + labels);
+
+            Assert.That(crouch.KeyText, Is.EqualTo("C"));
+            Assert.That(jump.KeyText, Is.EqualTo("Space"));
+            Assert.That(crouch.Label, Does.Contain("웅크리기"),
+                "the row falls through to the raw action name instead of §05's language: " + crouch.Label);
+            Assert.That(jump.Label, Does.Contain("뛰기"), "same for the jump row: " + jump.Label);
+        }
+
         [Test]
         public void Instantiate_DoesNotCarryBindingOverrides()
         {

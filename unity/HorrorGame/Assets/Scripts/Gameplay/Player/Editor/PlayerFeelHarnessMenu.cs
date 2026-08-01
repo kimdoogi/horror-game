@@ -139,7 +139,11 @@ namespace HorrorGame.Gameplay.PlayerEditor
             controller.radius = RigRadiusMetres;
             controller.center = new Vector3(0f, RigHeightMetres * 0.5f, 0f);
             controller.slopeLimit = 50f;
-            controller.stepOffset = 0.4f;
+
+            // §12 depends on this number: the map's geometry is derived from what a
+            // player cannot climb, and the jump's apex is bounded below it. See
+            // GameConstants.PlayerStepOffsetMetres.
+            controller.stepOffset = GameConstants.PlayerStepOffsetMetres;
 
             var visual = (GameObject)PrefabUtility.InstantiatePrefab(model);
             visual.name = "Visual";
@@ -162,6 +166,10 @@ namespace HorrorGame.Gameplay.PlayerEditor
             body.AddComponent<PlayerInputRouter>();
             var look = body.AddComponent<PlayerLook>();
             body.AddComponent<PlayerLoadout>();
+
+            // Before the motor and the animator: both look for one in Awake, and
+            // AddComponent runs Awake immediately, so this order is the wiring.
+            var stance = body.AddComponent<PlayerStance>();
             var motor = body.AddComponent<PlayerMotor>();
             body.AddComponent<PlayerCameraRig>();
             var flashlight = body.AddComponent<PlayerFlashlight>();
@@ -190,7 +198,10 @@ namespace HorrorGame.Gameplay.PlayerEditor
             // silently moves the eye.
             AssignSerialized(viewMotion, "_motor", motor);
             AssignSerialized(viewMotion, "_animator", animator);
+            AssignSerialized(viewMotion, "_stance", stance);
             AssignSerialized(viewMotion, "_cameraTransform", camera.transform);
+            AssignSerialized(motor, "_stance", stance);
+            AssignSerialized(animator, "_stance", stance);
             AssignClips(animator);
             AssignFootsteps(footsteps);
             AssignControls(body);

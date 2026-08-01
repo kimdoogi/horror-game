@@ -257,7 +257,9 @@ namespace HorrorGame.Gameplay.Player
             controller.radius = 0.3f;
             controller.center = new Vector3(0f, _capsuleHeightMetres * 0.5f, 0f);
             controller.slopeLimit = 50f;
-            controller.stepOffset = 0.4f;
+
+            // §12's climbing constraint, and the ceiling the jump apex is held under.
+            controller.stepOffset = GameConstants.PlayerStepOffsetMetres;
 
             var pivot = new GameObject("PitchPivot").transform;
             pivot.SetParent(body.transform, false);
@@ -276,6 +278,10 @@ namespace HorrorGame.Gameplay.Player
             var look = body.AddComponent<PlayerLook>();
 
             _loadout = body.AddComponent<PlayerLoadout>();
+
+            // Before the motor: PlayerMotor's Awake looks for one, and AddComponent runs
+            // Awake immediately, so the order here is the wiring.
+            body.AddComponent<PlayerStance>();
             _motor = body.AddComponent<PlayerMotor>();
             _cameraRig = body.AddComponent<PlayerCameraRig>();
             body.AddComponent<PlayerFlashlight>();
