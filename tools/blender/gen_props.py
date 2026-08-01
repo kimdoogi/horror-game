@@ -112,6 +112,7 @@ wrong economy row: the weight and value in the report below are read straight of
 
 from __future__ import annotations
 
+import json
 import math
 import os
 import sys
@@ -1924,8 +1925,67 @@ def check_two_person(name: str) -> list[str]:
             f"{margin:.2f} m margin — {passable}"]
 
 
+def write_manifest() -> str:
+    """Writes ``Assets/Models/Props/Props.manifest.json`` — the Unity-side contract.
+
+    **FBX cannot carry a PBR material.** It has a Lambert/Phong slot, so Unity's
+    importer sees a diffuse colour and a shininess and nothing else. Measured on
+    the shipped files: every embedded material arrives at ``metallic 0``, which
+    turns §08's mirror-grade 은수저 into grey plastic and the 반지's gold into
+    beige paint. The values below are the ones the Principled BSDF was actually
+    built with, so the Unity binder can rebuild a URP Lit material that matches
+    what Blender rendered instead of guessing.
+
+    It carries the material table and the prop roster only. Sizes are deliberately
+    absent: Unity can measure the imported mesh, and a number restated in two
+    places is a number that drifts. Same reasoning as
+    ``Dressing.manifest.json``, which this mirrors.
+    """
+    manifest = {
+        "generator": "tools/blender/gen_props.py",
+        "note": ("Material values as authored on the Principled BSDF. FBX loses "
+                 "metallic entirely; the Unity binder rebuilds URP Lit from these."),
+        "materials": [
+            {
+                "name": spec.name,
+                "color": [round(c, 6) for c in spec.color],
+                "roughness": spec.roughness,
+                "metallic": spec.metallic,
+                "emission": spec.emission,
+            }
+            for spec in sorted(MATERIALS.values(), key=lambda s: s.name)
+        ],
+        "props": [
+            {
+                "name": spec.name,
+                "file": spec.name + ".fbx",
+                "category": spec.category,
+                "mount": spec.mount,
+                "note": spec.note,
+            }
+            for spec in SPECS
+        ],
+    }
+
+    path = blendkit.out_path("Props", "Props.manifest.json")
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(manifest, fh, indent=2, ensure_ascii=False)
+        fh.write("\n")
+    print(f"MANIFEST {path} ({len(manifest['materials'])} materials, "
+          f"{len(manifest['props'])} props)")
+    return path
+
+
 def main() -> None:
     argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
+
+    # The manifest is pure data — the two module tables above — so it can be
+    # rewritten without rebuilding 24 meshes. Used when only the Unity binding
+    # changed, which is the common case once the geometry has settled.
+    if "--manifest-only" in argv:
+        write_manifest()
+        return
+
     todo = [s for s in SPECS if not argv or any(a.lower() in s.name.lower() for a in argv)]
     if not todo:
         blendkit.fail(f"no prop matches {argv}")
@@ -1937,6 +1997,8 @@ def main() -> None:
         f"one_hand_span={ONE_HAND_CARRY_SPAN}m",
         "source=NOT_IN_DESIGN_DOC",
     ]))
+
+    write_manifest()
 
     for spec in todo:
         emit(spec)

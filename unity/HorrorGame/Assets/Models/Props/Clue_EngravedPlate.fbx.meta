@@ -3,7 +3,27 @@ guid: f8bb4b3bf8f7c4444ae19b33c754d41d
 ModelImporter:
   serializedVersion: 24300
   internalIDToNameTable: []
-  externalObjects: {}
+  externalObjects:
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Clue_Face
+    second: {fileID: 2100000, guid: 3cc67e63f75f84c65a0a7c86c4de4dcb, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Prop_Brass
+    second: {fileID: 2100000, guid: d74d0e019d0f44f6980a508ede9db060, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Prop_BrassTarnished
+    second: {fileID: 2100000, guid: 5cb176dfa611d484a8e7264a95fdbbff, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Prop_Stone
+    second: {fileID: 2100000, guid: 9b6cf4351485a42f19ffc5136b32f3a7, type: 2}
   materials:
     materialImportMode: 2
     materialName: 0

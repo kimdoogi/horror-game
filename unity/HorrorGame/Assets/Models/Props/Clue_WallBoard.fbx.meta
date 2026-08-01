@@ -3,7 +3,32 @@ guid: 0d1cfc73e80e6407cb96666300f3a914
 ModelImporter:
   serializedVersion: 24300
   internalIDToNameTable: []
-  externalObjects: {}
+  externalObjects:
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Clue_Face
+    second: {fileID: 2100000, guid: 3cc67e63f75f84c65a0a7c86c4de4dcb, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Prop_Iron
+    second: {fileID: 2100000, guid: a704486e3198f44b39357bc3b268260a, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Prop_Mirror
+    second: {fileID: 2100000, guid: 6389bb70ccff24f4e91b08977af5e5a5, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Prop_Paper
+    second: {fileID: 2100000, guid: 6dae28d9dbf854522b595a67ea7f9ed7, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Prop_WoodDark
+    second: {fileID: 2100000, guid: c7cd0e33c90cb49bdb7c3401cd0e9de8, type: 2}
   materials:
     materialImportMode: 2
     materialName: 0

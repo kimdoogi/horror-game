@@ -823,9 +823,11 @@ the price of a mechanic rather than of a picture — see §3.8b.
 
 ## 7. What still needs work
 
-Honest list, worst first — but read **§7.11 first**. It was missing from this page
-entirely until 2026-08-01, it is the most visible defect in the game, and it is the one
-the store page is blocked on.
+Honest list, worst first. **§7.11 is closed** — it was missing from this page entirely
+until 2026-08-01, it was the most visible defect in the game, and the interactables now
+use the models `gen_props.py` had already generated. It is kept here rather than deleted
+because of how it survived review: it looked like a plausible white box in every editor
+screenshot on this page and rendered magenta in the player build.
 
 ### 7.0 The dressing pass's output is not in the saved map
 
@@ -976,40 +978,65 @@ runtime script in a different assembly.
 
 They are also invisible until somebody switches the lights on — §3.13.
 
-### 7.11 Every object the player touches is an untextured white primitive
+### 7.11 Every object the player touches was an untextured white primitive — FIXED
 
-**This is the worst-looking thing in the game and this page had never mentioned it.**
+**This was the worst-looking thing in the game and this page had never mentioned it.**
 It was found by the store pass, which could not avoid it — three of the four trailer
 beats worth cutting are *about* these objects — and filed under
 `docs/store/defects/` rather than here, so the art register never saw it.
 
-`Interactable.CreateProp` builds every interactive object with
+`Interactable.CreateProp` built every interactive object with
 `GameObject.CreatePrimitive` and a self-lit material tinted by colour alone:
 
-| Object | Section | Shape | Evidence |
+| Object | Section | Was | Is now |
 |---|:--:|---|---|
-| 단서 clue | §03 | Quad | `docs/store/defects/S1_clue_prop_is_a_white_square.png` |
-| 목표물 objective | §03 | Capsule | `S3_objective_prop_is_a_white_capsule.png` |
-| 전리품 loot | §08 | Cube | `S4_loot_props_are_white_cubes.png` |
-| 차량 vehicle | §08 | Cube | `S2_surface_vehicle_is_a_white_box.png` |
+| 단서 clue | §03 | Quad | `Clue_LedgerStand`, 1.15 m |
+| 목표물 objective | §03 | Capsule | `Objective`, 0.60 × 0.41 × 0.40 m |
+| 전리품 loot | §08 | Cube | the seven `Loot_*` models, 2.2 cm to 1.63 m |
+| 금고 safe | §08 | Cube | `Safe_Closed`, swapping to `Safe_Open` when it pops |
+| 차량 vehicle | §08 | Cube | `Vehicle`, 2.81 × 2.94 × 6.69 m |
 
-The comment in `CreateProp` explains the emissive material and it is a good reason —
-§03 puts every one of these in the dark, and an unlit prop in an unlit corridor cannot
-be found. The primitive is not defended anywhere; it is placeholder that outlived the
-sentence that would have called it one.
+The evidence captures are still under `docs/store/defects/`; they are now history.
 
-**Why it outranks the rest of this list.** Everything else here is a quality of the
-picture — a hue, a repeat, a shaft. This is a white box in a room built to §3.8a's
-7.5 cm brick courses and dressed with §3.10's contact dirt, and the eye goes to it
-before anything else in the frame. It is also unavoidable: the 차량 is where §01 sends
-the team at the end of **every** round trip, 2.94 times a match, and it is a
-2 m untextured cube. `docs/store/screenshots/01_corridor_and_beam.png` — a frame chosen
-for the store page, not a defect capture — has a glowing white clue quad sitting in the
-middle of the corridor.
+**It was also worse in a build than in the editor, which is why it survived review.**
+`CreatePrimitive` takes its material from `RenderPipelineAsset.defaultMaterial`, and
+URP only answers that in the editor — in a player it returns null and Unity falls back
+to the built-in `Default-Material`, whose `Standard` shader is not in a URP build's
+shader set. Every one of these rendered as a plausible white box in every editor
+screenshot on this page and as Unity's error magenta in the build the owner played.
+Nothing spawned at runtime may resolve a shader by name for the same reason: a shader
+no material asset references is stripped, and `Shader.Find` returns null with no error.
 
-**What it is not.** Not blocked on anything. `MapKitCatalogue` already loads FBX from
-`Assets/Models/Props/`, `gen_props.py` already generates that folder, and §7.9's
-materials work already proved a second pass over generated assets is normal. Four
-props, one generator, one binder change — and it is the single highest-value hour of
-art work in the project, because it is the difference between screenshots that read as
-a game and screenshots that read as a prototype.
+**What it took.** `tools/blender/gen_props.py -- --manifest-only` writes
+`Props.manifest.json` with the values the Principled BSDF was authored with — FBX
+carries no metallic and every one of the 21 prop materials was importing at metallic 0,
+which is why the mirror-grade 은수저 was grey plastic. `PropMaterials` rebuilds them as
+URP Lit assets and remaps the 25 FBX importers; `InteractablePropLibrary`, a
+`ScriptableObject` under `Resources/`, is what puts the models in the build.
+
+**One override of the generator, and it is an art decision.** Prop roughness is floored
+at §7.6's own **0.40**. §05 holds the torch at the eye, so light and view arrive from
+the same direction; loot lying flat on a floor is then seen at a grazing angle and a
+near-mirror throws its whole lobe away from the camera. Measured under the game's beam
+at 2 m: mirror-grade silver spoons (authored roughness 0.16) rendered as a black smudge
+on lit gravel, which is the exact opposite of §08's "눈에 잘 보임 (유혹)". The real fix is
+a reflection probe indoors; until there is one, a metal with nothing to reflect must not
+be a mirror.
+
+**And they light up when the crosshair is on them.** `InteractableHighlight` drives
+`_EmissionColor` through a `MaterialPropertyBlock` — every prop material carries the
+`_EMISSION` keyword with a black colour so the dial exists. The value is 0.10/0.073/0.035
+and it is photographed, not guessed: four times that flattened the 금고 into a
+featureless tan cut-out with its brass dial gone. §03 forbids a HUD marker, so the
+object itself is the only place the cue can live.
+
+**Photographed with `PropShot`**, which frames each prop under the real beam at 2 m and
+5 m from its *surface*:
+
+```bash
+Unity -batchmode -quit -silent-crashes -projectPath unity/HorrorGame \
+  -executeMethod HorrorGame.EditorTools.Props.PropShot.Batch -shotTag props
+```
+
+Run it WITHOUT `-nographics`. It also stands up any model the current seed did not
+place, so the 궤짝 is photographed on a seed that drew the 초상화.

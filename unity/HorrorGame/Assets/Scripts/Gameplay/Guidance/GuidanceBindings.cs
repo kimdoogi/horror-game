@@ -2,7 +2,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Reflection;
 using System.Text;
 using HorrorGame.Gameplay.Interaction;
 using HorrorGame.Gameplay.Player;
@@ -172,27 +171,16 @@ namespace HorrorGame.Gameplay.Guidance
         /// The interact key, read off <c>PlayerInteractor</c> rather than repeated.
         /// <para>
         /// §05 names 마우스 · WASD · Shift · F and nothing else, so the interact key is a
-        /// private constant in the component that binds it — and it is the key a tester
-        /// needs most, because §03's objective, §08's loot and §08's shop all go through
-        /// it. Reflection is the honest option here: the alternative is writing "E" into
-        /// a second file and hoping.
+        /// constant in the component that binds it — and it is the key a tester needs
+        /// most, because §03's objective, §08's loot and §08's shop all go through it.
+        /// This used to reach for it with reflection because it was private; it is now
+        /// public, so the compiler holds the two ends together and a rename cannot
+        /// silently turn this line into "읽지 못함".
         /// </para>
         /// </summary>
         private static string InteractKeyName()
         {
-            var field = typeof(PlayerInteractor).GetField(
-                "InteractKey", BindingFlags.NonPublic | BindingFlags.Static);
-
-            if (field != null && field.IsLiteral)
-            {
-                var raw = field.GetRawConstantValue();
-                if (raw != null)
-                {
-                    return ((Key)(int)raw).ToString();
-                }
-            }
-
-            return "PlayerInteractor.InteractKey (읽지 못함)";
+            return PlayerInteractor.InteractKeyLabel;
         }
     }
 }

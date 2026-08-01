@@ -36,15 +36,13 @@ namespace HorrorGame.Gameplay.Interaction
             get { return _carry; }
         }
 
-        /// <summary>Puts an oversize piece on the floor.</summary>
+        /// <summary>Puts an oversize piece on the floor, at the size §08 needs it to be.</summary>
         public static OversizeLootInteractable Spawn(LootId loot, Vector3 position, Transform? parent)
         {
-            var prop = CreateProp(
-                "OversizeLoot_" + loot,
-                PrimitiveType.Cube,
-                position + (Vector3.up * (PropSize.y * 0.5f)),
-                PropSize,
-                PropColour);
+            // 1.28 m of 궤짝 or 1.63 m of 초상화, against an assumed 1.6 m corridor. The
+            // model is the argument: §08's "두 명이 궤짝을 들고 좁은 통로를 지나는데" only
+            // reads as a decision if the piece visibly does not fit through one.
+            var prop = CreateProp("OversizeLoot_" + loot, PropModels.ForLoot(loot, position), position);
 
             if (parent != null)
             {
@@ -89,6 +87,26 @@ namespace HorrorGame.Gameplay.Interaction
         }
 
         /// <inheritdoc />
+        public override string Action
+        {
+            get
+            {
+                var carry = _carry;
+                return carry != null && carry.IsCarriedBy(CurrentPockets()) ? "내려놓기" : "들기 (2인)";
+            }
+        }
+
+        /// <inheritdoc />
+        protected override bool GlowsWhenTargeted
+        {
+            get
+            {
+                var carry = _carry;
+                return carry == null || !carry.IsCarriedBy(CurrentPockets());
+            }
+        }
+
+        /// <inheritdoc />
         public override void OnPressed(PlayerInteractor by)
         {
             var carry = _carry;
@@ -101,6 +119,7 @@ namespace HorrorGame.Gameplay.Interaction
             if (carry.IsCarriedBy(pockets))
             {
                 Release(by, carry, pockets);
+                SetGlow(false);
                 return;
             }
 
@@ -149,6 +168,7 @@ namespace HorrorGame.Gameplay.Interaction
 
             by.SetOversizeCarry(this, carrying: true);
             AttachTo(by);
+            SetGlow(false);
         }
 
         /// <summary>Lets go without pressing the key — a death, a sale, or the piece being taken away.</summary>
@@ -203,9 +223,12 @@ namespace HorrorGame.Gameplay.Interaction
         private static float GroundedY(Vector3 from)
         {
             // Dropped where the carrier stood, not where their chest was. A raycast
-            // rather than a fixed height so the piece lands on stairs correctly.
+            // rather than a fixed height so the piece lands on stairs correctly, and
+            // the hit point is the answer directly — every generated prop's pivot is on
+            // its own floor plane (gen_props.py's FLOOR mount), so no half-height
+            // correction applies.
             return Physics.Raycast(from + (Vector3.up * DropProbeHeight), Vector3.down, out var hit, DropProbeLength)
-                ? hit.point.y + (PropSize.y * 0.5f)
+                ? hit.point.y
                 : from.y;
         }
 
@@ -215,11 +238,9 @@ namespace HorrorGame.Gameplay.Interaction
             return interactor != null ? interactor.Pockets : null;
         }
 
-        // Rig geometry: how big a chest looks, and how far in front of the chest it is
-        // held. §08 charges for it in weight, not in metres.
-        private static readonly Vector3 PropSize = new Vector3(0.9f, 0.7f, 0.6f);
-        private static readonly Color PropColour = new Color(0.55f, 0.36f, 0.20f);
-        private const float CarryOffset = 0.85f;
+        // How far in front of the chest a carried piece is held. §08 charges for it in
+        // weight, not in metres; the piece's own size comes from the model.
+        private const float CarryOffset = 1.05f;
         private const float DropProbeHeight = 1.0f;
         private const float DropProbeLength = 4.0f;
     }

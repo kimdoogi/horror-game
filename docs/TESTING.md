@@ -97,10 +97,13 @@ python3 -c "import xml.etree.ElementTree as ET,sys; r=ET.parse('/tmp/playmode.xm
 
 ```
 EditMode   total 71 passed 71 failed 0 result Passed
-PlayMode   total 53 passed 53 failed 0 result Passed
+PlayMode   total 55 passed 55 failed 0 result Passed
 ```
 
-**124 of 124 as of 2026-08-01 06:20**, and 575 of 575 with core's 451. Older
+**126 of 126 as of 2026-08-01**, and 577 of 577 with core's 451. PlayMode went 53 → 55
+with `InteractionPickupTests`, which is the first test in the project to drive §08's
+pick-up through the crosshair ray and a real key event rather than calling
+`Interactable.OnPressed` directly. Older
 revisions of this file said EditMode 55 and PlayMode 27, then 70 and 42; all were
 stale. Re-read the XML rather than trusting this line.
 

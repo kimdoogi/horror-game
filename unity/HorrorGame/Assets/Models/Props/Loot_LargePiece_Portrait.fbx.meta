@@ -3,7 +3,27 @@ guid: 8b7e0a8a8445e4d86b281403f9a7c8f9
 ModelImporter:
   serializedVersion: 24300
   internalIDToNameTable: []
-  externalObjects: {}
+  externalObjects:
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Prop_Canvas
+    second: {fileID: 2100000, guid: f86b41dd521104a6ead97f50a975fcc7, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Prop_Gold
+    second: {fileID: 2100000, guid: 67f568de9dee146e5bdf500bd9325f49, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Prop_Paint
+    second: {fileID: 2100000, guid: 1bf301177bf644c5caaa034de86c48d1, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Prop_WoodDark
+    second: {fileID: 2100000, guid: c7cd0e33c90cb49bdb7c3401cd0e9de8, type: 2}
   materials:
     materialImportMode: 2
     materialName: 0

@@ -71,15 +71,11 @@ namespace HorrorGame.Gameplay.Interaction
             get { return _loot; }
         }
 
-        /// <summary>Puts a piece on the floor.</summary>
+        /// <summary>Puts a piece on the floor, in the shape §08 gives its row.</summary>
         public static LootPropInteractable Spawn(LootId loot, Vector3 position, Transform? parent)
         {
             var prop = CreateProp(
-                "Loot_" + loot,
-                PrimitiveType.Cube,
-                position + (Vector3.up * PropLift),
-                Vector3.one * PropSize,
-                PropColour);
+                "Loot_" + loot, PropModels.ForLoot(loot, position), position, PropModels.YawFor(position));
 
             if (parent != null)
             {
@@ -105,6 +101,12 @@ namespace HorrorGame.Gameplay.Interaction
                 var interactor = PlayerInteractor.Active;
                 return LootText.CostOf(_loot, interactor != null ? interactor.Pockets : null);
             }
+        }
+
+        /// <inheritdoc />
+        public override string Action
+        {
+            get { return "집기"; }
         }
 
         /// <inheritdoc />
@@ -136,10 +138,5 @@ namespace HorrorGame.Gameplay.Interaction
             by.Director?.NoteLootTaken();
             Despawn(gameObject);
         }
-
-        // Rig geometry, not balance: how big a silver spoon looks on a floor.
-        private const float PropSize = 0.28f;
-        private const float PropLift = 0.16f;
-        private static readonly Color PropColour = new Color(0.82f, 0.74f, 0.42f);
     }
 }

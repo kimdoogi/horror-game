@@ -3,7 +3,22 @@ guid: c887d32ea9ece4e4bb1ca75843effbf5
 ModelImporter:
   serializedVersion: 24300
   internalIDToNameTable: []
-  externalObjects: {}
+  externalObjects:
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Prop_Brass
+    second: {fileID: 2100000, guid: d74d0e019d0f44f6980a508ede9db060, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Prop_Iron
+    second: {fileID: 2100000, guid: a704486e3198f44b39357bc3b268260a, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Prop_Rust
+    second: {fileID: 2100000, guid: e53c7a95213044a91a558d65f02d579d, type: 2}
   materials:
     materialImportMode: 2
     materialName: 0

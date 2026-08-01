@@ -39,12 +39,7 @@ namespace HorrorGame.Gameplay.Interaction
         /// <summary>Puts a safe against a wall.</summary>
         public static LootSafeInteractable Spawn(Vector3 position, Transform? parent)
         {
-            var prop = CreateProp(
-                "LootSafe",
-                PrimitiveType.Cube,
-                position + (Vector3.up * (PropSize.y * 0.5f)),
-                PropSize,
-                PropColour);
+            var prop = CreateProp("LootSafe", PropModels.SafeClosed, position);
 
             if (parent != null)
             {
@@ -78,6 +73,20 @@ namespace HorrorGame.Gameplay.Interaction
 
                 return "§04 정비공 " + GameConstants.EngineerSafeSeconds.ToString("0.#", CultureInfo.InvariantCulture)
                        + "초 작업 — 누르고 있어야 한다.";
+            }
+        }
+
+        /// <inheritdoc />
+        public override string Action
+        {
+            get
+            {
+                if (_safe.IsEmptied)
+                {
+                    return string.Empty;
+                }
+
+                return _safe.IsOpen ? "문서 꺼내기" : "누르고 있기 — 드릴";
             }
         }
 
@@ -134,6 +143,10 @@ namespace HorrorGame.Gameplay.Interaction
                     break;
 
                 case SafeWorkResult.JustOpened:
+                    // The door is the readout. §04's eight seconds of work end with a
+                    // thing the whole team can see from across the room, which is what
+                    // makes "the Engineer is busy over there" legible without a HUD.
+                    SwapModel(gameObject, PropModels.SafeOpen);
                     Refusal = string.Empty;
                     break;
 
@@ -142,9 +155,5 @@ namespace HorrorGame.Gameplay.Interaction
                     break;
             }
         }
-
-        // Rig geometry: how big a wall safe looks.
-        private static readonly Vector3 PropSize = new Vector3(0.7f, 0.7f, 0.5f);
-        private static readonly Color PropColour = new Color(0.30f, 0.32f, 0.36f);
     }
 }

@@ -3,7 +3,17 @@ guid: 490e42adc2a454a55af7083d95947309
 ModelImporter:
   serializedVersion: 24300
   internalIDToNameTable: []
-  externalObjects: {}
+  externalObjects:
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Prop_BrassTarnished
+    second: {fileID: 2100000, guid: 5cb176dfa611d484a8e7264a95fdbbff, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Prop_Glass
+    second: {fileID: 2100000, guid: e69f2af63ed944b0e9fe1a82ba6d542a, type: 2}
   materials:
     materialImportMode: 2
     materialName: 0

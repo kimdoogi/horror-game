@@ -28,12 +28,10 @@ namespace HorrorGame.Gameplay.Interaction
         /// <summary>Parks the vehicle at the 출입구.</summary>
         public static SurfaceVehicleInteractable Spawn(Vector3 position, Transform? parent)
         {
-            var prop = CreateProp(
-                "SurfaceVehicle",
-                PrimitiveType.Cube,
-                position + (Vector3.up * (PropSize.y * 0.5f)),
-                PropSize,
-                PropColour);
+            // 2.81 x 2.94 x 6.69 m, which is what §08's "안전 지대 + 상점 + 보급소" has to
+            // look like from the far end of the apron. The team returns to it 2.94 times
+            // a match; it was a 2 m box.
+            var prop = CreateProp("SurfaceVehicle", PropModels.Vehicle, position);
 
             if (parent != null)
             {
@@ -67,6 +65,12 @@ namespace HorrorGame.Gameplay.Interaction
         }
 
         /// <inheritdoc />
+        public override string Action
+        {
+            get { return "상점 열기"; }
+        }
+
+        /// <inheritdoc />
         public override void OnPressed(PlayerInteractor by)
         {
             var director = by.Director;
@@ -84,9 +88,5 @@ namespace HorrorGame.Gameplay.Interaction
             director.OpenShopScreen();
             Refusal = string.Empty;
         }
-
-        // Rig geometry: a van at the door.
-        private static readonly Vector3 PropSize = new Vector3(2.0f, 1.8f, 4.2f);
-        private static readonly Color PropColour = new Color(0.32f, 0.34f, 0.30f);
     }
 }

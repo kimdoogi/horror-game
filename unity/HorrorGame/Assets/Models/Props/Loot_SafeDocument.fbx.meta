@@ -3,7 +3,27 @@ guid: dfbe373c080ee49679a11f18c3ed394a
 ModelImporter:
   serializedVersion: 24300
   internalIDToNameTable: []
-  externalObjects: {}
+  externalObjects:
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Prop_Cloth
+    second: {fileID: 2100000, guid: 75959d82634924def99cc8be902df022, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Prop_Leather
+    second: {fileID: 2100000, guid: 4c08d8112d302489db317bee517a850b, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Prop_Paper
+    second: {fileID: 2100000, guid: 6dae28d9dbf854522b595a67ea7f9ed7, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Prop_Wax
+    second: {fileID: 2100000, guid: a47c85756d6314d51b96850f17311844, type: 2}
   materials:
     materialImportMode: 2
     materialName: 0

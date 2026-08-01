@@ -35,12 +35,7 @@ namespace HorrorGame.Gameplay.Interaction
         /// <summary>Places the objective at the site the host drew for this match.</summary>
         public static ObjectivePropInteractable Spawn(Vector3 position, Transform? parent)
         {
-            var prop = CreateProp(
-                "Objective",
-                PrimitiveType.Capsule,
-                position + (Vector3.up * (PropSize.y * 0.5f)),
-                PropSize,
-                PropColour);
+            var prop = CreateProp("Objective", PropModels.Objective, position);
 
             if (parent != null)
             {
@@ -65,6 +60,18 @@ namespace HorrorGame.Gameplay.Interaction
                     ? "§03 양손 사용 — 손전등 불가 · 전리품 불가.   다시 누르면 내려놓는다."
                     : "§03 양손을 쓴다 — 손전등을 들 수 없고, 전리품도 들 수 없다.";
             }
+        }
+
+        /// <inheritdoc />
+        public override string Action
+        {
+            get { return _carried ? "내려놓기" : "들기 (양손)"; }
+        }
+
+        /// <inheritdoc />
+        protected override bool GlowsWhenTargeted
+        {
+            get { return !_carried; }
         }
 
         /// <inheritdoc />
@@ -97,6 +104,7 @@ namespace HorrorGame.Gameplay.Interaction
 
             Attach(by);
             Refusal = string.Empty;
+            SetGlow(false);
         }
 
         /// <summary>Puts it back on the floor without a key press — a death, or the match ending.</summary>
@@ -108,7 +116,10 @@ namespace HorrorGame.Gameplay.Interaction
             }
 
             Detach(by);
-            transform.position = where + (Vector3.up * (PropSize.y * 0.5f));
+
+            // The model's pivot is on its own floor plane (gen_props.py's FLOOR mount),
+            // so the drop point is the answer with no half-height correction.
+            transform.position = where;
         }
 
         /// <summary>Takes it out of the world — it left the building with somebody (§02 목표물 회수).</summary>
@@ -154,9 +165,8 @@ namespace HorrorGame.Gameplay.Interaction
             transform.SetParent(null, worldPositionStays: true);
         }
 
-        // Rig geometry: something two hands are full of.
-        private static readonly Vector3 PropSize = new Vector3(0.45f, 0.45f, 0.45f);
-        private static readonly Color PropColour = new Color(0.55f, 0.78f, 0.72f);
-        private const float CarryOffset = 0.7f;
+        // How far in front of the eye §03's two-handed carry holds it. The size is the
+        // model's own — 0.60 x 0.40 x 0.41 m, as gen_props.py built it.
+        private const float CarryOffset = 0.75f;
     }
 }

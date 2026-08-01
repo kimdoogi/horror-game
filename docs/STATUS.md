@@ -24,7 +24,7 @@ export DOTNET_ROOT="$HOME/.dotnet"; export PATH="$HOME/.dotnet:$PATH"
 
 ## The one-line answer
 
-**575 of 575 tests green (core 451, EditMode 71, PlayMode 53), the standalone IL2CPP
+**577 of 577 tests green (core 451, EditMode 71, PlayMode 55), the standalone IL2CPP
 player starts a match with no exceptions — and the one number this round was set to
 move, the 주자 테스트, did not move. It is still 10/10 TooEasy against §12's 5–7 band.**
 
@@ -410,7 +410,7 @@ onto and a human cannot use one at all. And the built-scene sight-line sampler n
 reports a longest run of **21.2 m** where it used to report **100.0 m**; §3.4 covers
 what is left of that defect.
 
-### 1.9 The full Unity suite — 124 of 124
+### 1.9 The full Unity suite — 126 of 126
 
 Run the two platforms separately and read the XML rather than the exit code.
 **No `-quit`**: the runner is async and exits from its own callback, and `-quit`
@@ -428,14 +428,14 @@ Both exit 0.
 
 ```
 EditMode   total 71 passed 71 failed 0 result Passed
-PlayMode   total 53 passed 53 failed 0 result Passed
+PlayMode   total 55 passed 55 failed 0 result Passed
 ```
 
-**124 of 124, against 112 of 112 last pass.** EditMode 70 → 71 and PlayMode 42 → 53;
+**126 of 126, against 112 of 112 two passes ago.** EditMode 70 → 71 and PlayMode 42 → 55;
 the twelve new cases are the view-motion work — `PlayerViewMotionTests` plus the
 settings-slider coverage in `UiTests`.
 
-**With core's 451, the project total is 575 of 575 green.**
+**With core's 451, the project total is 577 of 577 green.**
 
 Two earlier seams this suite caught, both still worth knowing about:
 

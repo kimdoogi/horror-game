@@ -35,18 +35,15 @@ namespace HorrorGame.Gameplay.Interaction
             get { return _clueId; }
         }
 
-        /// <summary>Hangs a mark at a §12 후보 지점.</summary>
+        /// <summary>Stands a mark at a §12 후보 지점.</summary>
         public static CluePropInteractable Spawn(int clueId, Vector3 position, Transform? parent)
         {
-            // A thin box rather than a quad: a quad's collider is a non-convex mesh,
-            // which Unity refuses to make a trigger, and the crosshair ray in
-            // PlayerInteractor asks for triggers.
-            var prop = CreateProp(
-                "Clue_" + clueId,
-                PrimitiveType.Cube,
-                position + (Vector3.up * PropHeight),
-                new Vector3(PropSize, PropSize, PropThickness),
-                PropColour);
+            // A free-standing lectern rather than the wall board. §03's markers carry a
+            // position and no surface normal, so there is nothing to orient a wall
+            // fitting against, and a board floating a hand's width off nothing is worse
+            // than a stand that needs no wall. Clue_WallBoard and Clue_EngravedPlate
+            // stay generated and unused until a marker carries the wall it belongs to.
+            var prop = CreateProp("Clue_" + clueId, PropModels.Clue, position);
 
             if (parent != null)
             {
@@ -89,11 +86,5 @@ namespace HorrorGame.Gameplay.Interaction
         {
             get { return false; }
         }
-
-        // Rig geometry: a sheet of paper on a wall, at roughly eye height.
-        private const float PropSize = 0.42f;
-        private const float PropThickness = 0.02f;
-        private const float PropHeight = 1.45f;
-        private static readonly Color PropColour = new Color(0.86f, 0.84f, 0.74f);
     }
 }

@@ -100,6 +100,17 @@ namespace HorrorGame.Gameplay.Interaction
             get { return _focus; }
         }
 
+        /// <summary>
+        /// The one prompt this interactor draws. Exposed so the pick-up regression test
+        /// can assert that a targeted piece is actually announced — a working key with
+        /// no prompt is indistinguishable from a missing one, which is how this went
+        /// unnoticed until a human played it.
+        /// </summary>
+        public InteractionPromptScreen? Prompt
+        {
+            get { return _prompt; }
+        }
+
         /// <summary>Points the interactor at a match. Used by the scene builder and by tests.</summary>
         public void Bind(MatchDirector director, PlayerMotor? motor, PlayerLoadout? loadout, PlayerFlashlight? flashlight)
         {
@@ -235,6 +246,13 @@ namespace HorrorGame.Gameplay.Interaction
 
                 _holding = false;
                 _focus = found;
+
+                // §03 forbids a HUD marker, so the object itself is the only place a
+                // "this is what the key will act on" cue can live.
+                if (found != null)
+                {
+                    found.OnFocusGained();
+                }
             }
 
             PushClueContext();
@@ -418,8 +436,31 @@ namespace HorrorGame.Gameplay.Interaction
             prompt.Show(
                 focus.Title,
                 focus.Detail,
+                ActionLine(focus),
                 focus.Refusal,
                 focus.NeedsHold ? focus.HoldProgress01 : -1f);
+        }
+
+        /// <summary>
+        /// The key line for whatever is in the crosshair: the binding, then the verb.
+        /// <para>
+        /// Empty when the thing takes no key at all — §03's marks are read by standing
+        /// still with a beam on them and have no press — because a key drawn on
+        /// something that ignores it teaches the player that the key does not work,
+        /// which is the belief this whole line exists to prevent.
+        /// </para>
+        /// </summary>
+        private static string ActionLine(Interactable focus)
+        {
+            if (!focus.AcceptsKey)
+            {
+                return string.Empty;
+            }
+
+            var verb = focus.Action;
+            return string.IsNullOrEmpty(verb)
+                ? "[" + InteractKeyLabel + "]"
+                : "[" + InteractKeyLabel + "]  " + verb;
         }
 
         /// <summary>
@@ -427,7 +468,16 @@ namespace HorrorGame.Gameplay.Interaction
         /// key is not a documented binding. E is the convention every game in this genre
         /// uses; it is here rather than in <c>GameConstants</c> because a key is not a
         /// balance value.
+        /// <para>
+        /// Public because two other things have to agree with it and neither may guess:
+        /// §14's guidance overlay prints it to playtesters, and the pick-up regression
+        /// test presses it. It used to be private and <c>GuidanceBindings</c> read it by
+        /// reflection, which is a binding that breaks silently when the field is renamed.
+        /// </para>
         /// </summary>
-        private const Key InteractKey = Key.E;
+        public const Key InteractKey = Key.E;
+
+        /// <summary>How the interact key is written on screen and in §14's guidance.</summary>
+        public const string InteractKeyLabel = "E";
     }
 }
