@@ -206,7 +206,9 @@ namespace HorrorGame.EditorTools.Film
                           + " thighBone=" + (thigh != null));
                 for (var k = 0; k < 3; k++)
                 {
+                    BeginFrame();
                     Sample(probe, party[0].clip!, party[0].clip!.length * k / 3f);
+                    EndFrame();
                     Debug.Log("[PartyFilm] t=" + (k / 3f).ToString("0.00")
                               + " LeftUpperLeg local euler "
                               + (thigh != null ? thigh.localEulerAngles.ToString("F2") : "n/a"));
@@ -228,6 +230,7 @@ namespace HorrorGame.EditorTools.Film
                 camera.transform.rotation = Quaternion.Slerp(
                     Quaternion.Euler(spec.cameraEulerFrom.V), Quaternion.Euler(spec.cameraEulerTo.V), t);
 
+                BeginFrame();
                 foreach (var (rig, walker, clip, arms) in party)
                 {
                     rig.transform.position = walker.start.V + dir * (walker.travel * t);
@@ -238,9 +241,6 @@ namespace HorrorGame.EditorTools.Film
                         Sample(rig, clip, ((t * spec.frames / 24f) + walker.phase * cycle) % cycle);
                     }
 
-                    // LateUpdate does not run in edit mode. Without this the footage shows
-                    // the raised first-person pose on all four bodies.
-                    arms?.Apply();
                 }
 
                 if (monster != null)
@@ -252,6 +252,30 @@ namespace HorrorGame.EditorTools.Film
                         var cycle = chase.length <= 0f ? 1f : chase.length;
                         Sample(monster, chase, (t * spec.frames / 24f) % cycle);
                     }
+                }
+
+                // Is the sampled pose still on the skeleton when the camera fires?
+                // The probe above proves Sample() moves the thigh; it does not prove the
+                // pose survives three more Sample() calls and a Render(). If this column
+                // is constant the animation is being reverted and everything upstream is
+                // a red herring.
+                if (f < 8 && party.Count > 0)
+                {
+                    var foot = HorrorGame.Gameplay.Player.PlayerRigBones.Find(
+                        party[0].rig.transform, "LeftFoot");
+                    Debug.Log("[PartyFilm] f" + f
+                              + " LeftFoot world " + (foot != null ? foot.position.ToString("F3") : "n/a")
+                              + " rig " + party[0].rig.transform.position.ToString("F3"));
+                }
+
+                EndFrame();
+
+                // After the sampling block closes, so animation mode does not record these
+                // and revert them on the next frame. LateUpdate never runs in edit mode, so
+                // without this the footage shows the raised first-person pose on all four.
+                foreach (var (_, _, _, arms) in party)
+                {
+                    arms?.Apply();
                 }
 
                 var file = Path.Combine(spec.outputDir,
@@ -288,14 +312,41 @@ namespace HorrorGame.EditorTools.Film
         {
             var animator = rig.GetComponentInChildren<Animator>();
             var target = animator != null ? animator.gameObject : rig;
+            AnimationMode.SampleAnimationClip(target, clip, time);
+        }
 
+        /// <summary>
+        /// Opens one sampling block for the whole frame.
+        /// <para>
+        /// <b>One block per frame, not one per rig.</b> <c>BeginSampling</c> reverts every
+        /// property recorded since the last block before it starts — that is what stops a
+        /// pose accumulating when the Animation window is scrubbed. Wrapping each rig in
+        /// its own pair therefore meant sampling the second body undid the first, and the
+        /// third undid the second: only the last rig sampled held a pose, and the trace
+        /// said so exactly. The left foot's offset from its own hips was identical on
+        /// every frame of an eight-frame run —
+        /// </para>
+        /// <code>
+        ///   f0  foot (40.407, 0.095, 84.359)   rig (40.300, 0.000, 84.350)
+        ///   f7  foot (40.407, 0.095, 82.859)   rig (40.300, 0.000, 82.850)
+        /// </code>
+        /// <para>
+        /// — a body travelling 1.5 m with its legs welded to it. That is the floating the
+        /// owner kept pointing at, and it survived two fixes aimed at the wrong thing.
+        /// </para>
+        /// </summary>
+        private static void BeginFrame()
+        {
             if (!AnimationMode.InAnimationMode())
             {
                 AnimationMode.StartAnimationMode();
             }
 
             AnimationMode.BeginSampling();
-            AnimationMode.SampleAnimationClip(target, clip, time);
+        }
+
+        private static void EndFrame()
+        {
             AnimationMode.EndSampling();
         }
 
