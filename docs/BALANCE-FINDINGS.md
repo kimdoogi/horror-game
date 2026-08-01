@@ -1047,3 +1047,89 @@ F-005 records that Core's own fixture map grades 10/10 TooEasy and always has �
 pinned by `MapTests.SketchMap_PassesTheChecklistAndStillGradesTooEasy`. That is a
 different map from the Unity scene graded here, and it was already TooEasy. What is
 new is that the **Unity** map, which was 7/10 and inside the band, has joined it.
+
+---
+
+## F-008 · §12's escape geometry and §01's match length pull in opposite directions
+
+**Sections:** §12 (실전 검증) × §01 (한 판의 흐름) × §06 (어그로 해제)
+· **Priority:** 🔴 the two cannot both be satisfied by scale · **Status:** open
+
+### The arithmetic, measured
+
+Aggro starts at 10 m (§12's own endorsed row). A sprinting Runner gains 0.8 m/s
+(§06: 5.6 − 4.8). So a bend reached *d* metres along a route holds the sight line for
+
+```
+(10 + 0.143·d) / 4.8  seconds
+```
+
+which crosses §06's 3-second requirement at **d ≈ 31 m**. `RunnerTest` explores 60 m
+of route, so on any route longer than about 31 m **a single bend releases a chase on
+its own**, wherever it sits.
+
+### Why this is a tension and not a bug
+
+The building was enlarged to fix F-006 — matches ending in 2.5 minutes against §01's
+25-35, with three of §07's five threat tiers unreachable. It worked: median match
+length went 2.5 → 7.2 min and 심야 went 1.2% → 33.6%.
+
+The same change took the 주자 테스트 from 7/10 Balanced to **10/10 TooEasy**, because
+longer routes mean more route past the 31 m threshold.
+
+```
+smaller map  →  §12's escape geometry works,  §01's match length does not
+bigger map   →  §01's match length improves,  §12's escape geometry does not
+```
+
+Both rules come from §06's speeds. They were derived separately and never checked
+against each other at scale.
+
+### Spacing cannot resolve it — this was tested
+
+B5 저수조 was rewritten to the spacing rule exactly: bends grouped into clumps under
+the 4.4 m span cap, every clump 15.0 m from its neighbour. The zone's bend count fell
+from 15 to 8, its places from 24 to 19, and it stayed **19/19 escapable**.
+
+A control run widened the zone's 개방 공간 until only two counted bends remained.
+Still **19/19**.
+
+So the lever for 실전 검증 is not spacing. It is **route length and the bend count
+within it** — which is §12's own advice, "시야 차단 지점을 줄인다", and which is the
+thing enlarging the building necessarily increases.
+
+### Two §12 rules also disagree with each other
+
+At exactly 15.0 m spacing — the minimum the rule permits — a bend arrives every 15 m
+of route, which is the worst legal choice for the escape rate. And §12's S자 통로 rule
+*requires* two bends: the first release traced in the experiment came from a two-bend
+clump, where one bend gave 2.53 s and its partner 2.5 m later stretched the window to
+3.05 s.
+
+`SightBreakPointSpanMax` is 4.4 m — `SingleCornerMinDistance` 14.4 less the 10 m
+aggro start — so on a 2.5 m grid a legal 시야 차단 지점 is one bend, or two in adjacent
+cells. The S자 통로 rule then mandates the shape the spacing rule is trying to prevent.
+
+### Options
+
+1. **Raise the aggro start distance in `RunnerTest`.** The 10 m comes from §12's table
+   as the first *reliably survivable* distance, not as a rule about where aggro must
+   begin. Grading a big map from 10 m asks whether escape is possible at the easiest
+   endorsed range, and the answer will always be yes. Grading from 3-5 m — §12's own
+   ❌ and ⚠️ rows — measures the case that actually kills players.
+2. **Make the band scale-aware.** 5-7/10 was written for a 100 × 100 m single-storey
+   map. A five-storey building may deserve a different target, stated as such.
+3. **Shorten routes and accept a shorter match**, reopening F-006.
+4. **Give the monster something that does not decay with distance** — §07's 새벽 tier
+   already says "괴물이 출입구를 안다", and that class of rule is unaffected by how far
+   the Runner can get.
+
+Option 1 is the smallest change and the most honest: the current measurement asks an
+easy question and gets an easy answer. It is still a design decision, because it
+changes what "a good map" means.
+
+### Pinned by
+
+`MapValidator`'s `sight-break-spacing` rule and Core's `RunnerTest`. The experiment
+was reverted — `FirstMapSketch.cs` is unchanged — because a recipe that provably
+cannot reach the band should not be applied to four more storeys first.
