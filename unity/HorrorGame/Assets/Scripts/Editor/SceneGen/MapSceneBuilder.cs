@@ -90,6 +90,7 @@ namespace HorrorGame.EditorTools.SceneGen
             var surfaces = SurfaceAssets.Create();
 
             var root = new GameObject(MapRootName);
+            var shafts = ShaftCells(map);
             var zoneRoots = new GameObject[map.ZoneRects.Length];
             var zoneTileRoots = new GameObject[map.ZoneRects.Length];
             var zoneLightRoots = new GameObject[map.ZoneRects.Length];
@@ -103,8 +104,8 @@ namespace HorrorGame.EditorTools.SceneGen
 
                 var floorRoot = Child(zoneRoots[i], "Floor");
                 var ceilingRoot = Child(zoneRoots[i], "Ceiling");
-                BuildFloorSlab(floorRoot, rect, surfaces);
-                BuildCeilingCaps(ceilingRoot, rect, map, surfaces);
+                BuildFloorSlab(floorRoot, rect, shafts, surfaces);
+                BuildCeilingCaps(ceilingRoot, rect, map, shafts, surfaces);
 
                 // Neither of these is anywhere you can walk, and both used to be baked
                 // as if they were. The slab is poured across the zone's whole rectangle
@@ -292,7 +293,8 @@ namespace HorrorGame.EditorTools.SceneGen
         // Floors — §12 청음사. "구역별로 바닥 재질이 달라야 청음사가 위치를 판별할 수 있다."
         // ====================================================================
 
-        private static void BuildFloorSlab(GameObject parent, MapZoneRect rect, SurfaceAssets surfaces)
+        private static void BuildFloorSlab(
+            GameObject parent, MapZoneRect rect, HashSet<MapCell> shafts, SurfaceAssets surfaces)
         {
             var piece = MapKitCatalogue.FloorTileFor(rect.Floor);
             var step = Mathf.RoundToInt(MapKitCatalogue.FloorTileMetres / MapKitCatalogue.GridMetres);
@@ -301,6 +303,14 @@ namespace HorrorGame.EditorTools.SceneGen
             {
                 for (var z = rect.CellZ; z < rect.CellZ + rect.CellsZ; z += step)
                 {
+                    // A slab poured at this storey's floor level lands 0.01 m under the
+                    // head of any 계단 climbing into it, which is a lid on the stairs.
+                    // See SealsAShaft — this is the player half of B-001.
+                    if (SealsAShaft(shafts, rect.Level + 1, x, z, step))
+                    {
+                        continue;
+                    }
+
                     var go = Place(piece, parent, 0f);
                     if (go == null)
                     {
@@ -336,7 +346,8 @@ namespace HorrorGame.EditorTools.SceneGen
         /// </para>
         /// </summary>
         private static void BuildCeilingCaps(
-            GameObject parent, MapZoneRect rect, MapSketchResult map, SurfaceAssets surfaces)
+            GameObject parent, MapZoneRect rect, MapSketchResult map,
+            HashSet<MapCell> shafts, SurfaceAssets surfaces)
         {
             // Level 0 is the top storey; what is above it is the building, which is
             // not this generator's problem.
@@ -357,6 +368,14 @@ namespace HorrorGame.EditorTools.SceneGen
                         continue;
                     }
 
+                    // A cap goes exactly where the storey above's floor slab would
+                    // have gone, so it seals a 계단 rising out of *this* storey for
+                    // exactly the same reason and at exactly the same height.
+                    if (SealsAShaft(shafts, rect.Level, x, z, step))
+                    {
+                        continue;
+                    }
+
                     var go = Place(piece, parent, 0f);
                     if (go == null)
                     {
@@ -373,6 +392,81 @@ namespace HorrorGame.EditorTools.SceneGen
                     Finish(go, FloorMaterial.Concrete, surfaces);
                 }
             }
+        }
+
+        /// <summary>
+        /// The grid cells every 계단 rises through, keyed by the storey the shaft
+        /// itself stands on.
+        /// <para>
+        /// <see cref="MapKitPiece.StairwellMetal"/> is two cells square and climbs a
+        /// whole <see cref="MapKitCatalogue.StoreyMetres"/>, so a shaft standing on
+        /// level L has its head, its top landing and its upper dock inside level L−1.
+        /// Nothing may be poured at that height across those cells.
+        /// </para>
+        /// </summary>
+        private static HashSet<MapCell> ShaftCells(MapSketchResult map)
+        {
+            var cells = new HashSet<MapCell>();
+            var span = Mathf.RoundToInt(MapKitCatalogue.FloorTileMetres / MapKitCatalogue.GridMetres);
+
+            foreach (var tile in map.Tiles)
+            {
+                if (tile.Piece != MapKitPiece.StairwellMetal)
+                {
+                    continue;
+                }
+
+                for (var dx = 0; dx < span; dx++)
+                {
+                    for (var dz = 0; dz < span; dz++)
+                    {
+                        cells.Add(new MapCell(tile.Origin.X + dx, tile.Origin.Z + dz, tile.Origin.Level));
+                    }
+                }
+            }
+
+            return cells;
+        }
+
+        /// <summary>
+        /// Whether a plate covering the tile at <paramref name="cellX"/>,
+        /// <paramref name="cellZ"/> would lie across the head of a 계단 standing on
+        /// <paramref name="shaftLevel"/>.
+        /// <para>
+        /// This is B-001 measured against the other body, and it is the reason a
+        /// player could not leave the entrance storey of a map that audited at
+        /// 1830/1830 with one island. The zone floor slabs and the ceiling caps are
+        /// already kept out of the NavMesh bake — <see cref="KeepOutOfNavMeshBake"/>,
+        /// and the comment there says in as many words that they lie "0.16 m under the
+        /// landing they seal off". What was fixed then was the bake. The
+        /// <see cref="MeshCollider"/> stayed, so the monster walked down a stair that
+        /// was, to a <see cref="CharacterController"/>, floored over 0.01 m below its
+        /// top landing. Every gate in the project reads the surface the monster paths
+        /// on; none of them touched the surface a player stands on.
+        /// </para>
+        /// <para>
+        /// So the plate is not poured at all rather than merely excluded from the bake.
+        /// Over the shaft's own footprint nothing is lost: the 계단 is a fully enclosed
+        /// piece with its own floor, walls and ceiling, and a stairwell is supposed to
+        /// be a hole between two storeys. <see cref="PlayerTraversal"/> is the check
+        /// that keeps it that way.
+        /// </para>
+        /// </summary>
+        private static bool SealsAShaft(
+            HashSet<MapCell> shafts, int shaftLevel, int cellX, int cellZ, int step)
+        {
+            for (var x = cellX; x < cellX + step; x++)
+            {
+                for (var z = cellZ; z < cellZ + step; z++)
+                {
+                    if (shafts.Contains(new MapCell(x, z, shaftLevel)))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
         }
 
         /// <summary>

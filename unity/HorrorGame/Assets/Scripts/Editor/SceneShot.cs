@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using HorrorGame.EditorTools.SceneGen;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -167,6 +168,44 @@ namespace HorrorGame.EditorTools
                 var zb = ComputeBounds(zone.gameObject);
                 var eye = ClearStandingSpot(new Vector3(zb.center.x, zb.min.y + 1.63f, zb.center.z));
                 views.Add(new View(zone.name, eye, new Vector3(14f, OpenestBearing(eye), 0f)));
+            }
+
+            // Both ends of a 계단, at eye height, looking along the climb.
+            //
+            // Every other view in this set is of a floor. A stairwell is the only piece
+            // that joins two of them, it is the piece a player is most likely to be
+            // unable to use, and — until PlayerTraversal existed — the only way to find
+            // that out was to play the game. A picture of the flight from the head and
+            // from the foot is the cheapest possible second opinion: a lid across the
+            // top of the shaft, a landing that does not meet the flight, or a riser
+            // that reads as a wall are all visible in one frame and none of them are
+            // visible in a number.
+            var shaft = all.FirstOrDefault(t =>
+                t.name.StartsWith("StairwellMetal", StringComparison.OrdinalIgnoreCase));
+            if (shaft != null)
+            {
+                Debug.Log("[SceneShot] 계단 views taken at " + shaft.name);
+            }
+
+            if (shaft != null)
+            {
+                var sb = ComputeBounds(shaft.gameObject);
+
+                // The piece carries both docks on one edge — the lower flight's foot
+                // and the upper flight's head are both against the -Z wall, one storey
+                // apart — so both cameras stand a little inside that wall and look
+                // along +Z into the shaft.
+                // Both cameras stand in the approach — the strip of level floor between
+                // the wall and the first riser — rather than on the flight itself. A
+                // camera a metre up the stairs is inside the treads and renders a wall
+                // of checker plate, which is exactly the picture this view exists to
+                // tell apart from a real one.
+                var foot = new Vector3(sb.min.x + 1.25f, sb.min.y + 0.15f + 1.63f, sb.min.z + 0.30f);
+                views.Add(new View("stair_foot", foot, new Vector3(-6f, 0f, 0f)));
+
+                var head = new Vector3(sb.min.x + 3.75f,
+                    sb.min.y + 0.15f + MapKitCatalogue.StoreyMetres + 1.63f, sb.min.z + 0.30f);
+                views.Add(new View("stair_head", head, new Vector3(32f, 0f, 0f)));
             }
 
             if (spawns.Length == 0)

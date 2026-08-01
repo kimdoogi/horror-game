@@ -159,10 +159,57 @@ The monster paths through the NavMesh. A fragmented surface produces no error �
 agent walks to the end of a partial path and stops, which reads as bad AI. This once
 cost the game its antagonist entirely; see `docs/BLOCKERS.md` B-001.
 
-Note it is necessary and not sufficient: the audit asks `CalculatePath`, while the
-monster walks `NavMeshPath.corners` one at a time. Those are different questions, and
-a `NavMeshLink` answers the first without the second. That is why the chase test in
-§4 above exists — run both.
+Note it is necessary and not sufficient, in **two** directions. The audit asks
+`CalculatePath`, while the monster walks `NavMeshPath.corners` one at a time; those are
+different questions and a `NavMeshLink` answers the first without the second, which is
+why the chase test in §4 above exists. And the whole of this section measures **one of
+the game's two actors**. The other one is §4c, and it is not optional — the NavMesh
+audit has already reported 1830/1830 with one island for a building a player could not
+leave the ground floor of. Run all three.
+
+### 4c · Player reachability — the check that keeps the *level* playable
+
+```bash
+/Applications/Unity/Hub/Editor/6000.3.21f1/Unity.app/Contents/MacOS/Unity -batchmode -quit -nographics -projectPath /Users/doogi/horror-game/unity/HorrorGame -executeMethod HorrorGame.EditorTools.PlayerReachAudit.AuditBatch -auditScene Assets/Scenes/Map_FirstSketch.unity -logFile /tmp/reach.log
+```
+
+```
+storeys 6/6 · 후보 지점 15/15 · 전리품 41/41 · player spawns 4/4 · 계단 9/9 walked end to end
+tallest climb 0.313 m · tightest headroom 2.38 m
+```
+
+**There are two bodies in this game and they are not the same size.** The NavMesh agent
+this project bakes climbs `agentClimb` 0.75 m and stands 2.00 m. The player's
+`CharacterController` climbs `stepOffset` 0.40 m and stands 1.75 m. Every surface
+between those numbers is a route only the antagonist can take, and §4b cannot see one:
+Recast erodes a walkable *region*, it does not carry a body, so it neither climbs like
+a player nor is as wide as one nor is as tall as one.
+
+This check sweeps the real capsule — read off `PlayerFeelHarnessMenu.BuildRig()` rather
+than restated, so it follows the controller if anyone retunes it — outward from the
+출입구 using `Physics` casts, and answers the only question that matters: can a person
+get from the door to every storey, every §12 후보 지점 and every §08 전리품 spawn? It
+never consults the NavMesh, because the entire point is that the two disagree. It also
+reports headroom, which fails identically and just as silently: a beam at 1.60 m stops
+a 1.75 m capsule dead and bakes a perfectly good agent surface underneath itself.
+
+`MapSceneGenerator.Generate` gates on it — after §12's checklist and after §4b's audit —
+so a map a player cannot walk cannot reach disk. When it fails it names the first
+blocking surface, its height and the object:
+
+```
+계단 0/9 walked end to end
+  StairwellMetal_L1_15_30  climbs -3.75 → 0.00 m; the player covered 0.00 m of it
+  (14 places, 0.15 → 0.15); stopped by a 0.63 m step at (41.25, 0.15, 97.75)
+```
+
+**Do not fix a failure by raising `stepOffset`.** §12's escape geometry is derived from
+what a player *cannot* climb; a player who can step 0.65 m can climb crates, walk up
+debris and mount the van. Fix the geometry — `build_stairwell` in
+`tools/blender/gen_mapkit.py` holds the 계단 to the player's capsule as well as to the
+agent's, and `design_checks` there fails at export rather than here.
+
+See `docs/BLOCKERS.md` B-008 for what this was written after.
 
 ### 5 · Asset import settings — the check that keeps a role alive
 

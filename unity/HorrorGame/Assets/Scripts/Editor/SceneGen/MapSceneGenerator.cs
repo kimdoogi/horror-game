@@ -168,6 +168,22 @@ namespace HorrorGame.EditorTools.SceneGen
                 return false;
             }
 
+            // The third gate, and the one the first two structurally cannot be. Both of
+            // them measure the monster: §12's checklist is a graph the monster's chase
+            // is derived from, and the connectivity audit walks the surface the monster
+            // is baked onto. Neither has ever asked whether a *player* can walk the
+            // building, and the two bodies are not the same — agentClimb is 0.75 m and
+            // stepOffset is 0.40 m, so every riser between them is a stair only the
+            // antagonist can use. A map can score 1830/1830 with one island while a
+            // human is locked on the entrance storey, which is exactly what shipped.
+            var reach = PlayerTraversal.Audit(scene);
+            if (!reach.Passed)
+            {
+                message = "The map built and §06's monster can use it, but a player cannot, so nothing was "
+                    + "written.\n" + reach.Describe();
+                return false;
+            }
+
             if (!EditorSceneManager.SaveScene(scene, SceneGenPaths.MapScene))
             {
                 message = "Built the map but could not save it to " + SceneGenPaths.MapScene + ".";
@@ -180,7 +196,8 @@ namespace HorrorGame.EditorTools.SceneGen
             message = "Wrote " + SceneGenPaths.MapScene + " from seed " + seed + ".\n"
                 + quality.Describe()
                 + Summarise(map)
-                + connectivity.Describe();
+                + connectivity.Describe()
+                + reach.Describe();
             return true;
         }
 

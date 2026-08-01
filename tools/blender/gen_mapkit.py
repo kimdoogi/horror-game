@@ -204,6 +204,21 @@ NAV_AGENT_RADIUS = 0.50
 NAV_AGENT_HEIGHT = 2.00
 NAV_AGENT_CLIMB = 0.75
 PLAYER_STEP_OFFSET = 0.40
+PLAYER_RADIUS = 0.30
+PLAYER_HEIGHT = 1.75
+"""The other half of the player's body, and the half this kit used to ignore.
+
+``PLAYER_STEP_OFFSET`` alone certifies a stair nothing can walk. A capsule does not
+occupy a point: standing on a tread with its feet at the tread's surface, its widest
+relevant section is at the height of the *next* tread, where a sphere of radius
+``PLAYER_RADIUS`` is ``PLAYER_TREAD_REACH`` metres across from the centre. If the
+going is narrower than that, there is no position on the tread where the capsule is
+not inside the step above, and the stair is unwalkable however low its risers are.
+
+The NavMesh agent has no such problem, because Recast does not simulate a body: it
+erodes a walkable region by ``NAV_AGENT_RADIUS`` and the stepped surface stays
+connected. That difference is why a 계단 can bake at 100 % and still be a wall to a
+player, and why both numbers now appear in ``design_checks``."""
 
 
 # ── 계단 — the dimensions B-001 turned out to be about ───────────────────────
@@ -220,24 +235,70 @@ PLAYER_STEP_OFFSET = 0.40
 # steeper riser leave 2.05 m, which erodes to a clear metre: one whole agent wide,
 # which is the rule ``design_checks`` now holds the piece to.
 STAIR_FLIGHTS = 2
-STAIR_STEPS = 8
-STAIR_GOING = 0.30
+STAIR_STEPS = 6
+STAIR_GOING = 0.38
 STAIR_RISE = STOREY / (STAIR_FLIGHTS * STAIR_STEPS)
-"""0.234375 m. Under both PLAYER_STEP_OFFSET and NAV_AGENT_CLIMB, which is what
-makes the treads themselves walkable without a ramp hidden underneath them."""
+"""0.3125 m. Under both PLAYER_STEP_OFFSET and NAV_AGENT_CLIMB, which is what makes
+the treads themselves walkable without a ramp hidden underneath them.
+
+It used to be 0.2344 m across eight treads a flight, and that was the wrong number to
+optimise. A shallower riser is worthless if the going that comes with it is narrower
+than the body climbing it: eight treads cost 2.40 m of run at 0.30 m each, and 0.30 m
+of going is less than ``PLAYER_TREAD_REACH``, so there was no place on any tread where
+the player's capsule was not standing inside the step above. Six treads at a steeper
+riser buy 0.08 m of going back per tread out of the same run, which is the difference
+between a stair the player can use and one only the monster can."""
+
+STAIR_NOSE_W = 0.055
+"""Depth of the nosing band on a tread.
+
+It sits *on* the tread and no longer overhangs the riser below it. A 25 mm overhang is
+what a real metal stair has and it cost 25 mm of the only clearance that matters —
+it lies at exactly the height a climbing capsule is widest, so every millimetre of it
+comes straight off ``PLAYER_TREAD_CLEAR``. The band still reads as a nosing in a beam,
+which is the whole of what §12 wants from it."""
 
 STAIR_RUN = STAIR_STEPS * STAIR_GOING
-STAIR_APPROACH = 0.40
-"""First riser's Y, measured from the piece origin — so 0.25 m of clear floor once
+STAIR_APPROACH = 0.52
+"""First riser's Y, measured from the piece origin — so 0.37 m of clear floor once
 WALL_T is taken off. It is the top landing as well as the bottom approach: the two
 flights share a Y range, so the strip in front of the lower flight is the strip
-behind the upper one. It can be this shallow because neither end of the stair turns
-— both docks are on the same wall as the flight that meets them, so the climb
-arrives facing its own doorway and walks straight out. Only the mid-landing turns,
-and it gets everything left over."""
+behind the upper one.
+
+0.37 m does not hold a 0.60 m capsule on its own and does not have to. Both docks are
+on the same wall as the flight that meets them, so the climb arrives facing its own
+doorway: at the foot the capsule rests with its back 0.08 m inside the 0.15 m doorway
+reveal, and at the head the landing and the top tread are flush, giving
+``STAIR_TOP_BAND`` of level floor. What it must do is keep the first riser far enough
+from the wall that a capsule can stand clear of it at all, which is the
+``계단 approach`` row in ``design_checks``. At 0.40 m it could not, and that is half of
+why the shipped building had four storeys nobody could reach."""
 
 STAIR_LANDING_D = (2 * GRID - WALL_T) - (STAIR_APPROACH + STAIR_RUN)
-"""2.05 m of mid-landing, and the number B-001 was about."""
+"""2.05 m of mid-landing, and the number B-001 was about. Unchanged by the reprofile:
+0.52 + 2.28 is the same 2.80 m of shaft that 0.40 + 2.40 was, so the going was bought
+out of the approach and the tread count rather than out of the landing."""
+
+PLAYER_TREAD_REACH = (
+    PLAYER_RADIUS if STAIR_RISE >= PLAYER_RADIUS
+    else math.sqrt(PLAYER_RADIUS ** 2 - (PLAYER_RADIUS - STAIR_RISE) ** 2))
+"""How far forward the player's capsule reaches at the height of the next tread.
+
+A capsule standing with its feet on a tread is a sphere of ``PLAYER_RADIUS`` centred
+``PLAYER_RADIUS`` above them. At height ``STAIR_RISE`` — the surface of the step in
+front — that sphere is this wide, so the going has to exceed it or no standing
+position exists. Above ``PLAYER_RADIUS`` the capsule is a cylinder and the answer is
+just the radius, which is the case here."""
+
+PLAYER_TREAD_CLEAR = STAIR_GOING - PLAYER_TREAD_REACH
+"""0.08 m of daylight between the player's capsule and the step above it. Positive is
+the whole requirement; this much is what makes the climb comfortable rather than a
+thing that catches."""
+
+STAIR_TOP_BAND = (STAIR_APPROACH - WALL_T) + STAIR_GOING
+"""0.75 m of level floor at the head of the climb — the top landing and the last
+tread of the upper flight are flush, so they are one surface. Wider than the player's
+0.60 m capsule, which is what lets them stop and turn out of the doorway."""
 
 STAIR_RAIL_D = 0.06
 """How far a raking handrail projects into a flight. Both flights carry one, so
@@ -755,11 +816,25 @@ def build_stairwell() -> list:
     ``MapSceneBuilder.VerifyStairwellsAreWalkable`` fails the build if one ever
     would be again.
 
+    **AND THE TREAD IS THE OTHER HALF.**
+
+    B-001 was about whether the *monster* could turn round on the landing. The same
+    piece was, for exactly as long, a stair no *player* could set foot on, and
+    nothing measured it: eight treads of 0.30 m going with a 25 mm nosing overhang
+    left 0.275 m of usable tread against a capsule that reaches ``PLAYER_TREAD_REACH``
+    = 0.30 m forward at the height of the step above. There was no position on any
+    tread where the player was not standing inside the next riser, and no position on
+    the shaft floor where they were not standing inside the first one. The NavMesh
+    did not care — Recast erodes a region, it does not carry a body — so the audit
+    read 1830/1830 with one island while four of the building's five storeys were
+    sealed. See ``PlayerTraversal`` in the Unity project, which is the check that
+    would have caught it.
+
     Everything that decides whether it bakes is derived rather than chosen — see
     the ``STAIR_*`` constants and the 계단 rows in ``design_checks``. In summary:
-    8 treads per flight at 0.2344 m rise x 0.30 m going, 2.20 m clear stair width
-    less a 0.06 m handrail, 2.05 m of landing, 3.00 m of headroom at the tightest
-    point of the climb.
+    6 treads per flight at 0.3125 m rise x 0.38 m going, 2.20 m clear stair width
+    less a 0.06 m handrail, 2.05 m of landing, 0.08 m of capsule clearance on every
+    tread, 3.00 m of headroom at the tightest point of the climb.
 
     The spine still separates the flights along their whole run, so the stairwell
     remains a 연속 차단 structure and not merely vertical circulation — what changed
@@ -790,12 +865,15 @@ def build_stairwell() -> list:
     for k in range(steps):  # flight A: ascends +Y from 0 to 1.875 m
         objs.append(slab(f"A_Step{k}", ax0, ax1, y_foot + k * going,
                          y_foot + (k + 1) * going, 0.0, (k + 1) * rise, fm, floor=True))
-        # Nosing: the lip that overhangs each riser. On a metal stair it is the
-        # only thing that separates one tread from the next in a beam, and §12
+        # Nosing: the band that marks each tread's edge. On a metal stair it is
+        # the only thing that separates one tread from the next in a beam, and §12
         # gives 계단 its own Listener row precisely because players must *know*
-        # they are on stairs.
-        objs.append(slab(f"A_Nose{k}", ax0, ax1, y_foot + k * going - 0.025,
-                         y_foot + k * going + 0.030, (k + 1) * rise - 0.035,
+        # they are on stairs. It sits on the tread and does NOT overhang the riser
+        # below — see STAIR_NOSE_W. An overhang lies at exactly the height a
+        # climbing capsule is widest and is subtracted, millimetre for millimetre,
+        # from the only clearance a player has.
+        objs.append(slab(f"A_Nose{k}", ax0, ax1, y_foot + k * going,
+                         y_foot + k * going + STAIR_NOSE_W, (k + 1) * rise - 0.035,
                          (k + 1) * rise, st, floor=True))
     # The mid-landing: full width of the shaft, STAIR_LANDING_D deep, and nothing
     # standing on it. Flush with the head of flight A and one riser below the foot
@@ -806,8 +884,8 @@ def build_stairwell() -> list:
         objs.append(slab(f"B_Step{k}", bx0, bx1, y_head - (k + 1) * going,
                          y_head - k * going, half - FLOOR_T,
                          half + (k + 1) * rise, fm, floor=True))
-        objs.append(slab(f"B_Nose{k}", bx0, bx1, y_head - k * going - 0.030,
-                         y_head - k * going + 0.025,
+        objs.append(slab(f"B_Nose{k}", bx0, bx1, y_head - k * going - STAIR_NOSE_W,
+                         y_head - k * going,
                          half + (k + 1) * rise - 0.035,
                          half + (k + 1) * rise, st, floor=True))
     objs.append(slab("TopLanding", bx0, bx1, WALL_T, y_foot,
@@ -1578,6 +1656,19 @@ def verify_piece(spec: PieceSpec, report: blendkit.AssetReport) -> None:
 # ── §12 rule confirmations, computed rather than asserted by hand ────────────
 
 
+STEP_MARGIN = 0.05
+"""How much of PLAYER_STEP_OFFSET a riser may not spend, metres.
+
+Mirrors ``PlayerTraversal.ClimbMarginMetres`` in the Unity project, which is the gate
+that measures the built scene. A riser at exactly the step offset is not reliably
+climbable — the controller resolves the move against the surface normal after the
+sweep, so a bevel or a millimetre of float error turns a step that measures 0.400 m
+into one the player catches on."""
+
+PLAYER_CLEAR_MIN = 0.05
+"""Least clearance any part of a route may leave around the player's capsule, metres."""
+
+
 def design_checks() -> list[tuple[bool, str]]:
     """Recomputes §12's own arithmetic against the numbers this kit was built from."""
     s_path = (S_LEG - GRID / 2) + GRID + (S_LEG - GRID / 2)
@@ -1644,11 +1735,40 @@ def design_checks() -> list[tuple[bool, str]]:
          f"{reach:.2f} m horizontally — inside the {8 * GRID:.0f} m hall"),
         (bar_gap < MONSTER_SHOULDER,
          f"observation-window bar gap = {bar_gap:.3f} m < monster shoulders {MONSTER_SHOULDER:.2f} m"),
-        (STAIR_RISE <= min(NAV_AGENT_CLIMB, PLAYER_STEP_OFFSET) + 1e-9,
+        (STAIR_RISE <= min(NAV_AGENT_CLIMB, PLAYER_STEP_OFFSET) - STEP_MARGIN,
          f"계단 riser = {STOREY:.2f} m / {STAIR_FLIGHTS * STAIR_STEPS} treads = {STAIR_RISE:.4f} m "
          f"<= the NavMesh agent's {NAV_AGENT_CLIMB:.2f} m climb and the player "
-         f"controller's {PLAYER_STEP_OFFSET:.2f} m step offset — the treads bake and are "
-         f"climbable as modelled, with no ramp hidden under them ({stair_pitch:.1f}° pitch)"),
+         f"controller's {PLAYER_STEP_OFFSET:.2f} m step offset less a {STEP_MARGIN:.2f} m margin "
+         f"({PLAYER_STEP_OFFSET - STEP_MARGIN:.2f} m) — the treads bake and are climbable as "
+         f"modelled, with no ramp hidden under them ({stair_pitch:.1f}° pitch). A riser at "
+         f"exactly the step offset catches on slope and float error, so the margin is the check"),
+        (PLAYER_TREAD_CLEAR >= PLAYER_CLEAR_MIN,
+         f"계단 tread = {STAIR_GOING:.2f} m going, and the player's capsule reaches "
+         f"{PLAYER_TREAD_REACH:.4f} m forward at the height of the step above it "
+         f"(radius {PLAYER_RADIUS:.2f} m at riser {STAIR_RISE:.4f} m), leaving "
+         f"{PLAYER_TREAD_CLEAR:.3f} m >= {PLAYER_CLEAR_MIN:.2f} m of clearance. Negative here "
+         f"means there is no place on any tread where the player is not standing inside the "
+         f"next riser — a stair only the NavMesh agent can use, because Recast erodes a region "
+         f"and does not carry a body"),
+        (STAIR_APPROACH - PLAYER_TREAD_REACH >= WALL_T,
+         f"계단 approach = {STAIR_APPROACH:.2f} m to the first riser, so the player's capsule "
+         f"centres at {STAIR_APPROACH - PLAYER_TREAD_REACH:.2f} m — clear of the riser and no "
+         f"further back than the {WALL_T:.2f} m doorway reveal it arrives through. The dock is "
+         f"on the flight's own wall, so its {PLAYER_RADIUS:.2f} m of overhang is over the "
+         f"threshold rather than over nothing"),
+        (STAIR_TOP_BAND >= 2 * PLAYER_RADIUS + PLAYER_CLEAR_MIN,
+         f"계단 head = {STAIR_TOP_BAND:.2f} m of flush floor where the top landing meets the "
+         f"last tread, >= the player's {2 * PLAYER_RADIUS:.2f} m capsule plus "
+         f"{PLAYER_CLEAR_MIN:.2f} m — somewhere to stop and turn out of the upper doorway "
+         f"instead of arriving on a step"),
+        (STAIR_LANDING_D >= 2 * PLAYER_RADIUS + PLAYER_CLEAR_MIN,
+         f"계단 mid-landing = {STAIR_LANDING_D:.2f} m >= the player's {2 * PLAYER_RADIUS:.2f} m "
+         f"capsule plus {PLAYER_CLEAR_MIN:.2f} m — the dog-leg turn is a turn a body can make, "
+         f"not only one an eroded region can"),
+        (CLEAR_H - 0.0 >= PLAYER_HEIGHT and STOREY + CLEAR_H - STOREY >= PLAYER_HEIGHT,
+         f"계단 headroom = {STOREY + CLEAR_H - STOREY:.2f} m over the top landing >= the "
+         f"player's {PLAYER_HEIGHT:.2f} m — a soffit under a capsule's height stops it exactly "
+         f"as dead as a tall step and reports nothing either"),
         (stair_landing_baked >= 2 * NAV_AGENT_RADIUS - 1e-9,
          f"계단 mid-landing = {STAIR_LANDING_D:.2f} m deep, leaving {stair_landing_baked:.2f} m "
          f"of baked surface once {NAV_AGENT_RADIUS:.2f} m is eroded off each side — one whole "

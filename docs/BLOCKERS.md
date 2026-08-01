@@ -8,6 +8,102 @@ Last verified: 2026-08-01 06:30, Unity 6000.3.21f1, macOS 24.3.0.
 
 ---
 
+## B-008 · The player could not leave the entrance storey — a 계단 only the monster could use
+
+**Status:** 🟢 **CLOSED**, opened and closed 2026-08-01 · found by playing, not by a gate
+
+The owner reported the game was unplayable past the first floor. It was: measured with
+the check that did not exist yet, a `CharacterController` with the player's dimensions
+could stand in **8 019** places, all of them on B1, and reach **3 of 15** 후보 지점 and
+**7 of 41** 전리품 spawns. Four of the building's five storeys had nothing on them a
+person could occupy.
+
+At the same moment `NavMeshAudit` reported **1830/1830 pairs complete, 100 %, 1 island,
+monster reach 19/19**. Both numbers were correct. They are measurements of different
+bodies:
+
+| | climbs | stands | is wide |
+|---|---|---|---|
+| NavMesh agent (`ProjectSettings/NavMeshAreas.asset`) | `agentClimb` 0.75 m | 2.00 m | eroded region, no body |
+| Player (`PlayerFeelHarnessMenu.BuildRig`) | `stepOffset` 0.40 m | 1.75 m | 0.60 m capsule |
+
+### Two defects, and neither was a tall step
+
+The first report of this pointed at a 0.645 m riser in `Stairwell_Metal.fbx`, sitting
+between the two climb limits. **That measurement was an artefact of how it was taken.**
+Re-measuring the shipped FBX in Blender and printing every horizontal face with its
+area and extent, the 0.645 m gap is between `z=5.415` and `z=6.060` — a 16 cm pipe-collar
+clip on the service riser and the ceiling joists above it, 5.4 m and 6.1 m in the air in
+a shaft nobody can reach. It was produced by sorting *all* 134 distinct horizontal-face
+heights in the whole piece, ceiling and trim and pipework included, and diffing
+neighbours. No tread was ever involved: every riser on the shipped climb measured
+0.2344 m. What actually blocked the player was:
+
+**1. Every 계단 was floored over 0.015 m below its top landing.** `MapSceneBuilder`
+pours a zone floor slab across each zone's whole rectangle and caps the storeys nothing
+stands on, and a zone rectangle includes the cells a stairwell rises through.
+`KeepOutOfNavMeshBake` already excluded both from the bake — its own comment says they
+lie "0.16 m under the landing it seals off" — but they kept their `MeshCollider`. So the
+monster walked down a stair that was, to a capsule, a lid. Probed in the shipped scene:
+
+```
+StairwellMetal_L1_15_30 (climbs -3.75 → 0.00 m)
+  ray down the flight-B column: FloorTileConcrete_L0_16_29 at y = -0.015
+  ray down the flight-A column: CeilingCap_L1_14_29       at y = -0.014
+```
+
+**2. The stair had no tread a 0.60 m capsule could stand on.** Eight treads a flight at
+`STAIR_GOING` 0.30 m with a 25 mm nosing overhang leave 0.275 m of usable tread. A
+capsule standing with its feet on a tread reaches `PLAYER_TREAD_REACH` = 0.293 m forward
+at the height of the step in front of it. 0.275 < 0.293, so there was **no position on
+any tread** where the player was not inside the next riser, and none on the shaft floor
+where they were not inside the first one. `gen_mapkit.py` checked `STAIR_RISE <=
+PLAYER_STEP_OFFSET` and passed — it had never been told the player has a width.
+
+### The fix
+
+- `MapSceneBuilder.SealsAShaft` — no zone floor slab and no ceiling cap is poured across
+  the cells a 계단 rises through. A stairwell is supposed to be a hole between two
+  storeys; the piece brings its own floor, walls and ceiling.
+- `gen_mapkit.py` reprofiled: 6 treads a flight at 0.3125 m rise × **0.38 m** going, the
+  nosing no longer overhangs the riser, approach 0.52 m. The depth budget is untouched —
+  0.52 + 2.28 is the same 2.80 m of shaft that 0.40 + 2.40 was — so `STAIR_LANDING_D`
+  stays at the 2.05 m B-001 was about. `design_checks` now holds the piece to the
+  player's capsule as well as the agent's.
+- **`stepOffset` was not touched.** §12's escape geometry is derived from what a player
+  cannot climb, and a player who can step 0.65 m can climb crates, debris and the van.
+
+Re-measured after the rebuild: every surface on the climb — shaft floor, six treads,
+mid-landing, six treads, top landing — **max riser 0.3125 m**, against a 0.40 m step
+offset with a 0.05 m margin held in both the Blender checks and the Unity gate.
+
+### Why this is the important half
+
+This is [B-001](#b-001) a second time and the project did not notice, because the gate
+B-001 produced measures the antagonist and was read as measuring the level. Nothing in
+the project had ever asked whether a *player* can traverse the building.
+
+`HorrorGame.EditorTools.PlayerReachAudit.AuditBatch` now does, `MapSceneGenerator`
+gates scene generation on it, and [TESTING.md §4c](TESTING.md) documents it beside §4b
+with the same warning. It sweeps the real capsule with `Physics` casts and never
+consults the NavMesh, because the premise is that the two disagree. It measures headroom
+too: a beam at 1.60 m stops a 1.75 m player exactly as completely as a tall step and
+reports nothing either.
+
+Closing measurement, `Assets/Scenes/Map_FirstSketch.unity` at seed 1204:
+
+```
+[PlayerReach] PASS
+  standing places  33658
+  storeys          6/6      B0 231 · B1 9675 · B2 5280 · B3 9167 · B4 4923 · B5 4382
+  후보 지점         15/15
+  전리품 spawns     41/41
+  계단              9/9 walked end to end
+  tallest climb    0.313 m       tightest headroom 2.38 m
+```
+
+---
+
 ## B-007 · The map can no longer be regenerated — §12's 17th rule rejects the map that ships
 
 **Status:** 🔴 **OPEN**, opened 2026-08-01 06:25 · reproduce with the command below

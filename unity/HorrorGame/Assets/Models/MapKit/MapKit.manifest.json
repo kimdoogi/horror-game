@@ -9,10 +9,10 @@
   "gallery_rise_metres": 3.0,
   "stair": {
     "flights": 2,
-    "steps_per_flight": 8,
-    "stair_rise_metres": 0.234375,
-    "stair_going_metres": 0.3,
-    "stair_pitch_degrees": 37.999,
+    "steps_per_flight": 6,
+    "stair_rise_metres": 0.3125,
+    "stair_going_metres": 0.38,
+    "stair_pitch_degrees": 39.433,
     "stair_flight_clear_width_metres": 2.14,
     "stair_landing_depth_metres": 2.05,
     "stair_headroom_metres": 3.0,
@@ -599,8 +599,8 @@
         "Floor_Metal",
         "Wall_Dado"
       ],
-      "triangles": 3652,
-      "vertices": 2076,
+      "triangles": 3292,
+      "vertices": 1868,
       "docks": [
         {
           "edge": "-Y",
