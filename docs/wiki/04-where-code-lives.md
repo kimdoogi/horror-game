@@ -66,6 +66,7 @@ done
 | `Steam/Editor/` | `HorrorGame.Steam.Editor` | Core, Steam | ✅ |
 | `Gameplay/Player/` | `HorrorGame.Gameplay.Player` | Core, Rendering, Unity.InputSystem | |
 | `Gameplay/Player/Editor/` | `HorrorGame.Gameplay.Player.Editor` | Core, Gameplay.Player, InputSystem | ✅ |
+| `UI/Editor/` | `HorrorGame.UI.Editor` | Core, UI, UnityEngine.UI, URP | ✅ |
 | `Gameplay/Monster/` | `HorrorGame.Gameplay.Monster` | Core | |
 | `Gameplay/Monster/Editor/` | `HorrorGame.Gameplay.Monster.Editor` | Core, Gameplay.Monster, Rendering, URP | ✅ |
 | `Gameplay/Audio/Rig/` | `HorrorGame.Gameplay.Audio` | Core, Audio | |
@@ -91,10 +92,23 @@ Tests are separate again, under `Assets/Tests/`, each with
 | `HorrorGame.Tests.PlayMode.Monster` | any | Core, Gameplay.Monster, Unity.AI.Navigation |
 | `HorrorGame.Tests.PlayMode.Net` | any | Core, Net, Steam, Mirror |
 | `HorrorGame.Tests.PlayMode.Player` | any | Core, Gameplay.Player, Unity.InputSystem |
+| `HorrorGame.Tests.PlayMode.UI` | any | Core, UI |
 
-Note that two test fixtures live *outside* `Assets/Tests/`, inside the code they
-test: `Gameplay/Match/Editor/SoloMatchLoopTests.cs` and
-`Editor/Playtest/MatchGuidanceTests.cs`. Both are in `Assembly-CSharp-Editor`.
+Note that three test locations live *outside* those assemblies, and each is forced:
+
+- `Gameplay/Match/Editor/SoloMatchLoopTests.cs` and `Editor/Playtest/MatchGuidanceTests.cs`
+  are in `Assembly-CSharp-Editor` — the only assembly that can see the match (predefined),
+  the player rig (asmdef) and `EditorSceneManager` at once.
+- `Gameplay/Interaction/Editor/DropPlacementTests.cs` is in `Assembly-CSharp-Editor` for
+  the same reason: `DropPlacement` is in a predefined assembly.
+- **`Tests/PlayMode/Interaction/` has no `.asmdef` on purpose.** `InteractionDropTests`
+  needs `MatchDirector`, which lives in `Assembly-CSharp`, and an asmdef assembly cannot
+  reference a predefined one — so the only place a *PlayMode* test can see the match from
+  is `Assembly-CSharp` itself. Nothing leaks into the shipped player: Unity strips
+  `UNITY_INCLUDE_TESTS` code from predefined assemblies when it builds one, and the
+  macOS IL2CPP player's `global-metadata.dat` contains no `InteractionDropTests`, no
+  `HorrorGame.Tests` and no `nunit.framework` — checked, because the alternative was
+  assuming.
 
 ---
 

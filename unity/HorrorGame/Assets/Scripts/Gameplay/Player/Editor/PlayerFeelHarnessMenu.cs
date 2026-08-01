@@ -144,7 +144,6 @@ namespace HorrorGame.Gameplay.PlayerEditor
             var visual = (GameObject)PrefabUtility.InstantiatePrefab(model);
             visual.name = "Visual";
             visual.transform.SetParent(body.transform, false);
-            HideOwnBodyFromOwnCamera(visual);
 
             var pivot = new GameObject("PitchPivot").transform;
             pivot.SetParent(body.transform, false);
@@ -165,7 +164,7 @@ namespace HorrorGame.Gameplay.PlayerEditor
             body.AddComponent<PlayerLoadout>();
             var motor = body.AddComponent<PlayerMotor>();
             body.AddComponent<PlayerCameraRig>();
-            body.AddComponent<PlayerFlashlight>();
+            var flashlight = body.AddComponent<PlayerFlashlight>();
             var animator = body.AddComponent<PlayerAnimatorDriver>();
             var footsteps = body.AddComponent<PlayerFootsteps>();
 
@@ -176,6 +175,11 @@ namespace HorrorGame.Gameplay.PlayerEditor
             var viewMotion = body.AddComponent<PlayerViewMotion>();
 
             motor.Role = RoleId.Runner;
+
+            // After every renderer exists and before anything is wired to it: this is
+            // what decides that the owner sees hands and not a chest.
+            ConfigureFirstPersonBody(body);
+            AssignSerialized(flashlight, "_view", body.GetComponent<PlayerFirstPersonView>());
 
             AssignSerialized(look, "_pitchPivot", pivot);
             AssignSerialized(animator, "_animator", visual.GetComponentInChildren<Animator>());
@@ -195,33 +199,28 @@ namespace HorrorGame.Gameplay.PlayerEditor
         }
 
         /// <summary>
-        /// Stops the local player's own body from being drawn into their own camera,
-        /// while keeping the shadow it casts.
+        /// Hides what would sit across the owner's near plane and leaves their hands
+        /// drawn, with the whole body still casting its shadow.
         /// <para>
-        /// §05 requires the player model to exist — the other three see it — but it is
-        /// parented under the rig, so in first person its shoulders and chest sit
-        /// directly in front of the near plane and render as a shape across the bottom
-        /// of the screen. §05 also notes the player's own body is never visible to
-        /// them ("자기 몸은 안 보이므로 손만 있으면 된다").
+        /// The policy is <see cref="PlayerFirstPersonView"/>'s, not this file's, and that
+        /// is the point. The version this replaced set <em>every</em> renderer on the
+        /// model to ShadowsOnly — which did fix the chest across the bottom of the screen
+        /// and took §05's 손 with it, leaving the player with nothing of their own on
+        /// screen at all. A rule that decides what an owner sees belongs in a runtime
+        /// component that the network layer can also reach (§13 draws three other bodies
+        /// normally), not in an editor menu that only the harness runs.
         /// </para>
         /// <para>
-        /// ShadowsOnly rather than disabling the renderer: the shadow is worth keeping.
-        /// In a game where §03 makes a narrow beam the only light, seeing your own
-        /// shadow thrown down a corridor is free atmosphere, and it is a cue for where
-        /// the beam is pointing.
-        /// </para>
-        /// <para>
-        /// When networked players are added this must become per-owner — a remote
-        /// player's body has to be drawn normally. Until then every rig built here is
-        /// the local one.
+        /// <c>Apply</c> is called explicitly because this runs outside play mode, where
+        /// <c>Awake</c> never fires, and the result is serialised into
+        /// <c>Map_FirstSketch_Solo.unity</c>.
         /// </para>
         /// </summary>
-        private static void HideOwnBodyFromOwnCamera(GameObject visual)
+        private static void ConfigureFirstPersonBody(GameObject body)
         {
-            foreach (var renderer in visual.GetComponentsInChildren<Renderer>(includeInactive: true))
-            {
-                renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.ShadowsOnly;
-            }
+            var view = body.AddComponent<PlayerFirstPersonView>();
+            AssignSerialized(view, "_rigRoot", body.transform);
+            view.Apply();
         }
 
         private static void Bind(PlayerFeelHarness harness, GameObject rig)

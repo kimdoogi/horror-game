@@ -1,7 +1,7 @@
 {
   "generated_by": "tools/blender/gen_player_model.py",
   "resolution": 1024,
-  "uv_units_per_metre": 0.523064,
+  "uv_units_per_metre": 0.593778,
   "fbx": "Assets/Models/Characters/Player.fbx",
   "note": "The five Role_* slots are flat colour by design \u2014 Unity swaps slot 0 per RoleId and \u00a705 picks those values for separation in the dark. Only the three neutral surfaces carry maps.",
   "materials": [
@@ -23,7 +23,7 @@
         "occlusion": "Player_Coverall/Player_Coverall_ao.png",
         "metallic_smoothness": "Player_Coverall/Player_Coverall_ms.png"
       },
-      "tiling": 3.476
+      "tiling": 3.0621
     },
     {
       "name": "Player_Skin",
@@ -43,7 +43,7 @@
         "occlusion": "Player_Skin/Player_Skin_ao.png",
         "metallic_smoothness": "Player_Skin/Player_Skin_ms.png"
       },
-      "tiling": 6.8279
+      "tiling": 6.0148
     },
     {
       "name": "Player_Gear",
@@ -63,7 +63,7 @@
         "occlusion": "Player_Gear/Player_Gear_ao.png",
         "metallic_smoothness": "Player_Gear/Player_Gear_ms.png"
       },
-      "tiling": 5.9744
+      "tiling": 5.2629
     }
   ]
 }

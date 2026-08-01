@@ -494,7 +494,7 @@ namespace HorrorGame.Gameplay.PlayerEditor
         /// and looked exactly like the landing code being dead.
         /// </para>
         /// </summary>
-        private static void Teleport(GameObject body, Vector3 position)
+        internal static void Teleport(GameObject body, Vector3 position)
         {
             var controller = body.GetComponent<CharacterController>();
             if (controller == null)
@@ -518,7 +518,7 @@ namespace HorrorGame.Gameplay.PlayerEditor
         /// when it is the viewpoint that is.
         /// </para>
         /// </summary>
-        private static Stand FindStandingSpot(Scene scene)
+        internal static Stand FindStandingSpot(Scene scene)
         {
             var best = new Stand(new Vector3(0f, 1f, 0f), 0f, 0f);
             var bestScore = float.NegativeInfinity;
@@ -583,7 +583,7 @@ namespace HorrorGame.Gameplay.PlayerEditor
                 : 40f;
         }
 
-        private static void PrepareCamera(Camera camera)
+        internal static void PrepareCamera(Camera camera)
         {
             camera.fieldOfView = GameConstants.FovDefault;
             camera.nearClipPlane = 0.05f;
@@ -602,7 +602,7 @@ namespace HorrorGame.Gameplay.PlayerEditor
             post.antialiasingQuality = AntialiasingQuality.High;
         }
 
-        private static void DisableOtherCameras(Camera keep)
+        internal static void DisableOtherCameras(Camera keep)
         {
             foreach (var camera in UnityEngine.Object.FindObjectsByType<Camera>(
                 FindObjectsInactive.Include, FindObjectsSortMode.None))
@@ -673,7 +673,7 @@ namespace HorrorGame.Gameplay.PlayerEditor
             UnityEngine.Object.DestroyImmediate(texture);
         }
 
-        private static string? ArgValue(string flag)
+        internal static string? ArgValue(string flag)
         {
             var args = Environment.GetCommandLineArgs();
             for (var i = 0; i < args.Length - 1; i++)
@@ -687,7 +687,7 @@ namespace HorrorGame.Gameplay.PlayerEditor
             return null;
         }
 
-        private readonly struct Stand
+        internal readonly struct Stand
         {
             internal Stand(Vector3 position, float headingDegrees, float clearMetres)
             {

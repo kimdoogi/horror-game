@@ -389,8 +389,14 @@ namespace HorrorGame.Gameplay.Interaction
         /// against is widened. It is the width of a hand, which is the thing being
         /// simulated.
         /// </para>
+        /// <para>
+        /// Public because <see cref="DropPlacement"/> sizes its
+        /// clearance sweep from it: the volume a released piece is given to land in and
+        /// the volume the crosshair later tests against have to be the same number, or a
+        /// piece can be put somewhere it cannot be picked up from.
+        /// </para>
         /// </summary>
-        private const float MinimumTargetMetres = 0.30f;
+        public const float MinimumTargetMetres = 0.30f;
 
         /// <summary>What the model hangs under, so a swap has one thing to remove.</summary>
         private const string ModelChildName = "Model";
@@ -401,7 +407,13 @@ namespace HorrorGame.Gameplay.Interaction
         /// <summary>
         /// Gap left between a settled prop and the surface, metres. Rig geometry: enough
         /// to clear §12's gravel relief, small enough that a 1.7 cm 반지 does not float.
+        /// <para>
+        /// Public so <see cref="DropPlacement"/> sets a dropped piece
+        /// down at exactly the height the spawn path puts one at. Two clearances would
+        /// drift, and the one nobody was looking at would be the one that sank into the
+        /// 자갈.
+        /// </para>
         /// </summary>
-        private const float FloorClearanceMetres = 0.02f;
+        public const float FloorClearanceMetres = 0.02f;
     }
 }

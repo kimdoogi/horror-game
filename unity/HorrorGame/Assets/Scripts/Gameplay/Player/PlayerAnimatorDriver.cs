@@ -164,6 +164,32 @@ namespace HorrorGame.Gameplay.Player
         }
 
         /// <summary>
+        /// The clip assigned to a pose, or null if that slot is empty.
+        /// <para>
+        /// This class owns the pose → clip mapping, so a capture rig asks it rather than
+        /// loading the FBX and matching names again. Two copies of that mapping is how a
+        /// review render ends up photographing the wrong clip and looking correct.
+        /// </para>
+        /// </summary>
+        /// <param name="state">The pose.</param>
+        public AnimationClip? ClipFor(PlayerAnimationState state)
+        {
+            switch (state)
+            {
+                case PlayerAnimationState.Idle: return _idle;
+                case PlayerAnimationState.Walk: return _walk;
+                case PlayerAnimationState.Run: return _run;
+                case PlayerAnimationState.Crouch: return _crouch;
+                case PlayerAnimationState.CrouchWalk: return _crouchWalk;
+                case PlayerAnimationState.Carry: return _carry;
+                case PlayerAnimationState.CarryIdle: return _carryIdle;
+                case PlayerAnimationState.CarryHeavy: return _carryHeavy;
+                case PlayerAnimationState.Death: return _death;
+                default: return null;
+            }
+        }
+
+        /// <summary>
         /// The authored speed of a locomotion clip, m/s, used to scale playback so the feet
         /// do not skate. Non-locomotion poses return 0, meaning "play at 1×".
         /// </summary>

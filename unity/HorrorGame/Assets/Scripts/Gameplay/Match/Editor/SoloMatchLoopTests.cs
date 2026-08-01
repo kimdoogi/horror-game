@@ -196,6 +196,59 @@ namespace HorrorGame.Gameplay.MatchEditor
                 + "   (planned round trips " + director.PlannedRoundTrips + ")");
 
             // ---------------------------------------------------------------
+            // §08 — 대형 전리품 goes into the hands, and comes back out onto the floor.
+            // "사망자의 전리품 — 떨어진다": a piece let go has to end up on a surface, not
+            // at the height the hands were at. It hung in mid-air in the build the owner
+            // played, which reads as broken even when every rule underneath is right.
+            // Deliberately no Step between the teleports: stepping here would run §01's
+            // phase transition and spend the 귀환 the rest of this file is counting.
+            // ---------------------------------------------------------------
+            var crate = oversize[0];
+            var crateFloor = crate.transform.position.y;
+            Teleport(player, crate.transform.position);
+
+            crate.OnPressed(interactor!);
+            Require(
+                crate.Carry != null && crate.Carry!.CarrierCount == 1,
+                "§08's 대형 전리품 could not be taken up at all (" + crate.Refusal + ")");
+
+            var heldAt = crate.transform.position;
+            Require(
+                heldAt.y > crateFloor + 0.5f,
+                "§08's 궤짝 is not being held anywhere near the hands; this run proves nothing about dropping it");
+
+            crate.OnPressed(interactor!);
+            Require(
+                crate.Carry!.CarrierCount == 0,
+                "§08's 대형 전리품 could not be put down again (" + crate.Refusal + ")");
+
+            var restingAt = crate.transform.position;
+            Require(
+                restingAt.y < heldAt.y - 0.5f,
+                "§08's 궤짝 stayed at the height it was released from (" + restingAt.ToString("F2") + "), "
+                + "which is the piece hanging in the air");
+            Require(
+                Physics.Raycast(restingAt + (Vector3.up * DropCheckRiseMetres), Vector3.down, out var under,
+                    DropCheckRiseMetres + DropCheckReachMetres, ~0, QueryTriggerInteraction.Ignore),
+                "nothing solid is under §08's dropped 궤짝 at " + restingAt.ToString("F2"));
+            Require(
+                Mathf.Abs(restingAt.y - under.point.y) <= DropCheckReachMetres,
+                "§08's dropped 궤짝 is floating " + (restingAt.y - under.point.y).ToString("F3")
+                + " m above the surface under it");
+
+            var pitch = Quaternion.Angle(crate.transform.rotation, Quaternion.Euler(0f, crate.transform.eulerAngles.y, 0f));
+            Require(
+                pitch < 0.5f,
+                "§08's 궤짝 was put down tilted by " + pitch.ToString("F1") + "°; it inherited §05's camera pitch");
+
+            log.AppendLine("  §08 대형 전리품 dropped from " + heldAt.y.ToString("F2", CultureInfo.InvariantCulture)
+                + " m to " + restingAt.y.ToString("F2", CultureInfo.InvariantCulture)
+                + " m, resting " + (restingAt.y - under.point.y).ToString("F3", CultureInfo.InvariantCulture)
+                + " m above the surface");
+
+            Teleport(player, map!.Entrance);
+
+            // ---------------------------------------------------------------
             // §08 — a piece of loot goes in the pockets.
             // ---------------------------------------------------------------
             var pockets = loadout!.Inventory;
@@ -315,8 +368,25 @@ namespace HorrorGame.Gameplay.MatchEditor
 
             log.AppendLine("  §08 sold on arrival — team wallet " + director.Shop.Wallet.Credits + " credits");
 
-            // §08's shop is the reason to come up.
-            Require(hud.ShopOpen, "§08's shop did not open at the vehicle");
+            // §08's shop is the reason to come up — and arriving is not asking for it.
+            // Walking into the apron is a movement; §01 makes surfacing a deliberate act
+            // and the shop is the one screen that takes the mouse, so a panel that put
+            // itself up on a position test read as 갑자기 상점이 열림. Selling is the half
+            // that stays automatic (asserted above); opening is the half that is now a key.
+            Require(
+                !hud.ShopOpen,
+                "§08's shop opened by itself on arrival at the vehicle, which takes the mouse away from a "
+                + "player who only walked into the apron");
+
+            var vehicle = UnityEngine.Object.FindFirstObjectByType<SurfaceVehicleInteractable>();
+            Require(vehicle != null, "§08's 지상 차량 was never placed, so there is nothing to open the shop with");
+            Require(
+                vehicle!.Action.Length > 0,
+                "the 차량 draws no verb, so the prompt cannot tell the player which key opens the shop");
+
+            vehicle.OnPressed(interactor!);
+            Require(hud.ShopOpen, "pressing the key at the 차량 did not open §08's shop (" + vehicle.Refusal + ")");
+
             var cheapest = ShopCatalogue.CheapestCost;
             if (director.Shop.Wallet.Credits >= cheapest)
             {
@@ -326,7 +396,12 @@ namespace HorrorGame.Gameplay.MatchEditor
                     "§08's shop refused a purchase the wallet could afford");
             }
 
-            log.AppendLine("  §08 shop open at the vehicle, cheapest item " + cheapest + " credits");
+            log.AppendLine("  §08 shop stayed shut on arrival and opened on ["
+                + PlayerInteractor.InteractKeyLabel + "] at the 차량 — cheapest item " + cheapest + " credits");
+
+            // And it closes, or the mouse never comes back.
+            director.CloseShopScreen();
+            Require(!hud.ShopOpen, "§08's shop would not close, so §05's camera never comes back");
 
             // ---------------------------------------------------------------
             // §03 · §02 — take the objective and carry it out.
@@ -555,6 +630,20 @@ namespace HorrorGame.Gameplay.MatchEditor
         /// on the baked surface, which is centimetres away on a flat floor.
         /// </summary>
         private const float NavSnapTolerance = 1.5f;
+
+        /// <summary>
+        /// How far above a dropped piece this file starts looking for the floor, metres.
+        /// Probe geometry: a ray that starts level with the piece can start inside the
+        /// surface it is resting on and report nothing.
+        /// </summary>
+        private const float DropCheckRiseMetres = 0.1f;
+
+        /// <summary>
+        /// How far a dropped piece may sit above the surface under it, metres. Generous
+        /// against <c>Interactable.FloorClearanceMetres</c> on purpose — this is asking
+        /// "is it on the floor or in the air", and the exact clearance has its own test.
+        /// </summary>
+        private const float DropCheckReachMetres = 0.1f;
 
         private sealed class StepFailure : Exception
         {

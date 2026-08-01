@@ -8,18 +8,24 @@ namespace HorrorGame.Gameplay.Interaction
     /// <summary>
     /// The 지상 차량. §08: "지상 차량 = 안전 지대 + 상점 + 보급소."
     /// <para>
-    /// <b>Most of what the vehicle does needs no key.</b> Walking into its apron is
-    /// what surfaces the team, and surfacing is what sells the 전리품, tops the cell up
-    /// at §03's 지상 발전기 and opens the shop — <c>MatchDirector</c> does all of that on
-    /// the rising edge, because §08 describes loading loot into the vehicle as the
-    /// consequence of arriving rather than as an errand.
+    /// <b>Some of what the vehicle does needs no key.</b> Walking into its apron is what
+    /// surfaces the team, and surfacing is what sells the 전리품 and tops the cell up at
+    /// §03's 지상 발전기 — <c>MatchDirector.Surfaced</c> does both on the rising edge,
+    /// because §08 describes loading loot into the vehicle as the consequence of
+    /// arriving rather than as an errand. Neither takes anything away from the player.
     /// </para>
     /// <para>
-    /// <b>The key opens the shelf, and nothing else.</b> §08's shop is the one screen
-    /// operated with a mouse, so it is put up and taken down deliberately; the same key
-    /// closes it from anywhere, which is what gives the camera back. Ending the match
-    /// is deliberately <em>not</em> on this key — see <c>MatchDirector.TryLeaveForGood</c>
-    /// for why §02's 생존 row does not belong on a single press.
+    /// <b>The shop is not in that list, and the difference is the mouse.</b> §08's shop
+    /// is the one screen operated with a cursor, so opening it unlocks the pointer and
+    /// pins §05's aim; done on arrival it seizes the camera from someone who only walked
+    /// past the van. §01 makes surfacing a deliberate act, and this key is where that
+    /// deliberateness lives: look at the 차량, read the line, press it. The same key
+    /// closes it from anywhere, which is what gives the camera back.
+    /// </para>
+    /// <para>
+    /// Ending the match is deliberately <em>not</em> on this key — see
+    /// <c>MatchDirector.TryLeaveForGood</c> for why §02's 생존 row does not belong on a
+    /// single press.
     /// </para>
     /// </summary>
     [DisallowMultipleComponent]

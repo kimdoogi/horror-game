@@ -33,6 +33,9 @@ cd /Users/doogi/horror-game
 | Will a stereo import have killed the 청음사? | `-executeMethod …AssetImportValidator.ValidateAllBatch` | ~1 min |
 | Are the five floor surfaces still tellable apart? | `tools/audio/verify_audio.py` | ~1 min |
 | Can you see the monster at 15 m? | `MonsterShot.StageBatch`, **no `-nographics`** | ~2 min |
+| Do you have hands, and is the torch in one? | `FirstPersonHandsShot.Batch`, **no `-nographics`** — reads out each hand's viewport coordinate | ~3 min |
+| Does a piece you put down land on the floor? | `DropShot.Batch`, **no `-nographics`** — first-person plus a lit side view, and a wall-facing drop | ~3 min |
+| Can four people read §08's shop in a dark room? | `ShopShot.Batch`, **no `-nographics`** — ten states | ~2 min |
 | Is the picture inside ART.md's luminance bands? | `SceneShot.Batch` then `tools/render/frame_stats.py` | ~3 min |
 | Is the economy / match length sane? | `dotnet run -c Release --project core/HorrorGame.Sim -- run --matches 500 --seed 1` | ~10 s |
 | Does a seed still replay exactly? | `… -- replay --seed 42 --times 3` | ~2 s |
@@ -211,7 +214,7 @@ quoting**, and prefer STATUS.md over the others. Known drift as of 2026-08-01 06
 | "`Assets/Tests/EditMode/` and `Assets/Tests/PlayMode/` are still empty" | CI.md §4.2, §5 | six test assemblies exist and run |
 | "Nothing that needs the Unity editor has ever executed" | CI.md §5 | true of *CI*, not of this machine — STATUS.md quotes real editor runs |
 | "`dist/` contains logs and test results and **no player executable**" | STATUS.md §5 | corrected — an IL2CPP macOS player is built and verified to reach a match ([STATUS.md §1.10](../STATUS.md)). Read `dist/last-build-summary.txt` |
-| PlayMode is 27 tests, or 42 | anywhere | **53**; EditMode **71**; core **451**; 575 total ([STATUS.md §1.9](../STATUS.md)) |
+| PlayMode is 27 tests, or 42, or 53, or 55 | anywhere | **64**; EditMode **100**; core **451**; 615 total ([STATUS.md §1.9](../STATUS.md)) |
 | "16–39 % crushed, 31–57 % legible" | ART.md §1 | re-measured every art pass — [STATUS.md §4.3](../STATUS.md) is the current one |
 | "matches finish in 2.5 min" / "0.6% inside the window" / "심야 1.2%" | anywhere | 7.2 min, 15.8%, 33.6% — the old figures were measured against a four-zone ring the game does not ship ([F-006](09-open-questions.md#f-006)) |
 | "주자 테스트 7/10, Balanced" | anywhere | 10/10 TooEasy on the five-storey map ([F-007](09-open-questions.md#f-007)) |

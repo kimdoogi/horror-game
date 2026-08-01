@@ -85,9 +85,17 @@ namespace HorrorGame.Gameplay.Interaction
 
             if (_carried)
             {
-                if (director.TryDropObjective(by.transform.position, out var dropRefusal))
+                // Worked out before the match is told, and told the landing point rather
+                // than the carrier's feet: §09 shows a ghost where its own things are and
+                // §08 sends the team back to them, so the position the match records has
+                // to be the position the thing is actually at.
+                var landing = DropPlacement.Resolve(
+                    transform.position, by.Body.position, by.Body);
+
+                if (director.TryDropObjective(landing, out var dropRefusal))
                 {
                     Detach(by);
+                    transform.SetPositionAndRotation(landing, DropPlacement.Upright(transform.rotation));
                     Refusal = string.Empty;
                     return;
                 }
@@ -107,7 +115,15 @@ namespace HorrorGame.Gameplay.Interaction
             SetGlow(false);
         }
 
-        /// <summary>Puts it back on the floor without a key press — a death, or the match ending.</summary>
+        /// <summary>
+        /// Puts it back on the floor without a key press — a death, or the match ending.
+        /// <para>
+        /// <paramref name="where"/> is where the player fell, and it is the starting
+        /// point rather than the answer: a body caught mid-step, on a 계단 or on top of
+        /// something is not standing on the floor plane, and §08 makes the pile something
+        /// the team has to come back to and find.
+        /// </para>
+        /// </summary>
         public void ForceDrop(PlayerInteractor by, Vector3 where)
         {
             if (!_carried)
@@ -115,11 +131,16 @@ namespace HorrorGame.Gameplay.Interaction
                 return;
             }
 
+            // Read while it is still in the hands — Detach unparents without moving it,
+            // so this is the last frame the held position exists.
+            var held = transform.position;
             Detach(by);
 
             // The model's pivot is on its own floor plane (gen_props.py's FLOOR mount),
-            // so the drop point is the answer with no half-height correction.
-            transform.position = where;
+            // so the landing point is the answer with no half-height correction.
+            transform.SetPositionAndRotation(
+                DropPlacement.Resolve(held, where, by.Body),
+                DropPlacement.Upright(transform.rotation));
         }
 
         /// <summary>Takes it out of the world — it left the building with somebody (§02 목표물 회수).</summary>

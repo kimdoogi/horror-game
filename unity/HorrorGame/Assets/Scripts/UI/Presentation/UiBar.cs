@@ -27,6 +27,7 @@ namespace HorrorGame.UI
         private readonly RectTransform _root;
         private readonly Image _fill;
         private readonly RectTransform _fillRect;
+        private readonly Image? _bed;
 
         /// <summary>Wraps an already-built bed and fill. Produced by <see cref="UiFactory.CreateBar"/>.</summary>
         /// <param name="root">The bar's own transform.</param>
@@ -36,11 +37,13 @@ namespace HorrorGame.UI
         /// <see cref="UiFactory.CreateBar"/> for why the fraction is a right-hand anchor
         /// rather than <c>Image.fillAmount</c>.
         /// </param>
-        public UiBar(RectTransform root, Image fill, RectTransform fillRect)
+        /// <param name="bed">The empty portion, for callers that need it visible. Optional — the HUD does not.</param>
+        public UiBar(RectTransform root, Image fill, RectTransform fillRect, Image? bed = null)
         {
             _root = root;
             _fill = fill;
             _fillRect = fillRect;
+            _bed = bed;
         }
 
         /// <summary>The bar's transform, for callers that lay it out.</summary>
@@ -73,6 +76,25 @@ namespace HorrorGame.UI
         {
             Resize(Mathf.Clamp01(fill01));
             _fill.color = color;
+        }
+
+        /// <summary>
+        /// Recolours the empty half.
+        /// <para>
+        /// <see cref="UiStyle.BarBed"/> is nearly invisible on purpose — on the HUD a
+        /// meter's bed would be one more lit thing in a dark corridor, and a bar that
+        /// is only its fill still reads because it is shrinking in front of you. On a
+        /// panel that is not true: §08's shop draws §07's night as a single wide bar
+        /// that barely moves while the team argues, and with an invisible bed a
+        /// nearly-full one is indistinguishable from a horizontal rule.
+        /// </para>
+        /// </summary>
+        public void SetBedColor(Color color)
+        {
+            if (_bed != null)
+            {
+                _bed.color = color;
+            }
         }
 
         /// <summary>

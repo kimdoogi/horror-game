@@ -72,9 +72,28 @@ flight, because one foot is always down and that is what walking is.
   dead player's loot where the body is, so teammates have to come back for it. `Death`
   does not loop and ends flat on the floor: the corpse is a map marker.
 
+THREE MESHES — THE FIRST-PERSON CONTRACT
+----------------------------------------
+§05 has a second half that used to be ignored: *"자기 몸은 안 보이므로 손만 있으면 된다"*
+says the body is not visible **and that the hands are**. One mesh cannot deliver both,
+because ``shadowCastingMode`` is a property of a whole Renderer — hiding the chest that
+sits across the near plane in first person takes the arms with it. So the file exports:
+
+    Player_Body    head, neck, torso, legs, gear.  Owner: ShadowsOnly. Others: drawn.
+    Player_Arms    shoulders → fingertips.         Owner: drawn. §05's 손.
+    Player_Torch   the flashlight in the fist.     Owner: drawn while it is in hand.
+
+The Unity layer (``PlayerRigParts``) recognises them by MATERIAL SLOTS, not by these
+names and not by bone weights — a Humanoid import binds all 26 bones to all three meshes,
+measured, so the binding stops saying what a mesh is made of. ``verify_mesh_split``
+asserts the composition the classifier depends on, and ``verify_first_person`` asserts
+that the hands are actually inside the frame §05's FOV gives the player.
+
 MATERIALS — THE ROLE CONTRACT
 -----------------------------
-Eight slots. Slot 0 carries every role-tinted face — a painted band of the torso shell
+Eight slots on the body, three on the arms, one on the torch, all in SLOTS order so slot
+0 is ``Role_Listener`` on every mesh that has a role-tinted face. Slot 0 carries every
+role-tinted face — a painted band of the torso shell
 from z 1.10 to 1.41 (chest AND upper back), the painted deltoid caps, the raised collar,
 and a ring around each bicep. The Unity layer swaps that slot per ``RoleId``:
 
@@ -112,10 +131,13 @@ groups, ignored by Humanoid):
 They are bones rather than empties because ``export_fbx(with_animation=True)`` exports
 only ARMATURE and MESH object types — an empty would be dropped silently.
 
-NO FINGERS — stated plainly rather than omitted: the hands are a palm slab plus a thumb
-nub. Nothing in the design needs finger articulation (the flashlight and the objective are
-both parented to sockets), and Humanoid treats fingers as optional. Adding them later
-means extending ``bone_specs()``; nothing else here would change.
+NO FINGER BONES — stated plainly rather than omitted: each hand has four modelled
+fingers and a thumb, curled 30° below the palm, but they are geometry on a single ``Hand``
+bone and do not articulate. Nothing in the design needs them to (the flashlight and the
+objective are both parented to sockets), and Humanoid treats finger bones as optional.
+The curl is not decoration: §05 puts these hands at the bottom of the owner's screen seen
+from above, and a flat palm at that angle photographs as a pale plank. Articulating them
+later means extending ``bone_specs()``; nothing else here would change.
 """
 
 from __future__ import annotations
@@ -202,6 +224,28 @@ M_SKIN = SLOTS.index(SKIN)
 M_COVERALL = SLOTS.index(COVERALL)
 M_GEAR = SLOTS.index(GEAR)
 
+# ── The three meshes ────────────────────────────────────────────────────────
+# §05: *"자기 몸은 안 보이므로 손만 있으면 된다"* — the player never sees their own body,
+# but they must see their own hands. One mesh cannot deliver both, because
+# `shadowCastingMode` is a property of a whole Renderer: hiding the chest that sits
+# across the near plane in first person takes the arms with it, which is exactly the
+# defect this split fixes. So the geometry is exported as three objects and the Unity
+# layer decides per object what the owner sees:
+#
+#   Player_Body    head, neck, torso, legs, gear.  Owner: ShadowsOnly — it occludes.
+#   Player_Arms    shoulders → fingertips.         Owner: drawn. §05's 손.
+#   Player_Torch   the flashlight in the fist.     Owner: drawn while it is in hand.
+#
+# The seam is buried: the arm tube's two innermost rings sit INSIDE the torso shell, so
+# hiding the torso does not open a hole at the shoulder.
+#
+# The Unity side classifies them by the MATERIAL SLOTS each mesh carries, never by these
+# names — see PlayerRigParts, and `verify_mesh_split` below for the contract. Mesh names
+# are what a regeneration is free to change; material names are read by the importer, by
+# §04's role swap and by the texture manifest, so a rename breaks something loudly first.
+ARM_SLOTS = (ROLE_MATERIALS[0], SKIN, COVERALL)
+TORCH_SLOTS = (GEAR,)
+
 MATERIAL_SPECS = (
     # §04 order. Values spread deliberately — see the module docstring.
     MaterialSpec("Role_Listener", (0.10, 0.15, 0.34), roughness=0.80),
@@ -234,9 +278,19 @@ def luma(rgb) -> float:
 
 
 class Body:
-    """Accumulates vertices, faces, material indices and bone weights for one mesh."""
+    """Accumulates vertices, faces, material indices and bone weights for one mesh.
 
-    def __init__(self) -> None:
+    `slots` is the subset of SLOTS this mesh carries, in SLOTS order. Faces are still
+    authored against the GLOBAL indices (``M_ROLE``, ``M_SKIN``, …) and remapped here,
+    so a body part can be moved from one mesh to another without renumbering a single
+    face. Keeping SLOTS order is what preserves the §04 contract on every mesh that has
+    a role-tinted face: ``Role_Listener`` is index 0 in SLOTS, therefore index 0 in any
+    subset of it, therefore ``renderer.materials[0]`` on every renderer Unity builds.
+    """
+
+    def __init__(self, slots) -> None:
+        self.slots = tuple(slots)
+        self._local = {SLOTS.index(name): i for i, name in enumerate(self.slots)}
         self.bm = bmesh.new()
         self.bverts: list[bmesh.types.BMVert] = []
         self.positions: list[Vector] = []
@@ -253,8 +307,13 @@ class Body:
         return len(self.bverts) - 1
 
     def face(self, idxs, mat: int) -> None:
+        local = self._local.get(mat)
+        if local is None:
+            raise ValueError(
+                f"{SLOTS[mat]} is not one of this mesh's slots {self.slots} — a body part "
+                "was moved to a mesh that does not carry the material it paints with.")
         f = self.bm.faces.new([self.bverts[i] for i in idxs])
-        f.material_index = mat
+        f.material_index = local
 
     # -- shells ------------------------------------------------------------
     def shell(self, rings, mat, cap_start: bool = True, cap_end: bool = True) -> None:
@@ -291,7 +350,7 @@ class Body:
 
         obj = bpy.data.objects.new(name, mesh)
         bpy.context.collection.objects.link(obj)
-        for slot in SLOTS:
+        for slot in self.slots:
             mesh.materials.append(bpy.data.materials[slot])
 
         # bmesh writes vertices in creation order. Verifying it rather than trusting
@@ -491,20 +550,28 @@ def build_arm(b: Body, side: int) -> None:
     # other players — the hand holding §05's pointing device should look like a hand.
     # They also bring the T-pose span to 1.75 m, which is where a real 1.75 m person's
     # arm span sits; the slab alone left it 60 mm short.
-    # The tips drop 9 mm below the palm plane and the fingers are cut to slightly
-    # different lengths. Straight and coplanar they read as a comb — four flat prongs
-    # with slots between them, which is worse than the plain slab this replaced. A
-    # relaxed hand curls, and the curl is what makes four separate pieces read as one.
-    for offset, length, half_w, droop in ((-0.030, 0.044, 0.0095, 0.008),
-                                          (-0.010, 0.049, 0.0100, 0.009),
-                                          (0.010, 0.046, 0.0095, 0.009),
-                                          (0.029, 0.038, 0.0085, 0.010)):
+    # The fingers are cut to slightly different lengths and curl 30° below the palm
+    # plane. Straight and coplanar they read as a comb — four flat prongs with slots
+    # between them, which is worse than the plain slab this replaced. A relaxed hand
+    # curls, and the curl is what makes four separate pieces read as one.
+    #
+    # The 30° is a first-person number, not a modelling preference. §05 puts these hands
+    # on the owner's screen at the bottom of the frame, seen from above and behind, and a
+    # flat palm seen from that angle is a rectangle: the first working version of this
+    # change photographed as a pale plank. The curl is the only thing at this triangle
+    # count that turns the silhouette back into a hand. It also lands the fingertips on
+    # the torch barrel (`build_torch` puts its axis 29 mm under the palm), so the grip is
+    # a grip rather than a cylinder passing through a slab.
+    for offset, length, half_w, droop in ((-0.030, 0.044, 0.0095, 0.024),
+                                          (-0.010, 0.049, 0.0100, 0.027),
+                                          (0.010, 0.046, 0.0095, 0.026),
+                                          (0.029, 0.038, 0.0085, 0.022)):
         b.shell([(rect((side * 0.830, offset, SHOULDER_Z - 0.001), Y, Z, half_w, 0.014),
                   {f"{s}Hand": 1.0}),
-                 (rect((side * (0.830 + length * 0.55), offset,
-                        SHOULDER_Z - droop * 0.35), Y, Z, half_w * 0.92, 0.012),
+                 (rect((side * (0.830 + length * 0.58), offset,
+                        SHOULDER_Z - droop * 0.30), Y, Z, half_w * 0.92, 0.012),
                   {f"{s}Hand": 1.0}),
-                 (rect((side * (0.830 + length), offset, SHOULDER_Z - droop), Y, Z,
+                 (rect((side * (0.830 + length * 0.94), offset, SHOULDER_Z - droop), Y, Z,
                        half_w * 0.70, 0.009), {f"{s}Hand": 1.0})], M_SKIN)
 
     # Thumb: forward off the palm, so a fist reads as a grip on the flashlight.
@@ -585,25 +652,30 @@ def build_gear(b: Body) -> None:
              (rect((0.088, -0.132, 1.368), X, Z, 0.024, 0.028), {"Chest": 1.0})], M_GEAR)
 
 
-def build_role_panels(b: Body) -> None:
-    """The role-coloured pieces that are their own geometry rather than painted faces.
+def build_collar(b: Body) -> None:
+    """The role-coloured ring around the neck — its own geometry, not a painted face.
 
-    Both of these wrap a limb, so neither can float: the collar is a ring around the neck
-    that stands above the shoulder line, and the arm bands are rings around the biceps.
-    Together with the painted vest and deltoids they put the role colour on the front,
-    back, both sides and the head-height silhouette — §05 gives the flashlight a narrow
-    beam, so a role has to be identifiable from whatever fragment of a teammate is lit.
+    It wraps the neck so it cannot float, and it stands above the shoulder line, which
+    puts the role colour into the head-height silhouette. Together with the painted vest,
+    the deltoid caps and the bicep bands it covers the front, the back, both sides and the
+    silhouette — §05 gives the flashlight a narrow beam, so a role has to be identifiable
+    from whatever fragment of a teammate is lit.
+
+    Lives on the body mesh, so a first-person owner never sees their own collar under
+    their chin. The bicep bands are the arms' half of the same job — `build_arm_band`.
     """
     b.shell([(ellipse((0, -0.006, 1.492), X, Y, 0.072, 0.068, 8), {"UpperChest": 1.0}),
              (ellipse((0, -0.010, 1.548), X, Y, 0.068, 0.064, 8),
               {"UpperChest": 0.4, "Neck": 0.6})], M_ROLE)
 
-    for side in (1, -1):
-        s = "Left" if side > 0 else "Right"
-        b.shell([(ellipse((side * 0.285, 0, SHOULDER_Z), Y, Z, 0.057, 0.061, 8),
-                  {f"{s}UpperArm": 1.0}),
-                 (ellipse((side * 0.345, 0, SHOULDER_Z), Y, Z, 0.055, 0.059, 8),
-                  {f"{s}UpperArm": 1.0})], M_ROLE)
+
+def build_arm_band(b: Body, side: int) -> None:
+    """The role-coloured ring around one bicep. On the arms mesh — see `build_collar`."""
+    s = "Left" if side > 0 else "Right"
+    b.shell([(ellipse((side * 0.285, 0, SHOULDER_Z), Y, Z, 0.057, 0.061, 8),
+              {f"{s}UpperArm": 1.0}),
+             (ellipse((side * 0.345, 0, SHOULDER_Z), Y, Z, 0.055, 0.059, 8),
+              {f"{s}UpperArm": 1.0})], M_ROLE)
 
 
 def build_role_swatches(b: Body) -> None:
@@ -619,17 +691,62 @@ def build_role_swatches(b: Body) -> None:
                  (rect((cx, 0.008, 0.885), X, Y, 0.008, 0.008), {"Hips": 1.0})], i)
 
 
-def build_body() -> bpy.types.Object:
-    b = Body()
-    build_torso(b)
-    build_neck_head(b)
+def build_torch(b: Body) -> None:
+    """§05's 손전등 as geometry in the right fist, weighted rigidly to RightHand.
+
+    Why it exists at all: §05 hands every player a flashlight and §10 makes switching it
+    on the game's most-repeated trade — *"손전등을 켠다 → 괴물이 본다 · 배터리를 쓴다"*.
+    In first person the beam alone cannot say which of §03's states you are in, because a
+    beam is the one thing you see when you are NOT looking at your hands. A torch you can
+    see arriving in and leaving your fist makes that trade physical: the Unity layer draws
+    this mesh only while the light is in hand, so 목표물 운반 (both hands, no torch) and an
+    empty pair of hands are told apart without a HUD.
+
+    Its own object so it can be switched off without touching the arms, and skinned to
+    exactly one bone so the Unity classifier can recognise it as a held item rather than
+    as part of the person. Modelled along the rest-pose arm axis (-X is distal on the
+    right side) with the lens just short of `FlashlightMount`, so the spot light sits in
+    FRONT of the last surface and cannot light the barrel from inside it.
+    """
+    # Proportions chosen for one job: being recognisable end-on. In first person the
+    # torch is nearly parallel to the line of sight, so a plain barrel gripped inside the
+    # fist reads as a lump on the hand — measured, in the preview render, before this.
+    # Half its length therefore projects past the fingertips (which reach x = -0.879) and
+    # the head is 1.7× the barrel, so what the owner sees past their own knuckles is a
+    # disc that is obviously an object and obviously not a finger.
+    axis_z = 1.408          # under the palm, in the curl of the fingers
+    rings = [
+        (-0.690, 0.016),    # butt, proud of the wrist side of the fist
+        (-0.706, 0.021),
+        (-0.858, 0.021),    # barrel
+        (-0.874, 0.036),    # bezel shoulder, clear of the fingertips
+        (-0.925, 0.033),    # lens rim; FlashlightMount sits 10 mm ahead of this
+    ]
+    b.shell([(ellipse((x, 0.0, axis_z), Y, Z, r, r, SIDES_BOOT), {"RightHand": 1.0})
+             for x, r in rings], M_GEAR)
+
+
+def build_body() -> tuple[bpy.types.Object, bpy.types.Object, bpy.types.Object]:
+    """The three meshes of the section note: body, arms, torch."""
+    body = Body(SLOTS)
+    build_torso(body)
+    build_neck_head(body)
     for side in (1, -1):
-        build_arm(b, side)
-        build_leg(b, side)
-    build_gear(b)
-    build_role_panels(b)
-    build_role_swatches(b)
-    return b.finish("Player_Body")
+        build_leg(body, side)
+    build_gear(body)
+    build_collar(body)
+    build_role_swatches(body)
+
+    arms = Body(ARM_SLOTS)
+    for side in (1, -1):
+        build_arm(arms, side)
+        build_arm_band(arms, side)
+
+    torch = Body(TORCH_SLOTS)
+    build_torch(torch)
+
+    return (body.finish("Player_Body"), arms.finish("Player_Arms"),
+            torch.finish("Player_Torch"))
 
 
 # ── Rig ─────────────────────────────────────────────────────────────────────
@@ -654,8 +771,9 @@ def bone_specs() -> list[BoneSpec]:
         # drive yaw/pitch on this transform and the beam and the eyes agree.
         BoneSpec("HeadCameraAnchor", (0.0, -0.055, EYE_Z), (0.0, -0.175, EYE_Z), "Head"),
         # §03: where the two-handed objective attaches. Sits where both palms meet in
-        # the Carry pose, which the script measures rather than assumes.
-        BoneSpec("ObjectiveMount", (0.0, -0.340, 1.200), (0.0, -0.460, 1.200), "Chest"),
+        # the Carry pose, which the script measures rather than assumes — so this moved
+        # up with the carry pose when the objective was raised into the owner's own view.
+        BoneSpec("ObjectiveMount", (0.0, -0.405, 1.455), (0.0, -0.525, 1.455), "Chest"),
         # §08's 가방 (+5 loot, −10% speed) and any per-role back prop.
         BoneSpec("BackpackMount", (0.0, 0.115, CHEST_Z), (0.0, 0.255, CHEST_Z), "Chest"),
     ]
@@ -684,7 +802,11 @@ def bone_specs() -> list[BoneSpec]:
 
     # §05: 손전등이 포인터가 된다. Bone +Y runs distally out of the fist, so once the
     # forearm is posed forward the beam axis points forward with no extra offset.
-    specs.append(BoneSpec("FlashlightMount", (-0.795, 0.0, 1.437), (-0.915, 0.0, 1.437),
+    # Placed 10 mm ahead of the torch's lens rim (`build_torch`) rather than in the
+    # middle of the fist: the Unity spot light is positioned on this bone, and a light
+    # source inside the barrel would light the torch from within and cast the player's
+    # own fist down the corridor.
+    specs.append(BoneSpec("FlashlightMount", (-0.935, 0.0, 1.408), (-1.055, 0.0, 1.408),
                           "RightHand"))
     return specs
 
@@ -1007,15 +1129,26 @@ def leg(side: int, thigh: float, shank: float, foot: float = 0.0, toe: float = 0
     }
 
 
-# The right arm in every clip where the flashlight is in hand: elbow at ~74°, forearm
-# level and forward, so FlashlightMount ends up ~0.34 m in front of the chest pointing
-# where the player is facing. §05 — the beam is a pointing device, so it is held, not swung.
-FLASHLIGHT_ARM = dict(up_down=70.0, up_swing=14.0, lo_down=8.0, lo_swing=78.0,
-                      hand_down=4.0, hand_swing=84.0)
+# The right arm in every clip where the flashlight is in hand: elbow folded ~110°, upper
+# arm forward and the forearm angled up, so the torch is carried in front of the lower
+# chest with the lens ~0.6 m ahead of the hips, pointing where the player faces.
+#
+# §05 asks two things of this pose and they pull the same way. The beam is a pointing
+# device — *"손전등이 포인터가 된다"* — so it is HELD, not swung. And the owner has to be
+# able to see it: *"자기 몸은 안 보이므로 손만 있으면 된다"* is a promise that the hands
+# are on screen, and at 80° of vertical FOV (§05) an arm hanging at hip height puts the
+# fist 22° below the bottom edge. That was the whole defect: the hands were authored
+# correctly for the three teammates who look at this model and off-screen for the one
+# person inside it. `verify_first_person` now checks the second reading too.
+FLASHLIGHT_ARM = dict(up_down=31.0, up_swing=59.0, lo_down=-39.0, lo_swing=99.0,
+                      hand_down=-4.0, hand_swing=99.0)
 
-# The free arm at rest: hanging, slightly out and forward of the seam.
-FREE_ARM = dict(up_down=78.0, up_swing=6.0, lo_down=72.0, lo_swing=18.0,
-                hand_down=70.0, hand_swing=22.0)
+# The free arm: raised to the same lower-chest height and slightly wider, so an empty
+# hand is a thing the owner can SEE rather than an absence they have to infer. §10 makes
+# switching the light off the most repeated trade in the game, and the state you switch
+# into has to look like something.
+FREE_ARM = dict(up_down=33.0, up_swing=52.0, lo_down=-41.0, lo_swing=95.0,
+                hand_down=-22.0, hand_swing=95.0)
 
 
 def stand_spec(**over) -> dict:
@@ -1218,11 +1351,14 @@ def clip_idle(rig) -> Clip:
     the systems have declared absent.
     """
     keys, _ = cycle_frames_for(23)
+    # `up` is a DELTA on FREE_ARM's shoulder angle, not an absolute: the free arm's rest
+    # height is a first-person framing decision now (`verify_first_person`), and an
+    # absolute here would silently unhook the breathing from it the next time it moves.
     breath = [
-        dict(lean=4.0, neck=10.0, hl=2.0, yaw=0.0, up=78.0),
-        dict(lean=2.4, neck=8.5, hl=1.0, yaw=-6.0, up=76.5),
-        dict(lean=4.6, neck=10.6, hl=2.6, yaw=0.0, up=78.6),
-        dict(lean=3.0, neck=9.0, hl=1.4, yaw=7.0, up=77.0),
+        dict(lean=4.0, neck=10.0, hl=2.0, yaw=0.0, up=0.0),
+        dict(lean=2.4, neck=8.5, hl=1.0, yaw=-6.0, up=-1.5),
+        dict(lean=4.6, neck=10.6, hl=2.6, yaw=0.0, up=0.6),
+        dict(lean=3.0, neck=9.0, hl=1.4, yaw=7.0, up=-1.0),
     ]
     poses, hip_zs, residuals = [], [], []
     prev: dict[str, Euler] = {}
@@ -1230,7 +1366,7 @@ def clip_idle(rig) -> Clip:
         spec = merge(
             torso(lean=b["lean"], hips_lean=0.4),
             head(lean=b["hl"], yaw=b["yaw"], neck=b["neck"]),
-            arm(1, **{**FREE_ARM, "up_down": b["up"]}),
+            arm(1, **{**FREE_ARM, "up_down": FREE_ARM["up_down"] + b["up"]}),
             arm(-1, **FLASHLIGHT_ARM),
             leg(1, 0.0, -2.0, 0.0, 0.0),
             leg(-1, 0.0, -2.0, 0.0, 0.0),
@@ -1258,12 +1394,16 @@ def clip_walk(rig) -> Clip:
         spec = merge(
             torso(lean=6.0, twist=twist[i], hips_yaw=-twist[i] * 0.8, hips_tilt=sway[i] * 90),
             head(lean=2.0, neck=11.0, yaw=-twist[i] * 0.25),
-            arm(1, up_down=78.0 - 22.0 * math.sin(math.pi * i / 2),
-                up_swing=6.0 + 26.0 * math.sin(math.pi * i / 2),
-                lo_down=70.0 - 16.0 * math.sin(math.pi * i / 2),
-                lo_swing=20.0 + 24.0 * math.sin(math.pi * i / 2)),
-            arm(-1, **{**FLASHLIGHT_ARM, "up_down": 70.0 + 3.0 * math.cos(math.pi * i / 2),
-                       "lo_swing": 78.0 - 3.0 * math.cos(math.pi * i / 2)}),
+            # Deltas on FREE_ARM, so the swing rides whatever height the rest pose is
+            # authored at and cannot drift away from the framing check.
+            arm(1, **{**FREE_ARM,
+                      "up_down": FREE_ARM["up_down"] + 14.0 * math.sin(math.pi * i / 2),
+                      "up_swing": FREE_ARM["up_swing"] - 20.0 * math.sin(math.pi * i / 2),
+                      "lo_down": FREE_ARM["lo_down"] + 10.0 * math.sin(math.pi * i / 2),
+                      "lo_swing": FREE_ARM["lo_swing"] - 18.0 * math.sin(math.pi * i / 2)}),
+            arm(-1, **{**FLASHLIGHT_ARM,
+                       "up_down": FLASHLIGHT_ARM["up_down"] + 3.0 * math.cos(math.pi * i / 2),
+                       "lo_swing": FLASHLIGHT_ARM["lo_swing"] - 3.0 * math.cos(math.pi * i / 2)}),
         )
         return spec, (sway[i], 0.0)
 
@@ -1288,10 +1428,15 @@ def clip_run(rig) -> Clip:
         spec = merge(
             torso(lean=14.0, twist=twist, hips_yaw=-twist * 0.9, hips_tilt=sway * 90),
             head(lean=-4.0, neck=20.0, yaw=-twist * 0.2),
-            arm(1, up_down=64.0 - 44.0 * phase, up_swing=10.0 + 44.0 * phase,
-                lo_down=30.0 - 24.0 * phase, lo_swing=62.0 + 20.0 * phase),
-            arm(-1, **{**FLASHLIGHT_ARM, "up_down": 66.0 + 7.0 * beat,
-                       "lo_down": 12.0 - 5.0 * beat, "lo_swing": 76.0 - 6.0 * beat}),
+            # A wider swing than the walk's, still expressed as a delta on FREE_ARM.
+            arm(1, **{**FREE_ARM,
+                      "up_down": FREE_ARM["up_down"] + 20.0 * phase,
+                      "up_swing": FREE_ARM["up_swing"] - 26.0 * phase,
+                      "lo_down": FREE_ARM["lo_down"] + 16.0 * phase,
+                      "lo_swing": FREE_ARM["lo_swing"] - 18.0 * phase}),
+            arm(-1, **{**FLASHLIGHT_ARM, "up_down": FLASHLIGHT_ARM["up_down"] + 4.0 * beat,
+                       "lo_down": FLASHLIGHT_ARM["lo_down"] + 2.0 * beat,
+                       "lo_swing": FLASHLIGHT_ARM["lo_swing"] - 6.0 * beat}),
         )
         return spec, (sway, 0.0)
 
@@ -1300,14 +1445,20 @@ def clip_run(rig) -> Clip:
                        note="§05 달리기 4.5 m/s; 질주 = ×1.24")
 
 
-# §03: both hands on the objective. Arms in, hands meeting in front of the sternum,
-# forearms crossing past 90° of swing so the palms face each other.
-CARRY_ARMS = dict(up_down=52.0, up_swing=52.0, lo_down=-6.0, lo_swing=115.0,
-                  hand_down=-4.0, hand_swing=125.0, shoulder_down=2.0, shoulder_swing=16.0)
+# §03: both hands on the objective. Arms in, forearms crossing past 90° of swing so the
+# palms face each other, and the load carried HIGH — up against the collarbones rather
+# than at the navel. That height is not decoration: §03 says the carrier 앞을 보지
+# 못한다, and an object held where the owner can see it is the only version of that
+# sentence the owner experiences. From the inside the frame fills with two hands and the
+# objective between them, no beam anywhere, which is the state read without a HUD.
+CARRY_ARMS = dict(up_down=21.0, up_swing=78.0, lo_down=-47.0, lo_swing=104.0,
+                  hand_down=-49.0, hand_swing=116.0, shoulder_down=2.0, shoulder_swing=16.0)
 
-# §08 w5, two carriers: low and wide on a crate edge, not hugged to the chest.
-HEAVY_ARMS = dict(up_down=62.0, up_swing=32.0, lo_down=34.0, lo_swing=60.0,
-                  hand_down=30.0, hand_swing=66.0, shoulder_down=4.0, shoulder_swing=10.0)
+# §08 w5, two carriers: WIDE on a crate edge and a clear step lower than the objective,
+# so the two two-handed states are never mistaken for each other — from the outside by
+# the grip, and from the inside by where the hands sit in the frame.
+HEAVY_ARMS = dict(up_down=32.0, up_swing=60.0, lo_down=-22.0, lo_swing=68.0,
+                  hand_down=-20.0, hand_swing=72.0, shoulder_down=4.0, shoulder_swing=10.0)
 
 
 def carry_torso(i: int, twist_amp: float, sway_amp: float):
@@ -1410,9 +1561,13 @@ def clip_crouch(rig) -> Clip:
         spec = merge(
             torso(lean=24.0 + breath[i] * 0.6, hips_lean=2.4),
             head(lean=4.0 - breath[i], neck=26.0, yaw=breath[i] * 4.0),
-            arm(1, up_down=70.0, up_swing=34.0, lo_down=26.0, lo_swing=62.0,
-                hand_down=22.0, hand_swing=66.0),
-            arm(-1, **{**FLASHLIGHT_ARM, "up_down": 62.0, "lo_down": 14.0, "lo_swing": 74.0}),
+            # Both arms pulled in a little against the crouched torso, as deltas on the
+            # standing pair. The eye drops 0.39 m in this clip, so the framing check has
+            # to keep holding here and not only when standing up straight.
+            arm(1, **{**FREE_ARM, "up_down": FREE_ARM["up_down"] - 4.0,
+                      "up_swing": FREE_ARM["up_swing"] - 4.0}),
+            arm(-1, **{**FLASHLIGHT_ARM, "up_down": FLASHLIGHT_ARM["up_down"] - 4.0,
+                       "lo_down": FLASHLIGHT_ARM["lo_down"] - 4.0}),
             leg(1, 58.0, -50.6, 0.0, 0.0, out=6.0),
             leg(-1, 58.0, -50.6, 0.0, 0.0, out=6.0),
         )
@@ -1441,9 +1596,10 @@ def clip_crouch_walk(rig) -> Clip:
         spec = merge(
             torso(lean=26.0 + breath, twist=(-5.0, 0.0, 5.0, 0.0)[i], hips_tilt=sway * 60),
             head(lean=2.0, neck=28.0, yaw=(-2.0, 0.0, 2.0, 0.0)[i]),
-            arm(1, up_down=66.0, up_swing=40.0, lo_down=22.0, lo_swing=66.0,
-                hand_down=18.0, hand_swing=70.0),
-            arm(-1, **{**FLASHLIGHT_ARM, "up_down": 60.0, "lo_down": 16.0, "lo_swing": 72.0}),
+            arm(1, **{**FREE_ARM, "up_down": FREE_ARM["up_down"] - 3.0,
+                      "up_swing": FREE_ARM["up_swing"] - 3.0}),
+            arm(-1, **{**FLASHLIGHT_ARM, "up_down": FLASHLIGHT_ARM["up_down"] - 3.0,
+                       "lo_down": FLASHLIGHT_ARM["lo_down"] - 3.0}),
         )
         return spec, (sway, 0.080)
 
@@ -1571,6 +1727,57 @@ def eval_bone(rig: bpy.types.Object, frame: int, bone: str) -> tuple[Vector, Vec
     return m.translation.copy(), m.col[1].to_3d().normalized()
 
 
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+GAME_CONSTANTS = os.path.join(
+    REPO_ROOT, "unity", "HorrorGame", "Assets", "Scripts", "Core", "GameConstants.cs")
+
+# The narrowest frame the game is played in. §05 fixes the VERTICAL field of view, so a
+# wider monitor only ever shows more; checking the hands against 16:9 is therefore the
+# conservative case, and it is the shape every review render in this repo is taken at.
+VIEW_ASPECT = 16.0 / 9.0
+
+
+def fov_default_degrees() -> float:
+    """§05's default vertical FOV, parsed from GameConstants rather than repeated here.
+
+    §05 calls FOV a balance item — *"기본 80, 조절 범위 70~90"* — and the whole point of
+    the checks below is that the hands stay inside the frame the player actually gets.
+    A number typed into this file would go stale the day that one is retuned, and the
+    failure would be silent: hands that had quietly left the screen again.
+    """
+    try:
+        with open(GAME_CONSTANTS, "r", encoding="utf-8") as handle:
+            source = handle.read()
+    except OSError as exc:
+        blendkit.fail(f"cannot read {GAME_CONSTANTS}: {exc}. The first-person framing of the "
+                      "hands is checked against §05's FOV, and guessing it is not a check.")
+        raise
+
+    match = re.search(r"FovDefault\s*=\s*([0-9.]+)f", source)
+    if match is None:
+        blendkit.fail("GameConstants.FovDefault is no longer a plain assignment — the hands "
+                      "can no longer be checked against the frame §05 gives the player.")
+    return float(match.group(1))
+
+
+def view_angles(eye: Vector, point: Vector) -> tuple[float, float, float]:
+    """Where a point sits in the owner's view: (degrees below the axis, degrees off
+    centre, metres in front).
+
+    The camera's POSITION is the HeadCameraAnchor bone and its ROTATION is the player's
+    (PlayerCameraRig takes only the position — an animation that aimed the view would be
+    an animation aiming the flashlight, §05). So the axis here is world forward from
+    wherever the animation has put the eye, which is exactly what the player looks along
+    when they are not pitching the mouse. Negative "below" means above the axis.
+    """
+    forward = eye.y - point.y                  # the model faces -Y
+    if forward <= 1e-4:
+        return 180.0, 180.0, forward
+    return (math.degrees(math.atan2(eye.z - point.z, forward)),
+            math.degrees(math.atan2(abs(point.x - eye.x), forward)),
+            forward)
+
+
 def pose_metrics(rig: bpy.types.Object, frame: int) -> dict:
     """The handful of world-space facts the design's requirements are actually about."""
     hips, _ = eval_bone(rig, frame, "Hips")
@@ -1589,7 +1796,11 @@ def pose_metrics(rig: bpy.types.Object, frame: int) -> dict:
         "lhand": lhand, "rhand": rhand, "hands_mid": hands_mid,
         "hand_gap": (lhand - rhand).length,
         "hand_z": hands_mid.z,
-        "eye_z": eye.z, "look": look,
+        "eye": eye, "eye_z": eye.z, "look": look,
+        # Where each hand and the torch land in the owner's own frame (§05).
+        "view_left": view_angles(eye, lhand),
+        "view_right": view_angles(eye, rhand),
+        "view_mount": view_angles(eye, mount),
         "mount": mount, "beam": beam,
         "mount_fwd": hips.y - mount.y,          # metres ahead of the hips (-Y is forward)
         "objective_reach": (hands_mid - obj_mount).length,
@@ -1725,6 +1936,80 @@ def render_previews(rig, body, out_dir: str, shots) -> list[str]:
     return written
 
 
+def render_first_person(rig, out_dir: str, shots) -> list[str]:
+    """The owner's own view: camera on HeadCameraAnchor, §05's FOV, 16:9.
+
+    Deliberately not the same rig as `render_previews`. That one photographs the model
+    for the three teammates who look at it; this one photographs what the person inside
+    it sees, and the two disagree — a pose can be perfect in one and empty in the other,
+    which is exactly the defect this pass exists to close. It is Blender's answer to the
+    question, in seconds, before Unity is asked the same question properly.
+
+    The camera takes the anchor's POSITION and world forward for its rotation, matching
+    PlayerCameraRig: the head animation moves the eye but never aims it, because §05
+    makes where the player is pointing their own responsibility.
+    """
+    os.makedirs(out_dir, exist_ok=True)
+    scene = bpy.context.scene
+
+    cam_data = bpy.data.cameras.new("FirstPersonCam")
+    cam_data.sensor_fit = "VERTICAL"
+    cam_data.angle_y = math.radians(fov_default_degrees())
+    cam_data.clip_start = 0.05
+    cam = bpy.data.objects.new("FirstPersonCam", cam_data)
+    bpy.context.collection.objects.link(cam)
+    scene.camera = cam
+
+    # A torch, roughly. The real beam is a Unity spot on FlashlightMount; this is only
+    # here so the preview is lit from where the light will be rather than from nowhere.
+    lamp_data = bpy.data.lights.new("FirstPersonBeam", type="SPOT")
+    lamp_data.energy = 60.0
+    lamp_data.spot_size = math.radians(70.0)
+    lamp_data.spot_blend = 0.6
+    lamp = bpy.data.objects.new("FirstPersonBeam", lamp_data)
+    bpy.context.collection.objects.link(lamp)
+
+    fill_data = bpy.data.lights.new("FirstPersonFill", type="SUN")
+    fill_data.energy = 1.2
+    fill = bpy.data.objects.new("FirstPersonFill", fill_data)
+    fill.rotation_euler = Euler((math.radians(50.0), 0.0, math.radians(200.0)), "XYZ")
+    bpy.context.collection.objects.link(fill)
+
+    scene.render.resolution_x = 1280
+    scene.render.resolution_y = 720
+    scene.render.resolution_percentage = 100
+    scene.render.image_settings.file_format = "PNG"
+    scene.render.film_transparent = False
+    scene.render.engine = "BLENDER_WORKBENCH"
+    scene.display.shading.light = "STUDIO"
+    scene.display.shading.color_type = "MATERIAL"
+
+    written = []
+    for name, frame in shots:
+        eye, _ = eval_bone(rig, frame, "HeadCameraAnchor")
+        mount, beam = eval_bone(rig, frame, "FlashlightMount")
+        cam.location = eye
+        cam.rotation_euler = Vector((0.0, -1.0, 0.0)).to_track_quat("-Z", "Y").to_euler()
+        lamp.location = mount
+        lamp.rotation_euler = Vector(beam).to_track_quat("-Z", "Y").to_euler()
+
+        path = os.path.join(out_dir, f"fp_{name}.png")
+        scene.render.filepath = path
+        try:
+            bpy.ops.render.render(write_still=True)
+        except Exception as exc:                       # noqa: BLE001
+            print(f"FP_PREVIEW_FAILED {name}: {exc}")
+            break
+        if os.path.exists(path) and os.path.getsize(path) > 1024:
+            written.append(path)
+
+    bpy.data.objects.remove(cam, do_unlink=True)
+    bpy.data.objects.remove(lamp, do_unlink=True)
+    bpy.data.objects.remove(fill, do_unlink=True)
+    scene.camera = None
+    return written
+
+
 # ── Design-linked verification ──────────────────────────────────────────────
 
 
@@ -1768,7 +2053,7 @@ def verify_shape(report, metrics: dict) -> None:
         blendkit.fail(f"the model floats: lowest ball-of-foot is {stand['lowest_foot_z']:.3f} m.")
 
 
-def verify_motion(clips, stats: dict, metrics: dict, speeds: dict) -> None:
+def verify_motion(clips, stats: dict, metrics: dict, speeds: dict, worst: dict) -> None:
     leg_bones = [f"{s}{p}" for s in ("Left", "Right")
                  for p in ("UpperLeg", "LowerLeg", "Foot", "Toes")]
 
@@ -1869,6 +2154,12 @@ def verify_motion(clips, stats: dict, metrics: dict, speeds: dict) -> None:
         blendkit.fail(f"Crouch leaves the camera at {crouch_eye:.3f} m; §12's 은폐 지점 need a "
                       "real drop from the 1.635 m standing eye height.")
 
+    # §05 from the inside. Third-person legibility and first-person framing are two
+    # different requirements on the same eight arm angles, and until this ran only the
+    # first one was checked — which is how a model whose Carry pose passed every §03
+    # assertion still showed its owner nothing at all.
+    verify_first_person(clips, worst)
+
     # §09 — the corpse is a marker teammates come back to (§08 dropped loot).
     dead = metrics["Death"]
     if dead["head"].z > 0.45 or dead["hips"].z > 0.35:
@@ -1876,6 +2167,147 @@ def verify_motion(clips, stats: dict, metrics: dict, speeds: dict) -> None:
                       f"{dead['hips'].z:.3f} m — it has to end on the floor.")
     if (metrics["DeathSettle"]["head"] - dead["head"]).length > 0.03:
         blendkit.fail("Death is still moving on its last frames — a corpse does not breathe.")
+
+
+# ── First person ────────────────────────────────────────────────────────────
+# Clips whose right hand holds the torch, and clips where §03 has taken it away and put
+# something two-handed there instead. Nothing else in this file needs to know the
+# difference, so the two lists live next to the check that uses them.
+TORCH_CLIPS = ("Idle", "Walk", "Run", "Crouch", "CrouchWalk")
+TWO_HANDED_CLIPS = ("Carry", "CarryIdle", "CarryHeavy")
+
+# Degrees of frame the hands must be inside the edge by. A hand exactly on the edge is
+# a hand that leaves the screen on the next retune, and 3° is about 3 % of the frame.
+FRAME_MARGIN_DEGREES = 3.0
+
+# Nothing may sit closer to the eye than this. The camera's near plane is 0.05 m
+# (PlayerCameraRig), so a hand nearer than that is clipped through; the margin over it
+# is because a hand filling the frame is not a hand you can see either.
+MIN_HAND_DISTANCE = 0.18
+
+
+def frame_half_angles() -> tuple[float, float]:
+    """§05's frame as half-angles: (vertical, horizontal) degrees from the view axis."""
+    half_v = fov_default_degrees() * 0.5
+    half_h = math.degrees(math.atan(math.tan(math.radians(half_v)) * VIEW_ASPECT))
+    return half_v, half_h
+
+
+def frame_deficit(view: tuple[float, float, float], half_v: float, half_h: float) -> float:
+    """How far outside the owner's frame a measured point is. ≤ 0 means it is on screen.
+
+    One signed number rather than three booleans, so "the worst frame of this clip" is a
+    thing that can be picked rather than argued about.
+    """
+    below, off_centre, forward = view
+    return max(abs(below) - (half_v - FRAME_MARGIN_DEGREES),
+               off_centre - (half_h - FRAME_MARGIN_DEGREES),
+               MIN_HAND_DISTANCE - forward)
+
+
+def in_frame(view: tuple[float, float, float], half_v: float, half_h: float) -> bool:
+    """Whether a measured (below, off-centre, forward) triple is on the owner's screen."""
+    return frame_deficit(view, half_v, half_h) <= 0.0
+
+
+def first_person_worst(rig: bpy.types.Object, clip) -> dict:
+    """The least favourable authored key of a clip, per hand and for the torch.
+
+    One frame per clip is not a check. A walk swings the free arm 30° and a run 50°, and
+    it is the bottom of that swing — not the key the gait speed happens to be measured on
+    — that decides whether the owner can see a hand. So every key is measured and the
+    worst kept, per target and for "either hand", which is the one that has to be
+    evaluated frame by frame rather than by combining two separate worst cases.
+    """
+    half_v, half_h = frame_half_angles()
+    worst: dict = {"view_left": None, "view_right": None, "view_mount": None,
+                   "any_hand": None, "any_hand_deficit": -math.inf}
+
+    for pose in clip.poses:
+        m = pose_metrics(rig, pose.frame)
+        for key in ("view_left", "view_right", "view_mount"):
+            view = m[key]
+            if (worst[key] is None
+                    or frame_deficit(view, half_v, half_h)
+                    > frame_deficit(worst[key], half_v, half_h)):
+                worst[key] = view
+
+        # The better of the two hands on THIS frame; the worst such frame is the answer
+        # to "is there ever a moment with no hand on screen".
+        best = min((m["view_left"], m["view_right"]),
+                   key=lambda v: frame_deficit(v, half_v, half_h))
+        deficit = frame_deficit(best, half_v, half_h)
+        if deficit > worst["any_hand_deficit"]:
+            worst["any_hand_deficit"] = deficit
+            worst["any_hand"] = best
+
+    return worst
+
+
+def verify_first_person(clips, worst: dict) -> None:
+    """§05 — *"자기 몸은 안 보이므로 손만 있으면 된다."*
+
+    The sentence is usually read as permission to skip modelling a body. Its other half
+    is a requirement: if the body is not drawn and the hands are not on screen either,
+    the player is a floating camera. So every clip a player is alive in has to put at
+    least one hand in the frame §05 gives them, the clips that carry the torch have to
+    show the torch, and §03's two-handed states have to show BOTH hands — that is what
+    makes 목표물 운반 (both hands, no light) readable from the inside with no HUD.
+
+    Measured from HeadCameraAnchor along world forward, because that is the camera:
+    PlayerCameraRig takes the bone's position and leaves the rotation to the player.
+    Every authored key is measured, not one per clip — see `first_person_worst`.
+    """
+    half_v, half_h = frame_half_angles()
+
+    for clip in clips:
+        if clip.name == "Death":
+            # §09 hands the camera to the ghost. Nothing is asserted about a corpse's
+            # framing because nobody is behind that eye any more.
+            continue
+
+        view = worst[clip.name]["any_hand"]
+        if not in_frame(view, half_v, half_h):
+            blendkit.fail(
+                f"{clip.name}: at its worst key neither hand is inside the "
+                f"{half_v * 2:.0f}° frame — the better of the two is {view[0]:.0f}° below "
+                f"and {view[1]:.0f}° off centre at {view[2]:.2f} m. §05 gives the player no "
+                "body and no third-person view; with no hands either there is nothing on "
+                "screen that belongs to them.")
+
+    for name in TORCH_CLIPS:
+        w = worst[name]
+        if not in_frame(w["view_mount"], half_v, half_h):
+            v = w["view_mount"]
+            blendkit.fail(
+                f"{name}: the torch reaches {v[0]:.0f}° below and {v[1]:.0f}° off centre at "
+                f"{v[2]:.2f} m, outside the frame. §10 makes turning the light on the most "
+                "repeated trade in the game; the thing being traded has to be visible to "
+                "the person making the trade.")
+        if not in_frame(w["view_right"], half_v, half_h):
+            v = w["view_right"]
+            blendkit.fail(f"{name}: the torch hand reaches {v[0]:.0f}° below / {v[1]:.0f}° off "
+                          f"centre — a beam with no hand under it reads as a floating light.")
+
+    for name in TWO_HANDED_CLIPS:
+        w = worst[name]
+        for label, view in (("left", w["view_left"]), ("right", w["view_right"])):
+            if not in_frame(view, half_v, half_h):
+                blendkit.fail(
+                    f"{name}: the {label} hand reaches {view[0]:.0f}° below and "
+                    f"{view[1]:.0f}° off centre at {view[2]:.2f} m. §03 makes 「양손을 쓴다」 "
+                    "the rule that costs the carrier their flashlight — one hand on screen "
+                    "looks like the state where they still have it.")
+
+    # §03 again: the two two-handed states must not photograph the same. The outside
+    # already has to tell them apart (`verify_motion`); this is the inside.
+    carry_h = worst["Carry"]["view_left"][0]
+    heavy_h = worst["CarryHeavy"]["view_left"][0]
+    if heavy_h - carry_h < 6.0:
+        blendkit.fail(
+            f"CarryHeavy sits {heavy_h:.0f}° below the axis and Carry {carry_h:.0f}° — under "
+            "6° apart they are the same picture, and §08's 궤짝 and §03's 목표물 are two "
+            "different decisions with two different costs.")
 
 
 # ── Surfaces ────────────────────────────────────────────────────────────────
@@ -2090,6 +2522,106 @@ def uv_units_per_metre(body: bpy.types.Object) -> float:
     return gmm.uv_units_per_metre(body)
 
 
+def normalise_uv_density(obj: bpy.types.Object, target: float) -> float:
+    """Scales one mesh's UVs so it samples the shared maps at the same metres-per-texel
+    as the body does. Returns the achieved density.
+
+    Smart-project packs each object into its own 0–1 square, so density is a function of
+    how much surface an object happens to have. The manifest carries ONE tiling number
+    per material, so three objects unwrapped independently would render the same coverall
+    at three different weave scales.
+    """
+    density = uv_units_per_metre(obj)
+    if density <= 0.0:
+        blendkit.fail(f"{obj.name}: degenerate unwrap, cannot match the body's UV density.")
+
+    factor = target / density
+    uv_layer = obj.data.uv_layers.active
+    for datum in uv_layer.data:
+        datum.uv = (datum.uv[0] * factor, datum.uv[1] * factor)
+
+    achieved = uv_units_per_metre(obj)
+    if abs(achieved - target) > target * 0.01:
+        blendkit.fail(f"{obj.name}: UV density is {achieved:.4f} after rescaling, not the "
+                      f"body's {target:.4f}.")
+    return achieved
+
+
+# Bones that, if a mesh is skinned to them, put that mesh across the owner's near plane
+# in first person. §05: 자기 몸은 안 보이므로. Anything weighted to one of these belongs
+# on Player_Body and is hidden from its owner.
+OCCLUDING_BONES = ("Head", "Neck", "Hips", "Spine", "Chest",
+                   "LeftUpperLeg", "RightUpperLeg")
+
+
+def verify_mesh_split(body, arms, torch) -> None:
+    """The two properties the Unity classifier depends on, asserted where they are authored.
+
+    PlayerRigParts decides what the owner sees from the MATERIAL SLOTS a renderer carries,
+    never from a mesh name — and not from bone weights either, because a Humanoid import
+    binds all 26 bones to all three meshes and the binding stops saying anything about what
+    a mesh is made of. So the material composition is a contract:
+
+        Player_Body    equipment AND skin      belt, boots, radio, and a face
+        Player_Arms    skin, cloth, NO gear    the one mesh with no equipment on it
+        Player_Torch   gear and nothing else   a held object
+
+    The weights are checked as well, for a different reason: they are what makes the seam
+    at the shoulder invisible and the torch rigid in the fist. Both checks are here so a
+    regeneration that breaks either one fails in Blender rather than arriving in Unity as
+    a player who cannot see their own hands.
+    """
+    body_mats = {m.name for m in body.data.materials}
+    arm_mats = {m.name for m in arms.data.materials}
+    torch_mats = {m.name for m in torch.data.materials}
+
+    if not ({GEAR, SKIN} <= body_mats):
+        blendkit.fail(f"Player_Body carries {sorted(body_mats)}; the Unity classifier finds "
+                      f"the body by it having BOTH {GEAR} and {SKIN} — equipment and a face.")
+    if GEAR in arm_mats or SKIN not in arm_mats:
+        blendkit.fail(
+            f"Player_Arms carries {sorted(arm_mats)}. It is recognised as the owner's own "
+            f"hands by having {SKIN} and NO {GEAR}: every piece of equipment on this model "
+            "is on the body or in the hand, and putting a strap or a watch on the sleeve "
+            "would make the arms read as a torso and stop being drawn.")
+    if torch_mats != {GEAR}:
+        blendkit.fail(
+            f"Player_Torch carries {sorted(torch_mats)}, not {GEAR} alone. A held item is "
+            "recognised by being one slot of equipment; a second material on it makes it "
+            "part of the person and it stops being switchable.")
+    if arm_mats and list(arms.data.materials)[0].name != ROLE_MATERIALS[0]:
+        blendkit.fail("Player_Arms slot 0 is not " + ROLE_MATERIALS[0] + " — §04 swaps slot 0 "
+                      "per RoleId on every renderer, and the bicep bands are on this one.")
+
+    body_groups = set(body.vertex_groups.keys())
+    arm_groups = set(arms.vertex_groups.keys())
+    torch_groups = set(torch.vertex_groups.keys())
+
+    leaked = sorted(arm_groups & set(OCCLUDING_BONES))
+    if leaked:
+        blendkit.fail(
+            "Player_Arms is skinned to " + ", ".join(leaked) + ". The arms mesh is the one "
+            "the owner sees; a vertex on the head or the pelvis rides that bone into the "
+            "middle of their view (§05).")
+    for hand in ("LeftHand", "RightHand"):
+        if hand not in arm_groups:
+            blendkit.fail(f"Player_Arms has no {hand} weights — §05 needs both hands.")
+    if "Head" not in body_groups:
+        blendkit.fail("Player_Body is not skinned to Head; the classifier finds the body by "
+                      "the bone that occludes, so it would be drawn into its owner's face.")
+    if torch_groups != {"RightHand"}:
+        blendkit.fail(
+            "Player_Torch is skinned to " + ", ".join(sorted(torch_groups)) + ", not to "
+            "RightHand alone. A held item is recognised by being rigid on one hand; skinned "
+            "to two it reads as part of the person and stops being switchable.")
+
+    print("MESH_SPLIT " + " ".join(
+        f"{m.name}(tris={sum(max(0, len(p.vertices) - 2) for p in m.data.polygons)},"
+        f"slots={'|'.join(mat.name for mat in m.data.materials)},"
+        f"weighted_bones={len(m.vertex_groups)})"
+        for m in (body, arms, torch)))
+
+
 def write_surface_manifest(reports: list, uv_per_metre: float, res: int) -> None:
     import gen_monster_model as gmm  # noqa: PLC0415
     path = os.path.join(gmm.TEXTURE_DIR, "Player.textures.json")
@@ -2191,16 +2723,26 @@ def main() -> None:
         blendkit.make_material(spec)
     verify_materials()
 
-    body = build_body()
-    blendkit.triangulate(body)
-    blendkit.shade_smooth(body, angle_degrees=38.0)
-    blendkit.uv_smart_project(body)
+    body, arms, torch = build_body()
+    meshes = (body, arms, torch)
+    for mesh in meshes:
+        blendkit.triangulate(mesh)
+        blendkit.shade_smooth(mesh, angle_degrees=38.0)
+        blendkit.uv_smart_project(mesh)
 
     # The surfaces, before the rig: the unwrap has to exist to measure the UV density
     # the tiling is derived from, and nothing after this point touches UVs.
     import gen_monster_model as gmm  # noqa: PLC0415
     limits = gmm.pipeline_constants()
+
+    # One tiling number in the manifest, three meshes. Smart-projecting each into its
+    # own 0–1 square makes the small ones far denser than the large one, so the arms
+    # are rescaled to the body's density: without this the same tiling paints a
+    # coverall weave at 1:1 on the chest and at 1:4 on the sleeve, and the seam is a
+    # visible change of fabric halfway down a limb.
     uv_per_metre = uv_units_per_metre(body)
+    for mesh in (arms, torch):
+        normalise_uv_density(mesh, uv_per_metre)
     surfaces = [write_surface(name, build, SURFACE_TARGETS[name], note, SURFACE_RES, limits)
                 for name, build, note in SURFACES]
     write_surface_manifest(surfaces, uv_per_metre, SURFACE_RES)
@@ -2218,14 +2760,18 @@ def main() -> None:
     for name in MOUNTS:
         rig.data.bones[name].use_deform = False
     cache_rig(rig)
-    blendkit.bind_skin(body, rig, auto_weights=False)
+    for mesh in meshes:
+        blendkit.bind_skin(mesh, rig, auto_weights=False)
 
-    missing = [b for b in DEFORM_BONES if b not in body.vertex_groups]
+    weighted = {b for mesh in meshes for b in mesh.vertex_groups.keys()}
+    missing = [b for b in DEFORM_BONES if b not in weighted]
     if missing:
         blendkit.fail("Humanoid bones with no weighted geometry: " + ", ".join(missing))
-    stray = [n for n in MOUNTS if n in body.vertex_groups]
+    stray = [n for n in MOUNTS if n in weighted]
     if stray:
         blendkit.fail("socket bones must not deform the mesh: " + ", ".join(stray))
+
+    verify_mesh_split(body, arms, torch)
 
     print(f"RIG_BONES count={len(rig.data.bones)} deform={len(DEFORM_BONES)} "
           f"sockets={len(MOUNTS)}")
@@ -2240,6 +2786,7 @@ def main() -> None:
     clips: list[Clip] = []
     stats: dict[str, dict] = {}
     metrics: dict[str, dict] = {}
+    worst: dict[str, dict] = {}
     speeds: dict[str, float] = {}
 
     for build in CLIP_BUILDERS:
@@ -2248,6 +2795,7 @@ def main() -> None:
         clip.action = action
         stats[clip.name] = measure_action(action)
         metrics[clip.name] = pose_metrics(rig, clip.measure_frame)
+        worst[clip.name] = first_person_worst(rig, clip)
         if clip.name == "Death":
             metrics["DeathSettle"] = pose_metrics(rig, 41)
         if clip.speed > 0.0:
@@ -2273,6 +2821,8 @@ def main() -> None:
                     (f"{clip.name}_q", f, (2.3, -3.1, 1.35), (0.0, -0.05, 0.92)),
                     (f"{clip.name}_side", f, (3.4, -0.5, 1.05), (0.0, -0.15, 0.85)),
                     (f"{clip.name}_front", f, (0.0, -3.4, 1.20), (0.0, -0.10, 0.95))]):
+                print(f"PREVIEW {p}")
+            for p in render_first_person(rig, preview_dir, [(clip.name, f)]):
                 print(f"PREVIEW {p}")
         rig.animation_data.action = None
 
@@ -2301,7 +2851,7 @@ def main() -> None:
 
     fbx_path = blendkit.out_path("Characters", "Player.fbx")
     glb_path = os.path.join(os.path.dirname(fbx_path), "Player.glb")
-    blendkit.export_fbx(fbx_path, objects=[rig, body], with_animation=True)
+    blendkit.export_fbx(fbx_path, objects=[rig, body, arms, torch], with_animation=True)
 
     # Maps go on only now. Unity finds them under Assets/Textures/<material>/ by name,
     # the way the monster's do; hooking image nodes up before the FBX export instead
@@ -2355,7 +2905,21 @@ def main() -> None:
               f"hand_z={m['hand_z']:.3f}m lean_back={m['lean_back']:+.3f}m "
               f"objective_reach={m['objective_reach']:.3f}m")
 
-    verify_motion(clips, stats, metrics, speeds)
+    half_v, half_h = frame_half_angles()
+    print(f"FIRST_PERSON_FRAME fov={fov_default_degrees():.0f}deg aspect={VIEW_ASPECT:.3f} "
+          f"half_v={half_v:.1f}deg half_h={half_h:.1f}deg margin={FRAME_MARGIN_DEGREES:.0f}deg "
+          f"min_distance={MIN_HAND_DISTANCE:.2f}m")
+    for clip in clips:
+        w = worst[clip.name]
+        print("FP_WORST_KEY {:11s} {}".format(clip.name, " ".join(
+            "{}=({:+.0f}deg below,{:.0f}deg off,{:.2f}m,{})".format(
+                label, v[0], v[1], v[2], "IN " if in_frame(v, half_v, half_h) else "OUT")
+            for label, v in (("left_hand", w["view_left"]),
+                             ("right_hand", w["view_right"]),
+                             ("torch", w["view_mount"]),
+                             ("best_hand", w["any_hand"])))))
+
+    verify_motion(clips, stats, metrics, speeds, worst)
 
     takes = fbx_objects(fbx_path, b"AnimStack")
     clean = [t for t in takes if "|" not in t]
@@ -2381,6 +2945,12 @@ def main() -> None:
     for socket in MOUNTS:
         if socket not in fbx_models:
             blendkit.fail(f"{socket} is not in the exported hierarchy — §05/§13 need it.")
+    for mesh in meshes:
+        if mesh.name not in fbx_models:
+            blendkit.fail(
+                f"{mesh.name} is not in the exported hierarchy. The three meshes are how "
+                "§05's 「자기 몸은 안 보이므로 손만 있으면 된다」 is delivered — one mesh "
+                "means hiding the chest hides the hands with it.")
     print(f"FBX_HIERARCHY models={len(fbx_models)} "
           f"sockets_present={','.join(s for s in MOUNTS if s in fbx_models)}")
     humanoid = [b.name for b in rig.data.bones if b.name not in MOUNTS]

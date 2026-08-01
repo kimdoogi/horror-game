@@ -52,6 +52,7 @@ namespace HorrorGame.Gameplay.Player
         private float _fieldOfView = GameConstants.FovDefault;
 
         private Transform? _headAnchor;
+        private bool _resolved;
 
         /// <summary>
         /// Vertical field of view in degrees, always inside §05's 70–90 window. Assigning
@@ -109,6 +110,24 @@ namespace HorrorGame.Gameplay.Player
 
         private void Awake()
         {
+            ResolveWiring();
+            ApplyFov();
+        }
+
+        /// <summary>
+        /// Finds the camera, the pivot and the head bone. Idempotent, and called from
+        /// <see cref="SnapToHeadAnchor"/> as well as from <c>Awake</c> because a capture
+        /// rig assembles this component outside play mode, where <c>Awake</c> never runs.
+        /// </summary>
+        private void ResolveWiring()
+        {
+            if (_resolved)
+            {
+                return;
+            }
+
+            _resolved = true;
+
             if (_camera == null)
             {
                 _camera = GetComponentInChildren<Camera>();
@@ -137,8 +156,6 @@ namespace HorrorGame.Gameplay.Player
                         this);
                 }
             }
-
-            ApplyFov();
         }
 
         private void OnValidate()
@@ -152,6 +169,24 @@ namespace HorrorGame.Gameplay.Player
             // LateUpdate, after the animation has posed the head for this frame. Reading
             // the bone in Update would show the previous frame's pose, which reads as the
             // camera lagging the body by exactly one frame.
+            SnapToHeadAnchor();
+        }
+
+        /// <summary>
+        /// Puts the eye on the rig's <c>HeadCameraAnchor</c> for the pose the rig is in
+        /// right now. What <c>LateUpdate</c> does every frame.
+        /// <para>
+        /// Public so a capture rig can photograph the eye the player actually gets. A shot
+        /// tool runs outside play mode, where no <c>LateUpdate</c> fires, and one that
+        /// left the camera at the pivot's authored height would be photographing a
+        /// different camera from the game's — 7 cm higher in a walk, 39 cm in a crouch,
+        /// and the hands would sit somewhere else in the frame in every shot.
+        /// </para>
+        /// </summary>
+        public void SnapToHeadAnchor()
+        {
+            ResolveWiring();
+
             if (_headAnchor == null || _pitchPivot == null)
             {
                 return;

@@ -91,7 +91,51 @@ namespace HorrorGame.Gameplay.Interaction
         /// <summary>Where a carried object is held — in front of the eye, since §03's carrier cannot see past it.</summary>
         public Transform? CarryAnchor
         {
-            get { return _eye; }
+            get { return Eye; }
+        }
+
+        /// <summary>
+        /// The transform the crosshair is cast from and carried things hang off.
+        /// <para>
+        /// Resolved on demand rather than only in <see cref="Awake"/>, because
+        /// <c>Awake</c> does not run outside play mode and the editor builds and drives
+        /// whole matches: <c>SoloPlaytest.BuildScene</c> assembles this rig and
+        /// <c>SoloMatchLoopTests</c> plays a match through it with no frames. With the eye
+        /// left null there, §03's reading distance was measured from the feet and §08's
+        /// carried pieces silently failed to attach at all — a rig that behaves one way in
+        /// a build and another in the checks that are supposed to cover the build.
+        /// </para>
+        /// </summary>
+        private Transform? Eye
+        {
+            get
+            {
+                if (_eye == null)
+                {
+                    var camera = GetComponentInChildren<Camera>();
+                    _eye = camera != null ? camera.transform : transform;
+                }
+
+                return _eye;
+            }
+        }
+
+        /// <summary>
+        /// The rig these hands belong to: its transform is the feet, and everything under
+        /// it is this player rather than scenery.
+        /// <para>
+        /// <see cref="DropPlacement"/> needs both halves of that. §08's dropped piece is
+        /// placed relative to where the player is <em>standing</em> and not to where the
+        /// eye happens to be pointing, and the player's own <c>CharacterController</c> is
+        /// a solid collider sitting directly over that spot — counted, it reads as both
+        /// the wall in front and the floor below, and the piece lands on the dropper's
+        /// head. Asked of <c>PlayerMotor</c> rather than assumed to be this component's
+        /// own object, because both are true today only by convention.
+        /// </para>
+        /// </summary>
+        public Transform Body
+        {
+            get { return _motor != null ? _motor.transform : transform; }
         }
 
         /// <summary>What the crosshair is on, or null.</summary>
@@ -209,12 +253,6 @@ namespace HorrorGame.Gameplay.Interaction
                 _flashlight = GetComponentInChildren<PlayerFlashlight>();
             }
 
-            if (_eye == null)
-            {
-                var camera = GetComponentInChildren<Camera>();
-                _eye = camera != null ? camera.transform : transform;
-            }
-
             if (_prompt == null)
             {
                 _prompt = gameObject.AddComponent<InteractionPromptScreen>();
@@ -267,7 +305,7 @@ namespace HorrorGame.Gameplay.Interaction
         /// </summary>
         private Interactable? Probe()
         {
-            var eye = _eye;
+            var eye = Eye;
             if (eye == null)
             {
                 return _carriedFocus;
@@ -338,7 +376,11 @@ namespace HorrorGame.Gameplay.Interaction
             }
 
             var mark = clue.transform.position;
-            var eye = _eye != null ? _eye : transform;
+            var eye = Eye;
+            if (eye == null)
+            {
+                eye = transform;
+            }
 
             context.DistanceToClue = Vector3.Distance(eye.position, mark);
             context.ReaderSpeed = _motor != null ? _motor.GroundSpeed : 0f;

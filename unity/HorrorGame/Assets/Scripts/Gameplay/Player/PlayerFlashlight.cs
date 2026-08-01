@@ -49,6 +49,10 @@ namespace HorrorGame.Gameplay.Player
         [SerializeField]
         private Transform? _rigRoot;
 
+        [Tooltip("Draws the torch in the fist. Left empty, found on this object. Optional.")]
+        [SerializeField]
+        private PlayerFirstPersonView? _view;
+
         [Header("Presentation")]
         [Tooltip("Beam brightness. A look value: §03's numbers are reach, cone and battery, not lumens. "
             + "Defaults to HorrorGame.Rendering.FlashlightBeam, which is also what the review "
@@ -62,6 +66,7 @@ namespace HorrorGame.Gameplay.Player
         private readonly BatteryState _battery = new BatteryState();
         private FlashlightState? _state;
         private Transform? _mount;
+        private bool _resolved;
 
         /// <summary>
         /// The rules object: on/off, the cell behind it, and §08's upgrade. Everything that
@@ -108,6 +113,29 @@ namespace HorrorGame.Gameplay.Player
             get { return State.IsLit; }
         }
 
+        /// <summary>
+        /// Whether the torch is out of its pocket and in the hand — which is what the
+        /// player sees, and the only cue that separates two of §03's four states from the
+        /// inside.
+        /// <para>
+        /// Taken out whenever it is switched on, and put away when it is not. That is a
+        /// design claim, not a convenience: §10 lists "손전등을 켠다 → 괴물이 본다 · 배터리를
+        /// 쓴다" as the most repeated trade in the game, and a trade the player can see
+        /// themselves making — a torch arriving in and leaving their own hand — is worth
+        /// more than one that only changes the lighting.
+        /// </para>
+        /// <para>
+        /// <c>IsOn</c> rather than <see cref="IsLit"/> on purpose: a dead cell leaves the
+        /// torch in the hand and the corridor dark, which is the §03 resource pressure
+        /// stated exactly. A torch that vanished when the battery ran out would read as
+        /// having been dropped.
+        /// </para>
+        /// </summary>
+        public bool InHand
+        {
+            get { return State.IsOn; }
+        }
+
         private void Reset()
         {
             _input = GetComponentInChildren<PlayerInputRouter>();
@@ -119,6 +147,23 @@ namespace HorrorGame.Gameplay.Player
 
         private void Awake()
         {
+            ResolveWiring();
+        }
+
+        /// <summary>
+        /// Finds the input, the look, the loadout, the spot and the mount. Idempotent, and
+        /// reachable from <see cref="RefreshPresentation"/> because a capture rig builds
+        /// this component outside play mode where <c>Awake</c> never runs.
+        /// </summary>
+        private void ResolveWiring()
+        {
+            if (_resolved)
+            {
+                return;
+            }
+
+            _resolved = true;
+
             if (_input == null)
             {
                 _input = GetComponentInChildren<PlayerInputRouter>();
@@ -144,6 +189,11 @@ namespace HorrorGame.Gameplay.Player
                 _rigRoot = transform;
             }
 
+            if (_view == null)
+            {
+                _view = GetComponentInChildren<PlayerFirstPersonView>();
+            }
+
             _mount = PlayerRigBones.Find(_rigRoot, PlayerRigBones.FlashlightMount);
 
             if (_spot != null)
@@ -156,24 +206,81 @@ namespace HorrorGame.Gameplay.Player
             }
         }
 
-        private void Update()
+        /// <summary>
+        /// Whether both hands are already on something, so there is no hand left for the
+        /// torch.
+        /// <para>
+        /// §03 states it for the objective — "양손을 쓴다 · 손전등을 들 수 없다 → 누군가
+        /// 비춰줘야 한다" — and §08's 대형 초상화 · 궤짝 is the same physical fact: a
+        /// two-person carry with a pair of hands on each edge, which is exactly how the
+        /// <c>CarryHeavy</c> pose is authored. An overloaded bag is deliberately <em>not</em>
+        /// included: §08 charges that as weight and takes speed for it, it does not fill
+        /// anybody's hands.
+        /// </para>
+        /// </summary>
+        public bool HandsFull
         {
-            var carryingObjective = _loadout != null && _loadout.CarryingObjective;
-
-            if (carryingObjective)
+            get
             {
-                // §03: "양손을 쓴다 · 손전등을 들 수 없다 → 누군가 비춰줘야 한다." The light
-                // is taken away rather than the key ignored, so the carrier goes dark the
+                ResolveWiring();
+                return _loadout != null
+                    && (_loadout.CarryingObjective || _loadout.CarryingOversizePiece);
+            }
+        }
+
+        /// <summary>
+        /// Takes the light away from a player whose hands are full, whatever they last
+        /// pressed.
+        /// <para>
+        /// Public alongside <see cref="RefreshPresentation"/> so a capture rig runs the
+        /// rule rather than re-stating it. A shot tool that decided for itself that the
+        /// light is off while carrying would photograph its own opinion of §03 and would
+        /// keep agreeing with the game right up until the day they diverged.
+        /// </para>
+        /// </summary>
+        public void EnforceCarryRules()
+        {
+            if (HandsFull)
+            {
+                // Taken away rather than the key ignored, so the carrier goes dark the
                 // instant they lift it and the escort has to be arranged, not assumed.
                 State.TurnOff();
             }
-            else if (_input != null && _input.FlashlightToggled)
+        }
+
+        private void Update()
+        {
+            EnforceCarryRules();
+
+            if (!HandsFull && _input != null && _input.FlashlightToggled)
             {
                 State.Toggle();
             }
 
             State.Tick(Time.deltaTime);
+            RefreshPresentation();
+        }
+
+        /// <summary>
+        /// Pushes the current <see cref="FlashlightState"/> onto everything the player can
+        /// see: the beam, and whether the torch is in the fist.
+        /// <para>
+        /// Public for the same reason <c>PlayerMotor.Step</c> and
+        /// <c>PlayerViewMotion.Tick</c> are — a capture rig runs outside play mode, where
+        /// <c>Update</c> never fires, and a shot that set the renderer itself would be
+        /// photographing the shot tool rather than the game. This is the exact call
+        /// <c>Update</c> makes.
+        /// </para>
+        /// </summary>
+        public void RefreshPresentation()
+        {
+            ResolveWiring();
             ApplyToLight();
+
+            if (_view != null)
+            {
+                _view.SetHandPropVisible(InHand);
+            }
         }
 
         private void LateUpdate()
@@ -181,6 +288,23 @@ namespace HorrorGame.Gameplay.Player
             // After the animator has posed the hand this frame, for the same reason the
             // camera follows the head in LateUpdate: a beam a frame behind the body is a
             // beam that points somewhere the player did not point.
+            SnapBeamToMount();
+        }
+
+        /// <summary>
+        /// Puts the beam on <c>FlashlightMount</c> for the pose the rig is in right now,
+        /// aimed where the player is aiming. What <c>LateUpdate</c> does every frame.
+        /// <para>
+        /// Public for the capture rig, which runs outside play mode: without it the light
+        /// stays at the rig's origin — on the floor between the player's boots — and every
+        /// review shot is of a torch nobody is holding. §05 makes the beam a pointing
+        /// device other players read, so where it comes from is not a detail.
+        /// </para>
+        /// </summary>
+        public void SnapBeamToMount()
+        {
+            ResolveWiring();
+
             if (_spot == null)
             {
                 return;

@@ -192,7 +192,7 @@ namespace HorrorGame.Gameplay.Interaction
             if (outcome == CarryReleaseOutcome.LeftOnTheFloor
                 || outcome == CarryReleaseOutcome.DroppedTooHeavyForSoleCarrier)
             {
-                Detach();
+                Detach(by);
             }
 
             Refusal = outcome == CarryReleaseOutcome.DroppedTooHeavyForSoleCarrier
@@ -213,23 +213,30 @@ namespace HorrorGame.Gameplay.Interaction
             transform.localRotation = Quaternion.identity;
         }
 
-        private void Detach()
+        /// <summary>
+        /// Puts the piece down. §08's "떨어진다", and the only place this component
+        /// decides where it ends up.
+        /// <para>
+        /// It used to keep the carried position and only correct the height, with a
+        /// raycast that took the project's default trigger handling. Three things were
+        /// wrong with that and all three put the piece somewhere a player could not use
+        /// it: the sideways position was 1.05 m along the camera's forward, so a player
+        /// facing a wall pushed a 궤짝 into it; the probe hit triggers, so a piece let go
+        /// beside another interactable landed on <em>its</em> box and stayed in the air;
+        /// and the piece kept the camera's pitch, so it lay over at whatever angle the
+        /// player was looking. <see cref="DropPlacement"/> answers all three.
+        /// </para>
+        /// </summary>
+        private void Detach(PlayerInteractor by)
         {
-            var here = transform.position;
+            // Read while it is still parented to the eye — unparenting keeps the world
+            // pose, so this is the position the hands were holding it at.
+            var held = transform.position;
             transform.SetParent(null, worldPositionStays: true);
-            transform.position = new Vector3(here.x, GroundedY(here), here.z);
-        }
 
-        private static float GroundedY(Vector3 from)
-        {
-            // Dropped where the carrier stood, not where their chest was. A raycast
-            // rather than a fixed height so the piece lands on stairs correctly, and
-            // the hit point is the answer directly — every generated prop's pivot is on
-            // its own floor plane (gen_props.py's FLOOR mount), so no half-height
-            // correction applies.
-            return Physics.Raycast(from + (Vector3.up * DropProbeHeight), Vector3.down, out var hit, DropProbeLength)
-                ? hit.point.y
-                : from.y;
+            transform.SetPositionAndRotation(
+                DropPlacement.Resolve(held, by.Body.position, by.Body),
+                DropPlacement.Upright(transform.rotation));
         }
 
         private Inventory? CurrentPockets()
@@ -241,7 +248,5 @@ namespace HorrorGame.Gameplay.Interaction
         // How far in front of the chest a carried piece is held. §08 charges for it in
         // weight, not in metres; the piece's own size comes from the model.
         private const float CarryOffset = 1.05f;
-        private const float DropProbeHeight = 1.0f;
-        private const float DropProbeLength = 4.0f;
     }
 }

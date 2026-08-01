@@ -176,7 +176,7 @@ namespace HorrorGame.UI
             var fillRect = Stretch((RectTransform)fill.transform);
             fillRect.pivot = new Vector2(0f, 0.5f);
 
-            return new UiBar(root, fill, fillRect);
+            return new UiBar(root, fill, fillRect, bed);
         }
 
         /// <summary>

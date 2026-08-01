@@ -339,10 +339,11 @@ namespace HorrorGame.Gameplay.Match
 
             BindHud();
 
-            // Closed to start with. §08: "1차 잠입 전 구매력 0 — 맨몸으로 들어간다", so
-            // there is nothing to decide yet, and a panel over the screen would take the
-            // camera away from a player whose first job is to walk out of the door. E on
-            // the 차량 opens it; §01's first 귀환 opens it by itself.
+            // Closed to start with, and closed on every 귀환 after it. §08: "1차 잠입 전
+            // 구매력 0 — 맨몸으로 들어간다", so there is nothing to decide yet, and a panel
+            // over the screen would take the camera away from a player whose first job is
+            // to walk out of the door. The 차량's key is the only thing that opens it —
+            // see the remarks on Surfaced.
             CloseShopAtVehicle();
 
             _running = true;
@@ -872,9 +873,18 @@ namespace HorrorGame.Gameplay.Match
         }
 
         /// <summary>
-        /// §01's 귀환. Everything §08 says happens at the van happens here, because §08
-        /// describes loading loot into the vehicle as the consequence of arriving rather
-        /// than as an errand — "전리품을 차량에 실으면 → 가치만큼 크레딧".
+        /// §01's 귀환. Everything §08 says happens <em>to the loot</em> at the van happens
+        /// here, because §08 describes loading it into the vehicle as the consequence of
+        /// arriving rather than as an errand — "전리품을 차량에 실으면 → 가치만큼 크레딧".
+        /// <para>
+        /// <b>The shop is not one of those things, and this is the line that used to open
+        /// it.</b> Walking into the apron is a movement, not a request: §01 makes coming
+        /// up a deliberate act, and putting a mouse-driven panel over the screen on a
+        /// position test took the camera away from a player who had only walked past the
+        /// van — 갑자기 상점이 열림. §08 puts the shop <em>at the 차량</em>, so the 차량 is
+        /// what opens it, on <c>SurfaceVehicleInteractable</c>'s key. Selling stays here:
+        /// it is the section's own wording, it costs nothing, and it takes nothing away.
+        /// </para>
         /// </summary>
         private void Surfaced()
         {
@@ -908,7 +918,13 @@ namespace HorrorGame.Gameplay.Match
                 }
             }
 
-            OpenShopAtVehicle();
+            // Said rather than shown, because the shop no longer shows itself. §03 rules
+            // out a HUD marker, so the arrival line and the 차량's own prompt are the two
+            // places a player can learn that the key is what opens it.
+            Debug.Log(
+                "[Match] §01 귀환 — 전리품은 차량에 실렸다. 상점은 차량을 보고 ["
+                + PlayerInteractor.InteractKeyLabel + "] — §07 시계는 계속 간다.", this);
+
             CheckOutcome();
         }
 

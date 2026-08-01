@@ -3,6 +3,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Reflection;
 using HorrorGame.Audio;
@@ -15,6 +16,7 @@ using HorrorGame.Core.Match;
 using HorrorGame.Core.Math;
 using HorrorGame.Core.Movement;
 using HorrorGame.Core.Roles;
+using HorrorGame.Core.Threat;
 using HorrorGame.Gameplay.Player;
 using HorrorGame.UI;
 using HorrorGame.UI.Readouts;
@@ -24,6 +26,7 @@ using HorrorGame.UI.Shell;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.UI;
 
 namespace HorrorGame.Tests.EditMode.UI
 {
@@ -104,7 +107,10 @@ namespace HorrorGame.Tests.EditMode.UI
         public void Shop_HasNoPerPlayerVocabularyAnywhere()
         {
             var banned = new[] { "player", "personal", "private", "share", "split", "wallet", "purse", "balanceof" };
-            var types = new[] { typeof(ShopBoard), typeof(ShopRow), typeof(IShopRequests), typeof(LocalShopRequests) };
+            var types = new[]
+            {
+                typeof(ShopBoard), typeof(ShopRow), typeof(IShopRequests), typeof(LocalShopRequests), typeof(ShopScreen),
+            };
 
             foreach (var type in types)
             {
@@ -174,6 +180,508 @@ namespace HorrorGame.Tests.EditMode.UI
                 + "accidents content — but not without being told.");
             Assert.That(RowFor(board, ShopItemId.Suppressor).Affordable, Is.True,
                 "§08 warns; it does not forbid. Removing the option would remove the accident the design wants.");
+        }
+
+        // ====================================================================
+        // §08 · §11 · §07 — the shop as it is drawn, not as it is computed.
+        //
+        // Every one of these goes through the built hierarchy and reads the Text
+        // components a player looks at, and every purchase goes through the row's
+        // own click event. The screen this replaces had a board that knew about
+        // §11's substitute and a screen that drew nothing for it — a board-level
+        // assertion was green throughout. A readout nobody renders is not a
+        // feature, and this is the seam where that keeps happening.
+        // ====================================================================
+
+        [Test]
+        public void ShopScreen_PutsEveryCostBesideItsBenefit_NotUnderneathIt()
+        {
+            var host = OpenShop(GameConstants.ShopCostUpgradedFlashlight * 4, Lineup(
+                RoleId.Listener, RoleId.Observer, RoleId.Runner, RoleId.Engineer), out var screen, out _, null);
+
+            try
+            {
+                foreach (var id in ShopCatalogue.All)
+                {
+                    var effect = RowChild(screen, id, "Effect");
+                    var price = RowChild(screen, id, "Price");
+
+                    Assert.That(effect.text, Is.EqualTo(UiStrings.ItemEffect(id)));
+
+                    var expected = UiStrings.ItemPrice(id);
+                    Assert.That(price.text, Is.EqualTo(string.IsNullOrEmpty(expected) ? UiStrings.Unknown : expected),
+                        "§08 gives every row a 대가 or writes '—'. " + id + " must render one of those and never a blank, "
+                        + "because a blank is indistinguishable from a row that failed to draw.");
+
+                    Assert.That(price.fontSize, Is.EqualTo(effect.fontSize),
+                        "§08: '전부 §10 딜레마 원리를 따른다 — 얻는 게 있으면 대가가 있다.' A 대가 set smaller than its 효과 is "
+                        + "a shopping list with footnotes, which is exactly what the section is not.");
+
+                    var effectRect = (RectTransform)effect.transform;
+                    var priceRect = (RectTransform)price.transform;
+                    Assert.That(priceRect.anchoredPosition.y, Is.EqualTo(effectRect.anchoredPosition.y).Within(0.01f),
+                        "§08 calls the 강화 손전등 '이 목록의 대표작' because its drawback is its benefit. The two have to be "
+                        + "read in one glance, so they sit on one line.");
+                    Assert.That(priceRect.anchoredPosition.x, Is.GreaterThan(effectRect.anchoredPosition.x));
+                }
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(host);
+            }
+        }
+
+        [Test]
+        public void ShopScreen_NamesTheStandInForTheRoleThisMatchLacks()
+        {
+            // §11: "청음사 → 감지기." The absence is the character of the match, and §08's
+            // economy is what stops it making a role compulsory — so the answer has to be
+            // on the screen, not merely in the board.
+            var host = OpenShop(GameConstants.ShopCostDetector, Lineup(
+                RoleId.Observer, RoleId.Runner, RoleId.Engineer, RoleId.Flasher), out var screen, out _, null);
+
+            try
+            {
+                var gap = PanelChild(screen, "Gap");
+                Assert.That(gap.text, Does.Contain(UiStrings.Role(RoleId.Listener)));
+                Assert.That(gap.text, Does.Contain(UiStrings.RoleAbsenceProblem(RoleId.Listener)),
+                    "§11 gives every absence a 난제 and the shop is where the team decides what to do about it.");
+                Assert.That(gap.text, Does.Contain("감지기"));
+                Assert.That(gap.text, Does.Contain(GameConstants.ShopCostDetector.ToString(CultureInfo.InvariantCulture)),
+                    "§08's price is what makes §11's answer a decision rather than a suggestion.");
+                Assert.That(gap.text, Does.Contain(UiStrings.SubstituteLimit(RoleSubstituteItem.Detector)),
+                    "§11 keeps roles worth picking by making every stand-in worse. Hiding that sells the substitute as an equal.");
+
+                Assert.That(RowChild(screen, ShopItemId.Detector, "Note").text, Does.Contain(UiStrings.Role(RoleId.Listener)),
+                    "The row §11 points at has to be findable in a list of thirteen.");
+                Assert.That(RowChild(screen, ShopItemId.Bait, "Note").text, Does.Not.Contain("※"),
+                    "Only one row answers this match's absence; marking more would make the mark mean nothing.");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(host);
+            }
+        }
+
+        [Test]
+        public void ShopScreen_SaysTheFlashbangIsNotStocked_RatherThanShowingNothing()
+        {
+            // The defect this test exists for: ShopCatalogue.SubstituteFor returns None
+            // for a missing 섬광수 — §08 does not stock the 섬광탄 §11 promises — so the
+            // screen marked no row and said nothing at all. A match with a hole and a
+            // match with no hole rendered identically.
+            var host = OpenShop(0, Lineup(
+                RoleId.Listener, RoleId.Observer, RoleId.Runner, RoleId.Engineer), out var screen, out _, null);
+
+            try
+            {
+                var gap = PanelChild(screen, "Gap");
+                Assert.That(gap.text, Does.Contain(UiStrings.Role(RoleId.Flasher)));
+                Assert.That(gap.text, Does.Contain(UiStrings.Substitute(RoleSubstituteItem.Flashbang)),
+                    "§11 promises a 섬광탄 for a missing 섬광수. ARCHITECTURE §6 says a layer that finds two sections "
+                    + "disagreeing reports it rather than picking a side.");
+                Assert.That(gap.text, Does.Contain("가격 미정"),
+                    "§08's 구매 목록 has no 섬광탄, and a missing price is not a free item.");
+                Assert.That(screen.Board.SubstituteMissingFromShop, Is.True);
+                Assert.That(screen.Board.SubstituteItem, Is.EqualTo(ShopItemId.None));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(host);
+            }
+        }
+
+        [Test]
+        public void ShopScreen_SaysTheObserverCannotBeBought()
+        {
+            var host = OpenShop(GameConstants.ShopCostBlueprint, Lineup(
+                RoleId.Listener, RoleId.Runner, RoleId.Engineer, RoleId.Flasher), out var screen, out _, null);
+
+            try
+            {
+                Assert.That(PanelChild(screen, "Gap").text, Does.Contain("돈으로 메울 수 없다"),
+                    "§11: '관측자만 대체 수단이 없다 — 유일하게 살 수 없는 정보를 제공하는 직업이다.' That asymmetry is the "
+                    + "point of the row, and a shop that stayed silent would flatten it into the other four.");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(host);
+            }
+        }
+
+        [Test]
+        public void ShopScreen_RefusesOutLoud_WithTheNumberTheTeamNeeds()
+        {
+            // Pressed through the row's own click event. The screen this replaces made an
+            // unaffordable row uninteractable, which answers "can I?" and never answers
+            // "how much more?" — and §08's argument is entirely the second question.
+            var host = OpenShop(GameConstants.ShopCostBattery, Lineup(
+                RoleId.Observer, RoleId.Runner, RoleId.Engineer, RoleId.Flasher), out var screen, out var shop, null);
+
+            try
+            {
+                Row(screen, ShopItemId.UpgradedFlashlight).onClick.Invoke();
+
+                var shortfall = GameConstants.ShopCostUpgradedFlashlight - GameConstants.ShopCostBattery;
+                Assert.That(screen.Message, Does.Contain(UiStrings.Item(ShopItemId.UpgradedFlashlight)));
+                Assert.That(screen.Message, Does.Contain(UiStrings.Purchase(PurchaseOutcome.NotEnoughCredits)));
+                Assert.That(screen.Message, Does.Contain(shortfall.ToString(CultureInfo.InvariantCulture)),
+                    "§08's negotiation is arithmetic — '강화 손전등 하나 살까, 배터리 3개 살까?' — so a refusal has to carry "
+                    + "how far short the shared purse is, which is the sentence that sends the team back down.");
+                Assert.That(shop.Wallet.Credits, Is.EqualTo(GameConstants.ShopCostBattery),
+                    "A refused purchase takes nothing. §08 puts the negotiation before the money moves.");
+                Assert.That(RowChild(screen, ShopItemId.UpgradedFlashlight, "Note").text,
+                    Does.Contain(shortfall.ToString(CultureInfo.InvariantCulture)),
+                    "And the row says it too, so four people can read the whole list without pressing anything.");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(host);
+            }
+        }
+
+        [Test]
+        public void ShopScreen_MakesDeletingTheListenerTakeTwoPresses()
+        {
+            var host = OpenShop(GameConstants.ShopCostSuppressor * 2, Lineup(
+                RoleId.Listener, RoleId.Observer, RoleId.Runner, RoleId.Engineer), out var screen, out var shop, null);
+
+            try
+            {
+                Row(screen, ShopItemId.Suppressor).onClick.Invoke();
+
+                Assert.That(shop.ListenerDisabled, Is.False,
+                    "§08: '청음사가 있는 팀은 사면 안 된다.' The one item in the list that removes a teammate's ability "
+                    + "may not go through on a stray click.");
+                Assert.That(screen.Message, Does.Contain("청음사"),
+                    "And the refusal has to say what was about to happen — the player who did not know cannot argue about it.");
+
+                Row(screen, ShopItemId.Suppressor).onClick.Invoke();
+
+                Assert.That(shop.ListenerDisabled, Is.True,
+                    "§08 warns; it does not forbid, and §04 counts the team's own accidents as content. A second press "
+                    + "is a decision, so it goes through.");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(host);
+            }
+        }
+
+        [Test]
+        public void ShopScreen_ForgetsTheWarning_WhenTheCursorMovesAway()
+        {
+            var host = OpenShop(GameConstants.ShopCostSuppressor * 2, Lineup(
+                RoleId.Listener, RoleId.Observer, RoleId.Runner, RoleId.Engineer), out var screen, out var shop, null);
+
+            try
+            {
+                Row(screen, ShopItemId.Suppressor).onClick.Invoke();
+                screen.MoveSelection(-1);
+                Row(screen, ShopItemId.Suppressor).onClick.Invoke();
+
+                Assert.That(shop.ListenerDisabled, Is.False,
+                    "A confirmation the cursor has left is not a confirmation. §08's 소음기 may be bought by mistake, "
+                    + "but not by a keystroke aimed at something else.");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(host);
+            }
+        }
+
+        [Test]
+        public void ShopScreen_SaysWhatWasBought_AndWhatItCost()
+        {
+            var host = OpenShop(GameConstants.ShopCostUpgradedFlashlight, Lineup(
+                RoleId.Observer, RoleId.Runner, RoleId.Engineer, RoleId.Flasher), out var screen, out var shop, null);
+
+            try
+            {
+                Row(screen, ShopItemId.UpgradedFlashlight).onClick.Invoke();
+
+                Assert.That(shop.StockOf(ShopItemId.UpgradedFlashlight), Is.EqualTo(1));
+                Assert.That(screen.Message, Does.Contain(UiStrings.ItemPrice(ShopItemId.UpgradedFlashlight)),
+                    "§10 wants the trade legible at the moment it is made. The flagship's 대가 is said again as the "
+                    + "credits leave, which is the last point at which anybody can object.");
+                Assert.That(PanelChild(screen, "Credits").text, Does.Contain("0"),
+                    "§08's one balance, visibly emptied — that subtraction is what four people are arguing over.");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(host);
+            }
+        }
+
+        [Test]
+        public void ShopScreen_DrawsTheNightItIsStandingIn_BecauseItCoversTheHudsClock()
+        {
+            // §07 charges "상점에서 고민 ~30초" and §10 lists shopping as a dilemma against
+            // the clock. The panel is drawn over the HUD, so before this the one screen
+            // that costs time was also the one screen with no clock on it.
+            var clock = new MatchClock(startOnSurface: true);
+            clock.Tick((GameConstants.ThreatTierSeconds * 2f) + 60f);
+
+            var host = OpenShop(0, Lineup(
+                RoleId.Listener, RoleId.Observer, RoleId.Runner, RoleId.Engineer), out var screen, out _, clock);
+
+            try
+            {
+                var night = PanelChild(screen, "Night");
+                Assert.That(night.gameObject.activeSelf, Is.True);
+                Assert.That(night.text, Does.Contain(UiStrings.Phase(NightPhase.LateNight)),
+                    "§07: the vehicle is the surface, and '시각은 지상에서만 알 수 있다' means the hour is legible exactly here.");
+                Assert.That(night.text, Does.Contain(UiStrings.Phase(NightPhase.PreDawn)),
+                    "The pressure is the next rung of §07's ladder, not the current one — a team that knows it is 심야 "
+                    + "still needs to know how long that lasts.");
+                Assert.That(PanelChild(screen, "NightWarning").text,
+                    Is.EqualTo(UiStrings.PhaseWarning(NightPhase.LateNight)),
+                    "§07's 추가 column is what the hour costs: '손전등 반경이 좁아졌다.'");
+
+                Assert.That(screen.Board.SecondsUntilNightWorsens, Is.Not.Null);
+                Assert.That(screen.Board.SecondsUntilNightWorsens!.Value,
+                    Is.EqualTo((GameConstants.ThreatTierSeconds * 3f) - clock.ElapsedSeconds).Within(0.5f),
+                    "Derived from §07's own eight-minute rung rather than from a second copy of the threat curve.");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(host);
+            }
+        }
+
+        [Test]
+        public void ShopScreen_ChargesTheSameThirtySecondsDifferently_DependingOnTheHour()
+        {
+            // §07 prices "상점에서 고민" at about thirty seconds and §10 calls shopping a
+            // dilemma against the clock. Thirty seconds is not the same cost at every
+            // point in the night, and the screen has to be able to say so without this
+            // layer writing a deadline of its own down — every term comes from the clock
+            // and from GameConstants.ThreatTierSeconds.
+            var early = new MatchClock(startOnSurface: true);
+            early.Tick(30f);
+
+            var late = new MatchClock(startOnSurface: true);
+            late.Tick((GameConstants.ThreatTierSeconds * 2f) - 40f);
+
+            var unhurried = OpenShop(0, Lineup(
+                RoleId.Listener, RoleId.Observer, RoleId.Runner, RoleId.Flasher), out var calm, out _, early);
+            var hurried = OpenShop(0, Lineup(
+                RoleId.Listener, RoleId.Observer, RoleId.Runner, RoleId.Flasher), out var pressed, out _, late);
+
+            try
+            {
+                calm.TickVisit(30f);
+                pressed.TickVisit(30f);
+
+                Assert.That(calm.Board.TimePressure01, Is.LessThan(0.1f),
+                    "Half a minute at the van seven minutes before the next rung is close to free, and §08's growth curve "
+                    + "depends on early trips being unhurried — '1차 귀환 후: 소모품 몇 개'.");
+                Assert.That(pressed.Board.TimePressure01, Is.GreaterThan(0.7f),
+                    "The same half minute with forty seconds left before 심야 is most of what the team had.");
+
+                var calmVisit = PanelChild(calm, "Visit");
+                var pressedVisit = PanelChild(pressed, "Visit");
+                Assert.That(calmVisit.text, Is.EqualTo(pressedVisit.text),
+                    "The number is the same — thirty seconds is thirty seconds. It is what it costs that differs.");
+                Assert.That(pressedVisit.color, Is.Not.EqualTo(calmVisit.color),
+                    "§07: '시간이 유일한 통화다.' A shop that looked identical either way would be the safe pause §10 says "
+                    + "shopping is not.");
+                Assert.That(pressedVisit.color.g, Is.LessThan(calmVisit.color.g),
+                    "And it has to get louder in the direction every other meter in this game does — Calm → Trade → Spent.");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(unhurried);
+                UnityEngine.Object.DestroyImmediate(hurried);
+            }
+        }
+
+        [Test]
+        public void ShopScreen_CountsTheVisitEvenWithNoClockToChargeItAgainst()
+        {
+            var host = OpenShop(0, Lineup(
+                RoleId.Listener, RoleId.Observer, RoleId.Runner, RoleId.Engineer), out var screen, out _, null);
+
+            try
+            {
+                Assert.That(PanelChild(screen, "Visit").text, Does.Contain("0"));
+
+                screen.TickVisit(12f);
+
+                Assert.That(screen.Board.SecondsAtTheVehicle, Is.EqualTo(12f).Within(0.01f));
+                Assert.That(PanelChild(screen, "Visit").text, Does.Contain("12"),
+                    "§10 charges for the visit itself — ' 나가서 쉰다 · 구매한다 / 시간이 흐른다' — and that is true whether or "
+                    + "not §07 will tell this team what the hour is.");
+                Assert.That(PanelChild(screen, "Night").gameObject.activeSelf, Is.False,
+                    "How long a panel has been open is not the hour of the night, so counting it is not a §07 leak.");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(host);
+            }
+        }
+
+        [Test]
+        public void ShopScreen_ShowsNoHourItIsNotEntitledTo()
+        {
+            // The gate is Core's, and this is the assertion that keeps it Core's: a shop
+            // that drew a plausible hour of its own would undo §07's 회중시계 in one line.
+            var clock = new MatchClock(startOnSurface: false);
+            clock.Tick(GameConstants.ThreatTierSeconds + 30f);
+
+            var host = OpenShop(0, Lineup(
+                RoleId.Listener, RoleId.Observer, RoleId.Runner, RoleId.Engineer), out var screen, out _, clock);
+
+            try
+            {
+                Assert.That(PanelChild(screen, "Night").gameObject.activeSelf, Is.False,
+                    "§07: '안에서는 시간 감각이 없다.' The strip goes away rather than showing a placeholder — a persistent "
+                    + "'시각 불명' is still a clock in the corner of the screen.");
+                Assert.That(screen.Board.SecondsUntilNightWorsens, Is.Null);
+                Assert.That(screen.Board.NextPhase, Is.Null);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(host);
+            }
+        }
+
+        [Test]
+        public void ShopScreen_KeepsEveryRowPressable_SoARefusalCanBeSpoken()
+        {
+            var host = OpenShop(0, Lineup(
+                RoleId.Listener, RoleId.Observer, RoleId.Runner, RoleId.Engineer), out var screen, out _, null);
+
+            try
+            {
+                foreach (var id in ShopCatalogue.All)
+                {
+                    var button = Row(screen, id);
+                    Assert.That(button.interactable, Is.True,
+                        "A greyed-out row is an affordance and not an answer. §08's shop has to be able to say why, and a "
+                        + "disabled Button swallows the press that would have asked.");
+                    Assert.That(button.navigation.mode, Is.EqualTo(UnityEngine.UI.Navigation.Mode.None),
+                        "This screen draws its own cursor so the keyboard and the mouse agree which row is live; uGUI's "
+                        + "navigation would run a second, disagreeing one.");
+                }
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(host);
+            }
+        }
+
+        [Test]
+        public void ShopScreen_MovesItsCursorWithoutAMouse_AndClampsRatherThanWraps()
+        {
+            var host = OpenShop(GameConstants.ShopCostBlueprint * 2, Lineup(
+                RoleId.Listener, RoleId.Observer, RoleId.Engineer, RoleId.Flasher), out var screen, out _, null);
+
+            try
+            {
+                var last = ShopCatalogue.All.Count - 1;
+
+                Assert.That(screen.SelectedIndex, Is.EqualTo(0));
+                Assert.That(Cursor(screen, ShopCatalogue.All[0]).activeSelf, Is.True,
+                    "The cursor is the only thing telling a keyboard user which row Enter will buy, and §01's rooms are dark.");
+
+                screen.MoveSelection(3);
+                Assert.That(screen.SelectedIndex, Is.EqualTo(3));
+                Assert.That(Cursor(screen, ShopCatalogue.All[0]).activeSelf, Is.False);
+                Assert.That(Cursor(screen, ShopCatalogue.All[3]).activeSelf, Is.True);
+
+                screen.MoveSelection(-99);
+                Assert.That(screen.SelectedIndex, Is.EqualTo(0),
+                    "Clamped, not wrapped: a list that jumps to the far end loses somebody's place mid-argument.");
+
+                screen.MoveSelection(99);
+                Assert.That(screen.SelectedIndex, Is.EqualTo(last));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(host);
+            }
+        }
+
+        [Test]
+        public void ShopScreen_DrawsAffordabilityInTheRowItself()
+        {
+            // No 청음사 on this roster, so the last row — the 소음기 — is an ordinary
+            // unaffordable one rather than a warned one, and the comparison below is
+            // about affordability alone.
+            var host = OpenShop(GameConstants.ShopCostChalk, Lineup(
+                RoleId.Observer, RoleId.Runner, RoleId.Engineer, RoleId.Flasher), out var screen, out _, null);
+
+            try
+            {
+                // The cursor starts on row 0, so affordability is read off rows the
+                // cursor is not on.
+                screen.MoveSelection(ShopCatalogue.All.Count - 1);
+
+                var affordable = Row(screen, ShopItemId.Chalk).targetGraphic as Image;
+                var beyond = Row(screen, ShopItemId.Blueprint).targetGraphic as Image;
+
+                Assert.That(affordable, Is.Not.Null);
+                Assert.That(beyond, Is.Not.Null);
+                Assert.That(affordable!.color, Is.EqualTo(UiStyle.RowAffordable),
+                    "§08's negotiation starts from four people seeing at a glance which rows the shared purse covers.");
+                Assert.That(beyond!.color, Is.EqualTo(UiStyle.RowDisabled));
+                Assert.That(RowChild(screen, ShopItemId.Chalk, "Cost").color, Is.EqualTo(UiStyle.InkStrong));
+                Assert.That(RowChild(screen, ShopItemId.Blueprint, "Cost").color, Is.EqualTo(UiStyle.SpentStrong),
+                    "Refusals on this panel are set at panel weight. Measured on a rendered frame, UiStyle.Spent's red "
+                    + "reaches 2.7:1 at the size §08's shortfall is set in — a number nobody can read is not an answer.");
+
+                // And the cursor must not outrank the wallet. It moved to the last row,
+                // which the team cannot afford; that row stays darker than one it can.
+                var selected = Row(screen, ShopCatalogue.All[ShopCatalogue.All.Count - 1]).targetGraphic as Image;
+                Assert.That(selected, Is.Not.Null);
+                Assert.That(selected!.color.r, Is.LessThan(affordable.color.r),
+                    "Selection lifts a row; it does not relabel it. A cursor resting on a 250-credit item must not make "
+                    + "that item look like the affordable one — §08's argument is about which rows the shared purse covers.");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(host);
+            }
+        }
+
+        [Test]
+        public void ShopScreen_KeepsEightsListWhole_AndGroupedByItsOwnCategories()
+        {
+            var host = OpenShop(0, Lineup(
+                RoleId.Listener, RoleId.Observer, RoleId.Runner, RoleId.Engineer), out var screen, out _, null);
+
+            try
+            {
+                foreach (var id in ShopCatalogue.All)
+                {
+                    Assert.That(Row(screen, id), Is.Not.Null,
+                        "§08's list is closed; a shop that draws a subset is hiding a choice the team is supposed to argue about.");
+                }
+
+                var headings = new List<string>();
+                foreach (var text in screen.GetComponentsInChildren<Text>(true))
+                {
+                    if (text.transform.parent != null && text.transform.parent.name.StartsWith("Section_"))
+                    {
+                        headings.Add(text.text);
+                    }
+                }
+
+                foreach (var category in new[]
+                {
+                    ShopCategory.Consumable, ShopCategory.Exploration, ShopCategory.Information, ShopCategory.Danger,
+                })
+                {
+                    Assert.That(headings, Does.Contain(UiStrings.Category(category)),
+                        "§08's 분류 is how the section groups the list, and a wall of thirteen identical rows is not "
+                        + "readable at a glance in a dark room.");
+                }
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(host);
+            }
         }
 
         // ====================================================================
@@ -1068,6 +1576,115 @@ namespace HorrorGame.Tests.EditMode.UI
             context.ViewAngleDegrees = 0f;
             context.Blur = 0f;
             return context;
+        }
+
+        /// <summary>§04's five, minus one — the shape §11 says every match has.</summary>
+        private static IReadOnlyList<RoleId> Lineup(RoleId a, RoleId b, RoleId c, RoleId d)
+        {
+            return new[] { a, b, c, d };
+        }
+
+        /// <summary>
+        /// Builds the shop the way a match does and opens it.
+        /// <para>
+        /// The two screens are siblings under one object and the HUD is bound first,
+        /// because that is exactly what <c>MatchHud</c> does — and it is how the shop
+        /// finds §07's clock. Assembling it any other way here would test a shape the
+        /// game does not build.
+        /// </para>
+        /// </summary>
+        private static UnityEngine.GameObject OpenShop(
+            int credits,
+            IReadOnlyList<RoleId> roster,
+            out ShopScreen screen,
+            out Shop shop,
+            MatchClock? clock)
+        {
+            var host = new UnityEngine.GameObject("MatchHud");
+
+            var hudObject = new UnityEngine.GameObject("Hud");
+            hudObject.transform.SetParent(host.transform, false);
+            hudObject.AddComponent<HudScreen>().Bind(RoleId.Runner, clock, null, null, null);
+
+            var shopObject = new UnityEngine.GameObject("Shop");
+            shopObject.transform.SetParent(host.transform, false);
+            screen = shopObject.AddComponent<ShopScreen>();
+
+            shop = new Shop(new Wallet(credits));
+            screen.Open(shop, new LocalShopRequests(shop, null), roster, MissingFrom(roster));
+            return host;
+        }
+
+        private static RoleId MissingFrom(IReadOnlyList<RoleId> roster)
+        {
+            foreach (var role in RoleSelection.AllRoles)
+            {
+                var found = false;
+                for (var i = 0; i < roster.Count; i++)
+                {
+                    if (roster[i] == role)
+                    {
+                        found = true;
+                        break;
+                    }
+                }
+
+                if (!found)
+                {
+                    return role;
+                }
+            }
+
+            return RoleId.None;
+        }
+
+        /// <summary>One drawn shop row's button, found the way a click finds it — by the object it lives on.</summary>
+        private static UnityEngine.UI.Button Row(ShopScreen screen, ShopItemId item)
+        {
+            foreach (var button in screen.GetComponentsInChildren<UnityEngine.UI.Button>(true))
+            {
+                if (button.name == "Row_" + item)
+                {
+                    return button;
+                }
+            }
+
+            Assert.Fail("§08's list is missing a drawn row for " + item + ".");
+            return null!;
+        }
+
+        /// <summary>A named <c>Text</c> inside one shop row — "Name", "Effect", "Price", "Cost", "Note", "Stock".</summary>
+        private static Text RowChild(ShopScreen screen, ShopItemId item, string child)
+        {
+            var found = Row(screen, item).transform.Find(child);
+            Assert.That(found, Is.Not.Null, "Row " + item + " has no '" + child + "'.");
+
+            var text = found!.GetComponent<Text>();
+            Assert.That(text, Is.Not.Null, "'" + child + "' on row " + item + " is not a Text.");
+            return text!;
+        }
+
+        /// <summary>The keyboard cursor's marker on one row.</summary>
+        private static UnityEngine.GameObject Cursor(ShopScreen screen, ShopItemId item)
+        {
+            var found = Row(screen, item).transform.Find("Cursor");
+            Assert.That(found, Is.Not.Null, "Row " + item + " has no cursor marker.");
+            return found!.gameObject;
+        }
+
+        /// <summary>A named <c>Text</c> on the shop panel itself — "Credits", "Night", "Gap", "Message".</summary>
+        private static Text PanelChild(ShopScreen screen, string name)
+        {
+            foreach (var text in screen.GetComponentsInChildren<Text>(true))
+            {
+                if (text.name == name && text.transform.parent != null && text.transform.parent.name == "Panel")
+                {
+                    return text;
+                }
+            }
+
+            Assert.Fail("The shop panel has no '" + name + "'.");
+            return null!;
         }
 
         private static ShopRow RowFor(ShopBoard board, ShopItemId item)

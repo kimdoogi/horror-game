@@ -24,9 +24,19 @@ export DOTNET_ROOT="$HOME/.dotnet"; export PATH="$HOME/.dotnet:$PATH"
 
 ## The one-line answer
 
-**577 of 577 tests green (core 451, EditMode 71, PlayMode 55), the standalone IL2CPP
-player starts a match with no exceptions — and the one number this round was set to
-move, the 주자 테스트, did not move. It is still 10/10 TooEasy against §12's 5–7 band.**
+**615 of 615 tests green (core 451, EditMode 100, PlayMode 64), the standalone IL2CPP
+player starts a match with no exceptions, and the four defects the owner found by
+playing are fixed and photographed — the piece put down now lands on the floor, the
+player has hands, the torch is in one of them, and the shop no longer opens itself on
+arrival at the 차량. The one number this round was set to move, the 주자 테스트, did
+not move. It is still 10/10 TooEasy against §12's 5–7 band.**
+
+> **One residual, measured rather than assumed.** A 대형 전리품 released while facing a
+> wall lands on the player's side of it and stays pickable, but overlaps the wall by
+> **0.138 m** — `DropPlacement`'s clearance sweep is sized from the crosshair's own aim
+> tolerance (0.15 m radius) and not from the piece, so anything wider than the sweep
+> touches. It reads as leaning against the wall rather than as a bug; the frame is
+> `Shots/drop_50_dropped_facing_a_wall_fill.png`. See §3's defect table.
 
 What the corner-density pass delivered was the *measurement*, not the fix. §12's
 시야 차단 지점 간격 is now `MapValidator`'s 17th rule, it is correct, and it names the
@@ -206,15 +216,16 @@ Exit 0, no errors in the log.
 [SoloPlaytest] §01 solo loop verification
   §03 layout varies per seed: objective moved no, clue set changed yes
   placed 4 clues, 1 objective, 36 pocketable loot, 1 oversize, 1 safe   (planned round trips 4)
-  §08 picked up 회중시계 · 반지 — weight 1/10, speed ×1.00
+  §08 대형 전리품 dropped from 1.79 m to 0.16 m, resting 0.020 m above the surface
+  §08 picked up 은수저 · 잡동사니 — weight 1/10, speed ×1.00
   §04 safe: refused 주자, opened for 정비공, 문서 taken
   §03 objective refused while holding loot: §03 전리품 동시 소지 불가 — 들고 있는 전리품을 먼저 처리해야 한다.
   §03 read cancels when the light goes — progress reset to zero
-  §03 read completed and the overlay drew: "녹 → 4"
+  §03 read completed and the overlay drew: "녹"
   §01 descended — §07 clock hidden, 4.3s elapsed
   §03 partial reset — monster back at spawn (was 19.0 m away), clock untouched
-  §08 sold on arrival — team wallet 65 credits
-  §08 shop open at the vehicle, cheapest item 15 credits
+  §08 sold on arrival — team wallet 50 credits
+  §08 shop stayed shut on arrival and opened on [E] at the 차량 — cheapest item 15 credits
   §03 objective taken — no flashlight, no loot, speed ×1.00
   §02 FullVictory — escaped 1, lost 0, clock 6.9s
   §02 회수 released the objective — load 0
@@ -222,6 +233,14 @@ Exit 0, no errors in the log.
   §13 second BeginMatch — empty hands, load 0 (dropped 1 carried-over piece(s))
 PASS — §01's loop ran end to end.
 ```
+
+**Two of the four defects the owner found by playing are visible in that transcript.**
+The 대형 전리품 line is new and it is the whole of defect 3.22 — held at 1.79 m, resting
+at 0.16 m, 0.020 m clear of the surface under it. The shop line used to read
+`§08 shop open at the vehicle`; it now says the panel stayed shut on arrival and opened
+on `[E]` at the 차량, which is defect 3.25. Selling still happens on arrival, because
+selling costs the player nothing and takes nothing away — it is putting a mouse-driven
+panel over the camera on a position test that read as 갑자기 상점이 열림.
 
 The bigger building shows up here too: **36 pocketable loot pieces against 10**, from
 the same four planned round trips. That is the loot side of §1.6's place count, and it
@@ -410,7 +429,7 @@ onto and a human cannot use one at all. And the built-scene sight-line sampler n
 reports a longest run of **21.2 m** where it used to report **100.0 m**; §3.4 covers
 what is left of that defect.
 
-### 1.9 The full Unity suite — 126 of 126
+### 1.9 The full Unity suite — 164 of 164
 
 Run the two platforms separately and read the XML rather than the exit code.
 **No `-quit`**: the runner is async and exits from its own callback, and `-quit`
@@ -427,15 +446,26 @@ python3 -c "import xml.etree.ElementTree as ET,sys; r=ET.parse(sys.argv[1]).getr
 Both exit 0.
 
 ```
-EditMode   total 71 passed 71 failed 0 result Passed
-PlayMode   total 55 passed 55 failed 0 result Passed
+EditMode   total 100 passed 100 failed 0 result Passed
+PlayMode   total 64 passed 64 failed 0 result Passed
 ```
 
-**126 of 126, against 112 of 112 two passes ago.** EditMode 70 → 71 and PlayMode 42 → 55;
-the twelve new cases are the view-motion work — `PlayerViewMotionTests` plus the
-settings-slider coverage in `UiTests`.
+**164 of 164, against 126 of 126 last pass.** EditMode 71 → 100 and PlayMode 55 → 64.
+The thirty-eight new cases are the four-defect pass: `DropPlacementTests` (EditMode,
+ten cases over the five §12 floor materials, stairs, slopes, another interactable's
+trigger box and the dropper's own body), the rewritten `UiTests` shop coverage,
+`InteractionDropTests` and `PlayerFirstPersonViewTests` (PlayMode).
 
-**With core's 451, the project total is 577 of 577 green.**
+**`InteractionDropTests.Dropping_a_piece_with_the_key_puts_it_on_the_floor_and_leaves_it_pickable`
+is the one to know about.** It queues a real `Keyboard` state event for
+`PlayerInteractor.InteractKey`, waits for `Keyboard.current` to actually report the key
+down — and fails loudly if the Input System never delivered it, so the run cannot pass
+by proving nothing — then asserts the piece fell, is resting on a surface, is not
+inside geometry, and that the crosshair finds it again after walking back. Every earlier
+interaction test called `OnPressed` directly, which is how a broken pickup key survived
+575 green tests for a day.
+
+**With core's 451, the project total is 615 of 615 green.**
 
 Two earlier seams this suite caught, both still worth knowing about:
 
@@ -631,6 +661,11 @@ numbers.
 | 3.17 | Map passes 16/16 §12 rules and grades **10/10 TooEasy**, out of the 5–7 band — was 7/10 | [F-007](BALANCE-FINDINGS.md#f-007) · §1.6 | gameplay |
 | 3.18 | Settings screen's 해상도 row reads `640 × 480` in a batch shot, so the real default is unconfirmed | §4.2 | ui |
 | 3.16 | `final_overhead.png` is still a blue rectangle, not a map | §4.4 | tooling |
+| 3.22 | ~~A 전리품 put down hung in mid-air at chest height~~ **fixed** — `DropPlacement`; lands 0.020 m above the surface, upright, pickable. Driven by the real key in `InteractionDropTests`, photographed in `Shots/drop_*` | §1.4 · §1.9 | gameplay |
+| 3.23 | ~~First person drew no hands at all — §05's "자기 몸은 안 보이므로 손만 있으면 된다" was met by hiding everything~~ **fixed** — `PlayerFirstPersonView` splits body/arms/hand-prop by material slot; both hands on screen in all six states, body still `ShadowsOnly` | §4.5 | art · gameplay |
+| 3.24 | ~~The torch was never in the hand — the only cue for §03's four states was the lighting~~ **fixed** — `PlayerFlashlight.InHand` draws it on `IsOn`, and it is legible at the game's own exposure | §4.5 | art |
+| 3.25 | ~~The shop opened itself on walking into the 차량's apron — 갑자기 상점이 열림, mouse and camera taken on a position test~~ **fixed** — `MatchDirector.Surfaced` sells and says so; `SurfaceVehicleInteractable`'s key is the only thing that opens the panel | §1.4 | ui |
+| 3.26 | A 대형 전리품 dropped facing a wall overlaps it by **0.138 m**. `DropPlacement.ClearanceRadiusMetres` is `Interactable.MinimumTargetMetres * 0.5` = 0.15 m — the crosshair's aim tolerance, not the piece's own half-size, so anything wider than the sweep touches. Still on the floor, upright and pickable; reads as leaning | §1 · `DropPlacement.cs` | gameplay |
 
 ### 3a · The floor-material chain — previously S-001, now wired
 
@@ -809,7 +844,86 @@ player-facing HUD.
 > of it comes from `GameConstants`; only the median is a literal, and the doc comment
 > now says where it was measured and what to re-run.
 
-### 4.5 The verdict — could this be sold?
+### 4.5 The four defects, seen rather than asserted
+
+Two photographers were run **without `-nographics`**, which is the only way any of this
+is evidence — that flag turns the graphics device off and every frame comes out black.
+
+```bash
+$U -batchmode -quit -silent-crashes -projectPath $P \
+   -executeMethod HorrorGame.Gameplay.PlayerEditor.FirstPersonHandsShot.Batch -shotTag hands
+$U -batchmode -quit -silent-crashes -projectPath $P \
+   -executeMethod HorrorGame.EditorTools.DropShot.Batch -shotTag drop
+$U -batchmode -quit -silent-crashes -projectPath $P \
+   -executeMethod HorrorGame.UI.EditorTools.ShopShot.Batch -shotTag shop
+```
+
+**Hands (3.23) and torch (3.24) — fixed, and legible.** `FirstPersonHandsShot` reports
+the viewport coordinate of each hand, and every state has both on screen:
+
+```
+  frame                                            left hand        right hand       torch          arms  torch
+  empty hands, torch off [Idle]                   (0.15,0.26) on   (0.79,0.28) on   (0.67,0.38) on     1   -      off
+  torch in hand, lit [Idle]                       (0.15,0.26) on   (0.79,0.28) on   (0.67,0.38) on     1   drawn  on
+  §08 대형 전리품, both hands [CarryHeavy]            (0.12,0.24) on   (0.88,0.23) on   (0.82,0.38) on     1   -      off
+  §03 목표물, both hands, no torch [CarryIdle]      (0.32,0.44) on   (0.68,0.44) on   (0.62,0.64) on     1   -      off
+  walking, stride phase A [Walk]                  (0.15,0.27) on   (0.80,0.27) on   (0.68,0.37) on     1   drawn  on
+```
+
+Read as pixels rather than as numbers: with the torch lit, the right forearm and its
+pale hand and the torch barrel in the fist are plainly there at the game's own exposure
+(`Shots/hands_10_torch.png`). **With the torch off they are close to invisible** — dark
+blue-grey slabs against a dark blue-grey floor, findable in the frame but not readable
+as hands until the exposure is raised. That is §03's darkness doing what §03 says it
+does, not a regression, and it is worth knowing before anyone re-reports it.
+
+The arms themselves are low-poly angular forms with mitten hands. They read as *arms*,
+not as *hands*, at any exposure. That is defect 3.19's family — the whole prop set is
+still untextured primitives — and it is the next art job, not this one.
+
+**The two carry frames photograph the pose, not the cargo.** `FirstPersonHandsShot`
+builds a bare rig, so `20_loot` and `30_objective` show the arms in the carry pose with
+nothing in them. What a carrier actually sees is in `DropShot`'s
+`drop_10_in_the_hands_*`: the 대형 전리품 fills the top of the frame with a hand on each
+edge of it, which is §03's "carrier cannot see past it" happening.
+
+**The drop (3.22) — fixed.**
+
+```
+  00_on_the_floor        spawned at (58.75, 0.16, 83.75), 0.020 m above the surface
+  10_in_the_hands        held at (58.75, 1.53, 84.49), 1.24 m above the boots, torch stowed — §03 takes it from full hands
+  20_dropped_at_my_feet  resting at (58.75, 0.16, 84.49), fell 1.37 m, 0.020 m above the surface, tilt 0.0°, clear of geometry
+  40_witness_side        side view, 0.020 m above the surface
+  50_dropped_facing_a_wall  wall 0.75 m ahead at hand height (carry offset 1.05 m), landed 0.60 m from the boots
+                            — on this side of it, 0.020 m above the surface, overlapping HallOpen20x20_L0_20_31 by 0.138 m
+```
+
+`drop_40_witness_side.png` is the frame that settles it: a lit side view with the piece
+standing on the floor and its own shadow under it. A first-person frame cannot answer
+"is it touching" — the base is behind the front face from every angle the eye can take.
+
+The wall row is defect 3.26 and the number is the point of it. The piece stops on the
+player's side of the wall, upright and pickable, but 0.138 m of it is inside the bricks,
+because the sweep radius is the crosshair's aim tolerance rather than the piece's own
+half-width. In `drop_50_dropped_facing_a_wall_fill.png` it reads as a portrait leaning
+against a pillar. The fix is one number — size the sweep from the piece's fitted
+collider — and it was deliberately not made in this pass, after the suite had already
+been run against the code as it stands.
+
+**The shop (3.25) — fixed, and the screen behind it holds up.** Ten frames.
+`shop_broke.png` is the 구매력 0 state §08 opens with: every row priced, every 대가 on
+the same line as its 효과 and in colour, `— 가격 미정` where §08 gives no answer,
+`N 모자란다` under each price, §11's missing role across the top in red, §07's hour and
+the countdown to it under the title, and `↑↓ 이동 · Enter 구매 · Tab 싣기 · E 닫기` in
+the corner — the list is operable without a mouse. `shop_pressure.png` shows the visit
+timer gone amber at `여기서 40초` with the night bar down to a stub, which is §07
+charging for deliberation where a player can see it.
+
+One cosmetic thing in every shop frame: two pale HUD bar segments show below the panel's
+bottom edge, bottom-left and bottom-centre. The panel does not quite cover the HUD it is
+drawn over. Not filed as a defect — it is a two-pixel inset — but it is in the pictures.
+
+### 4.6 The verdict — could this be sold?
 
 **The menu could ship tomorrow. The corridors could ship after a dressing pass. The
 open rooms could not, and the game as a whole could not — but not for visual
@@ -956,9 +1070,9 @@ grep -cE '^Assets/.*error CS' /tmp/u.log                                  # §1.
 # §1.9 — the full Unity suite. NEVER -quit: the runner is async and -quit shuts the
 # editor down before results are written, which reports nothing and exits 0.
 $U -batchmode -projectPath $P -runTests -testPlatform EditMode \
-   -testResults /tmp/editmode.xml -logFile /tmp/edit.log                                 # §1.9  71/71
+   -testResults /tmp/editmode.xml -logFile /tmp/edit.log                                 # §1.9  100/100
 $U -batchmode -projectPath $P -runTests -testPlatform PlayMode \
-   -testResults /tmp/playmode.xml -logFile /tmp/play.log                                 # §1.9  53/53
+   -testResults /tmp/playmode.xml -logFile /tmp/play.log                                 # §1.9  64/64
 python3 -c "import xml.etree.ElementTree as ET,sys; r=ET.parse(sys.argv[1]).getroot(); \
   print(r.get('total'), r.get('passed'), r.get('failed'), r.get('result'))" /tmp/playmode.xml
 

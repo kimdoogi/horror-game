@@ -88,6 +88,27 @@ namespace HorrorGame.UI.Screens
         }
 
         /// <summary>
+        /// The clock this HUD was bound to, or null before <see cref="Bind"/> and after
+        /// <see cref="Unbind"/>.
+        /// <para>
+        /// Exposed for <see cref="ShopScreen"/>, which is built as this screen's sibling
+        /// and is bound later than it. §08's shop covers the display, so it hides the
+        /// clock this screen draws — and §07 charges for the time spent standing in it,
+        /// so the shop has to redraw the same night rather than leave the team without
+        /// one. Reading it from here rather than from the scene keeps two instances of
+        /// the game on one machine (§14) reading two different matches.
+        /// </para>
+        /// <para>
+        /// Read-only on purpose: this is a window onto what the match owns, not a
+        /// second place a clock can be set.
+        /// </para>
+        /// </summary>
+        public MatchClock? Clock
+        {
+            get { return _clock; }
+        }
+
+        /// <summary>
         /// Points the HUD at the core objects the host is stepping, for host and
         /// offline play. Any of them may be null — an objective carrier has no
         /// flashlight, everybody but the Runner has no stamina.

@@ -1,5 +1,6 @@
 #nullable enable
 
+using System.Globalization;
 using HorrorGame.Core.Clues;
 using HorrorGame.Core.Economy;
 using HorrorGame.Core.Match;
@@ -284,6 +285,128 @@ namespace HorrorGame.UI
                 default: return "잘못된 수량";
             }
         }
+
+        /// <summary>
+        /// §11's absence and its 돈으로 메우기 answer, as the one sentence the shop
+        /// leads with.
+        /// <para>
+        /// §11 makes the missing role the character of the match — "매판 하나가
+        /// 빠지고, 그게 그 판의 성격이 된다" — and then says money can partly cover it.
+        /// A shop that names the hole without naming the stand-in has told the team
+        /// what is wrong and withheld the answer, so the three cases are spelled out
+        /// separately: the item is on the shelf, §11 says nothing can cover it
+        /// (관측자), or §11 promises something §08 does not stock (섬광탄). The third
+        /// is a real disagreement between two sections and is reported rather than
+        /// papered over — see <c>RoleGap.IsInShopList</c>.
+        /// </para>
+        /// </summary>
+        /// <param name="missingRole">The role nobody took.</param>
+        /// <param name="substitute">§11's 돈으로 메우기 entry for that role.</param>
+        /// <param name="creditCost">§08's price for it, or null when §08's list does not carry it.</param>
+        public static string RoleGapLine(RoleId missingRole, RoleSubstituteItem substitute, int? creditCost)
+        {
+            if (missingRole == RoleId.None)
+            {
+                return string.Empty;
+            }
+
+            var head = "이번 판에 " + Role(missingRole) + "가 없다 · " + RoleAbsenceProblem(missingRole) + " · ";
+
+            if (substitute == RoleSubstituteItem.None)
+            {
+                // §11: "관측자만 대체 수단이 없다 — 유일하게 살 수 없는 정보를 제공하는
+                // 직업이다." Said out loud, because a blank here reads as a bug.
+                return head + "돈으로 메울 수 없다 — " + SubstituteLimit(substitute);
+            }
+
+            if (!creditCost.HasValue)
+            {
+                return head + "§11의 " + Substitute(substitute) + "은 이 목록에 없다 — 가격 미정";
+            }
+
+            return head + "돈으로 메우기 → " + Substitute(substitute)
+                + " " + creditCost.Value.ToString(CultureInfo.InvariantCulture)
+                + " (" + SubstituteLimit(substitute) + ")";
+        }
+
+        /// <summary>How many of an item the team is holding, or an empty line when it holds none. §08's stock lives on the vehicle, not on a person.</summary>
+        public static string ShopStock(int stock)
+        {
+            return stock > 0 ? "보유 " + stock.ToString(CultureInfo.InvariantCulture) : string.Empty;
+        }
+
+        /// <summary>
+        /// How far the shared purse falls short of one of these. §08's argument is
+        /// arithmetic — "강화 손전등 하나 살까, 배터리 3개 살까?" — and a row that only
+        /// greys out does not tell four people how much more loot the trip needs.
+        /// </summary>
+        public static string ShopShortfall(int missingCredits)
+        {
+            return missingCredits <= 0 ? string.Empty : missingCredits.ToString(CultureInfo.InvariantCulture) + " 모자란다";
+        }
+
+        /// <summary>
+        /// The confirmation §08 asks for before an item deletes a teammate's role:
+        /// "청음사가 있는 팀은 사면 안 된다." It refuses once and buys on the second
+        /// press — §04 counts the team's own accidents as content, so this makes the
+        /// mistake deliberate rather than impossible.
+        /// </summary>
+        public static string ShopConflictConfirm(string itemName)
+        {
+            return itemName + " — 청음사가 무효화된다. 한 번 더 누르면 구매한다.";
+        }
+
+        /// <summary>Said at the moment credits leave the shared purse, with the 대가 that came with them (§10).</summary>
+        public static string ShopBought(string itemName, string price)
+        {
+            return string.IsNullOrEmpty(price)
+                ? "구매 · " + itemName
+                : "구매 · " + itemName + " — " + price;
+        }
+
+        /// <summary>
+        /// What the vehicle paid for a load of 전리품, or the fact that the hands were
+        /// empty. §08 banks into the team purse, so the wording never names a seller.
+        /// </summary>
+        public static string ShopSold(int credits)
+        {
+            return credits > 0
+                ? "전리품 " + credits.ToString(CultureInfo.InvariantCulture) + " 크레딧 입금"
+                : "실을 전리품이 없다";
+        }
+
+        /// <summary>
+        /// §07's cost of standing here, in the section's own terms: the shop is a
+        /// dilemma against the clock ("상점에서 고민 ~30초", and §10's "나가서 쉰다 ·
+        /// 구매한다 → 시간이 흐른다"), so the seconds this visit has taken are named.
+        /// </summary>
+        public static string ShopVisitSeconds(float seconds)
+        {
+            var whole = seconds < 0f ? 0 : (int)seconds;
+            return "여기서 " + whole.ToString(CultureInfo.InvariantCulture) + "초";
+        }
+
+        /// <summary>
+        /// How long until §07's next 위협 단계, and what that step does. Null seconds
+        /// means the night has stopped getting worse — the last row of §07's table is
+        /// open-ended, and "생존 불가 수준" is not a countdown.
+        /// </summary>
+        public static string NightCountdown(float? secondsUntilWorse, NightPhase? next)
+        {
+            if (!secondsUntilWorse.HasValue || !next.HasValue)
+            {
+                return string.Empty;
+            }
+
+            var seconds = secondsUntilWorse.Value < 0f ? 0f : secondsUntilWorse.Value;
+            var minutes = (int)(seconds / 60f);
+            var rest = (int)(seconds - (minutes * 60));
+            return Phase(next.Value) + "까지 " + minutes.ToString(CultureInfo.InvariantCulture)
+                + ":" + rest.ToString("00", CultureInfo.InvariantCulture);
+        }
+
+        /// <summary>The keys this screen answers to. Written out because §08's shop is the one screen operated with a cursor, so the alternative is not obvious.</summary>
+        public const string ShopKeyHint = "↑↓ 이동 · Enter 구매 · Tab 싣기 · E 닫기";
 
         // ------------------------------------------------------------------
         // §03 — clues. Marks and interruptions only; never content.

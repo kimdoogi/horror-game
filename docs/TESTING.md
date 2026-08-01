@@ -96,16 +96,35 @@ python3 -c "import xml.etree.ElementTree as ET,sys; r=ET.parse('/tmp/playmode.xm
 ```
 
 ```
-EditMode   total 71 passed 71 failed 0 result Passed
-PlayMode   total 55 passed 55 failed 0 result Passed
+EditMode   total 100 passed 100 failed 0 result Passed
+PlayMode   total 64 passed 64 failed 0 result Passed
 ```
 
-**126 of 126 as of 2026-08-01**, and 577 of 577 with core's 451. PlayMode went 53 → 55
-with `InteractionPickupTests`, which is the first test in the project to drive §08's
-pick-up through the crosshair ray and a real key event rather than calling
-`Interactable.OnPressed` directly. Older
-revisions of this file said EditMode 55 and PlayMode 27, then 70 and 42; all were
-stale. Re-read the XML rather than trusting this line.
+**164 of 164 as of 2026-08-01**, and 615 of 615 with core's 451. EditMode went 71 → 100
+and PlayMode 55 → 64 on the four-defect pass: `DropPlacementTests` in EditMode,
+`InteractionDropTests` and `PlayerFirstPersonViewTests` in PlayMode, and the rewritten
+shop coverage in `UiTests`. Older revisions of this file said EditMode 55 and PlayMode
+27, then 70 and 42, then 71 and 55; all were stale in turn. Re-read the XML rather than
+trusting this line.
+
+**Two PlayMode cases are the ones that earn their keep**, because both drive the game
+the way a person does rather than the way a caller does:
+
+- `InteractionDropTests.Dropping_a_piece_with_the_key_puts_it_on_the_floor_and_leaves_it_pickable`
+  queues a real `KeyboardState` for `PlayerInteractor.InteractKey`, **asserts that
+  `Keyboard.current` actually reported the key down** before continuing — so a run in
+  which the Input System never delivered the event fails instead of passing vacuously —
+  picks the 궤짝 up, presses again, and then checks four separate things about where it
+  ended up: it fell, something solid is under it, nothing is overlapping it, and the
+  crosshair finds it again after walking back to it.
+- `InteractionDropTests.The_shop_stays_shut_on_arrival_and_opens_on_the_key_at_the_vehicle`
+  walks the player into the 차량's apron and asserts the panel is **not** up, then presses
+  the key and asserts it is.
+
+The reason both exist in this shape: for a day, §08's pick-up key was broken in the
+build and 575 tests were green, because every interaction test called
+`Interactable.OnPressed` directly and no test ever pressed a key. A test that calls the
+method under the key proves the method works. It does not prove the key does.
 
 In the editor these are `Horror ▸ Test ▸ Run EditMode + PlayMode`.
 
