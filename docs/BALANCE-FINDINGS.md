@@ -1233,3 +1233,96 @@ one PlayMode test.
 `GameConstants.Validate`'s `JumpApexMetres < PlayerStepOffsetMetres` and
 `JumpCooldownSeconds > JumpAirtimeSeconds`, and `MonsterChaseTests` 4/4 for the
 figures above.
+
+---
+
+## F-010 · §07's patrol table is a count of zones, so it shrank when the building grew — and the median match never leaves the row where it is smallest
+
+**Sections:** §07 (시간 = 위협도 · 순찰) × §12 (맵 설계) × §01 (한 판의 흐름)
+· **Priority:** 🟠 high — it is the measured reason the monster feels absent
+· **Status:** open, and **not** silently changed. Recording it, per the rule that §07 is the
+designer's to retune
+· **Source:** `ThreatTier.PatrolZoneCountFor`, the census in [STATUS.md §1.6](STATUS.md), and
+the 500-match population in [F-006](#f-006)
+· **Found:** 2026-08-01, while building the 그늘 (§10) and asking the same question of it
+
+### The arithmetic
+
+§07's 순찰 column names an **absolute number of zones** for its first two rows and a
+**proportion** for the last three. `ThreatTier.PatrolZoneCountFor(5)` resolves it against
+the shipped five-zone building:
+
+| §07 row | 경과 | 순찰 as written | zones on this map | places of 164 | share |
+|---|:--:|---|:--:|:--:|:--:|
+| 초저녁 | 0~8분 | 1개 구역 | **1** | 24–43 | **15–26 %** |
+| 밤 | 8~16분 | 2개 구역 | **2** | 48–78 | 29–48 % |
+| 심야 | 16~24분 | 절반 | 3 | ~98 | 60 % |
+| 새벽 | 24~32분 | 전체 | 5 | 164 | 100 % |
+| 동트기 전 | 32분+ | 전체 | 5 | 164 | 100 % |
+
+The first two rows are the ones that do not scale. "1개 구역" was 1 of 4 zones on a
+single-storey 100 × 100 m map (§12 as written); it is 1 of 5 zones over five storeys now,
+and a zone is 2.2× the size it was.
+
+### Why that is worse than it looks: the median match ends inside the first row
+
+[F-006](#f-006) measures the median match at **7.2 min** against §07's 초저녁 band of
+**0~8 min**. So:
+
+> **In the median match the monster patrols one zone of five for one hundred per cent of
+> the match.**
+
+That is not a tail case. Weighting §07's rows by F-006's own measured population
+(밤 50.25 %, 심야 33.6 %, 새벽 17.4 %, 동트기 전 13.0 %, so 49.75 % of matches never leave
+초저녁):
+
+```
+expected zones patrolled at match end = 0.4975×1 + 0.1665×2 + 0.162×3 + 0.044×5 + 0.130×5
+                                      = 2.19 of 5   (43.7 % of the building)
+```
+
+…and that is the figure **at the end**, which is the most patrolled moment of a match. For
+most of a match's duration the scope is lower, because tier is a step function of elapsed
+time and the elapsed time is small.
+
+A team can therefore finish a whole match in four fifths of a building the antagonist is
+not in, without doing anything clever. It is the same defect as [F-006](#f-006)'s and
+[F-007](#f-007)'s seen from a third side: **numbers derived from the small map were not
+re-derived when the map became 2.2× larger.**
+
+### Options
+
+1. **Make the first two rows proportional too.** "1개 구역" becomes "1/5 of the map" —
+   which is what it meant when it was written, and would then be 1 zone on a 5-zone map
+   and 1 on a 4-zone one. This changes nothing today and stops the row going stale again.
+   It is honest and it does not fix the absence.
+2. **Re-derive the rows from a walking time rather than from a count.** §07's own
+   currency is time: a row could say "as much of the building as the monster can sweep in
+   N minutes at that row's speed", which scales with the map by construction. Costs a
+   pathing measurement per zone at generation time; `RunnerCensus` already walks every
+   place, so the instrument exists.
+3. **Leave §07 and fix the match length.** F-006's recommendation raises the median to
+   ~26.7 min, which puts the typical match into 심야 (3 zones) and 새벽 (5). §07's table
+   is then working as written and this finding closes itself. **This is the cheapest
+   option and it is already the top of F-006's list.**
+
+Option 3 first, then measure again. Option 1 is a one-line safeguard worth doing at the
+same time; option 2 is the right long answer and the most expensive.
+
+### What the 그늘 does about it, and does not
+
+The 그늘 (§10, `Core/Presence`) was deliberately built so it **cannot** acquire this
+defect: it is a predicate on a place — unlit, underground, more than
+`PresenceMonsterClearRadius` from the monster — rather than a count of zones, so it covers
+every dark place in the building at every hour and grows with the building by
+construction. There is no number in it that could shrink.
+
+That is a different thing from fixing this. The 그늘 puts a cost in the 80 % of the
+building the monster is not in; it does not put the *monster* there, and §01's horror is
+the monster. Read this finding as still open after the 그늘 lands.
+
+### Pinned by
+
+`PresenceTests.TheDarkCoversEveryZone_WhereThePatrolTableCoversOne` asserts the 초저녁 row
+is an absolute count that does not grow with the map, so this entry fails a test if
+anybody makes it proportional without updating the page.

@@ -1,0 +1,70 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &4638669832415887829
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 4556305616153247823}
+  - component: {fileID: 8386536474745595853}
+  - component: {fileID: 1707457484645469640}
+  m_Layer: 0
+  m_Name: Presence
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &4556305616153247823
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4638669832415887829}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &8386536474745595853
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4638669832415887829}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4bee23cfe1bb94b08abd6cdde3e27b00, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: HorrorGame.Gameplay.Presence::HorrorGame.Gameplay.Presence.PresenceView
+  _figurePrefab: {fileID: 2060981914848411706, guid: 45bb0cf5d7bb14b5bb269911d8555097, type: 3}
+  _motePrefab: {fileID: 663582453868525558, guid: 9184f9059d51844dfb5b68be4bcd6f56, type: 3}
+  _eye: {fileID: 0}
+  _geometry:
+    serializedVersion: 2
+    m_Bits: 4294967295
+--- !u!114 &1707457484645469640
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4638669832415887829}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c00e0cb2d3f904389b146fd1d5b8bbaa, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: HorrorGame.Gameplay.Presence::HorrorGame.Gameplay.Presence.PresenceAudio
+  _gathering: {fileID: 8300000, guid: 411e4fb1228d1496da34c60a26bc1e05, type: 3}
+  _close: {fileID: 8300000, guid: d6c82e449fc6445bf965bc3de71f9d07, type: 3}
+  _taken: {fileID: 8300000, guid: ecf61dcc6d24c4397a77f784b6a16845, type: 3}
+  _returning: {fileID: 8300000, guid: e4a384565455c46da874f69848050300, type: 3}
+  _bus: {fileID: 0}

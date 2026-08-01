@@ -11,7 +11,7 @@ model in headless Blender.
 
 | | count | size | notes |
 |---|--:|--:|---|
-| `Assets/Audio/**.wav` | **166** | 85.42 MB | all 48 kHz, 16-bit PCM, 546.4 s total |
+| `Assets/Audio/**.wav` | **170** | 87.20 MB | all 48 kHz, 16-bit PCM; 130 positional, 40 non-diegetic |
 | `Assets/Models/**.fbx` | **47** | 6.45 MB | 32,948 triangles total |
 | `Assets/Models/**.glb` | **2** | 0.76 MB | preview copies of the two characters |
 | manifests | 2 | — | `Monster/monster_audio.manifest.json`, `MapKit/MapKit.manifest.json` |
@@ -63,7 +63,15 @@ UI clips below, `Ambience/sfx_*`, `Ambience/amb_generator_hum_loop`,
 
 **Audio — non-diegetic clips** (`UI/*` except the four ghost rattles,
 `Ambience/amb_zone_*`, `amb_stairwell_metal_loop`, `amb_surface_vehicle_loop`,
-`amb_tension_t*`, `Items/shop_purchase_confirm`, `Items/loot_sell_credit`):
+`amb_tension_t*`, `Items/shop_purchase_confirm`, `Items/loot_sell_credit`,
+`Presence/pre_*` — all four):
+
+> The four `Presence/pre_*` clips are non-diegetic **because the 그늘 has no position**
+> (§10). Every other rule in this file sorts a clip by where the sound is coming from;
+> these are the one set with nowhere to come from, so they are 2D by construction rather
+> than by taste. `pre_gathering_loop` and `pre_close_loop` are the pool filling,
+> `pre_taken` is the toll, `pre_return` is the voice coming back.
+> They ship, and — see STATUS.md §1.11 — nothing plays them yet.
 
 | setting | value |
 |---|---|

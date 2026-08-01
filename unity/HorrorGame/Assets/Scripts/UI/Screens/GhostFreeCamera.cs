@@ -67,6 +67,30 @@ namespace HorrorGame.UI.Screens
         /// </summary>
         public void Bind(GhostState ghost, Camera? camera)
         {
+            var view = camera != null ? camera : ResolveCamera();
+            var from = view != null ? view.transform.position : ghost.DeathPosition.ToUnity();
+            var facing = view != null ? view.transform.rotation : Quaternion.identity;
+            Bind(ghost, camera, from, facing);
+        }
+
+        /// <summary>
+        /// Takes over from an explicit eye pose.
+        /// <para>
+        /// The pose matters and is not <see cref="GhostState.DeathPosition"/>. That
+        /// position is the <em>body's</em> — §08 drops the loot on it and the ghost has to
+        /// be able to see the pile from outside itself — and it is measured at the feet,
+        /// so starting the camera there puts the first frame of §09 inside the floor. The
+        /// caller passes the eye the player was already looking through, which is also
+        /// what preserves the seconds §09 cares most about: the ones right after they saw
+        /// what killed them.
+        /// </para>
+        /// </summary>
+        /// <param name="ghost">The state minted where the player fell.</param>
+        /// <param name="camera">Camera to fly. Null keeps whatever this component already resolved.</param>
+        /// <param name="eyePosition">Where the view starts, in world space.</param>
+        /// <param name="eyeRotation">Which way it starts facing. Roll is discarded — §05 gives the camera none.</param>
+        public void Bind(GhostState ghost, Camera? camera, Vector3 eyePosition, Quaternion eyeRotation)
+        {
             _ghost = ghost;
 
             if (camera != null)
@@ -75,17 +99,25 @@ namespace HorrorGame.UI.Screens
             }
 
             var view = ResolveCamera();
-            if (view != null)
+            if (view == null)
             {
-                view.transform.position = ghost.DeathPosition.ToUnity();
-                var euler = view.transform.eulerAngles;
-                _yaw = euler.y;
-                _pitch = NormalizePitch(euler.x);
-
-                // Flush against a wall is the normal case for something that passes
-                // through them, so the near plane is pulled in until it stops mattering.
-                view.nearClipPlane = 0.01f;
+                return;
             }
+
+            view.transform.SetPositionAndRotation(eyePosition, eyeRotation);
+
+            var euler = eyeRotation.eulerAngles;
+            _yaw = euler.y;
+            _pitch = NormalizePitch(euler.x);
+
+            // Flush against a wall is the normal case for something that passes
+            // through them, so the near plane is pulled in until it stops mattering.
+            view.nearClipPlane = 0.01f;
+
+            // Core owns where the ghost is, and it decides §09's "근처 물건". Pushed here
+            // as well as in Drive so a ghost that has not moved yet can still rattle the
+            // thing beside the body.
+            ghost.MoveTo(eyePosition.ToCore());
         }
 
         /// <summary>Releases the camera — the match ended, or the ghost is being handed to the end screen.</summary>

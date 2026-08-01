@@ -1233,6 +1233,175 @@ namespace HorrorGame.Core
         public const float ClueMisreadWeightReflection = 1.00f;
 
         // ====================================================================
+        // §10 / §03 — 그늘. The second thing in the building.
+        //
+        //   「얻으려면 위험을 만들어야 한다」(§10)
+        //
+        // §03 sells the flashlight as one switch answering two questions, and
+        // then only charges for one of them: light on, 괴물이 잘 본다. Light off
+        // costs nothing but the clue you cannot read, so moving dark is free and
+        // the optimal play is to travel unlit and flick the beam on to read. The
+        // 그늘 is the other half of that switch. It is not a second pursuer —
+        // §01's horror is one 이길 수 없는 적 and a second one would halve it. It
+        // has no position, no path and no speed. It is a *condition* that fills
+        // while a player stands in less light than §03 needs to read by, and when
+        // it is full it takes the two things §03 makes this game out of: the
+        // player's voice, and their confidence in what they just read.
+        //
+        // Every number below is bounded by a number that already exists. See
+        // Validate() for the relationships and Core/Presence for the rules.
+        // ====================================================================
+
+        /// <summary>
+        /// Seconds of unbroken, total darkness before the 그늘 takes something.
+        /// The one genuinely new number here, and it is bounded from both sides.
+        /// <para>
+        /// It must be <b>longer</b> than three §12 cover-to-cover crossings at
+        /// walking pace (3 × <see cref="LineOfSightBreakSpacingMax"/> ÷
+        /// <see cref="WalkSpeed"/> = 37.5 s), or a player could not cross the
+        /// building §12 specifies without being taken and the dark would stop
+        /// being a choice. It must be <b>shorter</b> than
+        /// <see cref="BatterySecondsPerCell"/> (210 s), or never switching the
+        /// light on would be strictly safer than switching it on, which is the
+        /// exact failure the 그늘 exists to remove.
+        /// </para>
+        /// <para>
+        /// Provisional in the §16 sense: no section of the design fixes it, and
+        /// 45 s is the round number in the middle of the bracket. Retune it here.
+        /// </para>
+        /// </summary>
+        public const float PresenceSaturationSeconds = 45f;
+
+        /// <summary>
+        /// Seconds of readable light needed to clear a full pool. One third of
+        /// <see cref="PresenceSaturationSeconds"/>, so one second of light buys
+        /// back three seconds of dark.
+        /// <para>
+        /// Not instant, on purpose. If a single frame of beam reset the pool, the
+        /// answer would be to flick the torch once a minute and §03's dilemma
+        /// would be priced at one <see cref="BatterySwitchOnCost"/>. Three-to-one
+        /// makes travelling dark genuinely cheaper than travelling lit and still
+        /// makes it something you have to keep paying for.
+        /// </para>
+        /// </summary>
+        public const float PresenceDispersalSeconds = 15f;
+
+        /// <summary>
+        /// Seconds a taken player cannot transmit voice. §13's channel, off.
+        /// <para>
+        /// Deliberately <see cref="SprintStaminaSeconds"/> — one sprint. §06 already
+        /// fixes 12 s as the longest single unbroken bad moment the design asks a
+        /// player to survive, so the 그늘's toll is one of those, and the two move
+        /// together if either is ever retuned.
+        /// </para>
+        /// <para>
+        /// This is §09's ghost condition applied to somebody still alive: "자기
+        /// 물건이 어디 있는지 보이는데 말할 수 없다." §09 calls that the game's
+        /// 최고의 순간 and reaches it only by killing you. The 그늘 reaches it for
+        /// twelve seconds, for the price of walking in the dark.
+        /// </para>
+        /// </summary>
+        public const float PresenceSilenceSeconds = SprintStaminaSeconds;
+
+        /// <summary>
+        /// How much of the pool survives a taking. §01: "저지는 전부 일시적" —
+        /// nothing in this game is dealt with permanently, and a player who is
+        /// still standing in the dark when the 그늘 lets go is still standing in
+        /// the dark.
+        /// <para>
+        /// Below <see cref="PresenceWarnPooling"/> so the second taking is
+        /// announced from the beginning again rather than arriving out of a state
+        /// the player was never shown leaving.
+        /// </para>
+        /// </summary>
+        public const float PresenceResidualPooling = 0.50f;
+
+        /// <summary>
+        /// Pool fraction at which the 그늘 stops being ambience and becomes a
+        /// figure. Everything the player is told is told here: the sound tightens,
+        /// the motes resolve, and something is standing at the edge of the beam.
+        /// <para>
+        /// 0.6 leaves 40% of <see cref="PresenceSaturationSeconds"/> — 18 s — to
+        /// react in. §12's cover spacing puts a lit-able place inside 25 m, which
+        /// is 12.5 s at <see cref="WalkSpeed"/>, so the warning is long enough to
+        /// walk out of and short enough to be a warning.
+        /// </para>
+        /// </summary>
+        public const float PresenceWarnPooling = 0.60f;
+
+        /// <summary>
+        /// Extra §03 misread-condition strength carried by a player the 그늘 has
+        /// just taken. The second half of the toll: you cannot say it, and then
+        /// you are not sure of it.
+        /// <para>
+        /// Exactly <c>1 − <see cref="ClueMisreadFocusedFraction"/></c>, which is the
+        /// share of §03's misread chance that a careful, well-lit look removes. So
+        /// the 그늘 can take back precisely the benefit of having been careful and
+        /// no more — it makes a good read into an average one, never into a lie.
+        /// </para>
+        /// </summary>
+        public const float PresenceRecallSmear = 1f - ClueMisreadFocusedFraction;
+
+        /// <summary>
+        /// Seconds over which <see cref="PresenceRecallSmear"/> fades once the
+        /// player is out of the dark. Longer than
+        /// <see cref="PresenceSilenceSeconds"/> on purpose: the voice comes back
+        /// before the certainty does, so the player says the number while still
+        /// unsure of it. §03: "6이었나 9였나…"
+        /// </summary>
+        public const float PresenceRecallFadeSeconds = 30f;
+
+        /// <summary>
+        /// Radius around the monster inside which there is no 그늘 at all, metres.
+        /// <para>
+        /// Derived, not chosen: it is <see cref="MonsterSightRange"/>. §01 keeps
+        /// its horror with <b>one</b> unkillable pursuer, so wherever the monster
+        /// can see you the 그늘 is not there — the two are never pressure at the
+        /// same moment on the same player. Three consequences fall out of that one
+        /// line and each is asserted by a test:
+        /// </para>
+        /// <list type="bullet">
+        /// <item><description>§06's chase is untouched. A chase requires a sight
+        /// line, a sight line requires ≤ 20 m, and at ≤ 20 m the density is
+        /// zero.</description></item>
+        /// <item><description>§04's 관측자 is structurally immune. The role works
+        /// at <see cref="ObserverRange"/> = 15 m and must hold still for 3 s in the
+        /// dark, which is otherwise exactly what the 그늘 punishes.</description></item>
+        /// <item><description>The dark withdrawing is a tell. §07's 정지 makes the
+        /// monster silent and §04's 청음사 loses it; the pool falling is the one
+        /// cue that still says "it is close", and it is available to every role
+        /// because §01 says 네 사람은 같은 것을 보고 같은 것을 듣는다.</description></item>
+        /// </list>
+        /// </summary>
+        public const float PresenceMonsterClearRadius = MonsterSightRange;
+
+        /// <summary>
+        /// Radius at which the monster stops thinning the 그늘, metres — the outer
+        /// edge of the tell. <see cref="LineOfSightBreakSpacingMax"/>, which is the
+        /// furthest §12 obliges a map to provide a sight line for and therefore the
+        /// furthest a withdrawal could honestly mean anything.
+        /// </summary>
+        public const float PresenceMonsterFringeRadius = LineOfSightBreakSpacingMax;
+
+        /// <summary>
+        /// How much of its strength the 그늘 has at 초저녁 — §07's first row.
+        /// <para>
+        /// Half, so §01's 맨몸 first descent is about learning the building rather
+        /// than about this. It is not zero, because a player who never meets the
+        /// 그늘 on the first descent has no reason to believe the second one.
+        /// </para>
+        /// </summary>
+        public const float PresenceBoldnessFloor = 0.50f;
+
+        /// <summary>
+        /// Strength the 그늘 gains per §07 threat tier. Sized so it reaches exactly
+        /// 1.0 on 동트기 전 — 「생존 불가 수준」 — over
+        /// <see cref="ThreatTierCount"/> rows. §07 owns the night; this only reads
+        /// its row number.
+        /// </summary>
+        public const float PresenceBoldnessPerTier = 0.125f;
+
+        // ====================================================================
         // Simulation.
         // ====================================================================
 
@@ -1325,6 +1494,52 @@ namespace HorrorGame.Core
             Require(SightBreakPointSpanMax > 0f && SightBreakPointSpanMax < LineOfSightBreakSpacingMin,
                 "§12: one 시야 차단 지점 must be narrower than the gap to the next one, or the two "
                 + "readings of 간격 — how wide a chance is and how far apart chances are — collapse into each other.");
+
+            Require(PresenceSaturationSeconds > 3f * LineOfSightBreakSpacingMax / WalkSpeed,
+                "§10/§12: the 그늘 must take longer to fill than three cover-to-cover crossings at walking "
+                + "pace, or the building §12 specifies cannot be walked across in the dark and the dark stops "
+                + "being a choice.");
+            Require(PresenceSaturationSeconds < BatterySecondsPerCell,
+                "§10/§03: the 그늘 must fill faster than a battery empties. If it did not, never switching the "
+                + "light on would be strictly safer than switching it on — which is the exact one-way switch "
+                + "the 그늘 exists to close.");
+            Require(PresenceDispersalSeconds > 0f && PresenceDispersalSeconds < PresenceSaturationSeconds,
+                "§10: light must clear the 그늘 faster than dark fills it, and must not clear it instantly — "
+                + "an instant reset prices §03's dilemma at one BatterySwitchOnCost.");
+            Require(PresenceResidualPooling >= 0f && PresenceResidualPooling < PresenceWarnPooling,
+                "§01: what survives a taking must sit below the warning, or the second taking arrives out of a "
+                + "state the player was never shown leaving.");
+            Require(PresenceWarnPooling > 0f && PresenceWarnPooling < 1f,
+                "§10: the 그늘 has to announce itself before it takes anything.");
+            Require((1f - PresenceWarnPooling) * PresenceSaturationSeconds > LineOfSightBreakSpacingMax / WalkSpeed,
+                "§12: the warning must last long enough to walk to the nearest cover §12 guarantees.");
+            Require(PresenceSilenceSeconds > ClueReadSeconds,
+                "§03: the silence has to outlast a clue read, or a player could read and speak through it and "
+                + "the toll would cost nothing.");
+            Require(PresenceRecallFadeSeconds > PresenceSilenceSeconds,
+                "§03: certainty must come back after the voice does — the player has to say the number while "
+                + "still unsure of it.");
+            Require(PresenceRecallSmear > 0f && PresenceRecallSmear <= 1f - ClueMisreadFocusedFraction,
+                "§03: the 그늘 may take back the benefit of a careful look and no more. Above this it would be "
+                + "inventing misreads rather than removing care.");
+            Require(PresenceMonsterClearRadius >= MonsterSightRange,
+                "§01/§06: there must be no 그늘 anywhere the monster can already see you. One unkillable "
+                + "pursuer — 이길 수 없는 적 → 공포가 유지된다 — and two pressures on one player at one moment "
+                + "is how that stops being true.");
+            Require(PresenceMonsterClearRadius > ObserverRange,
+                "§04/§11: the 관측자 holds still in the dark 15 m from the monster, which is otherwise exactly "
+                + "what the 그늘 punishes. §11 gives that role no purchasable substitute, so it must be immune "
+                + "while doing its job rather than merely discouraged.");
+            Require(PresenceMonsterClearRadius > AggroReleaseDistance,
+                "§06: a 주자 breaking aggro is inside the release distance by definition, so the 그늘 must not "
+                + "be able to reach them mid-chase.");
+            Require(PresenceMonsterFringeRadius > PresenceMonsterClearRadius,
+                "§10: the withdrawal has to be gradual to be readable — a step function is a boolean nobody can "
+                + "see arriving.");
+            Require(PresenceBoldnessFloor > 0f
+                && System.Math.Abs(PresenceBoldnessFloor + (PresenceBoldnessPerTier * (ThreatTierCount - 1)) - 1f) < 1e-4f,
+                "§07: the 그늘 must reach exactly full strength on the last row of the threat table and not "
+                + "before it. 동트기 전 is 생존 불가 수준; anything earlier invents a sixth night.");
         }
 
         private static void Require(bool condition, string message)

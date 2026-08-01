@@ -19,10 +19,10 @@ dotnet test /Users/doogi/horror-game/core/HorrorGame.Core.Tests/HorrorGame.Core.
 ```
 
 ```
-통과!  - 실패:     0, 통과:   451, 건너뜀:     0, 전체:   451, 기간: 363 ms
+통과!  - 실패:     0, 통과:   476, 건너뜀:     0, 전체:   476, 기간: 413 ms
 ```
 
-**451 tests in a third of a second, and Unity never opens.** Every tuned number and
+**476 tests in under half a second, and Unity never opens.** Every tuned number and
 every rule lives here: §05's speed multipliers, §06's aggro and state machine, §07's
 threat curve, §08's economy, §03's clues and confusion pairs, §12's map rules.
 
@@ -37,7 +37,7 @@ Run it before every commit. If it is green, the game's rules are intact.
 
 ## The full sweep, in the order worth running
 
-### 1 · Rules — 451 tests
+### 1 · Rules — 476 tests
 
 ```bash
 dotnet test /Users/doogi/horror-game/core/HorrorGame.Core.Tests/HorrorGame.Core.Tests.csproj
@@ -96,12 +96,22 @@ python3 -c "import xml.etree.ElementTree as ET,sys; r=ET.parse('/tmp/playmode.xm
 ```
 
 ```
-EditMode   total 100 passed 100 failed 0 result Passed
-PlayMode   total 72 passed 72 failed 0 result Passed
+EditMode   total 101 passed 101 failed 0 result Passed
+PlayMode   total 83 passed 83 failed 0 result Passed
 ```
 
-**173 of 173 as of 2026-08-01**, and 624 of 624 with core's 451. EditMode went 71 → 100
-→ 101 and PlayMode 55 → 64 → 66 → 72; the seven newest cover the crouch/hop verbs and the
+**184 of 184 as of 2026-08-01**, and 660 of 660 with core's 476. EditMode went 71 → 100
+→ 101 (flat this pass) and PlayMode 55 → 64 → 66 → 72 → **83**; the eleven newest are
+`GhostSessionTests` (6, §09) and `PresenceSessionTests` (5, §10).
+
+> **Five of those eleven test code no match runs.** `PresenceSessionTests` and core's
+> 25 `PresenceTests` cover a subsystem that is in no scene and no prefab and that
+> `MatchDirector` never mentions — so a green 660 is not evidence the 그늘 exists in
+> the game. See STATUS.md §1.11. This is exactly the failure mode §4's note about
+> `Interactable.OnPressed` describes, one level up: *a test that calls the subsystem
+> proves the subsystem works. It does not prove anything calls it.*
+
+The seven before them cover the crouch/hop verbs and the
 rebuilt player rig. Before them came `SurfaceApronTests`, which pin §01's painted
 지상 to the radius `MatchMap.IsOnSurface` measures. The pass before added: `DropPlacementTests` in EditMode,
 `InteractionDropTests` and `PlayerFirstPersonViewTests` in PlayMode, and the rewritten

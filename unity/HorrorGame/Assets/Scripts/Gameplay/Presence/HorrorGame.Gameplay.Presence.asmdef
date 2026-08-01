@@ -1,0 +1,17 @@
+{
+    "name": "HorrorGame.Gameplay.Presence",
+    "rootNamespace": "HorrorGame.Gameplay.Presence",
+    "references": [
+        "HorrorGame.Core",
+        "HorrorGame.Gameplay.Monster"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

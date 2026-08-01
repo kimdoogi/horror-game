@@ -5,9 +5,11 @@ using System.Collections.Generic;
 using HorrorGame.Core;
 using HorrorGame.Core.Clues;
 using HorrorGame.Core.Economy;
+using HorrorGame.Core.Ghost;
 using HorrorGame.Core.Match;
 using HorrorGame.Core.Roles;
 using HorrorGame.Core.Session;
+using HorrorGame.Gameplay.Ghost;
 using HorrorGame.Gameplay.Interaction;
 using HorrorGame.Gameplay.Monster;
 using HorrorGame.Gameplay.Player;
@@ -95,6 +97,7 @@ namespace HorrorGame.Gameplay.Match
         private NavMeshWorldProbe? _probe;
 
         private MatchHud? _hud;
+        private GhostSession? _ghosts;
         private PlayerInteractor? _interactor;
         private PlayerMotor? _motor;
         private PlayerLoadout? _loadout;
@@ -113,6 +116,7 @@ namespace HorrorGame.Gameplay.Match
         private bool _onSurface = true;
         private float _grabDistance;
         private int _activeSeed;
+        private bool _endScreenHeldForGhost;
 
         /// <summary>§07's clock. Never paused — that is the section.</summary>
         public MatchClock Clock
@@ -205,6 +209,38 @@ namespace HorrorGame.Gameplay.Match
         public bool ShopOpen
         {
             get { return _hud != null && _hud.ShopOpen; }
+        }
+
+        /// <summary>
+        /// §09's seat for the dead. Null until <see cref="ResolveWiring"/> has run; the
+        /// session itself is inert while nobody has died.
+        /// </summary>
+        public GhostSession? Ghosts
+        {
+            get { return _ghosts; }
+        }
+
+        /// <summary>
+        /// Whether the local player is dead and still playing. §09.
+        /// <para>
+        /// Not the same question as "did the match end". A death is a change of seat, not
+        /// the end of anything: §09 keeps the player in the building — "탈출: 불가능" —
+        /// and §02 only finishes when every seat has resolved, which with four players is
+        /// three deaths later.
+        /// </para>
+        /// </summary>
+        public bool LocalPlayerIsGhost
+        {
+            get { return _state != null && _state.PlayerAt(LocalPlayerIndex).IsGhost; }
+        }
+
+        /// <summary>
+        /// Whether §02 has decided and the end screen is waiting on §09's ghost to ask
+        /// for it. See <see cref="CheckOutcome"/>.
+        /// </summary>
+        public bool EndScreenHeldForGhost
+        {
+            get { return _endScreenHeldForGhost; }
         }
 
         /// <summary>
@@ -372,6 +408,13 @@ namespace HorrorGame.Gameplay.Match
         public void EndMatch()
         {
             _running = false;
+            _endScreenHeldForGhost = false;
+
+            // §09 ends with the match and never outlives it: the ghost's cooldown is
+            // ticked from the step this call stops, so a ghost left flying afterwards
+            // would be one whose 45 s never comes round again.
+            _ghosts?.End();
+
             _hud?.UnbindHud();
             _hud?.CloseShop();
             _hud?.DismissClue();
@@ -655,6 +698,15 @@ namespace HorrorGame.Gameplay.Match
                 ResetMonster();
             }
 
+            if (LocalPlayerIsGhost)
+            {
+                // §03's read belongs to a pair of eyes that is now flying somewhere else.
+                // PlayerInteractor is switched off while §09 has the camera, so nothing is
+                // pushing a fresh context — and a reader ticked against the last live one
+                // would finish a mark the player was halfway through when they died.
+                _clueContext = default(ClueReadContext);
+            }
+
             StepMonster();
             StepClueRead();
             CheckGrab();
@@ -685,11 +737,17 @@ namespace HorrorGame.Gameplay.Match
                 monster.SetMapZoneCount(_map.ZoneCount);
             }
 
-            if (_onSurface || _playerRoot == null)
+            if (_onSurface || _playerRoot == null || LocalPlayerIsGhost)
             {
                 // §01 · §08 make the surface a 안전 지대, and §03's partial reset leaves
                 // the monster in the building when the team walks out. Reporting a
                 // target that is standing at the van would have it hunt the safe zone.
+                //
+                // A ghost is dropped for a different reason and it matters more than it
+                // looks: the rig stays where it fell, so without this the monster would
+                // stand over the corpse re-acquiring it every tick and §06's machine would
+                // never leave 추격 again. §09 takes the player out of the world; the seat
+                // has to leave §06's target list with them.
                 monster.ForgetTarget(LocalPlayerIndex);
             }
             else
@@ -773,8 +831,12 @@ namespace HorrorGame.Gameplay.Match
                 return;
             }
 
-            if (monster.State != MonsterStateId.Chase)
+            if (monster.State != MonsterStateId.Chase || LocalPlayerIsGhost)
             {
+                // §09 leaves the body where it fell and it stays there for the rest of the
+                // match. A corpse is not catchable — <c>MatchState.TryKill</c> refuses a
+                // second kill anyway, but reaching it would drop an already-empty
+                // inventory and play the grab again over a player who is no longer there.
                 return;
             }
 
@@ -787,19 +849,101 @@ namespace HorrorGame.Gameplay.Match
 
             var where = _playerRoot.position;
             monster.PlayGrab();
-            DropEverything(where);
+
+            // §08: "사망자의 전리품 — 떨어진다." The pile stays where it fell so the team
+            // has a reason to come back for it, and its value is what §09 then makes the
+            // ghost watch — "자기 물건이 어디 있는지 보이는데 말할 수 없다."
+            var pileValue = DropEverything(where);
 
             if (state.TryKill(LocalPlayerIndex, where.ToVec3()))
             {
-                // §08: "사망자의 전리품 — 떨어진다." The pile stays where it fell so the
-                // team has a reason to come back for it.
                 Debug.Log("[Match] §09 잡혔다 — " + where, this);
                 monster.ForgetTarget(LocalPlayerIndex);
+                EnterGhost(state.PlayerAt(LocalPlayerIndex).Ghost, pileValue);
             }
 
             CheckOutcome();
         }
 
+        /// <summary>
+        /// Hands the seat over to §09. The match keeps running; this is a change of what
+        /// the player is doing, not the end of what they are doing it in.
+        /// <para>
+        /// §08's pile is reported to the ghost here rather than inside <c>MatchState</c>
+        /// because the value belongs to the economy — <c>DroppedLootField</c> is what
+        /// priced it — and <c>MatchState.TryKill</c>'s own documentation asks the caller
+        /// to make exactly this call for exactly that reason.
+        /// </para>
+        /// <para>
+        /// The torch goes out. §03 charges the battery per second and a dead player cannot
+        /// spend that resource for the team; leaving it burning on a corpse would drain a
+        /// cell the living still have to buy, and light the room for §06 while it did.
+        /// </para>
+        /// </summary>
+        private void EnterGhost(GhostState? ghost, int droppedPileValue)
+        {
+            if (ghost == null)
+            {
+                return;
+            }
+
+            ghost.NoteOwnLootDropped(droppedPileValue);
+
+            if (_flashlight != null)
+            {
+                _flashlight.State.TurnOff();
+                _flashlight.EnforceCarryRules();
+                _flashlight.RefreshPresentation();
+            }
+
+            // §01's HUD comes down with the body. Every row on it belongs to a living
+            // player — §03's battery, §04's stamina, §08's load — and a dead one has
+            // none of them; photographed with it still up, §09's own overlay was sharing
+            // a corner with two meters that could never move again.
+            _hud?.UnbindHud();
+            _hud?.CloseShop();
+            _hud?.DismissClue();
+            _clueReader.Cancel();
+            _revealedClueId = -1;
+
+            var ghosts = _ghosts;
+            if (ghosts == null)
+            {
+                Debug.LogWarning(
+                    "[Match] §09 has nowhere to put the dead player — no GhostSession on this director, "
+                    + "so the death is a locked camera instead of a spectator.", this);
+                return;
+            }
+
+            ghosts.MatchEndRequested = ShowHeldEndScreen;
+            ghosts.Begin(ghost, _playerRoot, _monster);
+        }
+
+        /// <summary>
+        /// §02's verdict, applied when there is one — unless §09 is still using the
+        /// building.
+        /// <para>
+        /// <b>This is the line that made a solo death end the screen.</b> §02 computes
+        /// over seats, so with one seat occupied a death is 전멸 and 전멸 is final, and
+        /// the end screen went up in the same tick the monster caught the player. §09 says
+        /// the opposite: the dead keep playing — "죽으면 지루하다 → 볼 게 있고 할 게 있다"
+        /// — and being thrown to a results panel is precisely what that row rules out.
+        /// </para>
+        /// <para>
+        /// So the verdict is reached and then <em>held</em>. Nothing about §02 changes: the
+        /// outcome is still computed from the same tally by the same evaluator, the ghost
+        /// cannot alter it, and <c>MatchState</c> will not let a ghost extract. What
+        /// changes is who decides when to look at it.
+        /// </para>
+        /// <para>
+        /// <b>Nothing here asks how many people are playing.</b> With four, one death
+        /// leaves three in play, <c>IsFinal</c> is false and this method returns before the
+        /// hold is even considered — the ghost simply spectates, which is §09 as written.
+        /// The hold only ever appears when §02 has genuinely finished, and then it is
+        /// offered to whichever local seat is a ghost. Solo is that case with the other
+        /// three chairs empty.
+        /// </para>
+        /// </summary>
         private void CheckOutcome()
         {
             if (!_running)
@@ -810,9 +954,50 @@ namespace HorrorGame.Gameplay.Match
             var resolution = Resolution;
             if (!resolution.IsFinal)
             {
+                _endScreenHeldForGhost = false;
+                _ghosts?.NoteVerdictReached(false);
                 return;
             }
 
+            var ghosts = _ghosts;
+            if (ghosts != null && ghosts.IsActive)
+            {
+                if (!_endScreenHeldForGhost)
+                {
+                    _endScreenHeldForGhost = true;
+                    ghosts.MatchEndRequested = ShowHeldEndScreen;
+                    ghosts.NoteVerdictReached(true);
+
+                    Debug.Log(
+                        "[Match] §02 " + resolution.Outcome
+                        + " — 결과는 나왔지만 §09의 유령이 아직 건물 안에 있다. "
+                        + "[" + GhostSession.EndMatchKey + "]를 누르고 있으면 결과 화면을 연다.", this);
+                }
+
+                // §07's clock is still running and §06 is still hunting, on purpose: a
+                // free camera over a live match is the only instrument this project has
+                // for §14 Q1, and stopping the match would take it away.
+                return;
+            }
+
+            ShowEndScreen(resolution);
+        }
+
+        /// <summary>The ghost asked. Shows the verdict §02 had already reached, unchanged.</summary>
+        private void ShowHeldEndScreen()
+        {
+            if (!_running || !_endScreenHeldForGhost)
+            {
+                return;
+            }
+
+            _ghosts?.End();
+            ShowEndScreen(Resolution);
+        }
+
+        private void ShowEndScreen(MatchResolution resolution)
+        {
+            _endScreenHeldForGhost = false;
             EndMatch();
 
             if (_input != null)
@@ -1275,6 +1460,20 @@ namespace HorrorGame.Gameplay.Match
                     _hud = child.AddComponent<MatchHud>();
                 }
             }
+
+            if (_ghosts == null)
+            {
+                // Built here rather than authored into the scene for the same reason the
+                // HUD is: §09 is a state every seat can enter and no scene should have to
+                // remember to carry it. It costs nothing until somebody dies.
+                _ghosts = GetComponentInChildren<GhostSession>();
+                if (_ghosts == null)
+                {
+                    var child = new GameObject("GhostSession");
+                    child.transform.SetParent(transform, worldPositionStays: false);
+                    _ghosts = child.AddComponent<GhostSession>();
+                }
+            }
         }
 
         private void BindHud()
@@ -1413,7 +1612,12 @@ namespace HorrorGame.Gameplay.Match
         /// Empties the hands where the player fell. §08: "사망자의 전리품 — 떨어진다.
         /// 회수하려면 시체가 있는 곳으로 돌아가야 한다."
         /// </summary>
-        private void DropEverything(Vector3 where)
+        /// <returns>
+        /// What the pile is worth in credits, so §09's ghost can be told what it is
+        /// looking at — "자기 물건이 어디 있는지 보이는데 말할 수 없다." Zero for an
+        /// empty-handed death, which makes no pile at all.
+        /// </returns>
+        private int DropEverything(Vector3 where)
         {
             var interactor = _interactor;
 
@@ -1427,12 +1631,20 @@ namespace HorrorGame.Gameplay.Match
                 oversize.ForceRelease(interactor);
             }
 
+            var value = 0;
             if (_loadout != null)
             {
-                _droppedLoot.DropFrom(_loadout.Inventory, where.ToVec3());
+                // DropFrom hands back the PILE'S INDEX, not its price, and returns −1 for
+                // an empty-handed death. Read as a value it makes the first pile of every
+                // match worth zero — which is exactly what §09's overlay showed the first
+                // time this was photographed: a ghost standing over its own 은수저 being
+                // told it had dropped 0 크레딧.
+                var pile = _droppedLoot.DropFrom(_loadout.Inventory, where.ToVec3());
+                value = pile >= 0 ? _droppedLoot.ValueOf(pile) : 0;
             }
 
             SyncLootState();
+            return value;
         }
 
         /// <summary>
@@ -1487,6 +1699,13 @@ namespace HorrorGame.Gameplay.Match
         {
             _running = false;
             _resolver = null;
+            _endScreenHeldForGhost = false;
+
+            // Before anything else: §09 has the player's camera unparented from the rig
+            // and three of the rig's components switched off. A new match laid out around
+            // a rig in that state would spawn a player who cannot move and cannot see.
+            _ghosts?.End();
+
             _droppedLoot.Clear();
             _hud?.HideEnd();
             _hud?.CloseShop();

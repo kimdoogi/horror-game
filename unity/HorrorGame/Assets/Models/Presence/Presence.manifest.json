@@ -1,0 +1,98 @@
+{
+  "generator": "tools/blender/gen_presence.py",
+  "note": "The 그늘 (§10). A condition, not a pursuer — see Core/Presence. Material values as authored on the Principled BSDF; FBX carries neither metallic nor emission, so PresenceSkin rebuilds URP Lit from these.",
+  "materials": [
+    {
+      "name": "Presence_Void",
+      "color": [
+        0.013,
+        0.014,
+        0.016
+      ],
+      "roughness": 1.0,
+      "metallic": 0.0,
+      "emission": 0.0,
+      "additive": false,
+      "alpha": 1.0,
+      "note": "the hole. Darker than the darkest §12 wall by 16x, so it reads as absence."
+    },
+    {
+      "name": "Presence_Grain",
+      "color": [
+        0.47,
+        0.52,
+        0.505
+      ],
+      "roughness": 0.9,
+      "metallic": 0.0,
+      "emission": 1.6,
+      "additive": false,
+      "alpha": 1.0,
+      "note": "the flakes. Faintly emissive so the silhouette survives a frame with no light in it."
+    },
+    {
+      "name": "Presence_Dust",
+      "color": [
+        0.47,
+        0.52,
+        0.505
+      ],
+      "roughness": 0.9,
+      "metallic": 0.0,
+      "emission": 1.3,
+      "additive": true,
+      "alpha": 0.55,
+      "note": "the free motes. Additive and translucent, so they are a glow and not a polygon."
+    }
+  ],
+  "models": [
+    {
+      "name": "Presence_Figure",
+      "file": "Presence_Figure.fbx",
+      "height_metres": 2.05,
+      "triangles": 2370,
+      "materials": [
+        "Presence_Void",
+        "Presence_Grain"
+      ],
+      "note": "the 형상 that stands at PresenceStage.Close. No rig, no clips, no collider in play — it is looked at, never touched."
+    },
+    {
+      "name": "Presence_Mote",
+      "file": "Presence_Mote.fbx",
+      "height_metres": 0.03,
+      "triangles": 6,
+      "materials": [
+        "Presence_Dust"
+      ],
+      "note": "one flake, instanced around the player at PresenceStage.Gathering."
+    }
+  ],
+  "audio": [
+    {
+      "file": "Assets/Audio/Presence/pre_gathering_loop.wav",
+      "seconds": 8.0,
+      "peak_dbfs": -19.0,
+      "positional": false
+    },
+    {
+      "file": "Assets/Audio/Presence/pre_close_loop.wav",
+      "seconds": 6.0,
+      "peak_dbfs": -13.0,
+      "positional": false
+    },
+    {
+      "file": "Assets/Audio/Presence/pre_taken.wav",
+      "seconds": 3.0,
+      "peak_dbfs": -9.0,
+      "positional": false
+    },
+    {
+      "file": "Assets/Audio/Presence/pre_return.wav",
+      "seconds": 1.6,
+      "peak_dbfs": -15.0,
+      "positional": false
+    }
+  ],
+  "audio_note": "Non-positional on purpose. §04 gives the 청음사 one channel — the monster's 위치 · 거리 · 이동 방향 by ear — and a second world-space emitter would compete for it and take the role apart with nothing reporting a fault. The 그늘 has no position in Core either; see PresenceTests.The그늘HasNoPositionAnywhereInItsApi."
+}

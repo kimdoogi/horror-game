@@ -1,0 +1,21 @@
+{
+    "name": "HorrorGame.Gameplay.Presence.Editor",
+    "rootNamespace": "HorrorGame.Gameplay.PresenceEditor",
+    "references": [
+        "HorrorGame.Core",
+        "HorrorGame.Gameplay.Presence",
+        "HorrorGame.Rendering",
+        "Unity.RenderPipelines.Universal.Runtime"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

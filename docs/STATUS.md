@@ -24,13 +24,23 @@ export DOTNET_ROOT="$HOME/.dotnet"; export PATH="$HOME/.dotnet:$PATH"
 
 ## The one-line answer
 
-**624 of 624 tests green (core 451, EditMode 101, PlayMode 72), the standalone IL2CPP
-player starts a match with 0 exceptions, and the player now has a Humanoid model with
-harvested hands and the 차량 has a painted dielectric body instead of forged iron. Both
-landed clean: `AssetImportValidator` passes 86 models with 0 failing, so the rig, the
-1.750 m height, the four mount bones and the clip counts are all intact. The one number
-this round was not set to move, the 주자 테스트, did not move; it is still 10/10 TooEasy
-against §12's 5–7 band.**
+**660 of 660 tests green (core 476, EditMode 101, PlayMode 83), the standalone IL2CPP
+player starts a match with 0 exceptions, and §09's 유령 is wired: a dead player keeps an
+eye, sees their own pile, can rattle a nearby 물건 every 45 s, and the match keeps
+running around them. `MonsterChaseTests` is still 4/4 and — the number that mattered
+this round — still *the same 4/4*: `caught at 12.54 s`, 4.80 m/s of corridor, 0.80 m/s
+of gap, 38.86 s to reach a player over 189.6 m. The second entity did not move §06's
+measured chase by a single decimal.**
+
+> 🔴 **The 그늘 (§10) is not in the game.** It has 25 core rules tests, 5 PlayMode tests,
+> a model, audio, materials, a prefab and a shot rig that photographs it — and **no
+> consumer**. `PresenceDirector` and `PresenceSubject` appear in no scene and no prefab
+> (checked by script GUID, not by name), `MatchDirector` does not contain the string
+> `Presence`, and outside its own two test files nothing in `Assets/` or `core/`
+> references `PresenceField`. Nothing ticks it, so it charges nobody: **no player has
+> ever lost their voice to it and none can until it is wired.** It is landed here as a
+> tested, unwired subsystem, deliberately and not silently — see [§1.11](#111-the-그늘-is-tested-photographed-and-not-connected-to-anything).
+> Do not read the 660 as evidence that this entity exists in a match.
 
 > ~~🔴 **Neither art pass is shippable yet, and the renders say so plainly.**~~ **The
 > hands are answered; the 차량 is not.** `gen_player_ai.py` no longer harvests hands
@@ -43,11 +53,11 @@ against §12's 5–7 band.**
 > box — no windscreen, no grille, no wheel arches, no tread. See
 > [ART.md §7.14](ART.md) for what changed and §7.13 for what has not.
 
-> 🔴 **`MatchDirector.cs` references a `GhostSession` type that is not in the tree.**
-> `Assets/Scripts/Gameplay/Ghost/` was deleted by the art pass by mistake — see the
-> commit message — and nothing in the project compiles until it is back. Every Unity
-> check below therefore has a date on it from *before* that, and the art pass's own
-> Unity verification did not run. Re-run [§2's list](TESTING.md) once it compiles.
+> ~~🔴 **`MatchDirector.cs` references a `GhostSession` type that is not in the tree.**~~
+> **Closed.** `Assets/Scripts/Gameplay/Ghost/` is back — `GhostSession`,
+> `GhostRattleTarget` and `GhostViewGrade` — and Unity compiles 0 CS errors from a cold
+> batch run. Every Unity check below was re-run against this tree in one sitting on
+> 2026-08-01, so the dates on them are current again rather than pre-deletion.
 
 > **ART.md's "all five zone views inside all four bands" is no longer true, and the
 > cause is now known.** It was never *"the identical scene"*: `Map_FirstSketch.unity`
@@ -150,17 +160,24 @@ highest-value thing anyone can do here and still cannot be automated.
 
 ## 1 · Verified green — command, and the output it produced
 
-### 1.1 The rules core — 451 tests, no engine
+### 1.1 The rules core — 476 tests, no engine
 
 ```bash
-dotnet test /Users/doogi/horror-game/core/HorrorGame.Core.Tests/HorrorGame.Core.Tests.csproj
+dotnet test /Users/doogi/horror-game/core/HorrorGame.sln -c Release
 ```
 
 ```
-통과!  - 실패:     0, 통과:   451, 건너뜀:     0, 전체:   451, 기간: 363 ms
+통과!  - 실패:     0, 통과:   476, 건너뜀:     0, 전체:   476, 기간: 413 ms - HorrorGame.Core.Tests.dll (net9.0)
 ```
 
-448 → 451: the three added tests pin §12's new 시야 차단 지점 간격 rule (`66ce930`).
+451 → 476: the twenty-five added tests are `PresenceTests`, which pin §10's 그늘 — the
+saturation and dispersal rates, the toll, the residual, the monster-cleared radius, and
+`TheDarkCoversEveryZone_WhereThePatrolTableCoversOne`, which is the test
+[F-010](BALANCE-FINDINGS.md#f-010) is pinned by. Before them, 448 → 451 pinned §12's
+시야 차단 지점 간격 rule (`66ce930`).
+
+**These 25 test rules that no match runs.** See
+[§1.11](#111-the-그늘-is-tested-photographed-and-not-connected-to-anything).
 
 0 skipped, so the count is not inflated by disabled cases. Every tuned number and rule
 lives here — §05's speed multipliers, §06's aggro and state machine, §07's threat
@@ -478,7 +495,7 @@ onto and a human cannot use one at all. And the built-scene sight-line sampler n
 reports a longest run of **21.2 m** where it used to report **100.0 m**; §3.4 covers
 what is left of that defect.
 
-### 1.9 The full Unity suite — 164 of 164
+### 1.9 The full Unity suite — 184 of 184
 
 Run the two platforms separately and read the XML rather than the exit code.
 **No `-quit`**: the runner is async and exits from its own callback, and `-quit`
@@ -495,12 +512,18 @@ python3 -c "import xml.etree.ElementTree as ET,sys; r=ET.parse(sys.argv[1]).getr
 Both exit 0.
 
 ```
-EditMode   total 101 passed 101 failed 0 result Passed
-PlayMode   total 72 passed 72 failed 0 result Passed
+EditMode   total 101 passed 101 failed 0 skipped 0 result Passed
+PlayMode   total 83 passed 83 failed 0 skipped 0 result Passed
 ```
 
-**173 of 173, against 166 of 166 last pass.** EditMode 71 → 100 → **101** and PlayMode
-55 → 64 → 66 → **72**. The seven added this pass cover the crouch/hop verbs and the
+**184 of 184, against 173 of 173 last pass.** EditMode 71 → 100 → **101** (unchanged
+this pass) and PlayMode 55 → 64 → 66 → 72 → **83**. The eleven added this pass are
+`GhostSessionTests` (6) and `PresenceSessionTests` (5); with core's 476 the project
+total is **660 of 660**. Note the asymmetry those eleven hide: the six ghost cases
+cover a subsystem a player meets every time they die, and the five 그늘 cases cover one
+no player can reach at all — see
+[§1.11](#111-the-그늘-is-tested-photographed-and-not-connected-to-anything).
+The seven before them cover the crouch/hop verbs and the
 rebuilt player rig. The two PlayMode cases before them are `SurfaceApronTests`, and the first of
 them is the one to know about: it walks every stripe of §01's painted boundary and
 asserts each is within 0.35 m of `MatchMap.SurfaceRadius` measured from
@@ -589,6 +612,72 @@ Two log lines are expected and harmless: `[Steam] Running offline on development
 ID 480 (Spacewar).` and `Failed to create agent because there is no valid NavMesh` —
 a player-only load-order artefact. The warning that would prove real breakage,
 `[Monster] NavMeshAgent is off the NavMesh at …`, does not appear.
+
+### 1.11 The 그늘 is tested, photographed, and not connected to anything
+
+This is the one section on this page that reports a **green** result as a problem, so it
+is worth stating plainly before the evidence:
+
+> **§10's second entity does not exist in a match.** 25 core tests, 5 PlayMode tests, a
+> mesh, four clips, three materials, a prefab and a shot rig all pass and all describe a
+> thing no player can encounter. Nothing ticks `PresenceField`, so it charges nobody.
+
+Three independent checks, because "is this wired?" is exactly the question a green suite
+answers wrongly:
+
+```bash
+# 1 — who references the runtime types, outside their own tests?
+grep -rn "PresenceDirector\|PresenceField\|PresenceSubject\|PresenceTickInput" \
+  unity/HorrorGame/Assets --include="*.cs" \
+  | grep -v "Assets/Scripts/Gameplay/Presence/\|Assets/Scripts/Core/Presence/"
+```
+
+```
+9 matches, all in Assets/Tests/PlayMode/Presence/PresenceSessionTests.cs
+```
+
+```bash
+# 2 — is the component in any scene or prefab? Unity references scripts by GUID,
+#     so grepping for the type NAME finds nothing whether it is wired or not.
+grep -m1 '^guid:' Assets/Scripts/Gameplay/Presence/PresenceDirector.cs.meta   # 794669c0…
+grep -rl 794669c0d93b3453b967a5aa051a523e Assets/Scenes/ Assets/Prefabs/
+```
+
+```
+(no output — PresenceDirector is in no scene and no prefab)
+(same for PresenceSubject, 60c36766…; only PresenceView, 4bee23cf…, appears,
+ on Assets/Prefabs/Presence/Presence.prefab, which is the shot rig's own prop)
+```
+
+```bash
+# 3 — does the thing that runs a match know about it?
+grep -c Presence unity/HorrorGame/Assets/Scripts/Gameplay/Match/MatchDirector.cs
+```
+
+```
+0
+```
+
+**What is actually missing** is small and specific, which is why this is worth landing
+rather than reverting: a `PresenceDirector` in the match scene, a `PresenceSubject` on
+the player rig, and two lines wiring `PresenceDirector.Taken` to the toll —
+`PlayerState.MayTransmitVoice && PresenceState.MayTransmitVoice` for §13's channel, and
+`PresenceState.RecallSmear01` added to §03's misread condition. `PresenceDirector` is
+already self-driven from `FixedUpdate` and finds its own subjects and monster in
+`Awake`, so no host-loop surgery is needed.
+
+**Why it was not wired here.** Doing it changes what a player experiences — twelve
+seconds of enforced silence and a misread penalty — and every number behind that is
+marked provisional in the §16 sense by its own author: `PresenceSaturationSeconds` is
+"the round number in the middle of the bracket". Wiring it is a balance decision with a
+measurable cost to §03 and §13, not a build fix, and it should be taken deliberately and
+then measured, not smuggled in at the end of a landing pass. The rules are correct and
+tested; what they are worth is unmeasured.
+
+**Do not let the 660 imply otherwise.** [F-010](BALANCE-FINDINGS.md#f-010) already says
+the 그늘 "puts a cost in the 80 % of the building the monster is not in" — that is a
+statement about the design, and as of this commit it is not yet a statement about the
+software.
 
 ---
 
