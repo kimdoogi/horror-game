@@ -188,15 +188,17 @@ namespace HorrorGame.EditorTools.Film
                 }
 
                 clips.TryGetValue(walker.clip, out var clip);
-                var rate = 1f;
+                // 1.0. The spec's travel is now driven by Player.clips.json's measured
+                // ground speed, so the clip is already playing at the speed its own stance
+                // was built for. Two earlier attempts derived a rate here from the ANKLE's
+                // travel and both made it worse, because an ankle legitimately outruns the
+                // ground while a foot rolls from heel to toe.
+                const float rate = 1f;
                 if (clip != null)
                 {
-                    var stance = StanceSpeed(rig, clip);
                     var body = spec.frames > 0 ? walker.travel / (spec.frames / 24f) : 0f;
-                    rate = stance > 0.01f ? body / stance : 1f;
                     Debug.Log("[PartyFilm] " + walker.role + " " + walker.clip
-                              + ": stance " + stance.ToString("F2") + " m/s, body "
-                              + body.ToString("F2") + " m/s, gait rate " + rate.ToString("F3"));
+                              + ": body " + body.ToString("F3") + " m/s from Player.clips.json");
                 }
 
                 party.Add((rig, walker, clip, rig.GetComponent<PlayerWorldArms>(), rate));
@@ -382,8 +384,9 @@ namespace HorrorGame.EditorTools.Film
         /// </summary>
         private static float StanceSpeed(GameObject rig, AnimationClip clip)
         {
-            var foot = HorrorGame.Gameplay.Player.PlayerRigBones.Find(rig.transform, "LeftFoot");
-            if (foot == null || clip.length <= 0f)
+            var ankle = HorrorGame.Gameplay.Player.PlayerRigBones.Find(rig.transform, "LeftFoot");
+            var toes = HorrorGame.Gameplay.Player.PlayerRigBones.Find(rig.transform, "LeftToes");
+            if (ankle == null || clip.length <= 0f)
             {
                 return 0f;
             }
@@ -402,7 +405,9 @@ namespace HorrorGame.EditorTools.Film
                     clip.length * k / steps);
                 EndFrame();
 
-                var local = rig.transform.InverseTransformPoint(foot.position);
+                // Whichever of the two is on the ground this frame is the contact point.
+                var contactBone = toes != null && toes.position.y < ankle.position.y ? toes : ankle;
+                var local = rig.transform.InverseTransformPoint(contactBone.position);
                 z[k] = local.z;
                 var down = local.y <= contact;
                 if (down && !wasDown)
@@ -478,12 +483,20 @@ namespace HorrorGame.EditorTools.Film
 
             private void Track(GameObject rig, string bone, ref Vector3 last, ref bool has)
             {
-                var foot = HorrorGame.Gameplay.Player.PlayerRigBones.Find(rig.transform, bone);
-                if (foot == null)
+                // The contact point, not the ankle. A foot lands on its heel and leaves on
+                // its toe, so the ankle legitimately travels FASTER than the ground — 5.49
+                // against a 4.50 m/s body on this run, which is the foot rolling and not a
+                // defect. Measuring the ankle counted that roll as skate and sent two
+                // fixes after a number that was never wrong.
+                var ankle = HorrorGame.Gameplay.Player.PlayerRigBones.Find(rig.transform, bone);
+                var toes = HorrorGame.Gameplay.Player.PlayerRigBones.Find(
+                    rig.transform, bone.Replace("Foot", "Toes"));
+                if (ankle == null)
                 {
                     return;
                 }
 
+                var foot = toes != null && toes.position.y < ankle.position.y ? toes : ankle;
                 var here = foot.position;
                 if (here.y - rig.transform.position.y > ContactHeight)
                 {

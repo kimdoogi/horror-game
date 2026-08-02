@@ -62,9 +62,28 @@ def v(x, y, z):
     return {"x": x, "y": y, "z": z}
 
 
-RUN_SPEED = 4.5
-"""GameConstants.RunSpeed. The Run clip's stance is authored against it — the planted
-foot travels backward at exactly this — so a rig translated at any other speed skates."""
+def clip_speed(name, default):
+    """The clip's own measured ground speed, from Player.clips.json.
+
+    Not GameConstants. §05 says a run is 4.5 m/s and the clip measures 4.5752 — the
+    difference is 1.7 % of foot skate for free, and reading the design value instead of
+    the measured one is the mistake that started this whole thread. The generator writes
+    the file; nothing here gets to have an opinion about it.
+    """
+    path = os.path.join(REPO, "unity", "HorrorGame", "Assets", "Models",
+                        "Characters", "Player.clips.json")
+    try:
+        with open(path) as handle:
+            for clip in json.load(handle)["clips"]:
+                if clip["name"] == name and clip.get("ground_speed_mps"):
+                    return float(clip["ground_speed_mps"])
+    except (OSError, ValueError, KeyError):
+        pass
+    print("[party_film] no measured speed for %s; falling back to %.2f m/s" % (name, default))
+    return default
+
+
+RUN_SPEED = clip_speed("Run", 4.5)
 
 MONSTER_CHASE_SPEED = 4.6729
 """Monster.clips.json, measured from the weight-bearing foot rather than derived. The

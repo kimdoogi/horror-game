@@ -1368,6 +1368,89 @@ RUN_ORDER = (("contact", "swingup", 0.0), ("stance", "swingfwd", 0.0),
              ("reach", "toeoff", 0.0), ("predrop", "fold", 0.042))
 
 
+def _ankle_offset(thigh_deg: float, shank_deg: float) -> tuple[float, float]:
+    """Where a leg at these angles puts its ankle, relative to the hip.
+
+    Returns (forward, down) in metres. `leg_dir` sends +swing toward −Y, so forward is
+    positive here and the caller never has to think about Blender's axes.
+    """
+    t, s = math.radians(thigh_deg), math.radians(shank_deg)
+    return (THIGH_LEN * math.sin(t) + SHANK_LEN * math.sin(s),
+            THIGH_LEN * math.cos(t) + SHANK_LEN * math.cos(s))
+
+
+def _solve_leg(forward: float, down: float) -> tuple[float, float]:
+    """Thigh and shank angles that put the ankle at (forward, down) from the hip.
+
+    Two-bone IK in the sagittal plane, knee forward. The reach is clamped just inside
+    full extension: a target further than THIGH_LEN + SHANK_LEN has no solution and the
+    honest failure is a straight leg, not a NaN in an exported curve.
+    """
+    reach = math.hypot(forward, down)
+    reach = min(reach, THIGH_LEN + SHANK_LEN - 1e-4)
+    reach = max(reach, abs(THIGH_LEN - SHANK_LEN) + 1e-4)
+
+    to_ankle = math.atan2(forward, down)
+    cos_a = (THIGH_LEN ** 2 + reach ** 2 - SHANK_LEN ** 2) / (2.0 * THIGH_LEN * reach)
+    a = math.acos(max(-1.0, min(1.0, cos_a)))
+
+    thigh = to_ankle + a
+    knee_f = THIGH_LEN * math.sin(thigh)
+    knee_d = THIGH_LEN * math.cos(thigh)
+    shank = math.atan2(forward - knee_f, down - knee_d)
+    return math.degrees(thigh), math.degrees(shank)
+
+
+FOOT_ROLL = 1.18
+"""How much further the ANKLE travels than the sole contact point over a stance.
+
+A foot lands on its heel and leaves on its toe, so the contact point walks forward along
+the sole while the ankle passes over it, and the ankle covers more ground than the foot
+does. Levelling the ankle to the step length the speed implies therefore undershoots:
+the first attempt built Walk at 1.67 m/s against a 2.00 target and Run at 3.83 against
+4.50 — both 0.85 of what was asked, and both measured by `build_cycle` from the sole
+rather than from the bone.
+
+1.18 is the reciprocal, measured off those two clips. It is a property of this foot's
+geometry — the ball sits 0.115 m forward of the ankle — and `verify_motion`'s speed
+assertion is what will notice if the foot ever changes shape."""
+
+
+def level_stance(gait: dict, phases: tuple[str, ...], step_metres: float) -> dict:
+    """Re-solves a gait's stance keys so the planted foot travels at a constant speed.
+
+    <b>This is the difference between running and sliding, and it cannot be authored as
+    angles.</b> The tables in this file place the stance keys by pose — 25° of thigh at
+    the strike, 4° at mid-stance, −21° at toe-off — and the ankle's horizontal position
+    is not linear in the thigh angle. Measured on the shipped Run by sampling it at 32
+    points with the body pinned, the planted foot covered 0.657 m in 0.117 s overall but
+    0.129 m in a single 0.0167 s interval: it ACCELERATES from about 4 m/s to 7.7 m/s
+    while it is supposed to be nailed to the floor. No playback rate can cancel a
+    velocity that is not constant, which is why three passes at "make it look like
+    running" failed and the skate meter kept reading ~2 m/s.
+
+    So the stance keys are placed by POSITION here: the ankle is spread evenly from
+    +step/2 to −step/2 across the phases named in `phases`, and the angles come out of
+    `_solve_leg`. The vertical drop each key was authored with is preserved, so the
+    knee flexion and the hip bob the tables were tuned for survive — only the fore-aft
+    placement changes.
+    """
+    out = {name: dict(spec) for name, spec in gait.items()}
+    count = len(phases)
+    if count < 2:
+        return out
+
+    for i, name in enumerate(phases):
+        spec = out[name]
+        _, down = _ankle_offset(spec["thigh"], spec["shank"])
+        forward = step_metres * FOOT_ROLL * (0.5 - i / (count - 1.0))
+        thigh, shank = _solve_leg(forward, down)
+        spec["thigh"] = round(thigh, 3)
+        spec["shank"] = round(shank, 3)
+
+    return out
+
+
 def gait_legs(gait: dict, left_phase: str, right_phase: str, out: float = 1.5) -> dict:
     return merge(leg(1, out=out, **gait[left_phase]),
                  leg(-1, out=out, **gait[right_phase]))
@@ -1544,7 +1627,10 @@ def clip_walk(rig) -> Clip:
         )
         return spec, (sway[i], 0.0)
 
-    return build_cycle(rig, "Walk", 5, WALK_GAIT, body, WALK_ORDER,
+    # 2 intervals of contact at a spacing of 5 is 10 frames; 2.0 m/s over 10/30 s is
+    # 0.667 m of ground.
+    gait = level_stance(WALK_GAIT, ("contact", "pass", "toeoff"), 2.0 * 10.0 / FPS)
+    return build_cycle(rig, "Walk", 5, gait, body, WALK_ORDER,
                        target_speed=2.0, speed_tolerance=0.25, note="§05 걷기 2.0 m/s")
 
 
@@ -1577,7 +1663,10 @@ def clip_run(rig) -> Clip:
         )
         return spec, (sway, 0.0)
 
-    return build_cycle(rig, "Run", 2, RUN_GAIT, body, RUN_ORDER,
+    # Stance keys placed by position, not by pose: 2 key intervals of contact at a
+    # spacing of 2 is 4 frames, and 4.5 m/s over 4/30 s is 0.60 m of ground.
+    gait = level_stance(RUN_GAIT, ("contact", "stance", "toeoff"), 4.5 * 4.0 / FPS)
+    return build_cycle(rig, "Run", 2, gait, body, RUN_ORDER,
                        target_speed=4.5, speed_tolerance=0.55,
                        note="§05 달리기 4.5 m/s; 질주 = ×1.24")
 
@@ -1631,7 +1720,7 @@ def clip_carry(rig) -> Clip:
         )
         return spec, (sway, 0.0)
 
-    return build_cycle(rig, "Carry", 5, CARRY_GAIT, body, WALK_ORDER, out=3.0,
+    return build_cycle(rig, "Carry", 5, level_stance(CARRY_GAIT, ("contact", "pass", "toeoff"), 1.6 * 10.0 / FPS), body, WALK_ORDER, out=3.0,
                        target_speed=1.6, speed_tolerance=0.30,
                        note="§03 both hands; 2.0 × 0.80 ObjectiveCarrySpeedMultiplier")
 
@@ -1686,7 +1775,7 @@ def clip_carry_heavy(rig) -> Clip:
         )
         return spec, (sway, 0.0)
 
-    return build_cycle(rig, "CarryHeavy", 6, HEAVY_GAIT, body, WALK_ORDER, out=5.0,
+    return build_cycle(rig, "CarryHeavy", 6, level_stance(HEAVY_GAIT, ("contact", "pass", "toeoff"), 0.87 * 12.0 / FPS), body, WALK_ORDER, out=5.0,
                        note="§08 w5, two carriers")
 
 
@@ -1750,7 +1839,7 @@ def clip_crouch_walk(rig) -> Clip:
         )
         return spec, (sway, 0.080)
 
-    return build_cycle(rig, "CrouchWalk", 6, CROUCH_GAIT, body, WALK_ORDER, out=6.0,
+    return build_cycle(rig, "CrouchWalk", 6, level_stance(CROUCH_GAIT, ("contact", "pass", "toeoff"), 1.03 * 12.0 / FPS), body, WALK_ORDER, out=6.0,
                        note="§04 quiet travel; no design speed to match")
 
 

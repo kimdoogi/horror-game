@@ -110,6 +110,7 @@ flat spars.
 from __future__ import annotations
 
 import math
+import json
 import os
 import sys
 import traceback
@@ -2117,6 +2118,34 @@ def main() -> None:
     glb_dropped = [c.name for c in clips if c.name not in glb_names]
     if glb_dropped:
         blendkit.fail("actions missing from the GLB: " + ", ".join(glb_dropped))
+
+    # Publish what the clips actually measure, the way Monster.clips.json already does.
+    # Nothing consumed the player's numbers before this, so party_film assumed §05's
+    # 4.5 m/s, and the gap between an assumption and a measurement is foot skate. The
+    # value here is `build_cycle`'s, taken from the sole contact point rather than from
+    # the ankle — an ankle travels FASTER than the ground because a foot rolls from heel
+    # to toe, and measuring the bone instead of the contact sent two fixes after a
+    # number that was never wrong.
+    clips_path = os.path.join(os.path.dirname(fbx_path), "Player.clips.json")
+    with open(clips_path, "w") as fh:
+        json.dump({
+            "generated_by": "tools/blender/gen_player_ai.py",
+            "fps": gpm.FPS,
+            "note": "ground_speed_mps is measured from the sole contact point by "
+                    "build_cycle, not derived from GameConstants. Playback rate for a "
+                    "given travel speed is speed / ground_speed_mps.",
+            "clips": [{
+                "name": c.name,
+                "seconds": round(c.cycle_frames / float(gpm.FPS), 4),
+                "cycle_frames": c.cycle_frames,
+                "loops": True,
+                "locomotion": c.speed > 0.0,
+                "ground_speed_mps": round(float(c.speed), 4),
+                "target_speed_mps": c.target_speed,
+                "sole_error_mm": round(float(c.sole_error) * 1000.0, 4),
+            } for c in clips],
+        }, fh, indent=2)
+    print(f"CLIPS_JSON {clips_path}")
 
     print(f"FILES {fbx_path} {glb_path}")
     print(f"ASSET_REPORT Player tris={report.triangles} height={height:.3f} "
