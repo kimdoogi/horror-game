@@ -109,6 +109,7 @@ namespace HorrorGame.Gameplay.Monster
         /// </summary>
         private float _lungeOverride = -1f;
 
+
         // Both accumulators are double for the reason MatchClock gives: a 35-minute
         // match is 105,000 additions of FixedStep, and in float those drift by the
         // better part of a second — which would move §07's tier boundaries and change

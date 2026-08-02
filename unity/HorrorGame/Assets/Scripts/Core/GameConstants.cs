@@ -272,6 +272,38 @@ namespace HorrorGame.Core
         /// <summary>Seconds a missed lunge costs the creature. The only time it is not closing.</summary>
         public const float MonsterAttackRecoverySeconds = 0.8f;
 
+        // ── §12's doors, as a thing a player can shut ────────────────────────
+        // The map has placed lockable doors at every storey's bottleneck since the first
+        // sketch and none of them did anything — MapSketch.Door() marked an edge and
+        // MapValidator measured the detour it would force, and that was the whole
+        // feature. A door that cannot be shut is a doorway.
+        //
+        // §06 leaves a player exactly one currency, which is time, and these three
+        // numbers are what a door is worth in it.
+
+        /// <summary>
+        /// Seconds the creature needs to come through a shut door.
+        /// <para>
+        /// Longer than <see cref="AggroReleaseLineOfSightBreak"/> on purpose: a door is
+        /// enough to break a chase you are already winning, and it is far short of a §07
+        /// patrol sweep, so it never makes a room safe.
+        /// </para>
+        /// </summary>
+        public const float DoorBreakSeconds = 4.5f;
+
+        /// <summary>
+        /// Seconds a player spends pulling one shut, standing still, facing the wrong way.
+        /// The only reason not to shut every door in the building.
+        /// </summary>
+        public const float DoorShutSeconds = 1.1f;
+
+        /// <summary>
+        /// How fast a half-broken door recovers when nothing is hitting it, as a fraction
+        /// of the break rate. Below 1 because a §04 섬광수 that buys thirty seconds must
+        /// not hand back a whole door — the building degrades over a match.
+        /// </summary>
+        public const float DoorRepairFraction = 0.25f;
+
         /// <summary>Distance at which aggro can break, metres. §06.</summary>
         public const float AggroReleaseDistance = 12f;
 
@@ -708,6 +740,30 @@ namespace HorrorGame.Core
         /// Listener rather than crashing, and stays worse than every real floor
         /// so the omission is visible in play.
         /// </summary>
+        /// <summary>
+        /// 침수. §04 — the loudest thing to stand on, above even 금속.
+        /// <para>
+        /// Water is the one surface that cannot be crossed quietly at any speed, which is
+        /// what makes a flooded storey a decision rather than a corridor: it is the
+        /// fastest way down and it announces you the whole way.
+        /// </para>
+        /// </summary>
+        public const float ListenerClarityWater = 1.00f;
+
+        /// <summary>파헤쳐진 흙. §04 — soft, and quieter than concrete. Somebody dug this floor up.</summary>
+        public const float ListenerClarityEarth = 0.40f;
+
+        /// <summary>
+        /// 카펫. §04 — the quietest surface, below even an unknown one.
+        /// <para>
+        /// Deliberately the Listener's blind spot. §04's ability is the team's early
+        /// warning and a game where it always works has no route worth taking; carpet is
+        /// where the monster arrives without being announced, and where a player who
+        /// knows the building goes when they want the same.
+        /// </para>
+        /// </summary>
+        public const float ListenerClarityCarpet = 0.22f;
+
         public const float ListenerClarityUnknown = 0.35f;
 
         /// <summary>
@@ -1073,7 +1129,13 @@ namespace HorrorGame.Core
         public const float ZoneDiagonalMax = 40f;
 
         /// <summary>Map extent along one axis, metres. §12: 100 × 100.</summary>
-        public const float MapExtent = 100f;
+        // Raised from 100 m on 2026-08-02. The 100 came from "주자가 구역 2~3개 관통
+        // 가능 on one sprint of 60 m", and that argument is about ZONE size, not about the
+        // building's footprint: a zone is still capped at a 30~40 m diagonal, so a sprint
+        // still crosses two or three of them whatever the outline is. What the old cap
+        // actually bounded was how many zones could exist at all, and with five floor
+        // surfaces that was five — which is why every storey read the same.
+        public const float MapExtent = 170f;
 
         /// <summary>Lowest acceptable dead-end ratio. §12: below this, map knowledge stops mattering.</summary>
         public const float DeadEndRatioMin = 0.20f;
@@ -1447,6 +1509,16 @@ namespace HorrorGame.Core
         public static void Validate()
         {
             Require(WalkSpeed < RunSpeed, "§06: walking must be slower than running.");
+            Require(DoorBreakSeconds > AggroReleaseLineOfSightBreak,
+                "§06: a door has to be worth more than the 3 s of broken sight a release "
+                + "needs, or shutting one is a beat of standing still that buys nothing.");
+            Require(DoorShutSeconds < AggroReleaseLineOfSightBreak,
+                "§06: pulling a door shut has to cost less than the release it might buy, "
+                + "or the honest play is always to keep running and the door is scenery.");
+            Require(DoorRepairFraction > 0f && DoorRepairFraction < 1f,
+                "§07: a door that fully repairs makes the building the same at 동트기 전 "
+                + "as at 초저녁, and one that never repairs makes a single flash permanent.");
+
             Require(MonsterLungeSpeed > MonsterBaseSpeed,
                 "§06: a lunge that is no faster than the chase is not a lunge — the "
                 + "creature would commit and then fail to arrive.");

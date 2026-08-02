@@ -119,6 +119,9 @@ namespace HorrorGame.Gameplay.Match
 
         /// <summary>§06's catch, as an act. See MonsterLunge — the rule is in Core.</summary>
         private MonsterLunge _lunge;
+
+        /// <summary>Throttle for the proximity report. See CheckGrab.</summary>
+        private float _lastGrabReport;
         private int _activeSeed;
         private bool _endScreenHeldForGhost;
 
@@ -712,6 +715,7 @@ namespace HorrorGame.Gameplay.Match
             }
 
             StepMonster();
+            PushDoors();
             StepClueRead();
             CheckGrab();
 
@@ -820,6 +824,59 @@ namespace HorrorGame.Gameplay.Match
         }
 
         /// <summary>
+        /// Leans the creature on whatever shut door is in its way.
+        /// <para>
+        /// §12's doors are a wall to the player and a delay to the creature, and this
+        /// method is the whole difference. Without it a shut door is permanent cover and
+        /// §01's 「이길 수 없는 존재」 becomes something you lock in a room.
+        /// </para>
+        /// <para>
+        /// It lives here rather than on <c>MonsterAgent</c> because of an assembly
+        /// boundary that is worth stating: the monster is its own asmdef and
+        /// <c>DoorInteractable</c> is in Assembly-CSharp, so the reference only runs one
+        /// way. The director can see both.
+        /// </para>
+        /// <para>
+        /// A sphere rather than the creature's path: the doors carve the NavMesh, so a
+        /// shut one is already routed AROUND and asking the path what blocks it returns
+        /// nothing. What the creature does is arrive and work on it, which is what a
+        /// player watching the handle shake would expect.
+        /// </para>
+        /// </summary>
+        private void PushDoors()
+        {
+            var monster = _monster;
+            if (monster == null)
+            {
+                return;
+            }
+
+            var found = Physics.OverlapSphere(monster.transform.position, DoorReachMetres,
+                ~0, QueryTriggerInteraction.Collide);
+            for (var i = 0; i < found.Length; i++)
+            {
+                var door = found[i].GetComponentInParent<DoorInteractable>();
+                if (door == null || !door.State.Blocks)
+                {
+                    continue;
+                }
+
+                if (door.Push(Time.deltaTime))
+                {
+                    Debug.Log("[Match] §12 문이 부서졌다 — " + door.name, this);
+                }
+
+                return;
+            }
+        }
+
+        /// <summary>
+        /// How far the creature reaches to lean on a door, metres. Its own agent radius
+        /// (0.417) plus an arm — geometry rather than a tuned value.
+        /// </summary>
+        private const float DoorReachMetres = 1.4f;
+
+        /// <summary>
         /// §06 gives the state machine five states and a catch is not one of them, so
         /// whether a player has been caught is the host's rule. The rule itself lives in
         /// <see cref="MonsterLunge"/>, engine-free and tested; this is the wiring — it
@@ -851,8 +908,24 @@ namespace HorrorGame.Gameplay.Match
             var separation = _playerRoot.position - monster.transform.position;
             separation.y = 0f;
 
+            var distance = separation.magnitude;
+
+            // Why nothing is happening, said out loud. The owner stood in front of the
+            // creature and did not die, and there are four different reasons that can be
+            // true at once — it is not in 추격, they are already a ghost, they are on
+            // §01's surface apron, or the lunge is mid-recovery. Guessing between them
+            // from outside cost a rebuild; this says which.
+            if (distance < 6f && Time.time - _lastGrabReport > 0.5f)
+            {
+                _lastGrabReport = Time.time;
+                Debug.Log("[Match] 괴물 " + distance.ToString("0.00") + " m · §06 " + monster.State
+                          + " · 덮치기 " + _lunge.State
+                          + (chasing ? string.Empty : "  ← 추격이 아니라 판정 없음")
+                          + (LocalPlayerIsGhost ? "  ← 이미 유령" : string.Empty), this);
+            }
+
             var previous = _lunge.State;
-            var outcome = _lunge.Tick(Time.deltaTime, chasing, separation.magnitude);
+            var outcome = _lunge.Tick(Time.deltaTime, chasing, distance);
 
             if (previous != _lunge.State || outcome != LungeEvent.None)
             {
@@ -866,11 +939,11 @@ namespace HorrorGame.Gameplay.Match
                     // The clip plays NOW, while the creature is still travelling. That is
                     // the whole change: an attack somebody can see coming.
                     monster.PlayGrab();
-                    Debug.Log("[Match] §06 덮친다 — " + separation.magnitude.ToString("0.00") + " m", this);
+                    Debug.Log("[Match] §06 덮친다 — " + distance.ToString("0.00") + " m", this);
                     return;
 
                 case LungeEvent.Missed:
-                    Debug.Log("[Match] §04 주자 — 덮치기를 피했다, " + separation.magnitude.ToString("0.00") + " m", this);
+                    Debug.Log("[Match] §04 주자 — 덮치기를 피했다, " + distance.ToString("0.00") + " m", this);
                     return;
 
                 case LungeEvent.Hit:

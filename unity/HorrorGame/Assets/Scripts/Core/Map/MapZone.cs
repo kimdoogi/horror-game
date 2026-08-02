@@ -200,6 +200,12 @@ namespace HorrorGame.Core.Map
 
                 case FloorMaterial.Metal:
                     return GameConstants.ListenerClarityMetal;
+                case FloorMaterial.Water:
+                    return GameConstants.ListenerClarityWater;
+                case FloorMaterial.Earth:
+                    return GameConstants.ListenerClarityEarth;
+                case FloorMaterial.Carpet:
+                    return GameConstants.ListenerClarityCarpet;
 
                 default:
                     return GameConstants.ListenerClarityUnknown;

@@ -246,6 +246,12 @@ namespace HorrorGame.EditorTools.SceneGen
                 case FloorMaterial.Gravel: return MapKitPiece.FloorTileGravel;
                 case FloorMaterial.Concrete: return MapKitPiece.FloorTileConcrete;
                 case FloorMaterial.Metal: return MapKitPiece.FloorTileMetal;
+                // The three new surfaces reuse the closest existing tile MESH — a floor
+                // tile is a flat quad and its material is what a player reads — so the
+                // kit does not grow and the §04 channel does.
+                case FloorMaterial.Water: return MapKitPiece.FloorTileTile;
+                case FloorMaterial.Earth: return MapKitPiece.FloorTileGravel;
+                case FloorMaterial.Carpet: return MapKitPiece.FloorTileWood;
                 default:
                     throw new ArgumentOutOfRangeException(
                         nameof(material), material,

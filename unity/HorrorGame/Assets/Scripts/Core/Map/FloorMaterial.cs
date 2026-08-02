@@ -29,5 +29,19 @@ namespace HorrorGame.Core.Map
 
         /// <summary>Stairwells — 금속. Rings. §12.</summary>
         Metal = 5,
+
+        // §12's own table names five surfaces and five zones is what that allowed, which
+        // capped the building at five storeys — the reason every floor read the same. The
+        // three below extend the alphabet rather than the rule: each is a distinct thing
+        // to stand on, each gets its own §04 clarity, and none of them is a re-skin.
+
+        /// <summary>침수 — standing water. The loudest surface in the game: you cannot cross it unheard.</summary>
+        Water = 6,
+
+        /// <summary>파헤쳐진 흙 — a dug floor. Soft, and the second quietest.</summary>
+        Earth = 7,
+
+        /// <summary>카펫 — the Listener's blind spot, and the only reason to route the long way.</summary>
+        Carpet = 8,
     }
 }

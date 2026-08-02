@@ -217,6 +217,16 @@ namespace HorrorGame.Audio
                     return 0.3f;
                 case FloorMaterial.Metal:
                     return -1.6f;
+                // Water rings brighter than tile — nothing about a splash is muffled.
+                case FloorMaterial.Water:
+                    return 2.4f;
+                // Dug earth eats the low end the way gravel does, and more of it.
+                case FloorMaterial.Earth:
+                    return -28.4f;
+                // Carpet swallows everything. §04's blind spot is audible as well as
+                // measurable, which is what makes the route worth knowing about.
+                case FloorMaterial.Carpet:
+                    return -34.0f;
                 default:
                     return 0f;
             }

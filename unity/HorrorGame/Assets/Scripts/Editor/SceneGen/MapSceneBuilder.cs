@@ -1490,6 +1490,9 @@ namespace HorrorGame.EditorTools.SceneGen
                     case FloorMaterial.Gravel: return new Color(0.38f, 0.36f, 0.32f);
                     case FloorMaterial.Concrete: return new Color(0.48f, 0.48f, 0.48f);
                     case FloorMaterial.Metal: return new Color(0.55f, 0.57f, 0.60f);
+                    case FloorMaterial.Water: return new Color(0.13f, 0.17f, 0.19f);
+                    case FloorMaterial.Earth: return new Color(0.26f, 0.21f, 0.16f);
+                    case FloorMaterial.Carpet: return new Color(0.24f, 0.15f, 0.14f);
                     default: return Color.magenta;
                 }
             }
@@ -1502,6 +1505,11 @@ namespace HorrorGame.EditorTools.SceneGen
                     case FloorMaterial.Metal: return 0.55f;
                     case FloorMaterial.Wood: return 0.3f;
                     case FloorMaterial.Concrete: return 0.2f;
+                    // Standing water is the only mirror in the building, and a torch
+                    // coming down a flooded corridor arrives twice.
+                    case FloorMaterial.Water: return 0.92f;
+                    case FloorMaterial.Earth: return 0.05f;
+                    case FloorMaterial.Carpet: return 0.04f;
                     default: return 0.1f;
                 }
             }
