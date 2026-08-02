@@ -285,6 +285,7 @@ namespace HorrorGame.EditorTools.SceneGen
         private readonly List<MapCell> _doorCells = new List<MapCell>();
         private readonly List<MapPropPlacement> _extraProps = new List<MapPropPlacement>();
         private readonly List<StairRun> _stairs = new List<StairRun>();
+        private readonly List<ChuteRun> _chutes = new List<ChuteRun>();
         // Keyed BY STOREY, not by sketch. A plan key names a place inside one floor
         // plan and is consumed by the Mark() calls immediately below it, so scoping it
         // to the whole building only meant that authoring a new storey required reading
@@ -621,6 +622,38 @@ namespace HorrorGame.EditorTools.SceneGen
         }
 
         /// <summary>
+        /// Hangs a 투하구 — §01's one-way drop from the middle of a storey to the rim of
+        /// the one below.
+        /// <para>
+        /// <b>Not a stair, and the difference is the game.</b> A <see cref="Stair"/> joins
+        /// two landings 2.5 m apart in plan and can be climbed both ways. A chute drops you
+        /// across the whole floor and cannot be climbed at all: you arrive on the OUTER ring
+        /// of the storey below and solve that maze from the beginning. That is what makes
+        /// eight storeys eight mazes instead of one maze and seven staircases.
+        /// </para>
+        /// <para>
+        /// One way matters twice over. It means a player cannot retreat upward from the
+        /// creature, so the only direction is the one the race is in; and it means the graph
+        /// has no route back, so <see cref="MapValidator"/>'s reachability is measured the
+        /// way the match is actually played.
+        /// </para>
+        /// </summary>
+        /// <param name="x">Cell X of the mouth, on the upper storey.</param>
+        /// <param name="z">Cell Z of the mouth.</param>
+        /// <param name="upperLevel">Storey the mouth is on. The landing is one below.</param>
+        /// <param name="landingX">Cell X of the landing, on the storey below.</param>
+        /// <param name="landingZ">Cell Z of the landing.</param>
+        /// <param name="name">Label for the graph edge, so a report can say which chute.</param>
+        public MapSketch Chute(int x, int z, int upperLevel, int landingX, int landingZ, string name)
+        {
+            _chutes.Add(new ChuteRun(
+                new MapCell(_offsetX + x, _offsetZ + z, upperLevel),
+                new MapCell(_offsetX + landingX, _offsetZ + landingZ, upperLevel + 1),
+                name));
+            return this;
+        }
+
+        /// <summary>
         /// Marks what a place is for. The flags are what <see cref="MapValidator"/>
         /// counts per zone, so a forgotten mark is a failing rule rather than a role
         /// with nowhere to work.
@@ -708,6 +741,12 @@ namespace HorrorGame.EditorTools.SceneGen
                 nodeCells.Add(_stairs[i].Upper);
             }
 
+            for (var i = 0; i < _chutes.Count; i++)
+            {
+                nodeCells.Add(_chutes[i].Mouth);
+                nodeCells.Add(_chutes[i].Landing);
+            }
+
             // A mark on a cell the corridor runs straight through would vanish: nodes
             // exist only where the passage does something, so the flag would never
             // reach the graph and §12's per-zone count would silently be one short.
@@ -747,6 +786,11 @@ namespace HorrorGame.EditorTools.SceneGen
             for (var i = 0; i < _stairs.Count; i++)
             {
                 builder.Connect(nodeIdOf[_stairs[i].Lower], nodeIdOf[_stairs[i].Upper]);
+            }
+
+            for (var i = 0; i < _chutes.Count; i++)
+            {
+                builder.Connect(nodeIdOf[_chutes[i].Mouth], nodeIdOf[_chutes[i].Landing]);
             }
 
             // Rewards can only be assigned once the degrees are known, so the graph is
@@ -813,6 +857,12 @@ namespace HorrorGame.EditorTools.SceneGen
             {
                 finalBuilder.Connect(
                     nodeIdOf[_stairs[i].Lower], nodeIdOf[_stairs[i].Upper], false, _stairs[i].Name);
+            }
+
+            for (var i = 0; i < _chutes.Count; i++)
+            {
+                finalBuilder.Connect(
+                    nodeIdOf[_chutes[i].Mouth], nodeIdOf[_chutes[i].Landing], false, _chutes[i].Name);
             }
 
             var graph = finalBuilder.Build();
@@ -1875,6 +1925,26 @@ namespace HorrorGame.EditorTools.SceneGen
         /// One 계단 between two storeys: the two landings it joins and the shaft that
         /// holds the flights.
         /// </summary>
+        /// <summary>A 투하구: where you jump, and where you land one storey down.</summary>
+        private readonly struct ChuteRun
+        {
+            public ChuteRun(MapCell mouth, MapCell landing, string name)
+            {
+                Mouth = mouth;
+                Landing = landing;
+                Name = name;
+            }
+
+            /// <summary>The hole in the middle of the upper storey.</summary>
+            public MapCell Mouth { get; }
+
+            /// <summary>Where it puts you, on the rim of the storey below.</summary>
+            public MapCell Landing { get; }
+
+            /// <summary>Label for the graph edge.</summary>
+            public string Name { get; }
+        }
+
         private readonly struct StairRun
         {
             public StairRun(MapCell lower, MapCell upper, int shaftX, int shaftZ, int shaftLevel, string name)

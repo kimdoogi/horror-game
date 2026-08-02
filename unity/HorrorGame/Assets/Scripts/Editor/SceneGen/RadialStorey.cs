@@ -147,6 +147,10 @@ namespace HorrorGame.EditorTools.SceneGen
             // becomes a distance instead of a fact.
             var previousGates = new List<MapCell>();
             var allGates = new List<MapCell>();
+
+            // Bands were appended outermost-first, so the list runs the other way from the
+            // array. Indexing it with the array's own index reads the wrong band — which for
+            // the alcoves was silently the wrong shape and for the gates was a crash.
             for (var i = bands.Length - 1; i >= 0; i--)
             {
                 var band = bands[i];
@@ -154,7 +158,8 @@ namespace HorrorGame.EditorTools.SceneGen
                 var wall = band.Inner - 1;
 
                 var gates = PunchGates(
-                    s, level, centreX, centreZ, wall, innerEdge, band, random, previousGates, occupied);
+                    s, level, centreX, centreZ, wall, innerEdge, band, random, previousGates, occupied,
+                    result.GateMouths, result.Bands[bands.Length - 1 - i]);
                 result.Gates.Add(gates);
                 previousGates = gates;
                 allGates.AddRange(gates);
@@ -166,7 +171,9 @@ namespace HorrorGame.EditorTools.SceneGen
                 // race they are the only places to stand aside, which makes them the only
                 // places to hide from another player, and §12 drops a 전리품 in each.
                 result.Alcoves.AddRange(
-                    PunchAlcoves(s, level, centreX, centreZ, band, random, allGates, result.Bands[i], occupied));
+                    PunchAlcoves(
+                        s, level, centreX, centreZ, band, random, allGates,
+                        result.Bands[bands.Length - 1 - i], occupied));
 
                 // Doors go on the two innermost bands only, and never on the four outer
                 // gates. Measured: a door on one of four parallel ways in is not a 병목 at
@@ -257,7 +264,9 @@ namespace HorrorGame.EditorTools.SceneGen
             Band band,
             IRandomSource random,
             List<MapCell> avoid,
-            HashSet<long> occupied)
+            HashSet<long> occupied,
+            List<MapCell> mouths,
+            List<MapCell> bandCells)
         {
             var ring = Perimeter(cx, cz, band.Inner);
             var gates = new List<MapCell>();
@@ -270,8 +279,15 @@ namespace HorrorGame.EditorTools.SceneGen
             // cells without ever leaving radius 6: a spur into the wall, ending nowhere, with
             // a door asked for on a bend. MapSketch refuses it, which is how this was found.
             var clear = band.Inner - span - 1;
+            // And only where the band's inner rail was actually drawn. The zigzag spends half
+            // its length on the outer rail, and a gate leaving a bearing the band skipped is
+            // not a branch off anything — the mouth cell has the gate passing straight through
+            // it and nothing else, so it is a passage rather than a junction. §12 counts
+            // 후보 지점 at junctions, and MapSketch refuses a mark on a passage rather than
+            // letting the count come up short with nothing failing.
             var open = ring.FindAll(p => !p.Corner
-                                         && System.Math.Abs(p.InX != 0 ? p.Z - cz : p.X - cx) <= clear);
+                                         && System.Math.Abs(p.InX != 0 ? p.Z - cz : p.X - cx) <= clear
+                                         && bandCells.Exists(c => c.X == p.X && c.Z == p.Z));
             if (open.Count == 0)
             {
                 return gates;
@@ -306,6 +322,16 @@ namespace HorrorGame.EditorTools.SceneGen
                     if (band.Inner - t == wall)
                     {
                         gates.Add(new MapCell(x, z, level));
+                    }
+
+                    // The cell where the gate branches off the band is a T-junction, and it
+                    // is the only kind of place on a ring floor that has three ways out. §12
+                    // wants three 후보 지점 per zone with two exits each, and the gate cells
+                    // themselves cannot be marked — they are deliberately mid-passage so a
+                    // door can hang on them, and MapSketch refuses a mark on a passage.
+                    if (t == 0)
+                    {
+                        mouths.Add(new MapCell(x, z, level));
                     }
                 }
             }
@@ -568,6 +594,7 @@ namespace HorrorGame.EditorTools.SceneGen
             Bands = new List<List<MapCell>>();
             Gates = new List<List<MapCell>>();
             Alcoves = new List<MapCell>();
+            GateMouths = new List<MapCell>();
         }
 
         /// <summary>Cell X of the middle.</summary>
@@ -587,5 +614,8 @@ namespace HorrorGame.EditorTools.SceneGen
 
         /// <summary>Blind alcoves — §12's 막힌 길, and the only place on a floor to stand aside.</summary>
         public List<MapCell> Alcoves { get; }
+
+        /// <summary>Where each gate branches off its band — the floor's only three-way junctions.</summary>
+        public List<MapCell> GateMouths { get; }
     }
 }

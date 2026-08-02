@@ -460,6 +460,24 @@ namespace HorrorGame.Core
         public const float MonsterPatrolNoticeRange = 4.0f;
 
         /// <summary>
+        /// Fewest runners a race needs. Two, because one runner is not a race — nothing in
+        /// §12's geometry means anything without somebody to be ahead of.
+        /// </summary>
+        public const int RaceRunnersMin = 2;
+
+        /// <summary>
+        /// Most runners a race takes. §11.
+        /// <para>
+        /// The cap is not a network budget, it is the map. §12-A fixes the gate counts at
+        /// 4 · 2 · 1 and refuses to scale them with the field, because widening them would
+        /// turn a twenty-player race into twenty one-player races that never meet. Twenty is
+        /// where the last gate is contested rather than queued — beyond it the inner cell
+        /// stops being a decision and becomes a line.
+        /// </para>
+        /// </summary>
+        public const int RaceRunnersMax = 20;
+
+        /// <summary>
         /// How close the monster must come to a path point to count as having
         /// reached it, metres. §06 — not a balance value; it exists so that path
         /// following terminates. It must stay below one <see cref="FixedStep"/> of
