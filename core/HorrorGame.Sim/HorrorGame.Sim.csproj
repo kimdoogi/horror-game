@@ -53,22 +53,31 @@
     licence and no project lock to reproduce.
 
     The rest of Editor/SceneGen is Unity code (MapSceneBuilder, MapSceneGenerator)
-    and is deliberately NOT globbed. Listing the six by name is the statement of
-    which files are engine-free.
+    and cannot build here, so it is excluded BY NAME while the engine-free files
+    are globbed. That is the deliberate direction. The list used to run the other
+    way — six engine-free files named, everything else ignored — and it had a
+    silent failure mode that is exactly F-006 again: author a new storey, forget
+    the line, and `dotnet run` keeps happily measuring the building without it and
+    reports a quality score for a map nobody is playing. Globbed, the same mistake
+    in the other direction (a new Unity file, unexcluded) breaks the build on the
+    first `using UnityEngine`. A build error tells you. A stale measurement does
+    not, and F-006 cost a week learning the difference.
 
-    RunnerCensus.cs is here because MapQualityReport holds one — omitting it broke
-    this build the first time the two were merged from separate passes (2026-08-01).
-    A file added to this folder is not automatically measured; add it here when the
-    authoring code starts depending on it.
+    RunnerCensus.cs was omitted the first time the two were merged from separate
+    passes (2026-08-01) and broke this build, because MapQualityReport holds one.
+    Under the glob that class of mistake cannot happen at all.
     ============================================================================
   -->
   <ItemGroup>
-    <Compile Include="$(MapSourceRoot)MapCell.cs" />
-    <Compile Include="$(MapSourceRoot)MapKitCatalogue.cs" />
-    <Compile Include="$(MapSourceRoot)MapSketch.cs" />
-    <Compile Include="$(MapSourceRoot)FirstMapSketch.cs" />
-    <Compile Include="$(MapSourceRoot)RunnerCensus.cs" />
-    <Compile Include="$(MapSourceRoot)MapQualityReport.cs" />
+    <Compile Include="$(MapSourceRoot)*.cs"
+             Exclude="$(MapSourceRoot)BootstrapSceneGenerator.cs;
+                      $(MapSourceRoot)LocalTwoInstance.cs;
+                      $(MapSourceRoot)MapKitInspector.cs;
+                      $(MapSourceRoot)MapSceneBuilder.cs;
+                      $(MapSourceRoot)MapSceneGenerator.cs;
+                      $(MapSourceRoot)NavMeshConnectivity.cs;
+                      $(MapSourceRoot)PlayerTraversal.cs;
+                      $(MapSourceRoot)SceneGenPaths.cs" />
   </ItemGroup>
 
   <!-- Fail loudly rather than silently measuring the wrong map again. -->

@@ -30,6 +30,35 @@
     <ProjectReference Include="../HorrorGame.Core/HorrorGame.Core.csproj" />
   </ItemGroup>
 
+  <!--
+    The engine-free half of Editor/SceneGen, compiled in so the map AUTHORING code can
+    be tested the same way the map rules already are. Until now MapSketch — 1900 lines
+    that every storey of the building is drawn through — had no unit test anywhere,
+    because it lives under Assets/Editor and the only thing that ever compiled it was
+    Unity. HorrorGame.Sim already pulls the same files in for the same reason; this is
+    that arrangement pointed at tests instead of at a simulator.
+
+    Excluded BY NAME rather than included by name, so a new storey file is measured
+    automatically and a new Unity file breaks the build on its first `using
+    UnityEngine` instead of quietly going untested. Same direction, same reason, as
+    HorrorGame.Sim.csproj — see the long comment there.
+  -->
+  <PropertyGroup>
+    <MapSourceRoot>$(MSBuildThisFileDirectory)../../unity/HorrorGame/Assets/Scripts/Editor/SceneGen/</MapSourceRoot>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="$(MapSourceRoot)*.cs"
+             Exclude="$(MapSourceRoot)BootstrapSceneGenerator.cs;
+                      $(MapSourceRoot)LocalTwoInstance.cs;
+                      $(MapSourceRoot)MapKitInspector.cs;
+                      $(MapSourceRoot)MapSceneBuilder.cs;
+                      $(MapSourceRoot)MapSceneGenerator.cs;
+                      $(MapSourceRoot)NavMeshConnectivity.cs;
+                      $(MapSourceRoot)PlayerTraversal.cs;
+                      $(MapSourceRoot)SceneGenPaths.cs" />
+  </ItemGroup>
+
   <ItemGroup>
     <!-- Path to the core sources, so tests can assert things about the files themselves
          (for example: that no core file references UnityEngine). -->

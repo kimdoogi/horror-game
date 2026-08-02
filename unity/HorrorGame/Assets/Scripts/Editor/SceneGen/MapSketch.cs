@@ -290,6 +290,8 @@ namespace HorrorGame.EditorTools.SceneGen
         private string _name = "unnamed map";
         private MapNodeKind _defaultKind = MapNodeKind.None;
         private int _level;
+        private int _offsetX;
+        private int _offsetZ;
 
         /// <summary>Names the map. The name appears in every §12 validator message about it.</summary>
         public MapSketch Named(string name)
@@ -312,6 +314,45 @@ namespace HorrorGame.EditorTools.SceneGen
         public MapSketch OnLevel(int level)
         {
             _level = level;
+            return this;
+        }
+
+        /// <summary>
+        /// Shifts every cell of following <see cref="Plan"/>, <see cref="Corridor"/>,
+        /// <see cref="OpenRoom"/>, <see cref="Room"/>, <see cref="Door"/> and
+        /// <see cref="Stair"/> calls by a whole number of cells. Reset it with
+        /// <c>Offset(0, 0)</c>.
+        /// <para>
+        /// <b>Why a whole storey needs to move.</b> A <see cref="Stair"/> is fixed
+        /// geometry — the two landings are <c>(x, z)</c> and <c>(x + 1, z)</c> on
+        /// adjacent floors — so two storeys can only be joined where their plans
+        /// actually overlap. A floor authored on its own has no way to know where the
+        /// floor above it ended up, and the building this map is has been descending in
+        /// a spiral since B1: each storey sits mostly beside the one above and overlaps
+        /// it only near the stairs. Three storeys drawn in parallel by three people
+        /// landed in three unrelated corners of the grid, and one of them shared no row
+        /// with the floor it was supposed to hang from.
+        /// </para>
+        /// <para>
+        /// The alternative was rewriting each floor plan at its new coordinates, which
+        /// means retyping every <see cref="Mark"/> and <see cref="Door"/> cell by hand
+        /// and re-verifying a graph that was already measured. This keeps a floor plan a
+        /// floor plan: the storey says what it looks like, the building says where it
+        /// is. It also makes a storey reusable — the same 병동 can be a different floor
+        /// of a different building.
+        /// </para>
+        /// <para>
+        /// Zones are declared by the caller through <see cref="AddZone"/> and are NOT
+        /// offset, because the caller already knows both numbers and hiding one of them
+        /// in cursor state is how a zone rect and the plan inside it drift apart.
+        /// </para>
+        /// </summary>
+        /// <param name="cellsX">Cells to add to every X.</param>
+        /// <param name="cellsZ">Cells to add to every Z.</param>
+        public MapSketch Offset(int cellsX, int cellsZ)
+        {
+            _offsetX = cellsX;
+            _offsetZ = cellsZ;
             return this;
         }
 
@@ -356,7 +397,8 @@ namespace HorrorGame.EditorTools.SceneGen
         /// </summary>
         public MapSketch OpenRoom(int cellX, int cellZ, int cellsX, int cellsZ)
         {
-            _openRooms.Add(new RoomRect(MapKitPiece.HallOpen20x20, cellX, cellZ, cellsX, cellsZ, 0f, _level));
+            _openRooms.Add(new RoomRect(
+                MapKitPiece.HallOpen20x20, _offsetX + cellX, _offsetZ + cellZ, cellsX, cellsZ, 0f, _level));
             return this;
         }
 
@@ -421,7 +463,8 @@ namespace HorrorGame.EditorTools.SceneGen
             var stepZ = System.Math.Sign(z1 - z0);
             for (var i = 0; i <= steps; i++)
             {
-                _corridor.Add(new MapCell(x0 + (stepX * i), z0 + (stepZ * i), _level));
+                _corridor.Add(new MapCell(
+                    _offsetX + x0 + (stepX * i), _offsetZ + z0 + (stepZ * i), _level));
             }
 
             return this;
@@ -467,7 +510,7 @@ namespace HorrorGame.EditorTools.SceneGen
                         continue;
                     }
 
-                    var cell = new MapCell(originX + c, z, _level);
+                    var cell = new MapCell(_offsetX + originX + c, _offsetZ + z, _level);
                     _corridor.Add(cell);
                     if (symbol == '#')
                     {
@@ -509,7 +552,8 @@ namespace HorrorGame.EditorTools.SceneGen
         /// </summary>
         public MapSketch Room(MapKitPiece piece, int cellX, int cellZ, int cellsX, int cellsZ, float yawDegrees)
         {
-            _rooms.Add(new RoomRect(piece, cellX, cellZ, cellsX, cellsZ, yawDegrees, _level));
+            _rooms.Add(new RoomRect(
+                piece, _offsetX + cellX, _offsetZ + cellZ, cellsX, cellsZ, yawDegrees, _level));
             return this;
         }
 
@@ -539,11 +583,13 @@ namespace HorrorGame.EditorTools.SceneGen
         /// <param name="name">Label for the graph edge, so a report can say which stair.</param>
         public MapSketch Stair(int x, int z, int upperLevel, string name)
         {
+            var sx = _offsetX + x;
+            var sz = _offsetZ + z;
             _stairs.Add(new StairRun(
-                new MapCell(x, z, upperLevel + 1),
-                new MapCell(x + 1, z, upperLevel),
-                x,
-                z + 1,
+                new MapCell(sx, sz, upperLevel + 1),
+                new MapCell(sx + 1, sz, upperLevel),
+                sx,
+                sz + 1,
                 upperLevel + 1,
                 name));
             return this;
@@ -588,7 +634,7 @@ namespace HorrorGame.EditorTools.SceneGen
         /// </summary>
         public MapSketch Door(int x, int z)
         {
-            _doorCells.Add(new MapCell(x, z, _level));
+            _doorCells.Add(new MapCell(_offsetX + x, _offsetZ + z, _level));
             return this;
         }
 
