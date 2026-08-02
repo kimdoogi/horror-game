@@ -158,7 +158,8 @@ namespace HorrorGame.EditorTools.Film
             camera.fieldOfView = spec.fov;
 
             var clips = ClipsOf(PlayerModelPath);
-            var party = new List<(GameObject rig, Walker walker, AnimationClip? clip, PlayerWorldArms? arms)>();
+            var party = new List<(GameObject rig, Walker walker, AnimationClip? clip,
+                PlayerWorldArms? arms, float rate)>();
 
             foreach (var walker in spec.walkers)
             {
@@ -187,7 +188,18 @@ namespace HorrorGame.EditorTools.Film
                 }
 
                 clips.TryGetValue(walker.clip, out var clip);
-                party.Add((rig, walker, clip, rig.GetComponent<PlayerWorldArms>()));
+                var rate = 1f;
+                if (clip != null)
+                {
+                    var stance = StanceSpeed(rig, clip);
+                    var body = spec.frames > 0 ? walker.travel / (spec.frames / 24f) : 0f;
+                    rate = stance > 0.01f ? body / stance : 1f;
+                    Debug.Log("[PartyFilm] " + walker.role + " " + walker.clip
+                              + ": stance " + stance.ToString("F2") + " m/s, body "
+                              + body.ToString("F2") + " m/s, gait rate " + rate.ToString("F3"));
+                }
+
+                party.Add((rig, walker, clip, rig.GetComponent<PlayerWorldArms>(), rate));
             }
 
             // Does the sample actually land on the skeleton? Two takes have now shipped
@@ -204,15 +216,61 @@ namespace HorrorGame.EditorTools.Film
                           + " avatar=" + (animator != null && animator.avatar != null)
                           + " human=" + (animator != null && animator.avatar != null && animator.avatar.isHuman)
                           + " thighBone=" + (thigh != null));
-                for (var k = 0; k < 3; k++)
+                // The stride, measured in the rig's OWN space with the body pinned.
+                // A planted foot must travel backward here at exactly the speed the body
+                // travels forward in the world; if the local travel is short, the world
+                // foot skates by the difference however good the pose looks.
+                var clip0 = party[0].clip!;
+                var foot = HorrorGame.Gameplay.Player.PlayerRigBones.Find(probe.transform, "LeftFoot");
+                probe.transform.position = Vector3.zero;
+                probe.transform.rotation = Quaternion.identity;
+                float lo = 1e9f, hi = -1e9f;
+                const int steps = 32;
+                var contactFirst = -1;
+                var contactLast = -1;
+                var zs = new float[steps];
+                for (var k = 0; k < steps; k++)
                 {
+                    var time = clip0.length * k / steps;
                     BeginFrame();
-                    Sample(probe, party[0].clip!, party[0].clip!.length * k / 3f);
+                    Sample(probe, clip0, time);
                     EndFrame();
-                    Debug.Log("[PartyFilm] t=" + (k / 3f).ToString("0.00")
-                              + " LeftUpperLeg local euler "
-                              + (thigh != null ? thigh.localEulerAngles.ToString("F2") : "n/a"));
+                    var local = foot != null ? probe.transform.InverseTransformPoint(foot.position) : Vector3.zero;
+                    zs[k] = local.z;
+                    lo = Mathf.Min(lo, local.z);
+                    hi = Mathf.Max(hi, local.z);
+                    var down = local.y <= 0.14f;
+                    if (down)
+                    {
+                        if (contactFirst < 0)
+                        {
+                            contactFirst = k;
+                        }
+
+                        contactLast = k;
+                    }
+
+                    Debug.Log("[PartyFilm] stride k=" + k.ToString("00")
+                              + " localZ " + local.z.ToString("F3")
+                              + " localY " + local.y.ToString("F3")
+                              + (down ? "  CONTACT" : string.Empty));
                 }
+
+                if (contactFirst >= 0 && contactLast > contactFirst)
+                {
+                    var span = (contactLast - contactFirst) / (float)steps * clip0.length;
+                    var travel = Mathf.Abs(zs[contactLast] - zs[contactFirst]);
+                    Debug.Log("[PartyFilm] CONTACT PHASE k" + contactFirst + "~k" + contactLast
+                              + ": foot travels " + travel.ToString("F3") + " m in "
+                              + span.ToString("F3") + " s = " + (travel / span).ToString("F2")
+                              + " m/s. The body must move forward at exactly this or the "
+                              + "planted foot slides by the difference.");
+                }
+
+                Debug.Log("[PartyFilm] STRIDE local foot travel " + (hi - lo).ToString("F3")
+                          + " m over a " + clip0.length.ToString("F3") + " s cycle."
+                          + " A 4.53 m/s run needs about " + (4.53f * clip0.length).ToString("F3")
+                          + " m of ground per cycle, and one foot covers a whole cycle's worth.");
             }
 
             var monster = spec.monster ? StageMonster() : null;
@@ -221,6 +279,7 @@ namespace HorrorGame.EditorTools.Film
 
             var dir = spec.walkDirection.V.normalized;
             var written = 0;
+            var skate = new SkateMeter(1f / 24f);
 
             for (var f = 0; f < spec.frames; f++)
             {
@@ -231,14 +290,18 @@ namespace HorrorGame.EditorTools.Film
                     Quaternion.Euler(spec.cameraEulerFrom.V), Quaternion.Euler(spec.cameraEulerTo.V), t);
 
                 BeginFrame();
-                foreach (var (rig, walker, clip, arms) in party)
+                foreach (var (rig, walker, clip, arms, rate) in party)
                 {
                     rig.transform.position = walker.start.V + dir * (walker.travel * t);
                     rig.transform.rotation = Quaternion.Euler(0f, walker.yaw, 0f);
                     if (clip != null)
                     {
                         var cycle = clip.length <= 0f ? 1f : clip.length;
-                        Sample(rig, clip, ((t * spec.frames / 24f) + walker.phase * cycle) % cycle);
+                        // Playback rate, not raw time: the clip's stance is authored for a
+                        // speed of its own and the body moves at §05's, so the clip has to
+                        // be played at the ratio or the planted foot slides by the gap.
+                        Sample(rig, clip,
+                               ((t * spec.frames / 24f * rate) + walker.phase * cycle) % cycle);
                     }
 
                 }
@@ -254,28 +317,9 @@ namespace HorrorGame.EditorTools.Film
                     }
                 }
 
-                // Is the sampled pose still on the skeleton when the camera fires?
-                // The probe above proves Sample() moves the thigh; it does not prove the
-                // pose survives three more Sample() calls and a Render(). If this column
-                // is constant the animation is being reverted and everything upstream is
-                // a red herring.
-                if (f < 8 && party.Count > 0)
+                if (party.Count > 0)
                 {
-                    var foot = HorrorGame.Gameplay.Player.PlayerRigBones.Find(
-                        party[0].rig.transform, "LeftFoot");
-                    Debug.Log("[PartyFilm] f" + f
-                              + " LeftFoot world " + (foot != null ? foot.position.ToString("F3") : "n/a")
-                              + " rig " + party[0].rig.transform.position.ToString("F3"));
-                }
-
-                EndFrame();
-
-                // After the sampling block closes, so animation mode does not record these
-                // and revert them on the next frame. LateUpdate never runs in edit mode, so
-                // without this the footage shows the raised first-person pose on all four.
-                foreach (var (_, _, _, arms) in party)
-                {
-                    arms?.Apply();
+                    skate.Observe(party[0].rig, RUN_SPEED_HINT);
                 }
 
                 var file = Path.Combine(spec.outputDir,
@@ -289,6 +333,7 @@ namespace HorrorGame.EditorTools.Film
                 AnimationMode.StopAnimationMode();
             }
 
+            skate.Report();
             return written;
         }
 
@@ -313,6 +358,174 @@ namespace HorrorGame.EditorTools.Film
             var animator = rig.GetComponentInChildren<Animator>();
             var target = animator != null ? animator.gameObject : rig;
             AnimationMode.SampleAnimationClip(target, clip, time);
+        }
+
+        /// <summary>Run's measured ground speed, m/s. gen_player_ai's ANIM_REPORT.</summary>
+        private const float RUN_SPEED_HINT = 4.53f;
+
+        /// <summary>
+        /// The speed the planted foot travels backward in the rig's own space, measured
+        /// from the clip's longest unbroken ground-contact run.
+        /// <para>
+        /// This is the number a body has to move forward at, and it is not the number the
+        /// generator publishes. gen_player_ai reports Run at 4.53 m/s from two chosen
+        /// stance keys; sampled at 32 points and gated on foot height, the contiguous
+        /// contact window k0~k7 travels 0.657 m in 0.1166 s — <b>5.63 m/s</b>. Translating
+        /// at 4.5 against a stance authored for 5.63 slides the foot 1.13 m/s, which is
+        /// most of the 2.0 m/s the skate meter was reading.
+        /// </para>
+        /// <para>
+        /// Measuring it here rather than hard-coding it is the same decision
+        /// MonsterAnimationDriver already made at runtime: playback rate is
+        /// measured ÷ authored, and a clip that is re-authored moves this number with it.
+        /// </para>
+        /// </summary>
+        private static float StanceSpeed(GameObject rig, AnimationClip clip)
+        {
+            var foot = HorrorGame.Gameplay.Player.PlayerRigBones.Find(rig.transform, "LeftFoot");
+            if (foot == null || clip.length <= 0f)
+            {
+                return 0f;
+            }
+
+            const int steps = 48;
+            const float contact = 0.14f;
+            var wasDown = false;
+            int runStart = -1, bestStart = -1, bestEnd = -1;
+            var z = new float[steps];
+
+            for (var k = 0; k < steps; k++)
+            {
+                BeginFrame();
+                AnimationMode.SampleAnimationClip(
+                    rig.GetComponentInChildren<Animator>()?.gameObject ?? rig, clip,
+                    clip.length * k / steps);
+                EndFrame();
+
+                var local = rig.transform.InverseTransformPoint(foot.position);
+                z[k] = local.z;
+                var down = local.y <= contact;
+                if (down && !wasDown)
+                {
+                    runStart = k;
+                }
+
+                if (down && runStart >= 0 && k - runStart > bestEnd - bestStart)
+                {
+                    bestStart = runStart;
+                    bestEnd = k;
+                }
+
+                wasDown = down;
+            }
+
+            if (bestStart < 0 || bestEnd <= bestStart)
+            {
+                return 0f;
+            }
+
+            var seconds = (bestEnd - bestStart) / (float)steps * clip.length;
+            return Mathf.Abs(z[bestEnd] - z[bestStart]) / seconds;
+        }
+
+        /// <summary>
+        /// Measures foot skate — the one number that says whether a run reads as running.
+        /// <para>
+        /// A planted foot has zero horizontal velocity in world space. Everything else is
+        /// the character moonwalking, and it is the difference between a stride and a
+        /// slide however good the pose is. <c>Monster.clips.json</c> already publishes
+        /// <c>residual_slide_mps</c> per clip for exactly this reason; nothing measured it
+        /// on the shipped rig, which is why three passes at "make it look like running"
+        /// were argued from dark screenshots.
+        /// </para>
+        /// <para>
+        /// Stance is identified by height rather than by a curve: whichever foot is lower
+        /// this frame is the one taking the weight. That is crude for the instant both
+        /// feet are level and exact everywhere else, and the mean over a whole shot is
+        /// what matters.
+        /// </para>
+        /// </summary>
+        private sealed class SkateMeter
+        {
+            private readonly float _dt;
+            private float _slipTotal;
+            private int _samples;
+            private float _worst;
+            private int _airborne;
+
+            /// <summary>
+            /// Metres above the rig's own floor that still counts as contact. The foot
+            /// bone sits 0.095 m up at rest, and the clip lifts it to 0.554 m at the top
+            /// of the stride, so anything under 0.14 m is a foot on the ground.
+            /// </summary>
+            private const float ContactHeight = 0.14f;
+
+            public SkateMeter(float dt)
+            {
+                _dt = dt;
+            }
+
+            public void Observe(GameObject rig, float bodySpeed)
+            {
+                // Per foot, independently. "Whichever foot is lower" flips back and forth
+                // in the double-contact frames where one foot lands before the other has
+                // left, and each flip pairs two different feet's positions into one bogus
+                // displacement — which is how a reading of 6.46 m/s appeared on a stance
+                // that cannot exceed 5.5.
+                Track(rig, "LeftFoot", ref _leftLast, ref _leftHas);
+                Track(rig, "RightFoot", ref _rightLast, ref _rightHas);
+            }
+
+            private void Track(GameObject rig, string bone, ref Vector3 last, ref bool has)
+            {
+                var foot = HorrorGame.Gameplay.Player.PlayerRigBones.Find(rig.transform, bone);
+                if (foot == null)
+                {
+                    return;
+                }
+
+                var here = foot.position;
+                if (here.y - rig.transform.position.y > ContactHeight)
+                {
+                    has = false;
+                    _airborne++;
+                    return;
+                }
+
+                if (has)
+                {
+                    var slip = new Vector2(here.x - last.x, here.z - last.z).magnitude / _dt;
+                    _slipTotal += slip;
+                    _samples++;
+                    if (slip > _worst)
+                    {
+                        _worst = slip;
+                    }
+                }
+
+                last = here;
+                has = true;
+            }
+
+            private Vector3 _leftLast;
+            private Vector3 _rightLast;
+            private bool _leftHas;
+            private bool _rightHas;
+
+            public void Report()
+            {
+                if (_samples == 0)
+                {
+                    Debug.Log("[PartyFilm] skate: no stance samples.");
+                    return;
+                }
+
+                var mean = _slipTotal / _samples;
+                Debug.Log("[PartyFilm] SKATE mean " + mean.ToString("F3") + " m/s, worst "
+                          + _worst.ToString("F3") + " m/s, over " + _samples + " stance frames ("
+                          + _airborne + " airborne frames skipped)"
+                          + " — 0.000 is a planted foot; anything else is the character sliding.");
+            }
         }
 
         /// <summary>
