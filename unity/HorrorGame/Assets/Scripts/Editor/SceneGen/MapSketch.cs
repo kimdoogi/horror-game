@@ -286,6 +286,8 @@ namespace HorrorGame.EditorTools.SceneGen
         private readonly List<MapPropPlacement> _extraProps = new List<MapPropPlacement>();
         private readonly List<StairRun> _stairs = new List<StairRun>();
         private readonly List<ChuteRun> _chutes = new List<ChuteRun>();
+        private readonly List<MapCell> _playerStarts = new List<MapCell>();
+        private MapCell? _monsterStart;
         // Keyed BY STOREY, not by sketch. A plan key names a place inside one floor
         // plan and is consumed by the Mark() calls immediately below it, so scoping it
         // to the whole building only meant that authoring a new storey required reading
@@ -618,6 +620,43 @@ namespace HorrorGame.EditorTools.SceneGen
                 sz + 1,
                 upperLevel + 1,
                 name));
+            return this;
+        }
+
+        /// <summary>
+        /// Declares where a runner starts. §01 puts all of them on the OUTER ring of the
+        /// top storey.
+        /// <para>
+        /// Without this the generator falls back on its old rule — spawn everybody within
+        /// walking distance of the 출입구 — which was right when the 출입구 was the way in
+        /// and is catastrophic now that it is the FINISH. Twenty players would begin the race
+        /// standing on the line they are racing to.
+        /// </para>
+        /// </summary>
+        /// <param name="x">Cell X.</param>
+        /// <param name="z">Cell Z.</param>
+        /// <param name="level">Storey.</param>
+        public MapSketch PlayerStart(int x, int z, int level)
+        {
+            _playerStarts.Add(new MapCell(_offsetX + x, _offsetZ + z, level));
+            return this;
+        }
+
+        /// <summary>
+        /// Declares where the creature starts.
+        /// <para>
+        /// The fallback is "as far from the 출입구 as the building allows", which in a race
+        /// puts it on the top storey among twenty people at the starting line. §12-B wants it
+        /// deep — the inner rings of a middle floor, so the descent gets more dangerous rather
+        /// than starting that way.
+        /// </para>
+        /// </summary>
+        /// <param name="x">Cell X.</param>
+        /// <param name="z">Cell Z.</param>
+        /// <param name="level">Storey.</param>
+        public MapSketch MonsterStart(int x, int z, int level)
+        {
+            _monsterStart = new MapCell(_offsetX + x, _offsetZ + z, level);
             return this;
         }
 
@@ -1696,24 +1735,49 @@ namespace HorrorGame.EditorTools.SceneGen
             // building allows: §07 초저녁 patrols one zone, and starting the monster on
             // top of the door would spend the quiet opening the whole time curve needs.
             var entrance = entrances[0];
-            var spawnRing = graph.NodesWithinWalk(entrance, GameConstants.LineOfSightBreakSpacingMin);
-            for (var i = 0; i < GameConstants.PlayersPerMatch; i++)
+
+            if (_playerStarts.Count > 0)
             {
-                var node = i < spawnRing.Length ? spawnRing[i] : entrance;
-                markers.Add(new MapMarkerPlacement(
-                    MapMarkerKind.PlayerSpawn, graph.Nodes[node].Position, graph.Nodes[node].ZoneId, node,
-                    "PlayerSpawn_" + i));
+                for (var i = 0; i < _playerStarts.Count; i++)
+                {
+                    if (!nodeIdOf.TryGetValue(_playerStarts[i], out var node))
+                    {
+                        continue;
+                    }
+
+                    markers.Add(new MapMarkerPlacement(
+                        MapMarkerKind.PlayerSpawn, graph.Nodes[node].Position, graph.Nodes[node].ZoneId, node,
+                        "PlayerSpawn_" + markers.Count));
+                }
+            }
+            else
+            {
+                var spawnRing = graph.NodesWithinWalk(entrance, GameConstants.LineOfSightBreakSpacingMin);
+                for (var i = 0; i < GameConstants.PlayersPerMatch; i++)
+                {
+                    var node = i < spawnRing.Length ? spawnRing[i] : entrance;
+                    markers.Add(new MapMarkerPlacement(
+                        MapMarkerKind.PlayerSpawn, graph.Nodes[node].Position, graph.Nodes[node].ZoneId, node,
+                        "PlayerSpawn_" + i));
+                }
             }
 
             var farthest = entrance;
-            var farthestDistance = 0f;
-            for (var i = 0; i < graph.Nodes.Length; i++)
+            if (_monsterStart.HasValue && nodeIdOf.TryGetValue(_monsterStart.Value, out var declared))
             {
-                var distance = graph.PathLength(entrance, i);
-                if (!float.IsPositiveInfinity(distance) && distance > farthestDistance)
+                farthest = declared;
+            }
+            else
+            {
+                var farthestDistance = 0f;
+                for (var i = 0; i < graph.Nodes.Length; i++)
                 {
-                    farthestDistance = distance;
-                    farthest = i;
+                    var distance = graph.PathLength(entrance, i);
+                    if (!float.IsPositiveInfinity(distance) && distance > farthestDistance)
+                    {
+                        farthestDistance = distance;
+                        farthest = i;
+                    }
                 }
             }
 

@@ -99,8 +99,39 @@ namespace HorrorGame.EditorTools.SceneGen
 
             HangChutes(sketch, floors);
             MarkPlaces(sketch, floors);
+            PlaceStarts(sketch, floors);
 
             return sketch.Build(seed, new DeterministicRandom(seed));
+        }
+
+        /// <summary>
+        /// Twenty starting positions round the rim of B1, and the creature halfway down.
+        /// <para>
+        /// The starts are spread over the outer band's own cell list so nobody begins beside
+        /// anybody: twenty players on a 80-cell ring is one every four cells, which is far
+        /// enough that the first thing you see is a corridor rather than a crowd.
+        /// </para>
+        /// <para>
+        /// The creature starts on B4, in the middle. §12-B wants the descent to get more
+        /// dangerous rather than to start that way — put it on B1 and twenty people meet it
+        /// at the starting line; put it on B8 and the first four floors are a walk.
+        /// </para>
+        /// </summary>
+        private static void PlaceStarts(MapSketch sketch, RadialStoreyResult[] floors)
+        {
+            // Every rim cell is offered, not twenty of them. A cell only becomes a graph
+            // node if it is a bend, a junction or an end — a straight stretch of rail is not
+            // a place — so declaring exactly twenty landed twelve. Offering the whole ring
+            // lets the generator keep whichever are real, and having more starting positions
+            // than runners is what spreads twenty people round a ring instead of queueing
+            // them along one arc of it.
+            foreach (var cell in floors[0].Bands[floors[0].Bands.Count - 1])
+            {
+                sketch.PlayerStart(cell.X, cell.Z, 0);
+            }
+
+            var midway = Storeys / 2;
+            sketch.MonsterStart(Centre, Centre, midway);
         }
 
         /// <summary>

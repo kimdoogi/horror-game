@@ -43,7 +43,7 @@ namespace HorrorGame.EditorTools
         [MenuItem("HorrorGame/Scene Gen/Regenerate Map (layout → dressing → atmosphere)", priority = 10)]
         public static void RegenerateMenu()
         {
-            if (!Regenerate(FirstMapSketch.DefaultSeed, DressingScatter.DefaultSeed, 0, out var report))
+            if (!Regenerate(DescentMap.DefaultSeed, DressingScatter.DefaultSeed, 0, out var report))
             {
                 EditorUtility.DisplayDialog("Map regeneration failed", report, "OK");
                 Debug.LogError("[MapPipeline]\n" + report);
@@ -62,7 +62,7 @@ namespace HorrorGame.EditorTools
         {
             try
             {
-                var mapSeed = IntArg("-mapSeed", FirstMapSketch.DefaultSeed);
+                var mapSeed = IntArg("-mapSeed", DescentMap.DefaultSeed);
                 var dressSeed = IntArg("-dressSeed", DressingScatter.DefaultSeed);
                 var tier = IntArg("-atmoTier", 0);
 

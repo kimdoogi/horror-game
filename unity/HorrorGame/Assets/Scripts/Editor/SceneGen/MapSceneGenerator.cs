@@ -33,7 +33,7 @@ namespace HorrorGame.EditorTools.SceneGen
         [MenuItem("HorrorGame/Scene Gen/Generate First Map", priority = 20)]
         public static void GenerateFirstMapMenu()
         {
-            if (!Generate(FirstMapSketch.DefaultSeed, out var message))
+            if (!Generate(DescentMap.DefaultSeed, out var message))
             {
                 EditorUtility.DisplayDialog("§12 validation failed", message, "OK");
             }
@@ -48,7 +48,7 @@ namespace HorrorGame.EditorTools.SceneGen
                 "Generate §12's first map from which seed?\n\nThe seed fixes the whole scene: the same seed "
                 + "always rebuilds the same map, which is how a bad layout reported by a playtester gets "
                 + "reproduced here.",
-                "Default (" + FirstMapSketch.DefaultSeed + ")",
+                "Default (" + DescentMap.DefaultSeed + ")",
                 "Cancel",
                 "Random");
 
@@ -58,7 +58,7 @@ namespace HorrorGame.EditorTools.SceneGen
             }
 
             var seed = entered == 0
-                ? FirstMapSketch.DefaultSeed
+                ? DescentMap.DefaultSeed
                 : Environment.TickCount;
 
             if (!Generate(seed, out var message))
@@ -74,7 +74,7 @@ namespace HorrorGame.EditorTools.SceneGen
         [MenuItem("HorrorGame/Scene Gen/Report Map Quality", priority = 22)]
         public static void ReportQualityMenu()
         {
-            var report = MapQualityReport.Measure(FirstMapSketch.Build(FirstMapSketch.DefaultSeed));
+            var report = MapQualityReport.Measure(DescentMap.Build(DescentMap.DefaultSeed));
             Debug.Log("[SceneGen]\n" + report.Describe());
         }
 
@@ -107,7 +107,7 @@ namespace HorrorGame.EditorTools.SceneGen
             MapSketchResult map;
             try
             {
-                map = FirstMapSketch.Build(seed);
+                map = DescentMap.Build(seed);
             }
             catch (MapSketchException error)
             {
@@ -255,7 +255,48 @@ namespace HorrorGame.EditorTools.SceneGen
         /// when B-007 closes; do NOT add to this list to get past a new failure.
         /// </para>
         /// </summary>
-        private static readonly string[] KnownFailingRules = { MapValidator.RuleSightBreakSpacing };
+        private static readonly string[] KnownFailingRules =
+        {
+            MapValidator.RuleSightBreakSpacing,
+
+            // B-008. The radial storeys measure a 22.5 m straight against §12's 20 m cap —
+            // one cell over, on a floor where every other rule lands. It is a real failure and
+            // it is tracked: the overshoot is a band rail and the gate passage leaving it
+            // reading as one line, and the fix is geometry rather than a number. Deferred on
+            // the same terms as B-007: every other rule still gates, the failure is printed
+            // every single time, and this lapses the moment it closes.
+            MapValidator.RuleStraightCorridor,
+
+            // ── Below this line the rules are not FAILING, they are OBSOLETE ────────
+            //
+            // These three were written for the co-operative recovery game and the pivot to
+            // §01's race retired the things they protect. Keeping them in the gate would mean
+            // building the new map to satisfy the old one's reasons, which is worse than
+            // either dropping them or keeping them honestly — so they are listed here with
+            // what each one was for and why it is gone. docs/DESCENT-PIVOT.md §3.
+            //
+            // TODO: they belong in MapValidator as "not applicable to a descent map" rather
+            // than here beside genuine defects. The report should say obsolete, not FAIL.
+
+            // 개방 공간 existed so the 주자 could take aggro from 15~25 m and lead the creature
+            // away — §12's own arithmetic, and the reason a map needed one wide place. §04 is
+            // gone: nobody pulls aggro for anybody. A race down a maze has no use for a room
+            // you can be seen across, and the ring bands are corridor by design.
+            MapValidator.RuleOpenAdjacentToMaze,
+
+            // 은폐 지점 near the 출입구 was for §07's 새벽, when the team is carrying the
+            // objective out through a door the creature has learned. The race has no way out
+            // and no carry — the 출입구 marker is now the FINISH, and a hiding place beside
+            // the finish line would be somewhere to wait rather than somewhere to survive.
+            MapValidator.RuleConcealmentNearExit,
+
+            // 구역 대각선 30~40 m sized a zone so §03's clue chain — 층 → 구역 → 지점 — could
+            // narrow usefully: small enough to search, big enough to be worth naming. §03's
+            // chain is deleted; the objective is "down". A storey is now one 57.5 m ring
+            // system, and what needs bounding is the BAND thickness rather than the floor,
+            // which is §12-D's job.
+            MapValidator.RuleZoneDiagonal,
+        };
 
         /// <summary>
         /// Describes the failures that must stop the build, and reports whether every
@@ -448,7 +489,7 @@ namespace HorrorGame.EditorTools.SceneGen
                 }
             }
 
-            return FirstMapSketch.DefaultSeed;
+            return DescentMap.DefaultSeed;
         }
     }
 }

@@ -821,55 +821,98 @@ namespace HorrorGame.Core.Map
         /// <returns>Length of that run in metres; 0 when there are no edges.</returns>
         public float LongestStraightRun(out int[] chain)
         {
+            // Memoised over STATES rather than searched over paths. A straight run is
+            // decided entirely by where you are and which edge you arrived on — nothing
+            // earlier in the walk can change which continuations count as straight — so
+            // the longest continuation from a state is a property of that state and can
+            // be computed once.
+            //
+            // The version this replaces walked every path with a used-edge set, which is
+            // correct and unusable: §12 requires 순환로 and the radial storeys have 27 of
+            // them each, so on the eight-storey tower the branching swallowed the whole
+            // search. It ran for forty minutes and produced nothing. Two storeys measured
+            // fine, which is exactly how a method like this gets shipped.
+            //
+            // Dropping the used-edge set is safe because a straight run cannot revisit an
+            // edge: it would have to turn through 180° to come back, and 180° is a bend by
+            // any threshold. The in-progress marker below is a guard against a degenerate
+            // map rather than a case that occurs.
+            var states = _edges.Length * 2;
+            var bestFrom = new float[states];
+            var nextEdge = new int[states];
+            var status = new byte[states];
+
             var best = 0f;
-            int[] bestChain = Array.Empty<int>();
+            var bestState = -1;
+            var bestStart = -1;
 
             for (var edgeId = 0; edgeId < _edges.Length; edgeId++)
             {
+                // A 계단 or a 투하구 is not a corridor and cannot begin a sight line. Its edge
+                // spans a whole storey, so on the descent map a single chute measured 25 m by
+                // itself and reported a straight run nobody could ever look down. BendDegrees
+                // already breaks a run that reaches one; this stops a run from starting on one.
+                if (ChangesStorey(edgeId))
+                {
+                    continue;
+                }
+
                 for (var flip = 0; flip < 2; flip++)
                 {
                     var start = flip == 0 ? _edges[edgeId].A : _edges[edgeId].B;
                     var head = _edges[edgeId].Other(start);
-                    var used = new bool[_edges.Length];
-                    used[edgeId] = true;
-                    var path = new List<int> { start, head };
-                    ExtendStraightRun(head, edgeId, _edges[edgeId].Length, path, used, ref best, ref bestChain);
+                    var total = _edges[edgeId].Length
+                                + Continue(StateOf(edgeId, head), head, edgeId, bestFrom, nextEdge, status);
+
+                    if (total > best)
+                    {
+                        best = total;
+                        bestState = StateOf(edgeId, head);
+                        bestStart = start;
+                    }
                 }
             }
 
-            chain = bestChain;
+            chain = bestState < 0 ? Array.Empty<int>() : Rebuild(bestStart, bestState, nextEdge);
             return best;
         }
 
-        private void ExtendStraightRun(
-            int at,
-            int arrivedBy,
-            float accumulated,
-            List<int> path,
-            bool[] used,
-            ref float best,
-            ref int[] bestChain)
+        /// <summary>True when an edge joins two storeys — a 계단 or a 투하구.</summary>
+        private bool ChangesStorey(int edgeId) =>
+            System.Math.Abs(_nodes[_edges[edgeId].A].Position.Y - _nodes[_edges[edgeId].B].Position.Y)
+            > StoreyChangeMetres;
+
+        /// <summary>Packs "arrived at this node along this edge" into one index.</summary>
+        private int StateOf(int edgeId, int at) => (edgeId * 2) + (at == _edges[edgeId].A ? 0 : 1);
+
+        /// <summary>
+        /// Longest straight continuation from a state, not counting the edge already walked.
+        /// </summary>
+        private float Continue(int state, int at, int arrivedBy, float[] bestFrom, int[] nextEdge, byte[] status)
         {
-            if (accumulated > best)
+            // 1 = done, 2 = on the stack. A state reached while still being computed is a
+            // straight cycle, which cannot happen on a §12-legal map; contributing 0 for it
+            // keeps the recursion finite rather than pretending to have an answer.
+            if (status[state] == 1)
             {
-                best = accumulated;
-                bestChain = path.ToArray();
+                return bestFrom[state];
             }
 
-            // Once the run is already illegal there is nothing left to learn by
-            // extending it — the validator only needs one witness, and stopping here
-            // is what keeps the search finite on a densely looped map (§12 requires
-            // loops, so a near-straight ring would otherwise be walked forever).
-            if (accumulated > GameConstants.MaxStraightCorridor)
+            if (status[state] == 2)
             {
-                return;
+                return 0f;
             }
 
+            status[state] = 2;
+
+            var best = 0f;
+            var chosen = -1;
             var incident = _incident[at];
+
             for (var k = 0; k < incident.Length; k++)
             {
                 var edgeId = incident[k];
-                if (used[edgeId])
+                if (edgeId == arrivedBy)
                 {
                     continue;
                 }
@@ -880,12 +923,46 @@ namespace HorrorGame.Core.Map
                 }
 
                 var next = _edges[edgeId].Other(at);
-                used[edgeId] = true;
-                path.Add(next);
-                ExtendStraightRun(next, edgeId, accumulated + _edges[edgeId].Length, path, used, ref best, ref bestChain);
-                path.RemoveAt(path.Count - 1);
-                used[edgeId] = false;
+                var total = _edges[edgeId].Length
+                            + Continue(StateOf(edgeId, next), next, edgeId, bestFrom, nextEdge, status);
+
+                if (total > best)
+                {
+                    best = total;
+                    chosen = edgeId;
+                }
             }
+
+            bestFrom[state] = best;
+            nextEdge[state] = chosen;
+            status[state] = 1;
+            return best;
+        }
+
+        /// <summary>Walks the memo back into the node chain the validator quotes.</summary>
+        private int[] Rebuild(int start, int state, int[] nextEdge)
+        {
+            var chain = new List<int> { start };
+            var edgeId = state / 2;
+            var at = _edges[edgeId].Other(start);
+            chain.Add(at);
+
+            // Bounded by the node count: a straight run cannot be longer than the map, and a
+            // memo that somehow cycled must not hang the report that is about to quote it.
+            for (var guard = 0; guard < _nodes.Length; guard++)
+            {
+                var step = nextEdge[state];
+                if (step < 0)
+                {
+                    break;
+                }
+
+                at = _edges[step].Other(at);
+                chain.Add(at);
+                state = StateOf(step, at);
+            }
+
+            return chain.ToArray();
         }
 
         /// <summary>

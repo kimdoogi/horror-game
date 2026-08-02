@@ -60,7 +60,7 @@ namespace HorrorGame.EditorTools.SceneGen
         /// decides the thing that should vary: where the gates are.
         /// </para>
         /// </summary>
-        public const int AlcoveSpacing = 2;
+        public const int AlcoveSpacing = 10;
 
         /// <summary>
         /// Draws one storey. The caller owns <see cref="MapSketch.AddZone"/> and
@@ -159,7 +159,9 @@ namespace HorrorGame.EditorTools.SceneGen
 
                 var gates = PunchGates(
                     s, level, centreX, centreZ, wall, innerEdge, band, random, previousGates, occupied,
-                    result.GateMouths, result.Bands[bands.Length - 1 - i]);
+                    result.GateMouths,
+                    result.Bands[bands.Length - 1 - i],
+                    i == 0 ? null : result.Bands[bands.Length - i]);
                 result.Gates.Add(gates);
                 previousGates = gates;
                 allGates.AddRange(gates);
@@ -266,7 +268,8 @@ namespace HorrorGame.EditorTools.SceneGen
             List<MapCell> avoid,
             HashSet<long> occupied,
             List<MapCell> mouths,
-            List<MapCell> bandCells)
+            List<MapCell> bandCells,
+            List<MapCell>? bandBelow)
         {
             var ring = Perimeter(cx, cz, band.Inner);
             var gates = new List<MapCell>();
@@ -285,9 +288,16 @@ namespace HorrorGame.EditorTools.SceneGen
             // it and nothing else, so it is a passage rather than a junction. §12 counts
             // 후보 지점 at junctions, and MapSketch refuses a mark on a passage rather than
             // letting the count come up short with nothing failing.
+            // Both ENDS of the gate have to land on a rail that was actually drawn. The check
+            // above catches a gate that branches off nothing; this one catches a gate that
+            // arrives at nothing, which is worse because it looks like a way in and is a dead
+            // end. Left unchecked they made every floor 34% blind against §12's 20~25% band,
+            // and — the part that matters — a storey with four gates on the outer wall of
+            // which two go nowhere is a storey with two gates.
             var open = ring.FindAll(p => !p.Corner
                                          && System.Math.Abs(p.InX != 0 ? p.Z - cz : p.X - cx) <= clear
-                                         && bandCells.Exists(c => c.X == p.X && c.Z == p.Z));
+                                         && bandCells.Exists(c => c.X == p.X && c.Z == p.Z)
+                                         && Arrives(p, span, bandBelow));
             if (open.Count == 0)
             {
                 return gates;
@@ -429,6 +439,21 @@ namespace HorrorGame.EditorTools.SceneGen
                 Put(s, level, into, occupied, x, z);
                 lastAt = i;
             }
+        }
+
+        /// <summary>True when the far end of a gate passage lands on a cell that exists.</summary>
+        private static bool Arrives(RingStep step, int span, List<MapCell>? bandBelow)
+        {
+            if (bandBelow == null)
+            {
+                // The innermost gate arrives in the 3 x 3 middle, which is solid by
+                // construction — there is nothing to miss.
+                return true;
+            }
+
+            var x = step.X + (step.InX * span);
+            var z = step.Z + (step.InZ * span);
+            return bandBelow.Exists(c => c.X == x && c.Z == z);
         }
 
         /// <summary>
