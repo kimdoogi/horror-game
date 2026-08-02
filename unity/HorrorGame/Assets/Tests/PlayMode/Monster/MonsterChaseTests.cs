@@ -81,6 +81,14 @@ namespace HorrorGame.Tests.PlayMode.Monster
         /// </summary>
         private const string MapScenePath = "Assets/Scenes/Map_FirstSketch.unity";
 
+        /// <summary>
+        /// The same scene as <see cref="MapScenePath"/>, by the name <c>SceneManager</c>
+        /// answers to. Two spellings because the load goes through the editor's scene
+        /// manager, which takes an asset path, and the unload goes through the runtime
+        /// one, which does not.
+        /// </summary>
+        private const string MapSceneName = "Map_FirstSketch";
+
         /// <summary>§13: a reported match replays from its seed. Any fixed value; this one is the playtest's.</summary>
         private const int Seed = 20260731;
 
@@ -150,8 +158,29 @@ namespace HorrorGame.Tests.PlayMode.Monster
                 + "than letting the two drift apart.");
         }
 
-        [TearDown]
-        public void TearDown()
+        /// <summary>
+        /// Puts the building back as well as the two participants.
+        /// <para>
+        /// <b>Why the scene unload was added.</b> This fixture destroyed what it spawned
+        /// and left the whole eight-storey <c>Map_FirstSketch</c> loaded. That was invisible
+        /// only because <c>Net</c> sorts immediately after <c>Monster</c> and
+        /// <c>LobbyEntryWiringTests</c> opened Bootstrap with a <c>Single</c> load, which
+        /// swept this map away as a side effect — so fixing that fixture's own leak without
+        /// fixing this one would have handed eight storeys of collidable geometry and §12
+        /// practicals to <c>NetSocketTests</c>, <c>PlayerRig</c> and <c>Presence</c>
+        /// instead of Bootstrap's corridor, and turned one contamination into another.
+        /// Two leaks that cancelled is not a clean suite; it is two bugs.
+        /// </para>
+        /// <para>
+        /// <c>[UnityTearDown]</c> because <c>UnloadSceneAsync</c> needs frames, and the
+        /// blank scene goes in first because Unity refuses to unload the last one loaded.
+        /// The guard matters outside the editor: <see cref="LoadMap"/> is
+        /// <c>UNITY_EDITOR</c>-only and ignores the test otherwise, so on a player run
+        /// there is no map here to put back.
+        /// </para>
+        /// </summary>
+        [UnityTearDown]
+        public IEnumerator TearDown()
         {
             for (var i = _spawned.Count - 1; i >= 0; i--)
             {
@@ -166,6 +195,14 @@ namespace HorrorGame.Tests.PlayMode.Monster
             if (_report.Length > 0)
             {
                 Debug.Log(_report.ToString());
+            }
+
+            var map = SceneManager.GetSceneByName(MapSceneName);
+            if (map.IsValid() && map.isLoaded)
+            {
+                var empty = SceneManager.CreateScene("MonsterChaseTests_Empty");
+                SceneManager.SetActiveScene(empty);
+                yield return SceneManager.UnloadSceneAsync(map);
             }
         }
 

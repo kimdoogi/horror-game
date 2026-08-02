@@ -104,8 +104,45 @@ namespace HorrorGame.Tests.PlayMode.Net
                 + "comes back through TryOpen — see the latch in LobbyEntry.");
         }
 
-        [TearDown]
-        public void TearDown()
+        /// <summary>
+        /// Puts the world back — the shell, the EventSystem <em>and the scene</em>.
+        /// <para>
+        /// <b>The scene unload is the point, and it was missing.</b> This fixture used to
+        /// destroy the two objects and leave <c>Bootstrap</c> loaded, and Bootstrap is not
+        /// an empty menu: its <c>MenuBackdrop</c> is built out of real
+        /// <c>Corridor_Straight_10m</c> kit pieces with their colliders, and hangs three
+        /// <c>Practical</c> lamps in them. Alphabetically <c>Net</c> sorts between
+        /// <c>Monster</c> and <c>PlayerRig</c>, so every PlayMode fixture after this one
+        /// inherited that corridor and those lamps, and three of them were measuring it
+        /// instead of themselves:
+        /// </para>
+        /// <list type="bullet">
+        /// <item><description>
+        /// <c>PlayerTests.Movement_can_be_locked_without_locking_the_view</c> builds its rig
+        /// at the world origin — inside the backdrop — and a <c>CharacterController</c>
+        /// depenetrating out of a corridor wall travelled 0.904 m/s with movement locked.
+        /// </description></item>
+        /// <item><description>
+        /// Both <c>PresenceSessionTests</c> darkness assertions read 0.166010931 instead of
+        /// 0. That number is not approximate and it is worth writing down, because it is
+        /// what identifies the culprit: the third Practical sits at world (-1.25, 2.9,
+        /// -0.9) at intensity 0.45 over a 5.5 m range, which is 1.9963 m from
+        /// <c>PresenceSubject.SamplePoint</c> at (0, 1.63, 0), and
+        /// <c>QualityFrom</c>'s (1 - d/range)² × (intensity / 1.1) is 0.16601094. A §12
+        /// practical was lighting the player §03 says is unlit.
+        /// </description></item>
+        /// </list>
+        /// <para>
+        /// All three pass in isolation and all three fail with byte-identical numbers the
+        /// moment this fixture runs first, which is the whole diagnosis. It is now a
+        /// <c>[UnityTearDown]</c> rather than a <c>[TearDown]</c> because
+        /// <c>UnloadSceneAsync</c> needs frames, and the blank scene goes in first because
+        /// Unity refuses to unload the last loaded scene. Same shape as
+        /// <c>GhostSessionTests</c>, <c>MonsterKillTests</c> and three others.
+        /// </para>
+        /// </summary>
+        [UnityTearDown]
+        public IEnumerator TearDown()
         {
             LobbyEntry.ResetForTests();
 
@@ -126,6 +163,14 @@ namespace HorrorGame.Tests.PlayMode.Net
 
             MatchPause.Clear();
             SettingsStore.OverrideDirectory(null);
+
+            var menu = SceneManager.GetSceneByName(MenuScene);
+            if (menu.IsValid() && menu.isLoaded)
+            {
+                var empty = SceneManager.CreateScene("LobbyEntryWiringTests_Empty");
+                SceneManager.SetActiveScene(empty);
+                yield return SceneManager.UnloadSceneAsync(menu);
+            }
         }
     }
 }

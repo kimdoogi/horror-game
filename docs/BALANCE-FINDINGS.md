@@ -1655,3 +1655,377 @@ it names which link of the chain was open rather than only that the player survi
 `MonsterTests.Patrol_ChasesSomethingStandingInItsFace`,
 `Patrol_DoesNotNoticeJustPastContactRange` and
 `Patrol_DoesNotNoticeAConcealedPlayerAtContactRange` hold the contact exception's edges.
+
+---
+
+## F-013 · 100 % escapable is the right answer to the wrong question — the creature is not shruggable, it is absent
+
+**Sections:** §12 (실전 검증 · 주자 테스트) × §01/§02 (경주) × §06 (어그로 해제) × §07
+(시간 = 유일한 통화) × §12-B③ (괴물이 안쪽을 순찰한다)
+· **Priority:** 🔴 the map's only grade has been red for three working passes and cannot
+ever be green · **Status:** measured 2026-08-03. Supersedes [F-007](#f-007) and
+[F-011](#f-011); closes the question [F-008](#f-008) option 2 left open
+· **Source:** a harness over `DescentMap.Build(20260802)` + `RunnerTest`, run under
+`dotnet` (no Unity), plus `/tmp/r4_gen.log` and `/tmp/r4_all.xml` from the 2026-08-03
+generation
+
+> **The verdict, up front.** The 50~70 % band is a co-op-era instrument. It is not merely
+> mis-set: at §12's own parameters it is **not a band at all**, and no map that obeys the
+> rest of §12 can ever score inside it. But "so 100 % is fine" is not the conclusion
+> either, because §01 says the opposite twice. The resolution is that in a race the
+> creature is priced in §07's currency rather than in survival, and **measured that way
+> the shipped map is already right**: every one of its 720 places charges a chase between
+> 3.4 s and 25.5 s, median 7.2 s, and charges the 중심 four times what it charges the
+> 외곽 — §12-B③ exactly. What is wrong is somewhere else entirely, and the audit has been
+> printing it every run: **seven of the eight storeys have no creature on them.**
+
+### 1 · The band cannot discriminate. This is arithmetic, not an opinion
+
+With cover continuous — which §12's own 시야 차단 지점 간격 guarantees once a runner is
+about 20 m into any route ([F-011](#f-011)) — a release fires when the runner has covered
+
+```
+RunnerSprintSpeed × max( AggroReleaseLineOfSightBreak,
+                         (AggroReleaseDistance − RunnerTestAggroStartDistance)
+                         ÷ (RunnerSprintSpeed − MonsterBaseSpeed) )
+      = 5.6 × max(3 s, 2 m ÷ 0.8 m/s = 2.5 s)  =  16.8 m of route past one bend
+```
+
+**Sixteen point eight metres.** §12 mandates an S자 통로 of 10 m × 2 per zone, caps a
+straight run at 20 m, and requires three 순환로. Every §12-legal map hands that out from
+everywhere. *A map cannot obey §12's construction rules and fail §12's own 실전 검증.*
+
+It holds across the whole of §07, so this is not an artefact of grading at 심야:
+
+| §07 tier | monster | sprint needed | route needed | 720 places, measured |
+|---|:--:|:--:|:--:|:--:|
+| 초저녁 | 4.4 | 1.67 s | 16.8 m | **720/720** |
+| 밤 | 4.6 | 2.00 s | 16.8 m | **720/720** |
+| 심야 | 4.8 | 2.50 s | 16.8 m | **720/720** |
+| 새벽 | 5.0 | 3.33 s | 18.7 m | **720/720** |
+| 동트기 전 | 5.2 | 5.00 s | 28.0 m | **720/720** |
+| *(off the table)* | 5.4 | 10.0 s | 56.0 m | 668/720 |
+| *(off the table)* | 5.5 | 20.0 s | 112.0 m | 0/720 |
+
+The closed form predicts both cliffs to the decimal and the graph agrees:
+aggro start **3.4 m → 0/720, 3.6 m → 596/720**, because 7 × (12 − 3.4) = 60.2 m against
+`SprintMaxTravelDistance` 60 m and 7 × (12 − 3.6) = 58.8 m. Monster speed **5.4 → 92.8 %,
+5.5 → 0 %**, because 10 + (5.6 − v) × 12 crosses 12 m at v = 5.433. Those are the same
+two numbers `RadialStorey`'s own doc reports from an independent sweep.
+
+**Consequence for the knobs the brief named.** Inside `Validate()`'s feasible region —
+`RunnerTestAggroStartDistance` < 14.4 m (or `SightBreakPointSpanMax` goes negative),
+`AggroReleaseDistance` ∈ (9.6, 15) m (`gain < release` below, `ObserverRange` above) —
+every value is on one side of a cliff or the other. There is no setting that yields
+5~7/10. **The knob was never turned because it is not a knob**, and turning it would also
+move `SightBreakPointSpanMax`, which is defined as `SingleCornerMinDistance` less the
+aggro start: lowering the aggro start *loosens* a MapValidator rule the shipped map
+already fails. That is the shape of "the metric improves and the game gets worse".
+
+> **Retire task #15, "land 주자 테스트 in 5-7/10".** Three passes have been spent on it.
+> It is unreachable by tuning and unreachable by drawing walls.
+
+**Also, while checking §07:** `RadialStorey`'s class doc credits its geometry win to
+sensitivity "at §07's 밤 tier (5.4 m/s)". §07's 밤 is **4.6 m/s** and the table's maximum
+is **5.2 m/s** (`ThreatSpeedBeforeSunrise`). The 92.8 % that comment leans on lives
+0.2 m/s outside the game. The measurement is real; the label on it is not.
+
+### 2 · Is 100 % escapable *correct*? The design answers, and it answers twice
+
+**Ruled in, for the race:**
+
+- **§04 is deleted.** The band was written when one player in four had 질주 5.6 and could
+  out-run the creature. DESCENT-PIVOT §5 promotes the sprint to all twenty — "전원이
+  갖는 것: 손전등 · 문 · 질주 5.6 m/s · 귀". "Can you get away" now has one answer for
+  everybody, and §06's own arithmetic already gives it. Grading a race map on it measures
+  §06, not the map.
+- **§02 needs a field alive at the bottom.** 완주 순위 is what keeps a losing runner
+  running, and "마지막 한 층에서 3등이 2등을 문으로 막는" requires several of them still
+  descending. At a 60 % per-encounter survival over eight storeys, P(finish) = 0.6⁸ =
+  **1.7 %** — 0.34 finishers out of twenty. §02 frames 시간 초과 as caused by cowardice
+  ("전원이 안전하게만 움직이면"), not by the creature.
+- **§01's own genre note:** "이길 수 없는 적 → 공포가 유지된다". The horror is
+  inevitability, not lethality.
+
+**Ruled out, as a licence to be ignorable:**
+
+- **§01: "죽으면 끝이다 … 그래서 협동판보다 괴물이 더 무섭다"**, and DESCENT-PIVOT §2③
+  says it again: "경주에서 괴물은 *공포*이자 *탈락 조건*이다. 협동판보다 더 무섭다." The
+  document does not say the creature was demoted at the pivot. It says it was promoted.
+- The lethal tail is still written: §06's "주자도 스태미나가 끝나면 잡힌다", and §01's
+  안쪽 고리 — "좁다. 마주치면 피할 수 없다", which is §12's own 3 m ❌ row.
+
+**So: escapable everywhere, and never free.** That is answer (c) — neither "the numbers
+are wrong" nor "move the band", but *the instrument is measuring the co-op question*.
+
+### 3 · The race's grade: 탈출 대가, measured on all 720 places
+
+Instrument: `RunnerTest` from every node, then Dijkstra from each storey's middle over
+that storey's own passages (a 투하구 is a fall, not a way back up), differenced at the
+node the runner had passed when the release fired. Toll = seconds from aggro to release,
+plus ground given back walked home at 달리기 4.5 m/s. Seed 20260802.
+
+*Provenance:* run against the **working tree**, not commit `af2563d` — two agents were
+editing `RadialStorey.cs` and `MapValidator.cs` during this pass. It reproduces
+`/tmp/r4_gen.log`'s `720 places` and `720/720 escapable (100%)` exactly, so the geometry
+had not moved under it; if a later run disagrees, the map changed and so do these numbers.
+
+```
+escapable        720/720 (100.0%)   verdict TooEasy
+ground given back  min −45.0  p25 −15.0  median 5.0  p75 15.0  max 67.5 m
+seconds to release min  3.4  p25   4.3  median 6.1  p75  7.0  max 10.6 s   (bar is 12 s)
+TOTAL TOLL         min  3.4  p25   6.0  median 7.2  p75  9.2  max 25.5 s
+```
+
+**The band, both ends of it derived from the design's own price list:**
+
+| end | value | where it comes from |
+|---|:--:|---|
+| floor | **3.4 s** | DESCENT-PIVOT §2②: 문 — 닫는 데 1.1 s, 부수는 데 4.5 s, "닫고 도망치면 3.4초를 번다". The smallest advantage this game already treats as worth standing still for. A chase cheaper than one door is a chase to ignore. Now `GameConstants.ChaseTollSecondsMin`. |
+| ceiling | **20.0 s** | §12-D's *shortest legal* centre path, 90 m ÷ 달리기 4.5 m/s. A chase dearer than solving the storey is indistinguishable from being sent back up a floor, and §01 fixes the descent at eight legs, not nine. |
+
+Measured against it: **0 of 720 below the floor. 7 of 720 (1.0 %) above the ceiling**, and
+0 above §12-D's own measured 118 m (= 26.2 s) — though that 118 m was measured on the
+*pre-radial* generator and nobody has measured this one's centre path (see §6). The
+creature on this map costs a runner about two doors in the median and never more than a
+floor.
+
+**And the toll is ring-graded exactly as §12-B③ asks — 「외곽은 안전하고 중심은 위험하다」:**
+
+| band | places | median ground given back | escapes that move outward |
+|---|:--:|:--:|:--:|
+| 중심 (d 0–1) | 72 | **+15.0 m** | **100 %** |
+| 안쪽 (d 3–4) | 88 | **+12.5 m** | **100 %** |
+| 관문(중간) (d 5) | 32 | −12.5 m | 25 % |
+| 중간 (d 6–7) | 200 | 0.0 m | 48 % |
+| 관문(외곽) (d 8) | 40 | +5.0 m | 60 % |
+| 외곽 (d 9–10) | 288 | −10.0 m | 35 % |
+
+Escaping from the middle throws you out of the middle, every single time. Escaping on the
+rim is free and usually carries you inward. **The map already does what §12-B③ asks, and
+the pass rate cannot see any of it** — it collapses both rows to "100 %".
+
+§07's straggler punishment shows up too: at 동트기 전 (5.2 m/s) the toll's median rises
+6.6 s → **8.8 s** and its floor 3.4 s → **5.0 s**, so a late runner pays more for the same
+chase — which is §07's stated purpose, "늦게 갈수록 괴물이 빨라진다 = 지각자 처벌".
+
+### 4 · So why does the creature threaten nobody? Because it is not there
+
+This is the finding that actually matters and it needed no new instrument — the audit has
+printed it on every generation (`/tmp/r4_gen.log`):
+
+```
+monster reach    22/22 markers reachable from a MonsterSpawn on the SAME storey,
+                 over 1 of 8 storeys (§06)
+no creature on   7 of 8 storeys, so §06 was not asked of them:
+                 B1, B2, B3, B4, B6, B7, B8
+islands          8  ← the surface is in pieces
+```
+
+`DescentMap.PlaceStarts` calls `sketch.MonsterStart(...)` **once**. Three facts compose:
+
+1. the NavMesh bakes as **one island per storey** — correct, because a 투하구 is a fall
+   and not a path — so a creature can never walk to another floor;
+2. §07's 순찰 column is counted in **구역**, and this building is **one zone per storey**,
+   so even the floor that has one is patrolled for 1 zone at 초저녁 and 2 at 밤 — the
+   whole of §01's 12~20 minute race ([F-010](#f-010), arriving in its worst form);
+3. therefore **630 of the 720 "escapable" places have nothing in them to escape from.**
+
+720/720 was never a statement that the creature is shruggable. It is a statement about a
+graph. The seven empty storeys are the statement about the game.
+
+**Corroboration from the engine, which disagrees with the graph in the direction that
+matters.** `MonsterChaseTests` on baked geometry, `/tmp/r4_all.xml`:
+
+| structure | graph model | engine, with real raycasts |
+|---|---|---|
+| S자 통로, 10 m × 2 | escapes | **released 5.50 s, 12.0 m**, cover 3.02 s |
+| single corner | escapes | **CAUGHT at 12.54 s**, cover 1.98 s, 52.5 m run |
+
+The engine does not hand out continuous cover; the graph does. At the only two places
+anyone has compared them the real building is **1 of 2**, not 2 of 2. So the honest
+reading of 720/720 is "the graph cannot fail this test", not "the game is easy".
+
+### 5 · What changed, and what did not
+
+**Changed — `unity/HorrorGame/Assets/Scripts/Core/GameConstants.cs`:**
+
+| constant | value | derivation |
+|---|:--:|---|
+| `ChaseTollSecondsMin` *(new)* | `DoorBreakSeconds − DoorShutSeconds` = **3.4 s** | §2 above. Guarded in `Validate()` against `DoorShutSeconds` and `AggroReleaseLineOfSightBreak`. |
+| `MonstersPerStorey` *(new)* | **1** | §12-B③ + one NavMesh island per storey + §07's zone-counted patrol. Does not scale with the field, for §12-A's own reason: "관문 수는 인원과 무관하게 고정이다 … 붐비는 것이 설계". |
+| `RunnerTestAggroStartDistance` | **10 m, unchanged** | Its stated justification ("주자는 멀리서 어그로를 걸어야 한다") is about §04's deleted role, but §1 shows every alternative is a cliff and lowering it loosens `SightBreakPointSpanMax`. Recorded in the file rather than moved. |
+| `RunnerTestPassRateMin/Max` | **0.50 / 0.70, unchanged** | Held at §12's written values so the report keeps quoting the section honestly. The doc comment now carries §1's proof and points at the toll. Making these green would be a green number nobody verified. |
+
+**Not changed, and owed to whoever owns those files.** Re-read at the end of this pass
+rather than assumed at the start — and the answer moved while it was being written:
+
+**`DescentMap.cs` already has the fix, and it is deliberately inert.** Another agent
+landed one-creature-per-storey in the working tree during this pass, with a fuller
+derivation than the one above (§07's patrol column read through
+`ThreatTier.PatrolZoneCountFor(8)`: 1 zone at 초저녁 → **8** at 새벽, against a building a
+creature can never leave). It seeds every storey's own recorded middle and declares B5
+**last** on purpose, because:
+
+```csharp
+// MapSketch.cs:667
+public MapSketch MonsterStart(int x, int z, int level)
+{
+    _monsterStart = new MapCell(_offsetX + x, _offsetZ + z, level);   // ONE field
+    return this;
+}
+```
+
+**So the map still has exactly one creature and §4's audit line is still true.** The chain
+is three links and only the first has been written:
+
+| link | file | state |
+|---|---|---|
+| author 8 spawns | `DescentMap.PlaceStarts` | **done** (working tree, another agent) |
+| keep 8 spawns | `MapSketch._monsterStart` — a field, not a list | **missing** — last write wins |
+| spawn 8 creatures | `MatchMap.MonsterSpawn` (singular) → `MatchDirector._monster`, `PrepareMonster`/`ResetMonster` read `_map.MonsterSpawn` | **missing** — one `_monster` exists at runtime |
+
+`GameConstants.MonstersPerStorey` is what the second and third links should be written
+against; the loop in `DescentMap` currently expresses the count as `level < Storeys` with
+no constant behind it.
+
+While reading it: the class ASCII in `DescentMap` used to mark **B4** as "괴물은 여기서
+시작한다" while `Storeys / 2 = 4` is index 4 = **B5 저수조** — which the audit confirms,
+its "no creature on" list omitting exactly B5. The same agent's rewrite has already
+removed that line.
+
+`RunnerTest`/`RunnerCensus` need the toll to become a reported number rather than a
+scratch harness. The minimal version: `RunnerTestAttempt` already carries `Route` and
+`ElapsedSeconds`, so the census can difference a caller-supplied
+`float[] distanceToObjective` at the start node and at the node the runner had passed, and
+print `탈출 대가` beside the pass rate. **`RunnerTest` must also prefer the release that
+costs the fewest metres** — today `Explore` returns the first releasing route in DFS order,
+so the tolls above are those of an *arbitrary* escape, not of the cheapest one a runner
+who knows the map would take. That is the single biggest caveat on §3's numbers.
+
+And `core/HorrorGame.Core.Tests/HorrorGame.Core.Tests.csproj` cannot build at HEAD:
+`ChamberDockProbe.cs` was added under `Editor/SceneGen` with `using UnityEditor` and is
+not in the `Exclude` list, so `dotnet test core/HorrorGame.sln` fails with 14 CS0246s
+before running a test. The csproj comment says this is by design ("a new Unity file breaks
+the build on its first `using UnityEngine`") — the fix is one line:
+
+```diff
+     Exclude="$(MapSourceRoot)BootstrapSceneGenerator.cs;
++                      $(MapSourceRoot)ChamberDockProbe.cs;
+                       $(MapSourceRoot)LocalTwoInstance.cs;
+```
+
+Until it lands, the dotnet half of the two-way verification is dark.
+
+### 6 · The prediction, and the log lines that check it
+
+**Nothing this entry changed moves either published number, and that is the point.** With
+`RunnerTestAggroStartDistance`, `AggroReleaseDistance`, `SprintMaxTravelDistance` and both
+pass-rate constants all held, the next generation must print, byte for byte:
+
+```
+§12 주자 테스트 — 하강 — 요양원 지하 8층: 10/10 (100%), TooEasy
+§12 실전 검증, every place rather than the ten §12 samples: 720/720 escapable (100%), …
+```
+
+— both in `/tmp/r4_gen.log` under `=== §12 map quality — seed 20260802 ===`. **If either
+moves, this entry is wrong**, because the harness reproduced both from the same graph
+under `dotnet`, and §1 says why nothing in the design's parameter space can move them.
+
+The number that *should* move — but **will not on the next generation**, because §5's
+second and third links are unwritten — is in the NavMesh audit block of the same log:
+
+```
+now      monster reach  22/22 markers … over 1 of 8 storeys (§06)
+         no creature on 7 of 8 storeys, so §06 was not asked of them: B1, B2, B3, B4, B6, B7, B8
+         markers 213
+target   monster reach  … over 8 of 8 storeys (§06)
+         (the "no creature on" line disappears)
+         markers 220
+```
+
+**Predict the unchanged one first.** The very next generation, with `DescentMap`'s
+already-landed eight `MonsterStart` calls, must still print `over 1 of 8 storeys` and
+`markers 213` — because `MapSketch` keeps a field and the last call wins. If it prints
+anything else, `MapSketch` grew a list without this entry noticing and §5's table is out
+of date. That is the cheapest possible check of whether the fix is real or authored.
+
+`markers 213 → 220` and `1 of 8 → 8 of 8` are what to expect on the generation after
+`MapSketch` and `MatchMap`/`MatchDirector` land. That is the whole of this line of work's
+claim to have changed the game: **8 of 8, not 1 of 8.**
+
+**Two things to check on that run rather than assume.** `RadialStorey`'s own doc records
+that "of the eight middles, exactly ONE carries a marker: the 괴물 on B5", and that this
+is why four regenerations with genuinely different middles produced a byte-identical
+audit. Putting a spawn in all eight middles removes that insulation: **`islands` must stay
+at 8.** If it rises, the middles the audit was never asking about are sealed, and the
+change has exposed a bake defect rather than fixed a design one — which is a result worth
+having, but it is not the result claimed here.
+
+Second: a spawn at `(Centre, Centre)` puts the creature on the 중심 chamber — the 투하구
+cell that §12-A makes every runner on the floor pass through. That is defensible on the
+design's own terms (「안쪽→중심 관문 1개 … 그 층 전원이 같은 한 칸을 지난다」 meeting
+「중심은 위험하다」) and it does *not* reproduce `DescentMap`'s stated worry about B1,
+because runners start on B1's rim and the creature would be nine rings away. But it is a
+placement decision, not a count decision, and §12-B③ says 순찰 — the inner *rings* — not
+the middle. If the middle turns out to be wrong, the count in `MonstersPerStorey` is still
+right and only the cell moves.
+
+### 7 · What is honest to doubt here
+
+- **The toll is graded on a graph.** Same crudeness as [F-011](#f-011)'s: the engine's
+  raycast does not hand out continuous cover and the graph does, so the *rate* is an
+  overestimate. The *toll* is less exposed — it is a ratio of distances along a route the
+  runner actually takes — but it inherits the route.
+- **The escape is arbitrary, not optimal.** See the `Explore` note above. The true toll a
+  skilled runner pays is ≤ the medians in §3.
+- **"Ground given back" is measured to the storey's middle, not to the finish.** Correct
+  per storey — §01 makes every floor an independent maze — but it does not price the
+  chute you failed to reach before someone else took it.
+- **The 20.0 s ceiling is derived from §12-D's *written* 90 m, which `MapValidator` does
+  not check.** §12-D lists five new rules — `ring-gates`, `centre-path`,
+  `centre-single-gate`, `chute-count`, `chute-landing` — and the validator implements
+  **none** of them; its 17 rules are all §12-1's. Nobody has verified the shipped map's
+  centre path is inside 90~140 m at all.
+- **Nothing here has been seen by a person.** The claim that a 7 s toll *feels* like a
+  threat is a hypothesis. §14 Q3's playtest is where it is settled.
+
+### Reproducing every number in this entry
+
+**§1 needs no code at all** — it is `7 × (12 − aggroStart)` metres against
+`SprintMaxTravelDistance`, and `10 + (5.6 − v) × 12` against `AggroReleaseDistance`.
+
+**§3 needs a harness, and it does not need Unity**: `DescentMap`, `RunnerTest` and
+`MapGraph` are all engine-free, so a console project that globs
+`Assets/Scripts/Editor/SceneGen/*.cs` the way `core/HorrorGame.Core.Tests.csproj` already
+does can run the whole thing under `dotnet`. Four steps:
+
+1. `DescentMap.Build(DescentMap.DefaultSeed).Graph`
+2. `RunnerTest.RunAt(graph, everyNodeId)` — 720 attempts, ~1 s
+3. Dijkstra from each storey's ring-0 nodes over **same-`ZoneId` edges only**, giving
+   metres-to-the-middle per place (ring = Chebyshev in cells; cell *i* centres at
+   `1.25 + 2.5i`, the middle is cell 12 — the same metric `DescentMap.RingOf` uses)
+4. per released attempt, walk `Route` until the arc exceeds
+   `RunSpeed × min(elapsed, sprintDelay) + RunnerSprintSpeed × max(0, elapsed − sprintDelay)`;
+   toll = `elapsed + max(0, Δ metres-to-middle) ÷ RunSpeed`
+
+Sweeps in §1's table are the same call with an explicit `RunnerTestSettings`. The build
+needs `core/HorrorGame.Core.Tests/UnityDebugShim.cs` (MapSketch logs one error through
+`UnityEngine.Debug`) and, until the csproj fix above lands, `ChamberDockProbe.cs` excluded.
+
+```bash
+# the two numbers this entry contradicts, from the shipped generation:
+grep -n "주자 테스트\|escapable\|no creature on\|islands\|markers " /tmp/r4_gen.log
+# the engine disagreeing with the graph, §4:
+grep -n "longest cover\|caught\|released " /tmp/r4_all.xml
+```
+
+### Pinned by
+
+**Nothing yet, and that is the gap this entry leaves open.** What should pin it, once the
+census reports the toll: a test asserting the median 탈출 대가 of `DescentMap` is inside
+`ChaseTollSecondsMin` ~ §12-D's shortest legal storey, and that the 중심 band's median
+ground-given-back is strictly greater than the 외곽 band's. The first would fail the
+moment the creature became ignorable; the second the moment §12-B③ stopped being true of
+the geometry. A test that `DescentMap` places `MonstersPerStorey` creatures on every
+storey would have caught §4 on the day it shipped.

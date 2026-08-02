@@ -350,10 +350,40 @@ namespace HorrorGame.Core.Map
         // 2 — 개방 공간이 최소 1개 있고, 미로 공간과 인접해 있다.
         // ====================================================================
 
+        /// <summary>
+        /// §12's second checklist item, checked as the pair it is drawn as rather than
+        /// as two flags that happen to share an edge.
+        /// <para>
+        /// <b>Two things have to be true and only one of them used to be checked.</b>
+        /// §12 draws "[개방 공간] ──진입── [미로 공간]" and says what it is for in the
+        /// same breath — 어그로 시작 거리 15~25 m, with its own table rating a 3 m start
+        /// ❌. So the arrow is not the whole rule: the box on the left has to be a place
+        /// where 15 m of sight actually exists. A room a Runner crosses in two strides
+        /// satisfies "touches a 미로 공간" and satisfies nothing else, and passing it
+        /// tells a designer the map has a structure it does not have.
+        /// </para>
+        /// <para>
+        /// <b>And the arrow itself has to be a step, not a fall.</b> On the 하강 tower
+        /// every storey stacks in one column and the only edges between them are 투하구,
+        /// which a runner can enter and never leave (§01). Walking the raw graph
+        /// therefore let this rule pass on a pair 37 m apart in plan and a whole storey
+        /// down — reported, verbatim, as "opens directly into". Adjacency across a
+        /// one-way drop is not adjacency, so an edge that changes storey
+        /// (<see cref="MapGraph.StoreyChangeMetres"/>) cannot be the 진입 this rule is
+        /// looking for.
+        /// </para>
+        /// </summary>
         private static MapValidationResult CheckOpenAdjacentToMaze(MapGraph graph)
         {
             var open = graph.NodesOfKind(MapNodeKind.OpenSpace);
             var maze = graph.NodesOfKind(MapNodeKind.MazeSpace);
+
+            // §12 asks for aggro to be taken from 15~25 m, and that band is the same
+            // pair of numbers as 시야 차단 지점 간격 — the distance a Runner must buy
+            // before a corner can pay it back. The floor of the band is what an
+            // 개방 공간 has to be able to hold, so it is read from there rather than
+            // written down twice.
+            var needed = GameConstants.LineOfSightBreakSpacingMin;
 
             string detail;
             var passed = false;
@@ -371,20 +401,90 @@ namespace HorrorGame.Core.Map
             }
             else
             {
-                var pair = FindOpenMazeAdjacency(graph);
-                if (pair == null)
+                var rooms = OpenSpaceRooms(graph);
+                var best = -1;
+                var bestSpan = -1f;
+                var strandedSpan = -1f;
+                int[]? acrossAChute = null;
+
+                for (var r = 0; r < rooms.Count; r++)
+                {
+                    var room = rooms[r];
+                    var touch = MazeTouching(graph, room, false);
+                    if (touch == null)
+                    {
+                        acrossAChute ??= MazeTouching(graph, room, true);
+                        var lonely = Span(graph, room, out _);
+                        strandedSpan = lonely > strandedSpan ? lonely : strandedSpan;
+                        continue;
+                    }
+
+                    var span = Span(graph, room, out _);
+                    if (span > bestSpan)
+                    {
+                        bestSpan = span;
+                        best = r;
+                    }
+                }
+
+                if (best < 0)
                 {
                     detail = "There are " + open.Length + " 개방 공간 and " + maze.Length
                              + " 미로 공간, but none of them touch. §12 draws the pair as "
                              + "\"[개방 공간] ──진입── [미로 공간]\": the Runner takes aggro in the open and must "
                              + "reach cover before the monster closes. If the two are not adjacent, the walk "
                              + "between them is itself an unbroken run and the structure buys nothing.";
+
+                    if (acrossAChute != null)
+                    {
+                        detail += " The nearest thing to a 진입 on this map is "
+                                  + graph.Nodes[acrossAChute[0]].Describe() + " → "
+                                  + graph.Nodes[acrossAChute[1]].Describe()
+                                  + ", which is a 투하구: a one-way drop onto another storey, not a doorway. "
+                                  + "A Runner who takes it does not reach cover, they leave the floor.";
+                    }
+                    else if (strandedSpan >= 0f)
+                    {
+                        detail += " The widest 개방 공간 measures " + Metres(strandedSpan) + " across.";
+                    }
                 }
                 else
                 {
-                    passed = true;
-                    detail = "개방 공간 " + graph.Nodes[pair[0]].Describe() + " opens directly into 미로 공간 "
-                             + graph.Nodes[pair[1]].Describe() + ".";
+                    var room = rooms[best];
+                    var span = Span(graph, room, out var widest);
+                    var touch = MazeTouching(graph, room, false)!;
+
+                    passed = span >= needed - MathX.Epsilon;
+                    if (passed)
+                    {
+                        detail = "개방 공간 " + graph.Nodes[touch[0]].Describe() + " opens directly into "
+                                 + "미로 공간 " + graph.Nodes[touch[1]].Describe() + " on the same storey, and "
+                                 + "the room behind it is " + Metres(span) + " across ("
+                                 + graph.Nodes[widest[0]].Describe() + " to "
+                                 + graph.Nodes[widest[1]].Describe() + "), so §12's "
+                                 + Metres(needed) + "~" + Metres(GameConstants.LineOfSightBreakSpacingMax)
+                                 + " 어그로 시작 거리 exists in it.";
+                    }
+                    else
+                    {
+                        detail = "The widest 개방 공간 that touches a 미로 공간 is only " + Metres(span)
+                                 + " across — " + graph.Nodes[widest[0]].Describe() + " to "
+                                 + graph.Nodes[widest[1]].Describe() + ", against §12's "
+                                 + Metres(needed) + " 어그로 시작 거리 floor. It does touch ("
+                                 + graph.Nodes[touch[0]].Describe() + " → "
+                                 + graph.Nodes[touch[1]].Describe()
+                                 + "), so the arrow in \"[개방 공간] ──진입── [미로 공간]\" is drawn; what is "
+                                 + "missing is the box on the left. §12's 어그로 시작 거리 table rates a 3 m "
+                                 + "start ❌ and this room is nearer to that than to " + Metres(needed)
+                                 + ": a Runner standing "
+                                 + "in it is taken from a distance at which the release is arithmetically "
+                                 + "impossible, because a sprint gains only "
+                                 + (GameConstants.RunnerSprintSpeed - GameConstants.MonsterBaseSpeed)
+                                     .ToString("0.#", CultureInfo.InvariantCulture)
+                                 + " m/s and a single corner needs "
+                                 + Metres(GameConstants.SingleCornerMinDistance) + " of gap. A room this "
+                                 + "size is a junction with the walls taken out, not §12's 개방 공간.";
+                    }
                 }
             }
 
@@ -392,22 +492,139 @@ namespace HorrorGame.Core.Map
                 RuleOpenAdjacentToMaze, "개방 공간이 최소 1개 있고, 미로 공간과 인접해 있다", passed, detail, true);
         }
 
-        private static int[]? FindOpenMazeAdjacency(MapGraph graph)
+        /// <summary>
+        /// True when a passage joins two storeys — a 계단 or a 투하구.
+        /// <para>
+        /// The same test <c>MapGraph.LongestStraightRun</c> makes before it lets a sight
+        /// line begin, for the same reason: an edge that spans a floor is not a corridor
+        /// and the things §12 measures along corridors are not measurable along it. It is
+        /// duplicated here rather than shared because <see cref="MapGraph"/> keeps its
+        /// copy private; <see cref="MapGraph.StoreyChangeMetres"/> is public precisely so
+        /// the two cannot answer differently.
+        /// </para>
+        /// </summary>
+        private static bool JoinsStoreys(MapGraph graph, int edgeId)
         {
+            var a = graph.Nodes[graph.Edges[edgeId].A].Position.Y;
+            var b = graph.Nodes[graph.Edges[edgeId].B].Position.Y;
+            return System.Math.Abs(a - b) > MapGraph.StoreyChangeMetres;
+        }
+
+        /// <summary>
+        /// The map's 개방 공간 grouped into rooms: maximal sets of 개방 공간 nodes joined
+        /// to each other by passages that stay on one storey.
+        /// <para>
+        /// One room rather than one node, because §12's 15~25 m is a property of the
+        /// VOLUME and no single node has a size. Storey-changing edges are cut first, so
+        /// two halls stacked one above the other with a 투하구 between them are two rooms
+        /// and not one 30 m one.
+        /// </para>
+        /// </summary>
+        private static List<int[]> OpenSpaceRooms(MapGraph graph)
+        {
+            var rooms = new List<int[]>();
+            var seen = new bool[graph.Nodes.Length];
+
             for (var i = 0; i < graph.Nodes.Length; i++)
             {
-                if (!graph.Nodes[i].Has(MapNodeKind.OpenSpace))
+                if (seen[i] || !graph.Nodes[i].Has(MapNodeKind.OpenSpace))
                 {
                     continue;
                 }
 
-                var incident = graph.IncidentEdges(i);
+                var room = new List<int>();
+                var stack = new Stack<int>();
+                stack.Push(i);
+                seen[i] = true;
+
+                while (stack.Count > 0)
+                {
+                    var at = stack.Pop();
+                    room.Add(at);
+
+                    var incident = graph.IncidentEdges(at);
+                    for (var k = 0; k < incident.Length; k++)
+                    {
+                        if (JoinsStoreys(graph, incident[k]))
+                        {
+                            continue;
+                        }
+
+                        var other = graph.Edges[incident[k]].Other(at);
+                        if (!seen[other] && graph.Nodes[other].Has(MapNodeKind.OpenSpace))
+                        {
+                            seen[other] = true;
+                            stack.Push(other);
+                        }
+                    }
+                }
+
+                rooms.Add(room.ToArray());
+            }
+
+            return rooms;
+        }
+
+        /// <summary>
+        /// How far apart a room's two furthest places stand, in metres, measured
+        /// straight rather than by walking.
+        /// <para>
+        /// Straight-line because that is what 개방 공간 MEANS: the declaration says this
+        /// rectangle is one volume you can see across, which is exactly why
+        /// <c>RunnerTest</c> refuses to count a bend inside one as cover. Measuring the
+        /// walk instead would credit a room for the corridor topology under it, which is
+        /// the topology the declaration exists to override.
+        /// </para>
+        /// </summary>
+        private static float Span(MapGraph graph, int[] room, out int[] furthest)
+        {
+            var best = 0f;
+            furthest = new[] { room[0], room[0] };
+
+            for (var i = 0; i < room.Length; i++)
+            {
+                for (var k = i + 1; k < room.Length; k++)
+                {
+                    var gap = Vec3.DistanceFlat(
+                        graph.Nodes[room[i]].Position, graph.Nodes[room[k]].Position);
+                    if (gap > best)
+                    {
+                        best = gap;
+                        furthest = new[] { room[i], room[k] };
+                    }
+                }
+            }
+
+            return best;
+        }
+
+        /// <summary>
+        /// The 개방 공간 · 미로 공간 pair where a room meets the maze, or null when it
+        /// does not.
+        /// </summary>
+        /// <param name="graph">The map.</param>
+        /// <param name="room">Node ids of one 개방 공간, from <see cref="OpenSpaceRooms"/>.</param>
+        /// <param name="acrossStoreys">
+        /// False for the rule itself — a 진입 is a doorway you walk through. True only to
+        /// name the near miss in a failure message, so that a map joined to its maze by
+        /// nothing but a 투하구 is told which edge it was hoping counted.
+        /// </param>
+        private static int[]? MazeTouching(MapGraph graph, int[] room, bool acrossStoreys)
+        {
+            for (var i = 0; i < room.Length; i++)
+            {
+                var incident = graph.IncidentEdges(room[i]);
                 for (var k = 0; k < incident.Length; k++)
                 {
-                    var other = graph.Edges[incident[k]].Other(i);
+                    if (JoinsStoreys(graph, incident[k]) != acrossStoreys)
+                    {
+                        continue;
+                    }
+
+                    var other = graph.Edges[incident[k]].Other(room[i]);
                     if (graph.Nodes[other].Has(MapNodeKind.MazeSpace))
                     {
-                        return new[] { i, other };
+                        return new[] { room[i], other };
                     }
                 }
             }

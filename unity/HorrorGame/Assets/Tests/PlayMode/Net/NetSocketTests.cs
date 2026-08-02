@@ -381,11 +381,13 @@ namespace HorrorGame.Tests.PlayMode.Net
             // having predicted it.
             _manager.networkAddress = Loopback;
 
-            Assert.That(_manager.maxConnections, Is.EqualTo(GameConstants.PlayersPerMatch),
-                "HorrorGameNetworkManager.Awake sets maxConnections from GameConstants.PlayersPerMatch. This is the "
-                + "cap a socket actually enforces in the shipped build. GameConstants.PlayersPerMatch is "
-                + GameConstants.PlayersPerMatch + " and §11's field is " + GameConstants.RaceRunnersMax + "; the only "
-                + "line that raises it is RaceLobby.EnsureManager, which runs only if something opens the lobby.");
+            Assert.That(_manager.maxConnections, Is.EqualTo(GameConstants.RaceRunnersMax),
+                "HorrorGameNetworkManager.Awake sets maxConnections, and StartServer hands it to "
+                + "NetworkServer.Listen — this is the cap a socket actually enforces in the shipped build. It read "
+                + "GameConstants.PlayersPerMatch (" + GameConstants.PlayersPerMatch + ") until the co-operative "
+                + "game was pivoted away, and was corrected afterwards by RaceLobby.EnsureManager — which does run, "
+                + "but only for a server started through the lobby's 호스트 button. §11's field is "
+                + GameConstants.RaceRunnersMax + " for every server this component starts, including this one.");
 
             _manager.StartServer();
 

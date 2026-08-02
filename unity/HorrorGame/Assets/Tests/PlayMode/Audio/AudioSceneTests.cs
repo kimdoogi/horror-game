@@ -47,6 +47,13 @@ namespace HorrorGame.Tests.PlayMode.Audio
         /// <summary>Seconds to let a crossfade or an occlusion probe settle. Longer than both time constants.</summary>
         private const float SettleSeconds = 1.5f;
 
+        /// <summary>
+        /// The scene <c>SoloPlaytest.BuildScene</c> writes — the only one this fixture
+        /// loads. Named at fixture scope so <see cref="PutTheSceneBack"/> can unload it
+        /// without depending on which test left it standing.
+        /// </summary>
+        private const string SoloSceneName = "Map_FirstSketch_Solo";
+
         private readonly List<GameObject> _spawned = new List<GameObject>();
 
         private SurfaceAudioLibrary? _surfaces;
@@ -108,6 +115,36 @@ namespace HorrorGame.Tests.PlayMode.Audio
             if (_library != null)
             {
                 Object.DestroyImmediate(_library);
+            }
+        }
+
+        /// <summary>
+        /// Puts an empty scene back after the one test here that loads a match.
+        /// <para>
+        /// <b>Why this moved out of the test body.</b> It used to be the last four lines of
+        /// <see cref="TheSoloPlaytestScene_ComesOutAudible"/>, which means it only ran when
+        /// that test <em>passed</em> — every assertion above it leaves the eight-storey solo
+        /// scene loaded for the rest of the run, and the failure that causes is silent,
+        /// order-dependent and lands on somebody else's fixture. That is the exact shape of
+        /// the leak <c>LobbyEntryWiringTests</c> shipped, so it is closed the same way and
+        /// in the same place: a teardown, which runs on the failing path too.
+        /// </para>
+        /// <para>
+        /// Alongside the plain <c>[TearDown]</c> rather than merged into it, because that
+        /// one runs synchronously and <c>UnloadSceneAsync</c> needs frames; the two touch
+        /// nothing in common, so their order does not matter. It costs nothing on the
+        /// fixture's other tests — none of them loads a scene, so the guard falls through.
+        /// </para>
+        /// </summary>
+        [UnityTearDown]
+        public IEnumerator PutTheSceneBack()
+        {
+            var solo = UnityEngine.SceneManagement.SceneManager.GetSceneByName(SoloSceneName);
+            if (solo.IsValid() && solo.isLoaded)
+            {
+                var blank = UnityEngine.SceneManagement.SceneManager.CreateScene("AudioTests_Blank");
+                UnityEngine.SceneManagement.SceneManager.SetActiveScene(blank);
+                yield return UnityEngine.SceneManagement.SceneManager.UnloadSceneAsync(solo);
             }
         }
 
@@ -503,7 +540,7 @@ namespace HorrorGame.Tests.PlayMode.Audio
         public IEnumerator TheSoloPlaytestScene_ComesOutAudible()
         {
 #if UNITY_EDITOR
-            const string ScenePath = "Assets/Scenes/Map_FirstSketch_Solo.unity";
+            const string ScenePath = "Assets/Scenes/" + SoloSceneName + ".unity";
 
             if (!System.IO.File.Exists(ScenePath))
             {
@@ -548,12 +585,10 @@ namespace HorrorGame.Tests.PlayMode.Audio
             Assert.That(rig.Zones!.CurrentBed, Is.Not.Null,
                 "§12's room tone. The player is standing somewhere, and somewhere has a floor.");
 
-            // Put an empty scene back, or every test after this one inherits a whole
-            // match — including its GameAudio, which would evict the one SetUp builds.
-            var loaded = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
-            var blank = UnityEngine.SceneManagement.SceneManager.CreateScene("AudioTests_Blank");
-            UnityEngine.SceneManagement.SceneManager.SetActiveScene(blank);
-            yield return UnityEngine.SceneManagement.SceneManager.UnloadSceneAsync(loaded);
+            // The empty scene goes back in PutTheSceneBack, not here. Here it only ran when
+            // every assertion above it passed, and a whole match inherited by the rest of
+            // the run — GameAudio included, which evicts the one SetUp builds — is not a
+            // thing that should depend on this test succeeding.
 #else
             Assert.Ignore("Editor only — the built scene is reached through EditorSceneManager.");
             yield break;

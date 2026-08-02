@@ -91,8 +91,26 @@ namespace HorrorGame.Tests.PlayMode.UI
             }
         }
 
-        [TearDown]
-        public void RemoveTheShell()
+        /// <summary>
+        /// Removes the shell <em>and</em> the scenes it left standing.
+        /// <para>
+        /// The shell half was always here. The scene half was not, and it is the same
+        /// defect <c>LobbyEntryWiringTests</c> shipped: this test walks Bootstrap →
+        /// Map_FirstSketch_Solo and used to leave whichever it reached loaded for the rest
+        /// of the run. Today that is invisible because <c>UI</c> sorts last of the PlayMode
+        /// fixtures, which is luck and not a design — the same omission in <c>Net</c> cost
+        /// three silent failures in <c>PlayerRig</c> and <c>Presence</c>, and the only
+        /// difference between the two cases is a letter. Bootstrap carries a collidable
+        /// corridor backdrop and three lamps; the match scene carries eight storeys.
+        /// </para>
+        /// <para>
+        /// Both are named rather than "whatever is loaded" because a fixture that unloads
+        /// scenes it did not load would silently swallow somebody else's leak instead of
+        /// exposing it.
+        /// </para>
+        /// </summary>
+        [UnityTearDown]
+        public IEnumerator RemoveTheShell()
         {
             var shell = GameShell.Instance;
             if (shell != null)
@@ -108,6 +126,28 @@ namespace HorrorGame.Tests.PlayMode.UI
 
             MatchPause.Clear();
             SettingsStore.OverrideDirectory(null);
+
+            // Blank scene first: Unity refuses to unload the last loaded scene, and after a
+            // Single load one of these two is all there is.
+            var blank = default(Scene);
+            var names = new[] { MenuScene, MatchScene };
+
+            for (var i = 0; i < names.Length; i++)
+            {
+                var scene = SceneManager.GetSceneByName(names[i]);
+                if (!scene.IsValid() || !scene.isLoaded)
+                {
+                    continue;
+                }
+
+                if (!blank.IsValid())
+                {
+                    blank = SceneManager.CreateScene("UiFlowTests_Empty");
+                    SceneManager.SetActiveScene(blank);
+                }
+
+                yield return SceneManager.UnloadSceneAsync(scene);
+            }
         }
     }
 }

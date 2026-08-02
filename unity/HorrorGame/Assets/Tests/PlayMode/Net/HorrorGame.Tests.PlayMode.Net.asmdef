@@ -10,7 +10,8 @@
         "HorrorGame.UI",
         "Mirror",
         "Mirror.Components",
-        "Mirror.Transports"
+        "Mirror.Transports",
+        "kcp2k"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

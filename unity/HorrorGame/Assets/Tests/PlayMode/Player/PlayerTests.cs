@@ -30,9 +30,33 @@ namespace HorrorGame.Tests.PlayMode.PlayerRig
         private GameObject? _floor;
         private GameObject? _body;
 
+        /// <summary>
+        /// The scene's roots as they stood before <c>PlayerFeelHarness</c> was let loose,
+        /// or null when no test has built one. A field rather than a local so the pruning
+        /// can happen in <see cref="TearDown"/> — see there.
+        /// </summary>
+        private System.Collections.Generic.HashSet<GameObject>? _rootsBeforeHarness;
+
+        /// <summary>
+        /// Puts everything back — including the two things that used to be put back inside
+        /// a test body, where they only ran if the test passed.
+        /// <para>
+        /// Both matter to somebody else. <c>LogAssert.ignoreFailingMessages</c> is global
+        /// and sticky: a failure between setting it and clearing it leaves every later
+        /// PlayMode test unable to see an error at all, which is worse than no suite —
+        /// <c>AudioSceneTests.TearDown</c> makes the same argument in the same words. And
+        /// <c>PlayerFeelHarness</c> parks a player and a pacer at the <em>scene root</em>,
+        /// so a failure mid-harness leaves a second <c>PlayerMotor</c> standing in the
+        /// active scene for <c>PresenceSessionTests</c> and <c>UiFlowTests</c> to trip
+        /// over. That is the same silent, order-dependent shape as the Bootstrap scene
+        /// <c>LobbyEntryWiringTests</c> used to leave loaded, only smaller.
+        /// </para>
+        /// </summary>
         [TearDown]
         public void TearDown()
         {
+            LogAssert.ignoreFailingMessages = false;
+
             if (_body != null)
             {
                 Object.DestroyImmediate(_body);
@@ -43,6 +67,19 @@ namespace HorrorGame.Tests.PlayMode.PlayerRig
             {
                 Object.DestroyImmediate(_floor);
                 _floor = null;
+            }
+
+            if (_rootsBeforeHarness != null)
+            {
+                foreach (var root in UnityEngine.SceneManagement.SceneManager.GetActiveScene().GetRootGameObjects())
+                {
+                    if (!_rootsBeforeHarness.Contains(root))
+                    {
+                        Object.DestroyImmediate(root);
+                    }
+                }
+
+                _rootsBeforeHarness = null;
             }
         }
 
@@ -347,7 +384,10 @@ namespace HorrorGame.Tests.PlayMode.PlayerRig
         {
             LogAssert.ignoreFailingMessages = true;
 
-            var before = new System.Collections.Generic.HashSet<GameObject>(
+            // Handed to TearDown rather than kept local: the pruning below used to be the
+            // last thing in this method, so a failed assertion left the harness's player
+            // and pacer standing at the scene root for every test after this one.
+            _rootsBeforeHarness = new System.Collections.Generic.HashSet<GameObject>(
                 UnityEngine.SceneManagement.SceneManager.GetActiveScene().GetRootGameObjects());
 
             var host = new GameObject("harness");
@@ -362,17 +402,8 @@ namespace HorrorGame.Tests.PlayMode.PlayerRig
                 "§14 asks one person to answer questions 1 and 2 alone; the harness has to stand "
                 + "itself up.");
 
-            // The harness parks its player and its pacer at the scene root, so anything new
-            // has to go or it leaks into whichever test runs next.
-            foreach (var root in UnityEngine.SceneManagement.SceneManager.GetActiveScene().GetRootGameObjects())
-            {
-                if (!before.Contains(root))
-                {
-                    Object.DestroyImmediate(root);
-                }
-            }
-
-            LogAssert.ignoreFailingMessages = false;
+            // The harness parks its player and its pacer at the scene root, and TearDown
+            // removes them — on this path and on the failing one alike.
         }
 
         // ------------------------------------------------------------------- fixtures

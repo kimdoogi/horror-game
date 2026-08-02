@@ -12,15 +12,29 @@ namespace HorrorGame.EditorTools.SceneGen
     /// start on the outer ring of B1 and the first to reach the middle of B8 wins.
     /// </para>
     /// <code>
-    ///  B1 [콘크리트]  ─┐  20명이 외곽 고리에서 출발
-    ///  B2 [나무]      ─┤  투하구는 중심, 착지는 다음 층의 외곽
-    ///  B3 [금속]      ─┤
-    ///  B4 [자갈]      ─┤  괴물은 여기서 시작한다 — 절반쯤 내려간 곳
-    ///  B5 [타일]      ─┤
-    ///  B6 [카펫]      ─┤
-    ///  B7 [물]        ─┤
-    ///  B8 [흙]        ─┘  중심 = 도착점
+    ///                    20명이 외곽 고리에서 출발.  층마다 괴물 하나, 중심에서 시작
+    ///                    투하구는 중심, 착지는 다음 층의 외곽      괴물이 듣는 거리
+    ///  B1 [콘크리트]  ─┐                                            17.5 m
+    ///  B2 [나무]      ─┤                                            28.0 m
+    ///  B3 [금속]      ─┤                                            35.0 m
+    ///  B4 [자갈]      ─┤                                            24.5 m
+    ///  B5 [타일]      ─┤                                            29.8 m
+    ///  B6 [카펫]      ─┤                                             7.7 m
+    ///  B7 [물]        ─┤                                            35.0 m
+    ///  B8 [흙]        ─┘  중심 = 도착점                             14.0 m
     /// </code>
+    /// <para>
+    /// <b>그 오른쪽 열은 고른 값이 아니라 계산된 값이다.</b> A creature hears a footstep
+    /// when the WALKED distance to it is under
+    /// <c>GameConstants.MonsterFootstepHearingRange</c> × the surface's §12 clarity ×
+    /// how hard the runner is working — <c>MatchDirector.ReportFootsteps</c> hands that
+    /// range to <c>MonsterBrain.FindLoudestAudibleSound</c>, which measures with
+    /// <c>NavigableDistance</c> and not through walls. 35 m × <c>ListenerClarity*</c> is
+    /// therefore the radius each floor's creature owns, and because §12 gives every storey
+    /// its own surface, the same creature is a different animal on every floor: it hears a
+    /// third of B3 and B7 and one fourteenth of B6. Nobody chose that curve; the surface
+    /// alphabet chose it. See <see cref="PlaceStarts"/>.
+    /// </para>
     /// <para>
     /// <b>The storeys sit directly on top of each other, and this time that is the point.</b>
     /// The building that came before spiralled, because a <see cref="MapSketch.Stair"/> needs
@@ -106,16 +120,64 @@ namespace HorrorGame.EditorTools.SceneGen
         }
 
         /// <summary>
-        /// Twenty starting positions round the rim of B1, and the creature halfway down.
+        /// Twenty starting positions round the rim of B1, and one creature on every storey.
         /// <para>
         /// The starts are spread over the outer band's own cell list so nobody begins beside
         /// anybody: twenty players on a 80-cell ring is one every four cells, which is far
         /// enough that the first thing you see is a corridor rather than a crowd.
         /// </para>
         /// <para>
-        /// The creature starts on B4, in the middle. §12-B wants the descent to get more
-        /// dangerous rather than to start that way — put it on B1 and twenty people meet it
-        /// at the starting line; put it on B8 and the first four floors are a walk.
+        /// <b>Eight creatures, one per storey, because §07 asks for eight and the building
+        /// cannot move one.</b> §07's 순찰 column is written in ZONES — "1개 구역", "2개
+        /// 구역", "절반", "전체" — and on this map a zone IS a storey: <see cref="Build"/>
+        /// calls <c>AddZone</c> once per level, so the building has eight of them, inside
+        /// <c>GameConstants.ZoneCountMax</c>. Run §07's own table through
+        /// <c>ThreatTier.PatrolZoneCountFor(8)</c> and it asks for 1 zone at 초저녁, 2 at
+        /// 밤, 4 at 심야 (<c>PatrolScope.HalfTheMap</c>) and 8 at 새벽 and 동트기 전
+        /// (<c>WholeMap</c>). A creature cannot answer that by walking: a
+        /// <see cref="MapSketch.Chute"/> is one-way and is not a NavMesh link, so the storey
+        /// a creature is authored on is the only storey it will ever stand on. Eight zones
+        /// asked for at minute 24, eight creatures authored at minute 0. One creature at
+        /// B5's middle can satisfy §07's first row and nothing after it.
+        /// </para>
+        /// <para>
+        /// <b>B1 included, and the objection that kept it empty does not survive being
+        /// measured.</b> The old comment here read "put it on B1 and twenty people meet it at
+        /// the starting line". They do not. The creature is seeded at the MIDDLE, and §12-D
+        /// measured this generator's own 외곽→중심 path at 118 m; a creature hears a footstep
+        /// only when the walked distance is under 35 m × the surface's clarity, and B1 is
+        /// 콘크리트 — <c>GameConstants.ListenerClarityConcrete</c> 0.50, so 17.5 m. The
+        /// starting ring is a hundred metres outside its hearing. It is also outrun: §07's
+        /// 초저녁 row is <c>ThreatSpeedEarlyEvening</c> 4.4 m/s, BELOW §05's 달리기 4.5, so
+        /// for the first eight minutes — the whole of a leader's race, 8 × 26 s — a creature
+        /// costs a detour and a sprint rather than a life. §06's "달리기로는 도망칠 수 없다"
+        /// is the 심야 row, and 심야 belongs to whoever is late (§07 지각자 처벌).
+        /// </para>
+        /// <para>
+        /// <b>One kind of creature, not eight stat blocks.</b> §07 makes speed, 정지 and the
+        /// flashlight penalty functions of the CLOCK — <c>ThreatTier</c>'s constructor is
+        /// <c>internal</c> precisely so nothing can invent a per-floor monster — so a second
+        /// ladder written into the map would contradict the one §07 already runs. The
+        /// per-floor difference the descent needs is here anyway and is 4.5× wide: hearing is
+        /// 35 m × <c>ListenerClarity</c>, and §12 gives each storey its own surface, so the
+        /// creature owns 17.5 m of B1, 28.0 of B2, 35.0 of B3, 24.5 of B4, 29.8 of B5, 7.7 of
+        /// B6, 35.0 of B7 and 14.0 of B8. <b>That sequence is not a descent curve</b> — it
+        /// peaks at B3 and B7, bottoms at B6, and B8's 흙 (0.40) is the second quietest floor
+        /// in the building while holding §02's finish. The escalation with depth is the
+        /// clock's, because in a race downward depth IS elapsed time; the map's job is only
+        /// to make sure §07 has somewhere to escalate on every floor.
+        /// </para>
+        /// <para>
+        /// <b>The middle of the floor, which is a seed and not a post.</b> DESCENT-PIVOT §2③:
+        /// "괴물은 중심에서 시작해 안쪽 두 고리를 돈다". At t=0 every runner is on B1's rim,
+        /// 118 m from every middle in the building, so no creature begins the match within
+        /// hearing of anybody; by the time the leader reaches a middle its creature has
+        /// patrolled off it. What the seed guarantees is §12-B lever 3 — 외곽은 안전하고
+        /// 중심은 위험하다 — on all eight floors instead of one. B8 is the one place this
+        /// rule lands on something else: §12-C says out loud that "B8의 중심은 투하구가
+        /// 아니라 도착점", so B8's creature is the only one seeded on an 출입구. That is the
+        /// situation §12's own <c>concealment-near-exit</c> rule was written for (§07 새벽),
+        /// and this map already satisfies it.
         /// </para>
         /// </summary>
         private static void PlaceStarts(MapSketch sketch, RadialStoreyResult[] floors)
@@ -131,9 +193,49 @@ namespace HorrorGame.EditorTools.SceneGen
                 sketch.PlayerStart(cell.X, cell.Z, 0);
             }
 
-            var midway = Storeys / 2;
-            sketch.MonsterStart(Centre, Centre, midway);
+            // THE PRIMARY IS DECLARED LAST, and that ordering is the whole safety of this
+            // change. MapSketch.MonsterStart as it stands keeps ONE creature — the last
+            // call overwrites the field — and the runtime downstream is still
+            // single-creature too: MatchMap hands MatchDirector MonsterSpawns[0] and
+            // MonsterShot.IsAnchor matches the bare name "MonsterSpawn". So the last
+            // declaration is the primary, in both a MapSketch that has grown a list and one
+            // that has not. Put B5's middle last and an unpatched MapSketch produces exactly
+            // the map that ships today — one creature at B5, y −15.0 — rather than silently
+            // moving it to whichever floor happened to be authored last. The change is inert
+            // if its other half does not land, which is the only honest way to write half a
+            // change into a file you own when the other half is in a file you do not.
+            //
+            // B5 is the primary for the reason the single placement always had: it is
+            // Storeys / 2, half way down, so a build that can only carry one creature carries
+            // it where §12-B wants the descent to turn dangerous rather than start that way.
+            var primary = Storeys / 2;
+
+            for (var level = 0; level < Storeys; level++)
+            {
+                if (level == primary)
+                {
+                    continue;
+                }
+
+                SeedCreature(sketch, floors[level], level);
+            }
+
+            SeedCreature(sketch, floors[primary], primary);
         }
+
+        /// <summary>
+        /// Puts one creature in the middle of a storey.
+        /// <para>
+        /// From the floor's OWN recorded middle rather than from <see cref="Centre"/>, for
+        /// the same reason <see cref="RingOf"/> measures from it: the constant is where the
+        /// tower's axis is, <see cref="RadialStoreyResult.Centre"/> is where this floor's
+        /// middle actually got built, and only the second one is still right if a storey is
+        /// ever moved off the axis. It is also the exact cell <see cref="MarkPlaces"/> hangs
+        /// B8's 도착점 on, so the creature and the finish agree about where a middle is.
+        /// </para>
+        /// </summary>
+        private static void SeedCreature(MapSketch sketch, RadialStoreyResult floor, int level) =>
+            sketch.MonsterStart(floor.Centre.X, floor.Centre.Z, level);
 
         /// <summary>
         /// Joins each storey's middle to the rim of the one below.

@@ -26,6 +26,30 @@ namespace HorrorGame.Tests.PlayMode.Interaction
     /// remaining test.
     /// </para>
     /// <para>
+    /// <b>Why this test did not go the same way, decided 2026-08-03.</b> The shop test was
+    /// deleted because the thing it drove is unreachable — <c>MatchDirector.PlaceVehicle</c>
+    /// is on the co-operative branch and the only scene with a <c>MatchDirector</c> ships
+    /// <c>_raceMode: 1</c>. The 궤짝 is the opposite case, and it was checked rather than
+    /// assumed: <c>PlaceLoot</c> is called <em>inside</em> the race branch of
+    /// <c>BeginMatch</c> (<c>MatchDirector.cs:421</c>), so §08's loot is spawned into every
+    /// race, the 궤짝 is in the shipped solo scene, and this test picks it up and puts it
+    /// down through the real crosshair and the real key. It is live code, it is reachable
+    /// by a player, and its drop placement is broken — deleting the test would leave all
+    /// three true and unwatched.
+    /// </para>
+    /// <para>
+    /// <b>The feature's own future, stated because the test's is downstream of it.</b>
+    /// <c>docs/DESCENT-PIVOT.md</c> §3 lists 「§08 전리품 · 크레딧 · 판매」 under 버린다
+    /// (통화가 없다) and §7 step 7 is 「상점/전리품/단서 제거」 — a step that has not run.
+    /// Until it does, a runner in a race about speed can pick up a 1.28 m 궤짝 that blocks
+    /// their view and takes their sprint, for no reward that exists any more. The right
+    /// end state is that step 7 removes the <c>PlaceLoot</c> call from the race branch and
+    /// this test dies with it. What must <em>not</em> happen is this test being deleted
+    /// first: <c>DropPlacement</c> and the crosshair-and-key path outlive §08 either way —
+    /// F-006 §5c puts battery cells on the floor for runners to find — so the coverage has
+    /// to be re-pointed at whatever the runner actually carries, not dropped.
+    /// </para>
+    /// <para>
     /// <b>Why not in EditMode.</b> <c>SoloMatchLoopTests</c> and
     /// <c>DropPlacementTests</c> both cover parts of this and both call the methods
     /// directly. That leaves the player's own path untested: the crosshair finding the
@@ -187,18 +211,31 @@ namespace HorrorGame.Tests.PlayMode.Interaction
                 + " m above the surface under it");
 
             // ---- it is not inside a wall ---------------------------------
-            var box = piece.GetComponent<Collider>();
-            Assert.That(box, Is.Not.Null, "the dropped 궤짝 has no collider, so it cannot be found again");
+            // The probe is the piece's OWN oriented box, not its world AABB. That
+            // distinction was wrong here and it mattered: the check used to take
+            // Collider.bounds — an axis-aligned box — and hand its extents to an
+            // OverlapBox rotated by the piece's yaw, which is two different boxes
+            // mixed. On the 1.276 × 0.694 m 궤짝 at 45° the AABB is 0.697 m
+            // half-extent on both axes, so the rotated probe measured 1.27 × 1.27 m —
+            // 0.29 m of phantom crate on each side of the short axis, in a corridor
+            // §12 gives 2.2 m of clear width. That is enough to report a wall that is
+            // not touching the piece, which is a test that fails on its own harness.
+            var box = piece.GetComponent<BoxCollider>();
+            Assert.That(box, Is.Not.Null,
+                "the dropped 궤짝 has no BoxCollider, so the crosshair cannot find it again "
+                + "(Interactable.FitTrigger fits one to every prop)");
 
-            var bounds = box!.bounds;
-            var extents = bounds.extents - (Vector3.one * WallCheckShrinkMetres);
-            if (extents.x > 0f && extents.y > 0f && extents.z > 0f)
+            var size = Vector3.Scale(box!.size, box.transform.lossyScale);
+            var centre = box.transform.TransformPoint(box.center);
+            var pose = box.transform.rotation;
+            var half = (size * 0.5f) - (Vector3.one * WallCheckShrinkMetres);
+
+            if (half.x > 0f && half.y > 0f && half.z > 0f)
             {
-                var buried = Physics.OverlapBox(
-                    bounds.center, extents, piece.transform.rotation, ~0, QueryTriggerInteraction.Ignore);
+                var buried = Physics.OverlapBox(centre, half, pose, ~0, QueryTriggerInteraction.Ignore);
                 Assert.That(buried.Length, Is.Zero,
-                    "§08's dropped 궤짝 is inside " + (buried.Length > 0 ? buried[0].name : "geometry")
-                    + " — a piece a player cannot see or reach");
+                    "§08's dropped 궤짝 is inside the geometry — a piece a player cannot see or reach.\n"
+                    + Burial(box!, centre, size, pose, buried));
             }
 
             // ---- it is still pickable ------------------------------------
@@ -422,6 +459,70 @@ namespace HorrorGame.Tests.PlayMode.Interaction
                 "the Input System never delivered the key to Keyboard.current, so this run proves nothing "
                 + "about the game");
         }
+
+        /// <summary>
+        /// How badly the piece is buried, in a form that decides the next step rather than
+        /// just naming a collider.
+        /// <para>
+        /// <b>Why a shrink walk and not <c>ComputePenetration</c>.</b> The obvious call
+        /// returns a depth and a push direction, and it does not work here: it refuses any
+        /// pair involving a non-convex <c>MeshCollider</c>, and every kit piece is exactly
+        /// that — the FBXes import with <c>addColliders: 1</c> and one merged shell per
+        /// module. <c>OverlapBox</c> is the only query that answers against a triangle
+        /// mesh, so the depth is measured by asking it repeatedly with a smaller box and
+        /// reporting the first size that comes clear.
+        /// </para>
+        /// <para>
+        /// <b>What the number means.</b> A piece that comes clear at a few centimetres is a
+        /// tolerance argument — this test's own <see cref="WallCheckShrinkMetres"/> is
+        /// grazing kit geometry and the placement is essentially right. A piece that needs
+        /// tens of centimetres is through a wall, and the cause is upstream:
+        /// <c>DropPlacement.ClearOfGeometry</c> sweeps a sphere of
+        /// <c>Interactable.MinimumTargetMetres * 0.5</c> = 0.15 m — the crosshair's aim
+        /// tolerance — and stops the piece's <em>centre</em> that far from whatever it
+        /// finds. The 궤짝 is 1.276 × 0.694 m in plan, so it needs 0.35 m of room broadside
+        /// and 0.64 m end-on. Nothing in the drop path has ever asked for it.
+        /// </para>
+        /// </summary>
+        private static string Burial(
+            BoxCollider piece, Vector3 centre, Vector3 size, Quaternion pose, Collider[] hits)
+        {
+            var log = new StringBuilder();
+            log.AppendLine("  piece    at " + piece.transform.position.ToString("0.000")
+                + "  yaw " + piece.transform.eulerAngles.y.ToString("0.0") + "°"
+                + "  box " + size.ToString("0.000") + " m");
+
+            for (var i = 0; i < hits.Length; i++)
+            {
+                log.AppendLine("  inside   " + hits[i].name);
+            }
+
+            var smallest = Mathf.Min(size.x, Mathf.Min(size.y, size.z)) * 0.5f;
+            for (var shrink = WallCheckShrinkMetres; shrink < smallest; shrink += BurialProbeStepMetres)
+            {
+                var half = (size * 0.5f) - (Vector3.one * shrink);
+                if (half.x <= 0f || half.y <= 0f || half.z <= 0f)
+                {
+                    break;
+                }
+
+                if (Physics.OverlapBox(centre, half, pose, ~0, QueryTriggerInteraction.Ignore).Length == 0)
+                {
+                    log.AppendLine("  clear at " + shrink.ToString("0.00")
+                        + " m off every side. Under ~0.1 m this is a tolerance argument; above it "
+                        + "the piece is through the wall and DropPlacement's 0.15 m sweep is the "
+                        + "cause — it never asks whether the piece itself fits.");
+                    return log.ToString();
+                }
+            }
+
+            log.AppendLine("  never comes clear, however far the probe is shrunk — the piece's own "
+                + "centre is inside the geometry, not just its corners.");
+            return log.ToString();
+        }
+
+        /// <summary>Step of the burial-depth walk, metres. A centimetre: finer than the fix would be judged to.</summary>
+        private const float BurialProbeStepMetres = 0.01f;
 
         /// <summary>Everything the crosshair path depends on, for a failure that names its cause.</summary>
         private static string Diagnose(Camera camera, Interactable target, PlayerInteractor interactor)

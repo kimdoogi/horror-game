@@ -310,6 +310,53 @@ namespace HorrorGame.Core
         /// <summary>Line of sight must stay broken this long to release aggro, seconds. §06.</summary>
         public const float AggroReleaseLineOfSightBreak = 3f;
 
+        /// <summary>
+        /// Seconds a chase must cost a runner before the creature counts as a decision
+        /// rather than as scenery — 하강's replacement for §12's 주자 테스트 band.
+        /// <para>
+        /// <b>Why a toll and not a survival rate.</b> §12's 실전 검증 grades a map on whether
+        /// aggro can be broken (5~7/10 적정), and that was the right question when §04 gave
+        /// one player in four a sprint and the creature could wipe a team. v1.0 deleted §04
+        /// and handed 질주 5.6 m/s to all twenty runners, so "can you get away" now has one
+        /// answer for everybody and §06's own arithmetic already gives it: a runner who is
+        /// 10 m clear opens the remaining 2 m of <see cref="AggroReleaseDistance"/> in 2.5 s.
+        /// What the race grades instead is what getting away <em>costs</em>, because §07
+        /// says outright 「시간이 유일한 통화다」 and §02 decides the match on 먼저 닿는다 —
+        /// order of arrival, not survival. See docs/BALANCE-FINDINGS.md F-013.
+        /// </para>
+        /// <para>
+        /// <b>Where 3.4 s comes from.</b> It is not chosen; it is the race's own price list.
+        /// DESCENT-PIVOT §2② prices the one deliberate way a runner can cost a rival time:
+        /// shut a door (<see cref="DoorShutSeconds"/>) and the pursuer must break it
+        /// (<see cref="DoorBreakSeconds"/>) — 「닫고 도망치면 3.4초를 번다」. So 3.4 s is the
+        /// smallest advantage this game already treats as worth standing still for. A chase
+        /// that costs less than one door is a chase a runner can rationally ignore, and
+        /// 「escapable」 becomes 「ignorable」 — which is the failure 720/720 was suspected of
+        /// and which the toll, not the rate, is what actually detects.
+        /// </para>
+        /// <para>
+        /// <b>The other end of the band is not a constant here, because §12-D's number has
+        /// none.</b> A chase must not cost more than solving the storey it happened on, or it
+        /// is indistinguishable from being sent back up a floor and §01's descent is nine legs
+        /// instead of eight. §12-D's shortest legal centre path is 90 m, which at
+        /// <see cref="RunSpeed"/> is 20.0 s. <c>MapValidator</c> does not implement §12-D's
+        /// <c>centre-path</c> rule, so there is nothing to hang a constant off yet.
+        /// </para>
+        /// <para>
+        /// <b>Measured, seed 20260802, all 720 places of the shipped building:</b> toll
+        /// min 3.4 s · median 7.2 s · p75 9.2 s · max 25.5 s — <b>0 below this floor</b> and
+        /// 7 (1.0 %) above the 20.0 s ceiling. The 중심 band gives back a median 15.0 m of
+        /// ground and the 외곽 band −10.0 m, which is §12-B③ 「외곽은 안전하고 중심은
+        /// 위험하다」 appearing as a number for the first time.
+        /// </para>
+        /// <para>
+        /// Inert until an instrument reads it: <c>RunnerTest</c> records ElapsedSeconds and
+        /// GapMetres but never the ground given back, and <c>RunnerCensus</c> reports only
+        /// the pass rate. F-013 carries the diff that makes both report the toll.
+        /// </para>
+        /// </summary>
+        public const float ChaseTollSecondsMin = DoorBreakSeconds - DoorShutSeconds;
+
         /// <summary>Runner sprint duration on a full bar, seconds. §06.</summary>
         public const float SprintStaminaSeconds = 12f;
 
@@ -476,6 +523,49 @@ namespace HorrorGame.Core
         /// </para>
         /// </summary>
         public const int RaceRunnersMax = 20;
+
+        /// <summary>
+        /// Creatures the descent puts on each storey. §12-B③.
+        /// <para>
+        /// <b>§12-B③ states it and no section counts it.</b> 「괴물이 안쪽을 순찰한다 …
+        /// 외곽은 안전하고 중심은 위험하다」 is written about every floor, and the audit says
+        /// what the building actually does: <em>no creature on 7 of 8 storeys, so §06 was not
+        /// asked of them</em> (/tmp/r4_gen.log, 2026-08-03). One <c>MonsterStart</c> exists,
+        /// on B5.
+        /// </para>
+        /// <para>
+        /// <b>Why the count is per storey rather than per building.</b> The descent's NavMesh
+        /// bakes as one island per floor — the audit's own line, <em>islands 8 ← the surface
+        /// is in pieces</em>, which is correct here because a 투하구 is a fall and not a path.
+        /// A creature therefore cannot walk to another floor, ever. §07 compounds it: its
+        /// 순찰 column is counted in 구역 (1 at 초저녁, 2 at 밤) and this building is one zone
+        /// per storey, so even the floor that has a creature is patrolled by it for one or two
+        /// zones' worth of a race §01 sizes at 12~20 minutes. Anything below one per storey
+        /// means the storey has no §06 in it at all, and 「escapable from everywhere」 stops
+        /// being a statement about the map.
+        /// </para>
+        /// <para>
+        /// <b>Why exactly one, and why it does not scale with the field.</b> §12-A refuses to
+        /// widen the gates for a bigger race — 「관문 수는 인원과 무관하게 고정이다 … 붐비는
+        /// 것이 설계」 — and the creature is the other fixed hazard on the same floor, so it
+        /// takes the same rule: two runners and twenty runners meet the same building. One is
+        /// also what §01 needs to stay true — 「괴물은 이길 수 없는 적」 is a statement about a
+        /// thing you avoid, and a floor with several of them is a floor you route around
+        /// rather than descend.
+        /// </para>
+        /// <para>
+        /// <b>Nothing reads it yet, and authoring alone will not make it true.</b>
+        /// <c>DescentMap.PlaceStarts</c> now calls <c>MonsterStart</c> once per storey, but
+        /// <c>MapSketch.MonsterStart</c> assigns a single <c>_monsterStart</c> field — last
+        /// write wins — and the runtime below it is single-creature too: <c>MatchMap</c>
+        /// exposes one <c>MonsterSpawn</c> and <c>MatchDirector</c> owns one <c>_monster</c>.
+        /// So the shipped map still has exactly one creature and the audit still reads
+        /// <em>1 of 8 storeys</em>. This constant is what the sketch's spawn list and the
+        /// director's spawn loop should be written against. docs/BALANCE-FINDINGS.md F-013 §5
+        /// has the three links and which one is done.
+        /// </para>
+        /// </summary>
+        public const int MonstersPerStorey = 1;
 
         /// <summary>
         /// How close the monster must come to a path point to count as having
@@ -1273,10 +1363,46 @@ namespace HorrorGame.Core
         /// <summary>Escape routes every candidate site must have. §12.</summary>
         public const int CandidateSiteMinExits = 2;
 
-        /// <summary>Runner-test success rate below which the map is too hard. §12.</summary>
+        /// <summary>
+        /// Runner-test success rate below which the map is too hard. §12.
+        /// <para>
+        /// <b>Unreachable, and the arithmetic says so rather than an opinion.</b> Held at
+        /// §12's written value so the report keeps quoting the section honestly, but nothing
+        /// should be spent trying to land inside this band again — three working passes have
+        /// been, and the grade has never moved off 10/10. With cover continuous (which §12's
+        /// own 시야 차단 지점 간격 guarantees past the first 20 m of any route) a release
+        /// needs
+        /// <code>
+        /// RunnerSprintSpeed × max(AggroReleaseLineOfSightBreak,
+        ///                         (AggroReleaseDistance − RunnerTestAggroStartDistance)
+        ///                         ÷ (RunnerSprintSpeed − MonsterBaseSpeed))
+        ///   = 5.6 × max(3 s, 2 m ÷ 0.8 m/s)  =  16.8 m of route past one bend
+        /// </code>
+        /// and §12 mandates an S자 통로 of 10 m × 2 per zone, caps a straight at
+        /// <see cref="MaxStraightCorridor"/>, and requires <see cref="LoopsTotalMin"/> 순환로.
+        /// A map cannot obey §12's construction rules and fail §12's own 실전 검증. The band
+        /// describes maps the rest of §12 forbids.
+        /// </para>
+        /// <para>
+        /// It holds across the whole of §07 too, so this is not an artefact of grading at
+        /// 심야: 초저녁/밤/심야 all need 16.8 m, 새벽 needs 18.7 m and 동트기 전 —
+        /// <see cref="ThreatSpeedBeforeSunrise"/>, the fastest the creature ever gets — needs
+        /// 28.0 m, against §12-D's own 90~140 m centre path per storey.
+        /// </para>
+        /// <para>
+        /// <b>What replaced it.</b> The band asks the co-op question, "can aggro be broken";
+        /// the race asks §07's and §02's question, "what did breaking it cost". See
+        /// <see cref="ChaseTollSecondsMin"/> and docs/BALANCE-FINDINGS.md F-013.
+        /// </para>
+        /// </summary>
         public const float RunnerTestPassRateMin = 0.50f;
 
-        /// <summary>Runner-test success rate above which the map is too easy. §12.</summary>
+        /// <summary>
+        /// Runner-test success rate above which the map is too easy. §12. Held at §12's
+        /// written value — see <see cref="RunnerTestPassRateMin"/> for why no map that obeys
+        /// §12 can ever score under it, and <see cref="ChaseTollSecondsMin"/> for the grade
+        /// the race is measured by instead.
+        /// </summary>
         public const float RunnerTestPassRateMax = 0.70f;
 
         /// <summary>
@@ -1315,6 +1441,33 @@ namespace HorrorGame.Core
         /// at 15 m a single corner already clears
         /// <see cref="SingleCornerMinDistance"/> on its own, so the test would stop
         /// measuring the 연속 차단 structures §12 exists to require.
+        /// </para>
+        /// <para>
+        /// <b>That justification died with §04 and the value is kept anyway — deliberately.</b>
+        /// The table's conclusion is 「주자는 멀리서 어그로를 걸어야 한다」, a rule about §04's
+        /// 주자 <em>choosing</em> the range to taunt from. §04 is deleted (v1.0: 「직업 —
+        /// 삭제됨. 전원 동일하다」) and nobody taunts in a race: aggro starts wherever the
+        /// creature acquires you, which down one of this map's 15~20 m legs is most of a leg
+        /// and at a junction in the 안쪽 고리 is one cell — §01's 「마주치면 피할 수 없다」,
+        /// which is §12's own ❌ row.
+        /// </para>
+        /// <para>
+        /// <b>It is kept because it is not a knob.</b> Every value inside <see cref="Validate"/>'s
+        /// feasible region is on one side or the other of a cliff, never on a slope. A release
+        /// needs the runner to sprint <c>(AggroReleaseDistance − this) ÷ 0.8 m/s</c>, i.e.
+        /// <c>7 × (12 − this)</c> metres of route, against the 60 m of
+        /// <see cref="SprintMaxTravelDistance"/> the test explores: below 3.43 m nothing on
+        /// any map escapes, above it a §12-legal map escapes from everywhere. RadialStorey's
+        /// own sweep of the shipped floor measured that cliff at 3.4 m → 0% and 3.6 m → 100%,
+        /// which is 7 × 8.6 = 60.2 m against 7 × 8.4 = 58.8 m exactly. Moving this constant
+        /// changes which side of the cliff the report lands on and nothing about the game.
+        /// </para>
+        /// <para>
+        /// <b>And it is load-bearing elsewhere.</b> <see cref="SightBreakPointSpanMax"/> is
+        /// defined as <see cref="SingleCornerMinDistance"/> less this value, so lowering it
+        /// <em>loosens</em> a MapValidator rule the shipped map already fails. Changing it to
+        /// make one report greener would quietly relax a different gate. docs/BALANCE-FINDINGS.md
+        /// F-013.
         /// </para>
         /// </summary>
         public const float RunnerTestAggroStartDistance = 10f;
@@ -1621,6 +1774,16 @@ namespace HorrorGame.Core
             Require(DoorRepairFraction > 0f && DoorRepairFraction < 1f,
                 "§07: a door that fully repairs makes the building the same at 동트기 전 "
                 + "as at 초저녁, and one that never repairs makes a single flash permanent.");
+            Require(ChaseTollSecondsMin > DoorShutSeconds,
+                "§12-B②/DESCENT-PIVOT: the toll a chase charges has to beat the cheapest "
+                + "deliberate way to cost a rival time, which is shutting a door on them. "
+                + "Below that, being chased is not worse than being overtaken and the "
+                + "creature stops entering anybody's decisions.");
+            Require(ChaseTollSecondsMin > AggroReleaseLineOfSightBreak,
+                "§06: a release fires as soon as AggroReleaseLineOfSightBreak of cover has "
+                + "held, so a toll at or under that is paid by the release itself — the chase "
+                + "would cost nothing beyond the seconds it was already on screen, which is "
+                + "「escapable」 collapsing into 「ignorable」.");
 
             Require(MonsterLungeSpeed > MonsterBaseSpeed,
                 "§06: a lunge that is no faster than the chase is not a lunge — the "
@@ -1659,6 +1822,13 @@ namespace HorrorGame.Core
                 "§12 계단: on grating the creature has to hear you before it could ever see "
                 + "you. That contrast with 병동 is the whole reason the building has more "
                 + "than one surface.");
+
+            Require(MonstersPerStorey >= 1,
+                "§12-B③: 「괴물이 안쪽을 순찰한다 … 외곽은 안전하고 중심은 위험하다」 is written "
+                + "about every floor, and the descent's NavMesh is one island per storey — the "
+                + "괴물 cannot walk to a floor it is not standing on. Below one per storey a "
+                + "runner on that floor is not escaping anything, and the 실전 검증's "
+                + "「escapable」 stops being a statement about the map.");
 
             Require(MonsterPatrolNoticeRange > MonsterAttackRange,
                 "§06: the creature has to notice before it strikes, or the two are one "

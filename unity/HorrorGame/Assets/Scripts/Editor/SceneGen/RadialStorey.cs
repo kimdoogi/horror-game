@@ -33,12 +33,38 @@ namespace HorrorGame.EditorTools.SceneGen
     /// maze and is the opposite: it is cover every 10 m, and §12's own arithmetic says cover
     /// that close is free — a runner who is never more than 5 m from a corner can break aggro
     /// from anywhere, which is precisely the 10/10 너무 쉽다 the 주자 테스트 kept reporting.
-    /// Measured on the shipped map, seed 20260802: 774 bends, mean nearest-neighbour spacing
-    /// <b>3.1 m</b>, <b>0 of them</b> inside §12's 15~25 m 시야 차단 지점 간격, and the whole
-    /// storey collapsing into ONE 시야 차단 지점 155 m deep. The legs are now 6~8 cells —
-    /// 15~20 m, the window between §12's spacing floor and its straight-corridor ceiling —
-    /// and the same measurement reads 496 bends in 48 지점, all 48 of them spaced inside
-    /// 15~25 m. See <see cref="MinLegCells"/>.
+    /// Recorded then, seed 20260802: 774 bends, mean nearest-neighbour spacing <b>3.1 m</b>,
+    /// <b>0 of them</b> inside §12's 15~25 m 시야 차단 지점 간격, and the whole storey
+    /// collapsing into ONE 시야 차단 지점 155 m deep. The legs are now 6~8 cells — 15~20 m,
+    /// the window between §12's spacing floor and its straight-corridor ceiling. See
+    /// <see cref="MinLegCells"/>.
+    /// </para>
+    /// <para>
+    /// <b>That moved the census and it did NOT move the rule, and the two must not be
+    /// confused again.</b> Measured on the map this generator writes today, seed 20260802,
+    /// all eight storeys (720 places, 814 passages): 496 bends outside 개방 공간, grouped
+    /// into <b>48 시야 차단 지점</b> where there used to be one, the deepest of them
+    /// <b>95 m</b> instead of 155 m. That part is real and it is what the leg lengths bought.
+    /// The spacing itself did not move at all: nearest-neighbour between bends is
+    /// <b>2.5 m~7.5 m, mean 3.5 m, 0 of 496 inside §12's 15~25 m band</b>, and
+    /// <c>sight-break-spacing</c> is still <b>[FAIL]</b> — on 16 of the 48 지점 being deeper
+    /// than the <c>GameConstants.SightBreakPointSpanMax</c> 4.4 m a single piece of cover is
+    /// allowed, not on the gaps between them.
+    /// </para>
+    /// <para>
+    /// <b>Why the leg length cannot move that number, which is the part worth keeping.</b>
+    /// <see cref="MinLegCells"/> is the length of a LEG; the census measures the gap between
+    /// BENDS. A jog is a one-cell rung (<see cref="BandThickness"/> 2, so depth 1), so it
+    /// plants two bends 2.5 m apart however long the straights either side of it are — and
+    /// the alcoves, the gate mouths and the 중심 add more of the same. The histogram of
+    /// passage lengths on the shipped graph says it plainly: 432 × 2.5 m, 120 × 5.0,
+    /// 112 × 7.5, 32 × 10.0, 8 × 12.5, 64 × 15.0, 32 × 17.5, and 14 × 37.2 (the 투하구). The
+    /// long straights the leg rule asks for are there; so are <b>432 passages one cell
+    /// long</b>. Reaching §12's 15~25 m 시야 차단 지점 간격 would mean a band with no rungs,
+    /// no alcoves and no gate mouths — which is a band with no S자 통로 (rule 3), no 막힌 길
+    /// to hit §12's 20~25% (rule 5) and no three-way junction to hang a 후보 지점 on
+    /// (rule 9). What is still open is the 지점 SPAN, and that is a question about how far a
+    /// runner can travel inside one continuous piece of cover — B-007.
     /// </para>
     /// <para>
     /// <b>What that does NOT fix, measured rather than hoped.</b> The 주자 테스트 still reads
@@ -84,12 +110,23 @@ namespace HorrorGame.EditorTools.SceneGen
         /// <b>The band used to jog every 4 cells and that was the defect.</b> A jog every
         /// 10 m puts a runner within 5 m of cover from anywhere on the floor, and §12's own
         /// arithmetic says cover that close is free: "괴물이 그 모퉁이에 도달하는 시간 =
-        /// D / 4.8초, 시야 차단 3초가 필요 → D ≥ 14.4m". Measured on the shipped map, seed
-        /// 20260802: 774 bends at a mean nearest-neighbour spacing of <b>3.1 m</b>, and
-        /// <b>0 of 774</b> inside §12's 15~25 m band. The floor was not a maze with long
-        /// sight lines — its longest sight line was 17.5 m — it was a carpet of corners,
-        /// which is the same thing as no corners at all. §12's own prescription for a
-        /// 너무 쉽다 map is "시야 차단 지점을 줄인다", and this is that number.
+        /// D / 4.8초, 시야 차단 3초가 필요 → D ≥ 14.4m". Recorded on that map, seed 20260802:
+        /// 774 bends at a mean nearest-neighbour spacing of <b>3.1 m</b>, and <b>0 of 774</b>
+        /// inside §12's 15~25 m band. The floor was not a maze with long sight lines — its
+        /// longest sight line was 17.5 m — it was a carpet of corners, which is the same
+        /// thing as no corners at all. §12's own prescription for a 너무 쉽다 map is
+        /// "시야 차단 지점을 줄인다", and this is that number.
+        /// </para>
+        /// <para>
+        /// <b>What six delivered, measured on the map that ships now rather than hoped for.</b>
+        /// Same seed, all eight storeys: 774 bends → <b>496</b>, and the whole storey's single
+        /// 155 m-deep 시야 차단 지점 → <b>48 지점</b>, deepest 95 m. The nearest-neighbour
+        /// figure this paragraph opens with did NOT improve: it is <b>2.5~7.5 m, mean 3.5 m,
+        /// 0 of 496 in the band</b>, because the number that decides it is the 2.5 m rung at
+        /// every jog and not the straight either side of it. The class remarks carry the
+        /// arithmetic. Six is still the right floor for a LEG — it is what keeps a straight
+        /// from being shorter than §12's own 시야 차단 지점 간격 — but nobody should read this
+        /// constant as the fix for <c>sight-break-spacing</c>, because it measurably is not.
         /// </para>
         /// <para>
         /// 15~20 m is a one-cell-wide window and both walls are §12's: below 6 cells the
@@ -244,18 +281,35 @@ namespace HorrorGame.EditorTools.SceneGen
             // the only way to say so, and it is honest here for the reason its own remarks
             // give — the rectangle is the footprint of a room that is actually built.
             //
-            // <b>It also flips open-adjacent-to-maze from FAIL to pass, and that is the part
-            // to be careful about.</b> The rule asks for an 개방 공간 touching a 미로 공간
-            // and now gets one: the chamber, with the 안쪽 gate's passage against its
-            // doorway. What the rule is FOR — "멀리서 어그로를 건다 · 시야 15~25m 확보" —
-            // this does not deliver, and no storey of this building can. Measured: the
-            // chamber is 7.5 m across, and the only kit piece with §12's 15~25 m sight line
-            // is Hall_Open_20x20, which is 6.3 m tall on a 3.75 m storey — in a tower where
-            // all eight floors share one square, MapSketch.IntrudesOnStoreyAbove drops it on
-            // every storey but B1. The 개방 공간 this floor deserves is written up in the
-            // report beside this change; it needs a piece the kit does not have, or a
-            // chamber welded into a band, and neither is a change that can be measured
-            // without a bake.
+            // <b>It does NOT satisfy open-adjacent-to-maze, and for one round it looked as
+            // though it did.</b> The chamber gives the rule the arrow it asks for — the
+            // 안쪽 gate's passage stands against the chamber's doorway, on the same storey,
+            // on all eight floors — and gives it nothing else. §12 says in the same breath
+            // what an 개방 공간 is FOR: "멀리서 어그로를 건다 · 시야 15~25m 확보". Measured
+            // on the shipped graph, seed 20260802: every one of the eight chambers spans
+            // 7.1 m between its furthest two cells (7.5 m of footprint), against §12's 15 m
+            // floor. MapValidator now measures that span, so the rule reads [FAIL] and says
+            // 7.1 m out loud instead of passing on the arrow alone.
+            //
+            // <b>It went green for a worse reason than the arrow, and the reason is worth
+            // recording.</b> The rule walked the raw graph, and the first 개방 공간 cell it
+            // reached with a 미로 공간 neighbour was this chamber's chute mouth — whose
+            // neighbour is the LANDING one storey down, 37.2 m away in plan and 3.75 m below.
+            // It rendered a one-way 투하구 as "opens directly into". A fall is not a doorway;
+            // the validator will not accept a storey-changing edge as 인접 any more.
+            //
+            // No storey of this building can pass the rule as it stands. The only kit piece
+            // with §12's 15~25 m sight line is Hall_Open_20x20, which is 6.3 m tall on a
+            // 3.75 m storey — in a tower where all eight floors share one square,
+            // MapSketch.IntrudesOnStoreyAbove drops it on every storey but B1, because for
+            // every other level the cells over it are somebody's corridor. What a floor
+            // would have to GAIN is a real 개방 공간 at least 15 m across on its own storey:
+            // a kit piece that is wide and no taller than a storey, or a band segment
+            // widened into a hall and declared with OpenRoom. Both are geometry changes that
+            // need a bake to judge, and both are somebody's job rather than a comment's.
+            // Until then the honest state of this rule is FAIL — and MapSceneGenerator's
+            // KnownFailingRules already carries it, listed as retired by the §01 pivot, so
+            // the map still writes.
             s.OpenRoom(centreX - 1, centreZ - 1, 3, 3);
 
             result.Centre = new MapCell(centreX, centreZ, level);

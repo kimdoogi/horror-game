@@ -44,6 +44,11 @@ namespace HorrorGame.Net
         [SerializeField]
         private bool _refuseLateJoins = true;
 
+        [Tooltip("Give every connection a networked runner as soon as it reports ready. §01's race has no "
+                 + "spectators, so a connection without a body is a player who cannot start.")]
+        [SerializeField]
+        private bool _spawnRunnerForEachPlayer = true;
+
         private NetLobby? _lobby;
 
         /// <summary>Which wire this session is running on.</summary>
@@ -55,9 +60,33 @@ namespace HorrorGame.Net
         /// <inheritdoc />
         public override void Awake()
         {
-            // §11 fixes the party at four. Mirror counts the host among them, so this
-            // is the whole table, not four guests.
-            maxConnections = GameConstants.PlayersPerMatch;
+            // ---------------------------------------------------------------
+            // §11's field, on the component that owns the number.
+            //
+            // This is the value a socket actually enforces: NetworkManager.StartServer
+            // hands it to NetworkServer.Listen, and NetworkServer.IsConnectionAllowed
+            // kicks anything past it before a NetworkConnectionToClient is ever built.
+            //
+            // It used to read GameConstants.PlayersPerMatch — the co-operative game's
+            // four — and be corrected afterwards by RaceLobby.EnsureManager, which
+            // writes GameConstants.RaceRunnersMax over it. Two things were wrong with
+            // that, and only one of them is the obvious one. RaceLobby.EnsureManager
+            // does run: RaceLobby.Install is a [RuntimeInitializeOnLoadMethod] that
+            // hands LobbyEntry its Intercept, GameShell.BeginFromMenu calls
+            // LobbyEntry.TryOpen (LobbyEntryWiringTests asserts exactly that), and
+            // RequestHost / RequestJoin call EnsureManager. So a human pressing 시작
+            // and then 호스트 did get twenty. What did not was every other way a
+            // server can start — a manager placed in a scene, a StartServer from a
+            // test or a tool, any future entry point — because each of those would
+            // have to remember to repeat a line that lives in another assembly. §11's
+            // ceiling is a property of this component, not a courtesy the lobby does
+            // for it.
+            //
+            // Twenty is a MAP limit before it is a network one (§12-A fixes the gates
+            // at 4 → 2 → 1 and §11 refuses to widen them with the field), which is why
+            // it is RaceRunnersMax and not "as many as the transport will hold".
+            // ---------------------------------------------------------------
+            maxConnections = GameConstants.RaceRunnersMax;
 
             // §13's budget argument depends on the traffic staying inside what Steam
             // relays for free, and §05's five synced rows are cheap at this rate.
@@ -71,6 +100,17 @@ namespace HorrorGame.Net
             if (singleton != this)
             {
                 return;
+            }
+
+            // Mirror's auto-create path Instantiates playerPrefab and logs an error
+            // when it is null. There is no runner prefab asset in this project and
+            // NetRunner explains why there cannot be one yet, so the body is built in
+            // OnServerReady instead — the same moment in the handshake, one message
+            // earlier. Left on with an empty prefab field, every join would fail with
+            // "The PlayerPrefab is empty on the NetworkManager".
+            if (playerPrefab == null)
+            {
+                autoCreatePlayer = false;
             }
 
             EnsureTransport();
@@ -187,21 +227,134 @@ namespace HorrorGame.Net
                 return;
             }
 
-            // §11's party is four. A fifth arrival is turned away at the door rather
-            // than admitted as a spectator: there is no spectator role in §04, and a
-            // fifth player in voice range would break §03's "말로 전달" constraint by
-            // being an extra memory that never has to go downstairs.
-            //
             // The seat's name is the transport address — which is the host's Steam id
             // on the Steam wire — and the lobby UI resolves it to a persona name
             // through ILobbyService.Members. Deliberately not a string the client
             // sends: §13 gets identity from Steam (계정 / 신원), and a self-declared
             // name is an impersonation vector even among four friends.
+            //
+            // A full lobby no longer disconnects the arrival, and that is the pivot
+            // showing through rather than a relaxation. NetLobby is §04's table: four
+            // seats, five roles, exactly one absent. §04's roles were deleted when
+            // this became §01's twenty-runner race, so "all four seats are taken" is
+            // now a statement about a mode that no longer exists.
+            //
+            // It is a latent cap rather than an active one today, and that is worth
+            // saying precisely: no lobby is spawned on the race path — _lobbyPrefab is
+            // empty on the manager RaceLobby builds at runtime, and NetLobby.Instance
+            // is null until something spawns one — so this branch is currently
+            // unreachable. It would arm itself the day anybody spawns a NetLobby, and
+            // then the fifth runner would be refused with maxConnections reading
+            // twenty and no line in the log explaining it. The ceiling that counts is
+            // §11's, and Mirror enforces it in NetworkServer.IsConnectionAllowed from
+            // the value Awake set above.
             if (lobby.TrySeat(conn.connectionId, conn.address) < 0)
             {
-                Debug.Log("[Net] Refusing a connection: all " + GameConstants.PlayersPerMatch + " seats are taken.");
-                conn.Disconnect();
+                Debug.Log(
+                    "[Net] Runner " + conn.connectionId + " joined without a §04 lobby seat: all "
+                    + GameConstants.PlayersPerMatch + " are taken. §11's field is "
+                    + GameConstants.RaceRunnersMax + " and the race needs no seat, so this is not a refusal.");
             }
+        }
+
+        /// <summary>
+        /// Gives an arriving connection a body. §01's race has no spectators.
+        /// <para>
+        /// <b>Why <c>OnServerReady</c> and not <c>OnServerAddPlayer</c>.</b> Mirror
+        /// reaches <c>OnServerAddPlayer</c> only through
+        /// <c>OnServerAddPlayerInternal</c>, which refuses — with a
+        /// <c>Debug.LogError</c> — when <c>autoCreatePlayer</c> is on and
+        /// <c>playerPrefab</c> is null. This project has no runner prefab asset (see
+        /// <see cref="NetRunner"/>), so <c>Awake</c> turns that flag off and the body
+        /// is added one message earlier, on the ready that every client sends anyway.
+        /// <c>NetworkServer.AddPlayerForConnection</c> sets the connection ready
+        /// itself, so nothing in the handshake is skipped.
+        /// </para>
+        /// <para>
+        /// The asset id is <see cref="NetRunner.AssetId"/> rather than a prefab's,
+        /// which is the whole reason a client can build the same object: the spawn
+        /// message carries that number and every client registered a handler for it
+        /// in <see cref="OnStartClient"/>.
+        /// </para>
+        /// <para>
+        /// <b>A body exists from ready, not from descent.</b> <c>RaceLobby</c> says "a
+        /// lobby spawns nobody", and this arrives one phase earlier than that sentence
+        /// expects: a runner is created while the party is still in §11's lobby and
+        /// stands at the origin until the map places it. That is deliberate — the
+        /// client sends <c>ReadyMessage</c> exactly once, at connect, so a spawn gated
+        /// on <see cref="NetSessionPhase.InMatch"/> would never fire at all. The
+        /// standing cost is one spawn message and one idle object per member —
+        /// <see cref="NetPlayer"/> reports nothing until an owner binds a view source,
+        /// so its SyncVars never go dirty in a lobby — and that is the honest price of
+        /// having one spawn path instead of two.
+        /// <see cref="_spawnRunnerForEachPlayer"/> turns it off for anything that wants
+        /// the other trade.
+        /// </para>
+        /// </summary>
+        public override void OnServerReady(NetworkConnectionToClient conn)
+        {
+            if (_spawnRunnerForEachPlayer && conn.identity == null && TryAddRunner(conn))
+            {
+                // AddPlayerForConnection already called SetClientReady and spawned the
+                // observers, so calling base here would send every observed object a
+                // second time.
+                return;
+            }
+
+            base.OnServerReady(conn);
+        }
+
+        /// <summary>
+        /// Builds one runner and hands it to Mirror. Destroys it again if Mirror
+        /// refuses — an object with a <c>NetworkIdentity</c> that was never spawned is
+        /// a leak that survives the session, because nothing on the server's side
+        /// knows to clean it up.
+        /// </summary>
+        private bool TryAddRunner(NetworkConnectionToClient conn)
+        {
+            var runner = NetRunner.Build("NetRunner [connId=" + conn.connectionId + "]");
+
+            // §01 starts the field on the rim of B1. Mirror's start positions are the
+            // engine-level way to say that; with none registered this is the origin,
+            // and the map's own spawn logic moves the runner afterwards through
+            // NetPlayer.TeleportTo — which exists precisely so a placement is not
+            // mistaken for a client claiming to have run there.
+            var start = GetStartPosition();
+            if (start != null)
+            {
+                runner.transform.SetPositionAndRotation(start.position, start.rotation);
+            }
+
+            if (NetworkServer.AddPlayerForConnection(conn, runner, NetRunner.AssetId))
+            {
+                return true;
+            }
+
+            Destroy(runner);
+            return false;
+        }
+
+        /// <summary>
+        /// Teaches this machine how to build a runner somebody else owns.
+        /// <para>
+        /// Registered here rather than in <c>Awake</c> because
+        /// <c>NetworkClient.Shutdown</c> clears the spawn handler table — anything
+        /// registered before a session would be gone by the second one, which is the
+        /// same trap <c>RaceLobby.RegisterClientHandlers</c> already documents for
+        /// message handlers.
+        /// </para>
+        /// </summary>
+        public override void OnStartClient()
+        {
+            base.OnStartClient();
+            NetRunner.RegisterClientSpawnHandler();
+        }
+
+        /// <inheritdoc />
+        public override void OnStopClient()
+        {
+            NetRunner.UnregisterClientSpawnHandler();
+            base.OnStopClient();
         }
 
         /// <inheritdoc />
@@ -214,7 +367,17 @@ namespace HorrorGame.Net
         }
 
         /// <summary>
-        /// Spawns a player and tells it which of §04's roles it is.
+        /// Spawns a player from a <c>playerPrefab</c> and tells it which of §04's
+        /// roles it is.
+        /// <para>
+        /// <b>Not the path the race takes.</b> Mirror only reaches this when
+        /// <c>autoCreatePlayer</c> is on, which <c>Awake</c> turns off while there is
+        /// no prefab — and there is none. §01's runner is added in
+        /// <see cref="OnServerReady"/> from <see cref="NetRunner"/> instead. This
+        /// override is kept because the day a runner prefab exists it becomes the
+        /// better path, and because deleting it would delete the role assignment
+        /// below with it.
+        /// </para>
         /// <para>
         /// The role comes from the lobby's <c>RoleSelection</c>, which is the core's
         /// copy and the only authoritative one. A player who has not picked yet
