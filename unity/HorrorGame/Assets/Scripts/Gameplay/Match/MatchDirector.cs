@@ -162,6 +162,9 @@ namespace HorrorGame.Gameplay.Match
         /// <summary>Every 투하구 in the scene, wired at match start. §01.</summary>
         private readonly List<Chute> _chutes = new List<Chute>();
 
+        /// <summary>§02's standings in the scene. Null outside race mode.</summary>
+        private RaceDirector? _raceDirector;
+
         /// <summary>§02's standings. The host owns this — see RaceState.</summary>
         private readonly RaceState _race = new RaceState(GameConstants.RaceRunnersMax);
         private int _activeSeed;
@@ -444,6 +447,7 @@ namespace HorrorGame.Gameplay.Match
 
                 BindHud();
                 _hud?.CloseShop();
+                AttachRace();
 
                 _running = true;
                 _seed = seed;
@@ -842,6 +846,7 @@ namespace HorrorGame.Gameplay.Match
             StepClueRead();
             CheckGrab();
             CheckChutes();
+            _raceDirector?.Tick(_clock.ElapsedSeconds);
 
             while (_clock.TryDequeueTierAdvance(out var crossed))
             {
@@ -1096,6 +1101,63 @@ namespace HorrorGame.Gameplay.Match
                           + _clock.ElapsedSeconds.ToString("0") + "초", this);
                 return;
             }
+        }
+
+        /// <summary>
+        /// Stands §02 up: the director that owns the standings, and the HUD that shows
+        /// them.
+        /// <para>
+        /// Attached at match start rather than authored into the scene, which is the same
+        /// arrangement the doors and the 투하구 already use and for the same reason — the
+        /// scene generator is in an editor assembly that cannot reference this one, so it
+        /// writes markers and the director wires them. It also means a race works in any
+        /// scene the generator produces with nothing to remember.
+        /// </para>
+        /// <para>
+        /// Solo for now: one runner, because §11's field arrives with the lobby. RaceState
+        /// refuses fewer than two — one runner is not a race and nothing in §12's geometry
+        /// means anything without somebody to be ahead of — so a solo playtest is begun as
+        /// a field of two with the second seat empty. That is a scaffold and it is marked
+        /// as one; the lobby replaces it.
+        /// </para>
+        /// </summary>
+        private void AttachRace()
+        {
+            _raceDirector = GetComponent<RaceDirector>() ?? gameObject.AddComponent<RaceDirector>();
+
+            var runners = Mathf.Max(GameConstants.RaceRunnersMin, PlayersInMatch);
+            if (!_raceDirector.Begin(runners))
+            {
+                Debug.LogError("[Match] §02 refused to start with " + runners + " runners.", this);
+                _raceDirector = null;
+                return;
+            }
+
+            if (_playerRoot != null)
+            {
+                _raceDirector.Track(LocalPlayerIndex, _playerRoot);
+            }
+
+            var hud = FindFirstObjectByType<RaceHud>();
+            if (hud == null)
+            {
+                var go = new GameObject("RaceHud");
+                go.transform.SetParent(transform, false);
+                hud = go.AddComponent<RaceHud>();
+            }
+
+            hud.Bind(_raceDirector);
+
+            _raceDirector.Finished += (id, place) =>
+                Debug.Log("[Match] §02 " + (place == 1 ? "우승" : place + "위") + " — 좌석 " + id, this);
+            _raceDirector.Closed += winner =>
+                Debug.Log("[Match] §02 경주 종료. 우승 좌석 " + winner, this);
+        }
+
+        /// <summary>How many seats this match has. One until §11's lobby fills them.</summary>
+        private int PlayersInMatch
+        {
+            get { return GameConstants.PlayersPerMatch; }
         }
 
         private void StepClueRead()
