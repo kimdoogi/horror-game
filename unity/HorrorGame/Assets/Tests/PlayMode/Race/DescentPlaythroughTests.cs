@@ -219,11 +219,34 @@ namespace HorrorGame.Tests.PlayMode.Racing
             // has two tests of its own (MonsterKillTests, MonsterChaseTests) and this one is the
             // chain. Destroyed rather than disabled, because MatchDirector calls
             // MonsterAgent.Simulate directly and a disabled component still answers a call.
-            var monster = Object.FindFirstObjectByType<MonsterAgent>();
-            if (monster != null)
+            //
+            // ALL of them, 2026-08-03, and the plural is the point. This line used to read
+            // FindFirstObjectByType and destroy one creature, which was the whole population
+            // when DescentMap seeded a single start in the middle of B5. §12-B③ now declares
+            // one per storey and MatchDirector.PrepareCreatures stands one up at each —
+            // measured on this run: "[Match] §06 창조물 8마리 — 8개 층에 선언된 시작점 8개".
+            // Destroying one of eight left seven creatures posted on exactly the cells the
+            // legs below walk to, and left WHICH floor got cleared up to whatever
+            // FindFirstObjectByType happened to return. The run still finished — but a pass
+            // that depends on seven creatures not noticing a runner standing in the middle of
+            // their floor is a pass for a reason this test does not name, and this repository
+            // has shipped enough of those. §06 belongs to MonsterKillTests and
+            // MonsterChaseTests; this test is the chain, and the chain is measured with the
+            // building empty.
+            var creatures = Object.FindObjectsByType<MonsterAgent>(
+                FindObjectsInactive.Include, FindObjectsSortMode.None);
+            for (var i = 0; i < creatures.Length; i++)
             {
-                Object.Destroy(monster.gameObject);
+                if (creatures[i] != null)
+                {
+                    Object.Destroy(creatures[i].gameObject);
+                }
             }
+
+            Assert.That(creatures.Length, Is.GreaterThan(0),
+                "no MonsterAgent in the scene at all. MatchDirector.PrepareCreatures builds one per "
+                + "MatchMap.MonsterSpawns entry and refuses to begin the match if it cannot, so zero here means "
+                + "the §06 half of this scene is not in the build and MonsterKillTests is measuring nothing.");
 
             yield return null;
 

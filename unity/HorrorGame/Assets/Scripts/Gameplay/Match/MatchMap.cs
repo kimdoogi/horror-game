@@ -55,8 +55,35 @@ namespace HorrorGame.Gameplay.Match
         /// <summary>Marker group of §01's entry points.</summary>
         public const string PlayerSpawnGroup = "PlayerSpawns";
 
-        /// <summary>Marker group holding the single §07 초저녁 monster start.</summary>
+        /// <summary>
+        /// Marker group holding §07's monster starts — one per storey on §01's tower.
+        /// <para>
+        /// Plural since the descent: §12-B③ writes 「괴물이 안쪽을 순찰한다」 about every
+        /// floor, <see cref="GameConstants.MonstersPerStorey"/> is the count that follows
+        /// from it, and a 투하구 is a fall rather than a path — so a creature can never
+        /// leave the floor it starts on and eight floors need eight starts. See
+        /// <see cref="MonsterSpawns"/>.
+        /// </para>
+        /// </summary>
         public const string MonsterSpawnGroup = "MonsterSpawns";
+
+        /// <summary>
+        /// The name the primary §07 start carries, bare. Mirrors
+        /// <c>MapSketch.PrimaryMonsterSpawnName</c>.
+        /// <para>
+        /// <b>Two files agree on this string and neither can see the other.</b> The sketch is
+        /// in an editor assembly and this is runtime, so the only thing joining them is the
+        /// marker name written into the scene. <c>MapSketch</c> gives the last-declared start
+        /// this exact name and every other start <c>MonsterSpawn_&lt;zone&gt;_&lt;node&gt;</c>,
+        /// so the bare one is the primary and <c>MonsterShot.IsAnchor</c> — which matches this
+        /// string exactly — keeps pointing at the creature a screenshot is supposed to be of.
+        /// </para>
+        /// <para>
+        /// See <see cref="MonsterSpawn"/> for why the primary matters at all once every start
+        /// carries a creature.
+        /// </para>
+        /// </summary>
+        public const string PrimaryMonsterSpawnName = "MonsterSpawn";
 
         /// <summary>
         /// Name prefix of the light the generator leaves burning at the 출입구. It is the
@@ -68,13 +95,15 @@ namespace HorrorGame.Gameplay.Match
         private readonly Transform[] _candidateSites;
         private readonly Transform[] _lootSpawns;
         private readonly Transform[] _playerSpawns;
+        private readonly Transform[] _monsterSpawns;
 
         private MatchMap(
             SiteCatalog catalog,
             Transform[] candidateSites,
             Transform[] lootSpawns,
             Transform[] playerSpawns,
-            Transform? monsterSpawn,
+            Transform[] monsterSpawns,
+            Transform? primaryMonsterSpawn,
             Vector3 entrance,
             bool hasSurface,
             int zoneCount)
@@ -83,7 +112,8 @@ namespace HorrorGame.Gameplay.Match
             _candidateSites = candidateSites;
             _lootSpawns = lootSpawns;
             _playerSpawns = playerSpawns;
-            MonsterSpawn = monsterSpawn;
+            _monsterSpawns = monsterSpawns;
+            MonsterSpawn = primaryMonsterSpawn;
             Entrance = entrance;
             HasSurface = hasSurface;
             ZoneCount = zoneCount;
@@ -110,7 +140,102 @@ namespace HorrorGame.Gameplay.Match
             get { return _playerSpawns; }
         }
 
-        /// <summary>Where §07's 초저녁 monster starts — the point furthest by walking from the 출입구.</summary>
+        /// <summary>
+        /// Every §07 monster start the scene carries, one per storey on §01's tower.
+        /// <para>
+        /// <b>A list rather than a point, because a creature cannot change floors.</b>
+        /// §12-C makes the 투하구 the only vertical join and makes it one-way, and the
+        /// NavMesh bakes accordingly — the audit's own line is <em>islands 8</em>, one per
+        /// storey. So the creature that starts on B5 patrols B5 for the whole match and
+        /// seven of eight floors have no §06 in them at all unless the map declares a start
+        /// on each. <see cref="GameConstants.MonstersPerStorey"/> is that count and this is
+        /// where the runtime reads it.
+        /// </para>
+        /// <para>
+        /// <b>Sorted by name, like every other marker group.</b> §13's replay guarantee
+        /// wants the same building on every machine, and the order this list is read in
+        /// decides which creature is which — <c>MatchDirector</c> stands one agent up per
+        /// entry. <see cref="MonsterSpawn"/> is the exception and says why.
+        /// </para>
+        /// <para>
+        /// <b>Empty is a legitimate answer and is not silently repaired.</b> A scene with
+        /// no MonsterSpawn group is a map with no antagonist; the host logs the count it
+        /// found and runs that many creatures, so the log and the game agree. Inventing a
+        /// spawn here would be the failure this repo keeps finding — a number that is right
+        /// in the report and absent from the build.
+        /// </para>
+        /// </summary>
+        public IReadOnlyList<Transform> MonsterSpawns
+        {
+            get { return _monsterSpawns; }
+        }
+
+        /// <summary>
+        /// Distinct storeys the monster starts are spread over.
+        /// <para>
+        /// <b>This is the audit's own number, computed from the object the game reads.</b>
+        /// <c>NavMeshConnectivity</c> prints 「over N of 8 storeys (§06)」 by grouping
+        /// MonsterSpawn markers by authored height, in the editor, before a match exists.
+        /// This asks the identical question of the identical markers at run time, so a
+        /// build whose audit says eight and whose match runs one has two numbers that
+        /// disagree in the same log. <c>MatchDirector</c> prints it at every
+        /// <c>BeginMatch</c> beside the number of creatures it actually stood up.
+        /// </para>
+        /// <para>
+        /// Grouped by <see cref="MapGraph.StoreyChangeMetres"/> — 1.8 m, "the vertical
+        /// separation above which two places are on different storeys and nothing sees
+        /// between them" — because that is already this project's answer to "same floor?"
+        /// and <see cref="IsOnSurface"/> asks it with the same constant. Two spawns on one
+        /// floor therefore count once, which is what makes this a storey count rather than
+        /// a rename of <c>MonsterSpawns.Count</c>.
+        /// </para>
+        /// </summary>
+        public int MonsterStoreyCount
+        {
+            get
+            {
+                var storeys = 0;
+                for (var i = 0; i < _monsterSpawns.Length; i++)
+                {
+                    var counted = false;
+                    for (var j = 0; j < i && !counted; j++)
+                    {
+                        counted = Mathf.Abs(_monsterSpawns[i].position.y - _monsterSpawns[j].position.y)
+                                  < MapGraph.StoreyChangeMetres;
+                    }
+
+                    if (!counted)
+                    {
+                        storeys++;
+                    }
+                }
+
+                return storeys;
+            }
+        }
+
+        /// <summary>
+        /// The primary §07 monster start — the one a single-creature reader means.
+        /// <para>
+        /// <b>The marker named bare <see cref="PrimaryMonsterSpawnName"/></b>, falling back
+        /// to the last one the sketch declared. Both channels point at the same marker and
+        /// both are the map's own statement: <c>MapSketch.BuildMonsterSpawns</c> names the
+        /// last declaration bare, and <c>DescentMap.PlaceStarts</c> declares B5's middle
+        /// last on purpose, so that a build which can carry only one creature carries it
+        /// half way down, "where §12-B wants the descent to turn dangerous rather than start
+        /// that way". <see cref="PrimaryMonsterStart"/> holds the rule.
+        /// </para>
+        /// <para>
+        /// With one marker in the group this is that marker, so a scene from before the
+        /// per-storey starts reads exactly as it did.
+        /// </para>
+        /// <para>
+        /// It is <em>not</em> what the match hunts with. <c>MatchDirector</c> stands up one
+        /// agent per entry of <see cref="MonsterSpawns"/>; this only decides which of them
+        /// is the scene's authored rig and which the presentation layers follow when they
+        /// can only follow one.
+        /// </para>
+        /// </summary>
         public Transform? MonsterSpawn { get; }
 
         /// <summary>
@@ -287,7 +412,8 @@ namespace HorrorGame.Gameplay.Match
                 ordered,
                 loot,
                 playerSpawns,
-                monsterSpawns.Length > 0 ? monsterSpawns[0] : null,
+                monsterSpawns,
+                PrimaryMonsterStart(markers),
                 entrance,
                 hasSurface,
                 zoneCount);
@@ -587,6 +713,48 @@ namespace HorrorGame.Gameplay.Match
         private static float FloorHeight(Transform[] playerSpawns, float fallback)
         {
             return playerSpawns.Length > 0 ? playerSpawns[0].position.y : fallback;
+        }
+
+        /// <summary>
+        /// Picks the primary §07 start out of the group, by the two channels a sketch has
+        /// for naming one — in the order the sketch itself declares them.
+        /// <list type="number">
+        /// <item><description><b>The bare <see cref="PrimaryMonsterSpawnName"/>.</b>
+        /// <c>MapSketch.BuildMonsterSpawns</c> gives that name to the primary and only to the
+        /// primary; every other start is <c>MonsterSpawn_&lt;zone&gt;_&lt;node&gt;</c>. It is
+        /// an explicit statement rather than an inference, so it is asked first.</description></item>
+        /// <item><description><b>The last child the group was BUILT with.</b>
+        /// <c>MapSceneBuilder.BuildMarkers</c> walks the sketch's marker list in order and
+        /// parents each object as it goes, so sibling order is declaration order — and
+        /// <c>DescentMap.PlaceStarts</c> declares B5's middle LAST on purpose, so that a
+        /// reader which can only carry one creature carries it half way down. Sibling order
+        /// is serialised into the scene, so this is stable across machines.</description></item>
+        /// </list>
+        /// <para>
+        /// The two agree on every map the generator writes today; they are both here because
+        /// they are written down in two different files that cannot see each other, and a
+        /// reader that honoured only one of them would silently move the shipped creature
+        /// the first time the other changed.
+        /// </para>
+        /// </summary>
+        private static Transform? PrimaryMonsterStart(Transform markers)
+        {
+            var group = markers.Find(MonsterSpawnGroup);
+            if (group == null || group.childCount == 0)
+            {
+                return null;
+            }
+
+            for (var i = 0; i < group.childCount; i++)
+            {
+                var child = group.GetChild(i);
+                if (string.Equals(child.name, PrimaryMonsterSpawnName, StringComparison.Ordinal))
+                {
+                    return child;
+                }
+            }
+
+            return group.GetChild(group.childCount - 1);
         }
 
         private static Transform[] ChildrenOf(Transform markers, string groupName)

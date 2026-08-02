@@ -1,0 +1,114 @@
+#nullable enable
+
+using System;
+using System.Collections.Generic;
+using HorrorGame.Core;
+
+namespace HorrorGame.Gameplay.Race
+{
+    /// <summary>
+    /// The two facts about the party that do not survive the descent's scene load on
+    /// their own. §11 · §13.
+    /// <para>
+    /// <b>Why a static and not a component.</b> Both are decided in <c>Bootstrap</c> and
+    /// wanted in the descent scene, and the load in between is a
+    /// <c>LoadSceneMode.Single</c> — every object that is not explicitly kept is destroyed
+    /// halfway through the handover. <c>RaceLobby.AgreedSeed</c> already carries the seed
+    /// this way and for this reason; this is the rest of the same envelope, kept separate
+    /// so that <see cref="RaceRunners"/> does not have to reach into the lobby's private
+    /// state to read it.
+    /// </para>
+    /// <para>
+    /// <b>Deliberately two fields and not a roster.</b> An earlier draft of this carried
+    /// the seed, the field size and every name, and nothing read any of them: the seed is
+    /// already static on the lobby, the names are already replicated in
+    /// <see cref="RaceLobbyRosterMessage"/>, and the field size has no consumer until
+    /// <c>MatchDirector.PlayersInMatch</c> stops being a constant. An object nothing reads
+    /// is exactly the shape of this project's most expensive bug, so what is here is only
+    /// what <see cref="RaceRunners"/> actually asks for.
+    /// </para>
+    /// <para>
+    /// <b>Consumed, not remembered.</b> <see cref="Clear"/> runs when a session ends, so a
+    /// solo playtest started afterwards does not silently inherit a seat number from a
+    /// race that is over — the same argument <c>RaceLobby.OnSceneLoaded</c> makes about
+    /// the seed.
+    /// </para>
+    /// </summary>
+    public static class RaceParty
+    {
+        private static int[] _seatConnectionIds = Array.Empty<int>();
+
+        /// <summary>True once a lobby has started a descent, and until the session ends.</summary>
+        public static bool Settled { get; private set; }
+
+        /// <summary>
+        /// This machine's row in the lobby, or −1.
+        /// <para>
+        /// Used for one thing: choosing a fallback starting marker when §13's own placement
+        /// never arrives, so a session that failed to replicate is a spread-out race rather
+        /// than twenty people in one cell. The real placement comes from the host — see
+        /// <see cref="RaceRunners"/> for why a locally derived one would be a second
+        /// opinion about the same question.
+        /// </para>
+        /// </summary>
+        public static int LocalSeat { get; private set; } = -1;
+
+        /// <summary>
+        /// Mirror's connection id for each seat, in the lobby's arrival order. Empty on a
+        /// client.
+        /// <para>
+        /// The host is the only machine that has connection ids and the only one that
+        /// needs them: it is what lets <see cref="RaceRunners"/> count how many of §11's
+        /// seats still have a body after the scene load, which is the check that would
+        /// have caught the whole party arriving in the building with nothing in it.
+        /// Carried as ids rather than as connections because a connection that drops
+        /// between the lobby and the descent must resolve to nothing rather than to a
+        /// stale object.
+        /// </para>
+        /// </summary>
+        public static int[] SeatConnectionIds
+        {
+            get { return _seatConnectionIds; }
+        }
+
+        /// <summary>
+        /// Records what the lobby agreed on, immediately before the descent's scene load.
+        /// </summary>
+        /// <param name="localSeat">This machine's row. Anything outside the field becomes 0.</param>
+        /// <param name="connectionIds">Connection id per seat, host side. Null or empty on a client.</param>
+        public static void Settle(int localSeat, IReadOnlyList<int>? connectionIds)
+        {
+            // Clamped rather than refused: this is called at the one moment the race is
+            // already committed to — the begin message has gone out — and a throw here
+            // would strand everybody in a lobby that has just told them to leave.
+            LocalSeat = localSeat < 0 || localSeat >= GameConstants.RaceRunnersMax ? 0 : localSeat;
+
+            if (connectionIds == null)
+            {
+                _seatConnectionIds = Array.Empty<int>();
+            }
+            else
+            {
+                var kept = connectionIds.Count < GameConstants.RaceRunnersMax
+                    ? connectionIds.Count
+                    : GameConstants.RaceRunnersMax;
+
+                _seatConnectionIds = new int[kept];
+                for (var i = 0; i < kept; i++)
+                {
+                    _seatConnectionIds[i] = connectionIds[i];
+                }
+            }
+
+            Settled = true;
+        }
+
+        /// <summary>Forgets the race. Called when the session ends, and by tests.</summary>
+        public static void Clear()
+        {
+            Settled = false;
+            LocalSeat = -1;
+            _seatConnectionIds = Array.Empty<int>();
+        }
+    }
+}

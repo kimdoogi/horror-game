@@ -92,6 +92,53 @@ namespace HorrorGame.Net
             // relays for free, and §05's five synced rows are cheap at this rate.
             sendRate = GameConstants.NetworkSendRate;
 
+            // ---------------------------------------------------------------
+            // §01 puts the field round the rim, not on one square of it.
+            //
+            // Mirror's default is PlayerSpawnMethod.Random, which is the enum's zero and
+            // therefore what an unset inspector gives. Random is wrong here and the
+            // arithmetic is not close: DescentMap offers B1's whole outer ring and the
+            // generated scene resolves to 28 distinct points, so drawing twenty of them
+            // with replacement lands at least two runners on the same marker with
+            // probability 1 − 28!/(8!·28²⁰) = 0.99991. That is not a rare collision, it is
+            // the expected outcome — the birthday problem with twenty people and
+            // twenty-eight days.
+            //
+            // RoundRobin walks NetRaceStartPoints' de-duplicated list in hierarchy order
+            // and cannot repeat until it has used all of it, which is exactly §11's
+            // requirement: twenty runners, twenty places, and the field spread round the
+            // ring rather than queueing along one arc of it.
+            // ---------------------------------------------------------------
+            playerSpawnMethod = PlayerSpawnMethod.RoundRobin;
+
+            // ---------------------------------------------------------------
+            // The transport COMPONENT has to exist before base.Awake(), because
+            // Mirror's InitializeSingleton refuses to finish without one:
+            //
+            //     Debug.LogError("No Transport on Network Manager...");
+            //     return false;                        // NetworkManager.cs:736
+            //
+            // and Awake() early-returns on that false. It then never runs
+            // ApplyConfiguration() — send rate, tick rate, disconnect timeouts,
+            // the NetworkServer and NetworkClient settings — and never subscribes
+            // SceneManager.sceneLoaded += OnSceneLoaded.
+            //
+            // This was the shipped 호스트 button's behaviour: RaceLobby.EnsureManager
+            // AddComponents this manager onto a bare object, so the error fired on
+            // every press and the session came up on a manager Mirror had never
+            // configured. Every existing net test missed it because they all build
+            // the object, AddComponent<KcpTransport>() and THEN the manager — the
+            // opposite order from the one the game uses.
+            //
+            // Only the component is attached here. Claiming Transport.active is
+            // still left until after the duplicate check below, for the reason that
+            // check was written: a manager that is about to destroy itself must not
+            // leave the global pointing at a component that goes away with it.
+            // Mirror's own duplicate branch returns before touching Transport.active,
+            // so an attached-but-unclaimed transport is safe across it.
+            // ---------------------------------------------------------------
+            AttachTransport();
+
             base.Awake();
 
             // After base.Awake(), because a duplicate manager destroys itself in
@@ -129,9 +176,38 @@ namespace HorrorGame.Net
         /// </summary>
         private void EnsureTransport()
         {
+            AttachTransport();
+
+            // AttachTransport always leaves one, so this is the whole of the work
+            // that is left: claim the global and say which wire it is. Split out of
+            // the choosing so the component can exist before base.Awake() without
+            // the global being claimed by a manager that may destroy itself there.
+            Transport.active = transport;
+
+            Debug.Log(
+                ActiveTransportKind == NetTransportKind.SteamSockets
+                    ? "[Net] Transport: " + NetTransportRegistry.BackendName
+                      + " — " + SteamServices.Current.Transport.Describe()
+                    : "[Net] Transport: local KCP on " + networkAddress
+                      + (NetTransportRegistry.HasPlatformTransport
+                          ? " (Steam backend present but offline: "
+                            + (SteamServices.Current.OfflineReason ?? "unknown") + ")"
+                          : " (no platform transport compiled in)"));
+        }
+
+        /// <summary>
+        /// Chooses the wire and attaches it, touching nothing global.
+        /// <para>
+        /// Separate from <see cref="EnsureTransport"/> because Mirror needs the
+        /// component to be on the object before <c>base.Awake()</c> — see the note
+        /// there — while <c>Transport.active</c> must not be claimed until the
+        /// duplicate-manager check has run. Idempotent: called from both.
+        /// </para>
+        /// </summary>
+        private void AttachTransport()
+        {
             if (transport != null)
             {
-                Transport.active = transport;
                 return;
             }
 
@@ -146,10 +222,8 @@ namespace HorrorGame.Net
                 if (platform != null)
                 {
                     transport = platform;
-                    Transport.active = platform;
                     ActiveTransportKind = NetTransportKind.SteamSockets;
                     networkAddress = steam.Transport.LocalAddress;
-                    Debug.Log("[Net] Transport: " + NetTransportRegistry.BackendName + " — " + steam.Transport.Describe());
                     return;
                 }
             }
@@ -163,15 +237,8 @@ namespace HorrorGame.Net
             }
 
             transport = local;
-            Transport.active = local;
             ActiveTransportKind = NetTransportKind.Local;
             networkAddress = steam.Transport.LocalAddress;
-
-            Debug.Log(
-                "[Net] Transport: local KCP on " + networkAddress
-                + (NetTransportRegistry.HasPlatformTransport
-                    ? " (Steam backend present but offline: " + (steam.OfflineReason ?? "unknown") + ")"
-                    : " (no platform transport compiled in)"));
         }
 
         private void EnsureInterestManagement()
@@ -186,6 +253,12 @@ namespace HorrorGame.Net
         public override void OnStartServer()
         {
             NetSession.SetPhase(NetSessionPhase.Lobby);
+
+            // §01's starting line. Installed rather than scanned once, because on the
+            // shipped path this runs in the bootstrap scene — the building the runners
+            // start in does not exist yet, and the markers arrive with it. See
+            // NetRaceStartPoints.Install.
+            NetRaceStartPoints.Install();
 
             if (_lobbyPrefab != null)
             {
@@ -207,6 +280,11 @@ namespace HorrorGame.Net
             // the first one's objective, which is the same leak by a slower route.
             HostSecrets.Clear();
             _lobby = null;
+
+            // The ring belongs to the building this session ran in. Mirror's start
+            // position list is static and would otherwise carry a dead layout's markers
+            // into the next match.
+            NetRaceStartPoints.Uninstall();
 
             NetSession.RaiseEnded(NetSessionEndReason.LocalRequest);
         }
@@ -315,10 +393,17 @@ namespace HorrorGame.Net
             var runner = NetRunner.Build("NetRunner [connId=" + conn.connectionId + "]");
 
             // §01 starts the field on the rim of B1. Mirror's start positions are the
-            // engine-level way to say that; with none registered this is the origin,
-            // and the map's own spawn logic moves the runner afterwards through
-            // NetPlayer.TeleportTo — which exists precisely so a placement is not
-            // mistaken for a client claiming to have run there.
+            // engine-level way to say that, and NetRaceStartPoints is what fills them
+            // from the generated map's PlayerSpawn markers — this used to return null on
+            // every call in the project's history, which is why twenty runners appeared
+            // inside each other at (0, 0, 0).
+            //
+            // It still returns null when a runner is added before the building exists,
+            // which on the shipped path is every runner: a client sends ReadyMessage once,
+            // at connect, and that is while the party is in §11's lobby. Those bodies are
+            // put on the ring by NetRaceStartPoints.PlaceSpawnedRunners the moment the
+            // descent's scene loads, through NetPlayer.TeleportTo — which exists precisely
+            // so a placement is not mistaken for a client claiming to have run there.
             var start = GetStartPosition();
             if (start != null)
             {

@@ -1,0 +1,19 @@
+{
+    "name": "HorrorGame.Net.PlayerBridge",
+    "rootNamespace": "HorrorGame.Net.PlayerBridge",
+    "references": [
+        "HorrorGame.Core",
+        "HorrorGame.Net",
+        "HorrorGame.Gameplay.Player",
+        "Mirror"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

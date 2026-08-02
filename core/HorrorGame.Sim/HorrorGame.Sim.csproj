@@ -69,16 +69,70 @@
     ============================================================================
   -->
   <ItemGroup>
-    <Compile Include="$(MapSourceRoot)*.cs"
-             Exclude="$(MapSourceRoot)BootstrapSceneGenerator.cs;
-                      $(MapSourceRoot)LocalTwoInstance.cs;
-                      $(MapSourceRoot)MapKitInspector.cs;
-                      $(MapSourceRoot)MapSceneBuilder.cs;
-                      $(MapSourceRoot)MapSceneGenerator.cs;
-                      $(MapSourceRoot)NavMeshConnectivity.cs;
-                      $(MapSourceRoot)PlayerTraversal.cs;
-                      $(MapSourceRoot)SceneGenPaths.cs" />
+    <!--
+      The Unity-only half of Editor/SceneGen, named so the engine-free half can be
+      globbed. Kept as its own item rather than inline in Exclude= so that
+      VerifySceneGenExclusions below can audit the list instead of trusting it.
+    -->
+    <UnityOnlySceneGenSource Include="$(MapSourceRoot)BootstrapSceneGenerator.cs" />
+    <UnityOnlySceneGenSource Include="$(MapSourceRoot)ChamberDockProbe.cs" />
+    <UnityOnlySceneGenSource Include="$(MapSourceRoot)LocalTwoInstance.cs" />
+    <UnityOnlySceneGenSource Include="$(MapSourceRoot)MapKitInspector.cs" />
+    <UnityOnlySceneGenSource Include="$(MapSourceRoot)MapSceneBuilder.cs" />
+    <UnityOnlySceneGenSource Include="$(MapSourceRoot)MapSceneGenerator.cs" />
+    <UnityOnlySceneGenSource Include="$(MapSourceRoot)NavMeshConnectivity.cs" />
+    <UnityOnlySceneGenSource Include="$(MapSourceRoot)PlayerTraversal.cs" />
+    <UnityOnlySceneGenSource Include="$(MapSourceRoot)SceneGenPaths.cs" />
+
+    <MapAuthoringSource Include="$(MapSourceRoot)*.cs" Exclude="@(UnityOnlySceneGenSource)" />
+    <Compile Include="@(MapAuthoringSource)" />
   </ItemGroup>
+
+  <!--
+    ============================================================================
+    A denylist is a landmine. This target is the tripwire.
+    ============================================================================
+
+    ChamberDockProbe.cs was added to Editor/SceneGen on 2026-08-03 (a89cf64),
+    did `using UnityEditor`, matched the glob above, and took BOTH headless
+    projects down with 14 x CS0246 each. `dotnet test` could not reach a single
+    one of its 512 tests until it was excluded — half this project's verification
+    was dark, and the only thing that said so was a wall of "'GameObject' 형식을
+    찾을 수 없습니다", which reads like a broken source file and sends the reader
+    to ChamberDockProbe.cs rather than to this list.
+
+    Same failure, one sentence, naming the file and the fix.
+
+    Both directions are checked, because a file can go dark either way:
+      · globbed but engine-dependent → nothing compiles at all (what happened);
+      · excluded but SINCE made engine-free → it quietly stops being tested and
+        simulated while everything stays green, which is F-006 exactly, and
+        F-006 cost a week.
+
+    `using Unity` catches UnityEngine, UnityEditor and Unity.AI.Navigation alike.
+    MapSketch.cs is deliberately not caught: its single engine call is written
+    `UnityEngine.Debug.LogError` fully qualified (B-003) with no using directive,
+    which is what UnityDebugShim.cs answers here.
+    ============================================================================
+  -->
+  <Target Name="VerifySceneGenExclusions" BeforeTargets="CoreCompile">
+    <ItemGroup>
+      <_MissingExclusion Include="@(UnityOnlySceneGenSource)" Condition="!Exists('%(FullPath)')" />
+      <_EngineInGlob Include="@(MapAuthoringSource)"
+                     Condition="$([System.IO.File]::ReadAllText('%(FullPath)').Contains('using Unity'))" />
+      <_EngineFreeExclusion Include="@(UnityOnlySceneGenSource)"
+                            Condition="Exists('%(FullPath)') AND !$([System.IO.File]::ReadAllText('%(FullPath)').Contains('using Unity'))" />
+    </ItemGroup>
+
+    <Error Condition="'@(_MissingExclusion)' != ''"
+           Text="Exclusion list names @(_MissingExclusion->'%(Filename)%(Extension)', ', '), which no longer exists under Editor/SceneGen. Drop the stale UnityOnlySceneGenSource line from core/HorrorGame.Sim/HorrorGame.Sim.csproj and core/HorrorGame.Core.Tests/HorrorGame.Core.Tests.csproj." />
+
+    <Error Condition="'@(_EngineInGlob)' != ''"
+           Text="@(_EngineInGlob->'%(Filename)%(Extension)', ', ') under Editor/SceneGen declares `using Unity…` and is compiled into this engine-free project, so NOTHING here builds and the headless suite cannot run at all. Add it as a UnityOnlySceneGenSource in BOTH core/HorrorGame.Sim/HorrorGame.Sim.csproj and core/HorrorGame.Core.Tests/HorrorGame.Core.Tests.csproj. Do not replace the glob with an allowlist — that is the F-006 failure in the other direction." />
+
+    <Error Condition="'@(_EngineFreeExclusion)' != ''"
+           Text="@(_EngineFreeExclusion->'%(Filename)%(Extension)', ', ') is excluded as Unity-only but no longer declares `using Unity…`. It is engine-free and is being left untested and unsimulated while everything reports green. Remove it from UnityOnlySceneGenSource in both csprojs so it is measured again." />
+  </Target>
 
   <!-- Fail loudly rather than silently measuring the wrong map again. -->
   <Target Name="VerifyMapSourcesFound" BeforeTargets="CoreCompile">

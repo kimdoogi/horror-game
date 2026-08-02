@@ -170,9 +170,26 @@ namespace HorrorGame.Tests.PlayMode.Interaction
             Assert.That(loadout, Is.Not.Null, "the player rig has no PlayerLoadout");
             Assert.That(camera, Is.Not.Null, "the player rig has no camera to cast the crosshair from");
 
-            var props = Object.FindObjectsByType<LootPropInteractable>(
-                FindObjectsInactive.Exclude, FindObjectsSortMode.None);
-            Assert.That(props.Length, Is.GreaterThan(0), "§08 placed no pocketable 전리품 in this layout");
+            // The race no longer stands the subject up for us, so the test does.
+            // DESCENT-PIVOT §7 step 7 「상점/전리품/단서 제거」 ran on 2026-08-03 and took
+            // PlaceLoot out of MatchDirector.BeginMatch's race branch, so a race scene now
+            // contains no 전리품 at all — this assertion used to read "§08 placed no
+            // pocketable 전리품 in this layout" and it was right.
+            var props = SeedPocketablePieces(director!);
+            Assert.That(props.Length, Is.GreaterThan(0),
+                "no pocketable 전리품 could be stood up on this layout's LootSpawn markers");
+
+            // A prop is not survey-ready in the frame it is created. Interactable.FitTrigger
+            // throws the importer's mesh collider away with Object.Destroy, which Unity defers
+            // to the end of the frame, so until this yield every piece is still wearing a
+            // solid collider of its own shape and ChooseReachablePiece's line of sight is
+            // blocked by the very thing it is looking at. Measured on the oversize half of
+            // this pair (InteractionDropTests): "blocked=Model" on six of eight bearings, on
+            // every ring, at all 152 markers. §08's pieces used to be spawned inside
+            // BeginMatch, several frames before any test looked at them, which is why nothing
+            // in this file ever had to say so before.
+            yield return null;
+            Physics.SyncTransforms();
 
             // Stand the player at a piece the way a player would: on the floor, close
             // enough for §04's reach, with an unobstructed line to it.
@@ -307,6 +324,59 @@ namespace HorrorGame.Tests.PlayMode.Interaction
 
         /// <summary>Frames the key is held. More than one so a one-frame scheduling slip is visible.</summary>
         private const int HeldFrames = 3;
+
+        /// <summary>
+        /// Stands a pocketable piece on every one of §12's 막힌 길 markers, because a
+        /// race no longer does.
+        /// <para>
+        /// <b>Why the test seeds its own subject instead of dying with §08.</b>
+        /// <c>MatchDirector.PlaceLoot</c> used to run inside the race branch of
+        /// <c>BeginMatch</c>; DESCENT-PIVOT §7 step 7 took that call out, deliberately, and
+        /// the reasoning is written at the line it stood on. What this test measures is not
+        /// §08's table — it is the path from the crosshair ray, through the reach gate and
+        /// the prompt, to a real key event landing weight in the inventory. That path
+        /// outlives the economy: F-006 §5c puts battery cells on the floor for runners to
+        /// find, and it is this same path with a different thing on the end of it. The
+        /// project has already shipped a build in which every rule was right, none of this
+        /// worked, and 575 tests were green — deleting the only coverage of it because its
+        /// old subject was retired would put that back.
+        /// </para>
+        /// <para>
+        /// The markers are §12's own 막힌 길 — <c>MatchMap.LootSpawns</c>, 152 of them,
+        /// the exact positions <c>PlaceLoot</c> drew on — so the geometry the approach
+        /// survey walks is the geometry the game authored, not a spot invented by a test.
+        /// <see cref="LootId.Trinket"/> because §08 calls it 「눈에 잘 보임 (유혹)」 and it
+        /// is the smallest thing in the catalogue that goes in a pocket: it carries
+        /// <c>LootCatalogue.WeightOf</c> like any other piece, so the weight assertion
+        /// below is unchanged, and it is not <see cref="LootId.LargePiece"/>, which takes
+        /// the two-person carry path this test is not about.
+        /// </para>
+        /// </summary>
+        private static LootPropInteractable[] SeedPocketablePieces(MatchDirector director)
+        {
+            var map = director.Map;
+            Assert.That(map, Is.Not.Null,
+                "the match has no MatchMap, so there are no §12 markers to stand a piece on");
+
+            var markers = map!.LootSpawns;
+            Assert.That(markers.Count, Is.GreaterThan(0),
+                "the layout declares no LootSpawn markers. §12 puts one at every 막힌 길 and "
+                + "[PlayerReach] counts them; a scene with none was not written by the scene generator.");
+
+            // Parented to nothing in particular but *inside the loaded scene*, so the
+            // teardown's UnloadSceneAsync takes them with it. A DontDestroyOnLoad root
+            // would leak 152 colliders into every fixture that runs after this one, which
+            // is the failure this file's own teardown remarks describe.
+            var root = new GameObject("InteractionPickupTests_Subjects").transform;
+
+            var spawned = new LootPropInteractable[markers.Count];
+            for (var i = 0; i < markers.Count; i++)
+            {
+                spawned[i] = LootPropInteractable.Spawn(LootId.Trinket, markers[i].position, root);
+            }
+
+            return spawned;
+        }
 
         /// <summary>
         /// Picks a piece the test can actually stand at, and where to stand.

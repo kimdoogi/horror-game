@@ -42,22 +42,60 @@
     automatically and a new Unity file breaks the build on its first `using
     UnityEngine` instead of quietly going untested. Same direction, same reason, as
     HorrorGame.Sim.csproj — see the long comment there.
+
+    The exclusion list and the VerifySceneGenExclusions target below are a
+    line-for-line copy of that project's, and must stay that way: the two globs see
+    the same directory, so a file that is Unity-only for one is Unity-only for both.
+    ChamberDockProbe.cs proved it by breaking both at once (a89cf64).
   -->
   <PropertyGroup>
     <MapSourceRoot>$(MSBuildThisFileDirectory)../../unity/HorrorGame/Assets/Scripts/Editor/SceneGen/</MapSourceRoot>
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="$(MapSourceRoot)*.cs"
-             Exclude="$(MapSourceRoot)BootstrapSceneGenerator.cs;
-                      $(MapSourceRoot)LocalTwoInstance.cs;
-                      $(MapSourceRoot)MapKitInspector.cs;
-                      $(MapSourceRoot)MapSceneBuilder.cs;
-                      $(MapSourceRoot)MapSceneGenerator.cs;
-                      $(MapSourceRoot)NavMeshConnectivity.cs;
-                      $(MapSourceRoot)PlayerTraversal.cs;
-                      $(MapSourceRoot)SceneGenPaths.cs" />
+    <UnityOnlySceneGenSource Include="$(MapSourceRoot)BootstrapSceneGenerator.cs" />
+    <UnityOnlySceneGenSource Include="$(MapSourceRoot)ChamberDockProbe.cs" />
+    <UnityOnlySceneGenSource Include="$(MapSourceRoot)LocalTwoInstance.cs" />
+    <UnityOnlySceneGenSource Include="$(MapSourceRoot)MapKitInspector.cs" />
+    <UnityOnlySceneGenSource Include="$(MapSourceRoot)MapSceneBuilder.cs" />
+    <UnityOnlySceneGenSource Include="$(MapSourceRoot)MapSceneGenerator.cs" />
+    <UnityOnlySceneGenSource Include="$(MapSourceRoot)NavMeshConnectivity.cs" />
+    <UnityOnlySceneGenSource Include="$(MapSourceRoot)PlayerTraversal.cs" />
+    <UnityOnlySceneGenSource Include="$(MapSourceRoot)SceneGenPaths.cs" />
+
+    <MapAuthoringSource Include="$(MapSourceRoot)*.cs" Exclude="@(UnityOnlySceneGenSource)" />
+    <Compile Include="@(MapAuthoringSource)" />
   </ItemGroup>
+
+  <!--
+    The tripwire on the denylist above. See HorrorGame.Sim.csproj for why it exists;
+    the short version is that when ChamberDockProbe.cs slipped past this list it did
+    not merely fail to be tested — it stopped all 512 tests here from running at all,
+    and said so only as 14 x CS0246 about missing 'GameObject', which points the
+    reader at the probe rather than at this file.
+
+    Checks both directions: a Unity file that got globbed (the build dies for a
+    reason nobody can read), and an excluded file that has since become engine-free
+    (it is silently left untested while the run still reports green — F-006).
+  -->
+  <Target Name="VerifySceneGenExclusions" BeforeTargets="CoreCompile">
+    <ItemGroup>
+      <_MissingExclusion Include="@(UnityOnlySceneGenSource)" Condition="!Exists('%(FullPath)')" />
+      <_EngineInGlob Include="@(MapAuthoringSource)"
+                     Condition="$([System.IO.File]::ReadAllText('%(FullPath)').Contains('using Unity'))" />
+      <_EngineFreeExclusion Include="@(UnityOnlySceneGenSource)"
+                            Condition="Exists('%(FullPath)') AND !$([System.IO.File]::ReadAllText('%(FullPath)').Contains('using Unity'))" />
+    </ItemGroup>
+
+    <Error Condition="'@(_MissingExclusion)' != ''"
+           Text="Exclusion list names @(_MissingExclusion->'%(Filename)%(Extension)', ', '), which no longer exists under Editor/SceneGen. Drop the stale UnityOnlySceneGenSource line from core/HorrorGame.Core.Tests/HorrorGame.Core.Tests.csproj and core/HorrorGame.Sim/HorrorGame.Sim.csproj." />
+
+    <Error Condition="'@(_EngineInGlob)' != ''"
+           Text="@(_EngineInGlob->'%(Filename)%(Extension)', ', ') under Editor/SceneGen declares `using Unity…` and is compiled into this engine-free project, so NOTHING here builds and not one of the 512 headless tests can run. Add it as a UnityOnlySceneGenSource in BOTH core/HorrorGame.Core.Tests/HorrorGame.Core.Tests.csproj and core/HorrorGame.Sim/HorrorGame.Sim.csproj. Do not replace the glob with an allowlist — that is the F-006 failure in the other direction." />
+
+    <Error Condition="'@(_EngineFreeExclusion)' != ''"
+           Text="@(_EngineFreeExclusion->'%(Filename)%(Extension)', ', ') is excluded as Unity-only but no longer declares `using Unity…`. It is engine-free and is being left untested while everything reports green. Remove it from UnityOnlySceneGenSource in both csprojs so it is measured again." />
+  </Target>
 
   <ItemGroup>
     <!-- Path to the core sources, so tests can assert things about the files themselves

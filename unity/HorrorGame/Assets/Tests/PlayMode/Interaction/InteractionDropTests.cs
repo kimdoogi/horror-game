@@ -3,6 +3,7 @@
 
 using System.Collections;
 using System.Text;
+using HorrorGame.Core.Economy;
 using HorrorGame.Gameplay.Interaction;
 using HorrorGame.Gameplay.Match;
 using HorrorGame.Gameplay.Player;
@@ -162,12 +163,19 @@ namespace HorrorGame.Tests.PlayMode.Interaction
             Assert.That(interactor, Is.Not.Null, "the player rig has no PlayerInteractor");
             Assert.That(camera, Is.Not.Null, "the player rig has no camera to cast the crosshair from");
 
-            var piece = Object.FindFirstObjectByType<OversizeLootInteractable>();
-            Assert.That(piece, Is.Not.Null, "§08's 대형 전리품 is not in this layout, so there is nothing to drop");
+            // The race no longer puts the 궤짝 on the floor — see StandAPieceSomewhere
+            // Approachable, which explains why the test stands one up itself rather than
+            // going with §08.
+            var found = new Candidate();
+            yield return StandAPieceSomewhereApproachable(director!, found);
 
-            var standing = Approach(piece!, out var survey);
+            var piece = found.Piece;
+            var standing = found.Standing;
+            Assert.That(piece, Is.Not.Null,
+                "no 대형 전리품 could be stood on a LootSpawn marker and approached with a clear line of "
+                + "sight.\n" + found.Survey);
             Assert.That(standing, Is.Not.Null,
-                "§08's 궤짝 could not be approached with a clear line of sight.\n" + survey);
+                "§08's 궤짝 could not be approached with a clear line of sight.\n" + found.Survey);
 
             Park(motor, camera!, standing!.Value, AimPoint(piece!));
             yield return null;
@@ -308,6 +316,113 @@ namespace HorrorGame.Tests.PlayMode.Interaction
 
             yield return null;
         }
+
+        /// <summary>
+        /// Puts one 대형 전리품 on a §12 막힌 길 marker that can actually be walked up to,
+        /// and says where to stand.
+        /// <para>
+        /// <b>Why the test stands its own subject up.</b> The paragraph at the top of this
+        /// file said the right end state was DESCENT-PIVOT §7 step 7 removing the
+        /// <c>PlaceLoot</c> call from the race branch, and that when it did, <em>this test
+        /// must not be deleted with it</em> — «DropPlacement and the crosshair-and-key path
+        /// outlive §08 either way, so the coverage has to be re-pointed at whatever the
+        /// runner actually carries, not dropped». Step 7 ran on 2026-08-03. This is the
+        /// re-pointing. What changed is the premise, and only the premise: it is no longer
+        /// true that «a race spawns the 궤짝», deliberately, so the test spawns it. Every
+        /// assertion below — that it is held near the hands, that the second press drops
+        /// it, that it falls, that something solid is under it, that it is not inside the
+        /// brickwork, and that the crosshair finds it again — is the same assertion about
+        /// the same code, driven through the same key.
+        /// </para>
+        /// <para>
+        /// <b>One piece in the world at a time, and that is not tidiness.</b> The burial
+        /// check below is a <c>Physics.OverlapBox</c> over the dropped piece's own oriented
+        /// volume with <em>every</em> collider in it counted as geometry; a second seeded
+        /// chest standing a couple of metres away would be reported as the piece being
+        /// inside a wall. So a candidate that cannot be approached is destroyed —
+        /// <c>DestroyImmediate</c>, because <c>Destroy</c> defers to the end of the frame
+        /// and this loop does not yield, which would leave the discarded chest's collider
+        /// blocking the line of sight to the next one.
+        /// </para>
+        /// <para>
+        /// <see cref="LootId.LargePiece"/> is the only id in the catalogue whose
+        /// <c>AllowsSharedCarry</c> is true, which is what puts a <c>SharedLootCarry</c>
+        /// behind the piece — the thing the <c>CarrierCount</c> assertions read.
+        /// </para>
+        /// <para>
+        /// <b>And it is a coroutine for one measured reason.</b> A prop is not survey-ready
+        /// in the frame it is created. <c>Interactable.FitTrigger</c> throws away the
+        /// importer's mesh collider — «the importer puts a mesh collider on every prop
+        /// (AssetImportPolicy's Prop rule)» — with <c>Object.Destroy</c>, which Unity defers
+        /// to the end of the frame, so for the rest of that frame the piece is still wearing
+        /// a solid collider of its own shape while <see cref="Approach"/> casts a line at the
+        /// middle of it. Measured on the first attempt at this helper: every ring of every
+        /// bearing came back <c>blocked=Model</c> on six of eight bearings and the search
+        /// failed on all 152 markers. The old test never met this because §08's pieces were
+        /// spawned inside <c>BeginMatch</c>, several frames before anybody looked at them.
+        /// One frame per candidate, and the first candidate normally wins.
+        /// </para>
+        /// </summary>
+        private static IEnumerator StandAPieceSomewhereApproachable(MatchDirector director, Candidate result)
+        {
+            var map = director.Map;
+            Assert.That(map, Is.Not.Null,
+                "the match has no MatchMap, so there are no §12 markers to stand a 궤짝 on");
+
+            var markers = map!.LootSpawns;
+            Assert.That(markers.Count, Is.GreaterThan(0),
+                "the layout declares no LootSpawn markers. §12 puts one at every 막힌 길 and "
+                + "[PlayerReach] counts them; a scene with none was not written by the scene generator.");
+
+            var log = new StringBuilder();
+
+            for (var i = 0; i < markers.Count; i++)
+            {
+                // Inside the loaded scene, so the teardown's UnloadSceneAsync takes it.
+                var piece = OversizeLootInteractable.Spawn(LootId.LargePiece, markers[i].position, null);
+
+                // The frame the summary above is about: the importer's mesh collider is
+                // only really gone after this.
+                yield return null;
+
+                // And a collider that has just been created and moved still reports its old
+                // world bounds until the physics scene is told, which Approach both aims at
+                // and casts against. The same sync the drop half of this test needs.
+                Physics.SyncTransforms();
+
+                var spot = Approach(piece, out var attempt);
+                if (spot != null)
+                {
+                    result.Piece = piece;
+                    result.Standing = spot;
+                    result.Survey = attempt;
+                    yield break;
+                }
+
+                if (log.Length < SurveyBudget)
+                {
+                    log.Append(attempt);
+                }
+
+                Object.DestroyImmediate(piece.gameObject);
+            }
+
+            result.Survey = log.ToString();
+        }
+
+        /// <summary>
+        /// What <see cref="StandAPieceSomewhereApproachable"/> found. A coroutine cannot
+        /// carry <c>out</c> parameters, and this is the whole of the reason for the type.
+        /// </summary>
+        private sealed class Candidate
+        {
+            public OversizeLootInteractable? Piece;
+            public Vector3? Standing;
+            public string Survey = string.Empty;
+        }
+
+        /// <summary>Characters of approach survey worth carrying into a failure message.</summary>
+        private const int SurveyBudget = 2000;
 
         /// <summary>
         /// Where a player would stand to use a thing: on a floor, inside its own reach,

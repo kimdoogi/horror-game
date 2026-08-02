@@ -297,7 +297,23 @@ namespace HorrorGame.EditorTools.SceneGen
         private readonly List<StairRun> _stairs = new List<StairRun>();
         private readonly List<ChuteRun> _chutes = new List<ChuteRun>();
         private readonly List<MapCell> _playerStarts = new List<MapCell>();
-        private MapCell? _monsterStart;
+
+        // EVERY declared creature, in declaration order — not the last one.
+        //
+        // This was `private MapCell? _monsterStart` and the assignment below it overwrote.
+        // DescentMap.PlaceStarts calls MonsterStart once per storey, so eight declarations
+        // collapsed into one and the artefact was byte-identical to a single call: that is
+        // why the §06 audit could only ever print "monster reach … over 1 of 8 storeys" and
+        // name the other seven under "no creature on". §12-B③ 「괴물이 안쪽을 순찰한다 …
+        // 외곽은 안전하고 중심은 위험하다」 is written about every floor, and one field made it
+        // unstateable.
+        //
+        // The LAST entry is the primary, and that is a contract with DescentMap rather than
+        // an accident: its comment declares B5 last precisely so that a runtime which can
+        // only carry one creature carries it half way down. See PrimaryMonsterSpawnName for
+        // what the primary's marker is named and which three consumers depend on it.
+        private readonly List<MapCell> _monsterStarts = new List<MapCell>();
+
         // Keyed BY STOREY, not by sketch. A plan key names a place inside one floor
         // plan and is consumed by the Mark() calls immediately below it, so scoping it
         // to the whole building only meant that authoring a new storey required reading
@@ -653,12 +669,26 @@ namespace HorrorGame.EditorTools.SceneGen
         }
 
         /// <summary>
-        /// Declares where the creature starts.
+        /// Declares where a creature starts. Call it once per creature — every call is kept.
         /// <para>
-        /// The fallback is "as far from the 출입구 as the building allows", which in a race
-        /// puts it on the top storey among twenty people at the starting line. §12-B wants it
-        /// deep — the inner rings of a middle floor, so the descent gets more dangerous rather
-        /// than starting that way.
+        /// The fallback, used only when nothing at all is declared, is "as far from the 출입구
+        /// as the building allows", which in a race puts it on the top storey among twenty
+        /// people at the starting line. §12-B wants it deep — the inner rings of a middle
+        /// floor, so the descent gets more dangerous rather than starting that way.
+        /// </para>
+        /// <para>
+        /// <b>It appends, and it used to assign.</b> A single field meant that a building
+        /// declaring a creature on each of eight storeys produced exactly the same map as one
+        /// declaring a single creature on the last of them, with nothing anywhere saying seven
+        /// had been dropped. §12-B③ asks for one on every floor; the audit could only report
+        /// what the markers said, and the markers said one.
+        /// </para>
+        /// <para>
+        /// <b>The last call is the primary.</b> Only its marker is named
+        /// <see cref="PrimaryMonsterSpawnName"/>, which is what a runtime that carries one
+        /// creature finds; every other call adds a marker the §06 audit measures and a
+        /// multi-agent runtime can instantiate. So declaring more creatures never MOVES the
+        /// one that already ran.
         /// </para>
         /// </summary>
         /// <param name="x">Cell X.</param>
@@ -666,7 +696,7 @@ namespace HorrorGame.EditorTools.SceneGen
         /// <param name="level">Storey.</param>
         public MapSketch MonsterStart(int x, int z, int level)
         {
-            _monsterStart = new MapCell(_offsetX + x, _offsetZ + z, level);
+            _monsterStarts.Add(new MapCell(_offsetX + x, _offsetZ + z, level));
             return this;
         }
 
@@ -1854,9 +1884,10 @@ namespace HorrorGame.EditorTools.SceneGen
                     + "one cannot be won and §12's concealment rule has nothing to sit beside.");
             }
 
-            // Players come in at the exit and the monster starts as far from it as the
-            // building allows: §07 초저녁 patrols one zone, and starting the monster on
-            // top of the door would spend the quiet opening the whole time curve needs.
+            // The 출입구 both fallbacks are measured from — players in walking distance of it,
+            // the creature as far from it as the building allows. Both are fallbacks now: a
+            // sketch that declares its own starts (§01's tower declares all of them) never
+            // reaches either. See BuildMonsterSpawns.
             var entrance = entrances[0];
 
             if (_playerStarts.Count > 0)
@@ -1906,28 +1937,7 @@ namespace HorrorGame.EditorTools.SceneGen
                     graph.Nodes[landing].ZoneId, landing, chute.Name + " 착지"));
             }
 
-            var farthest = entrance;
-            if (_monsterStart.HasValue && nodeIdOf.TryGetValue(_monsterStart.Value, out var declared))
-            {
-                farthest = declared;
-            }
-            else
-            {
-                var farthestDistance = 0f;
-                for (var i = 0; i < graph.Nodes.Length; i++)
-                {
-                    var distance = graph.PathLength(entrance, i);
-                    if (!float.IsPositiveInfinity(distance) && distance > farthestDistance)
-                    {
-                        farthestDistance = distance;
-                        farthest = i;
-                    }
-                }
-            }
-
-            markers.Add(new MapMarkerPlacement(
-                MapMarkerKind.MonsterSpawn, graph.Nodes[farthest].Position, graph.Nodes[farthest].ZoneId, farthest,
-                "MonsterSpawn"));
+            BuildMonsterSpawns(markers, graph, nodeIdOf, entrance);
 
             var sites = graph.NodesOfKind(MapNodeKind.CandidateSite);
             for (var i = 0; i < sites.Length; i++)
@@ -1969,6 +1979,156 @@ namespace HorrorGame.EditorTools.SceneGen
 
             markers.Sort((a, b) => string.CompareOrdinal(a.Name, b.Name));
             return markers.ToArray();
+        }
+
+        /// <summary>
+        /// The name the ONE creature a single-agent runtime runs is found under, and the
+        /// prefix every other creature's marker is built from.
+        /// <para>
+        /// <b>It is bare on purpose and three consumers depend on it staying bare.</b>
+        /// <c>MatchMap.TryRead</c> takes <c>MonsterSpawns[0]</c> after sorting the group's
+        /// children with <c>string.CompareOrdinal</c>, and a string always sorts before the
+        /// strings that extend it, so the bare name wins that sort no matter how many
+        /// creatures are added or what they are called. <c>MonsterShot.IsAnchor</c> matches
+        /// this exact string — its own remark says why: "<c>MonsterSpawns</c> — the container
+        /// — starts with <c>MonsterSpawn</c>, sits at the world origin, and won the first
+        /// search outright". <c>SoloPlaytest.FindMarker</c> takes the first leaf whose name
+        /// starts with it, in hierarchy order, which <c>MapSceneBuilder</c> writes in the same
+        /// ordinal order.
+        /// </para>
+        /// <para>
+        /// <b>So the count of objects named exactly this is the count of creatures the game
+        /// actually runs, and the child count of the <c>MonsterSpawns</c> group is the count
+        /// the map declares.</b> While those two disagree the building has creatures nothing
+        /// instantiates, and both numbers are in the same scene where one assertion can
+        /// compare them. That is deliberate: a map half that renamed the primary would move
+        /// the shipped creature off B5 the moment it landed, without any test failing.
+        /// </para>
+        /// </summary>
+        private const string PrimaryMonsterSpawnName = "MonsterSpawn";
+
+        /// <summary>
+        /// Puts a <see cref="MapMarkerKind.MonsterSpawn"/> at every declared start — all of
+        /// them, in declaration order.
+        /// <para>
+        /// <b>What this unblocks.</b> §12-B③ 「괴물이 안쪽을 순찰한다」 is written about every
+        /// floor, and <c>NavMeshConnectivity.MeasureMonsterReach</c> already loops storeys and
+        /// names the ones with no creature. With one marker it could only ever measure one
+        /// floor; with eight it measures eight, and its <c>MonsterUnreachable</c> list is part
+        /// of <c>Report.Passed</c>. Seven of this tower's floors have never had monster reach
+        /// measured, so this can newly FAIL, and a floor whose inner rings the agent (radius
+        /// 0.5 m, height 2.0 m, climb 0.75 m — bigger than the runner's capsule in every
+        /// dimension but step) cannot get to is a discovery rather than a regression.
+        /// </para>
+        /// <para>
+        /// <b>Naming.</b> The last declaration is the primary and gets
+        /// <see cref="PrimaryMonsterSpawnName"/> bare; the rest get
+        /// <c>MonsterSpawn_&lt;zone&gt;_&lt;node&gt;</c>. Every one of them still contains
+        /// "MonsterSpawn", which is what <c>NavMeshConnectivity.CollectPoints</c> and
+        /// <c>MeasureMonsterReach</c> match on (<c>IndexOf</c>, ordinal-ignore-case), so all
+        /// eight are collected as origins on their own storeys. The node id is in the name
+        /// because it is unique per building: <c>MapSceneBuilder.Child</c> is find-or-create,
+        /// so two markers sharing a name would silently become one object and the map would
+        /// lose a creature without a count changing anywhere.
+        /// </para>
+        /// <para>
+        /// <b>A declared start that is not a node throws.</b> The code this replaced fell back
+        /// to "as far from the 출입구 as the building allows" whenever the lookup missed, which
+        /// on a tower is a different STOREY — the creature moves floors and nothing fails.
+        /// That fallback is right for a sketch that declares nothing at all, and wrong for one
+        /// that declared a place the graph does not have; <see cref="Build"/> already refuses a
+        /// <see cref="Mark"/> on a straight-through cell for exactly this reason.
+        /// </para>
+        /// </summary>
+        /// <param name="markers">The marker list being built.</param>
+        /// <param name="graph">The finished graph — positions and zone names come from it.</param>
+        /// <param name="nodeIdOf">Cell → node id, so a declared cell can be checked against the graph.</param>
+        /// <param name="entrance">§01's 출입구 node, used only by the no-declaration fallback.</param>
+        /// <exception cref="MapSketchException">A start is not a graph node, or two name the same cell.</exception>
+        private void BuildMonsterSpawns(
+            List<MapMarkerPlacement> markers,
+            MapGraph graph,
+            Dictionary<MapCell, int> nodeIdOf,
+            int entrance)
+        {
+            if (_monsterStarts.Count == 0)
+            {
+                // §07 초저녁 patrols one zone, and starting the monster on top of the door
+                // would spend the quiet opening the whole time curve needs. Unchanged: this
+                // is what every map that declares no start still gets.
+                var farthest = entrance;
+                var farthestDistance = 0f;
+                for (var i = 0; i < graph.Nodes.Length; i++)
+                {
+                    var distance = graph.PathLength(entrance, i);
+                    if (!float.IsPositiveInfinity(distance) && distance > farthestDistance)
+                    {
+                        farthestDistance = distance;
+                        farthest = i;
+                    }
+                }
+
+                markers.Add(new MapMarkerPlacement(
+                    MapMarkerKind.MonsterSpawn, graph.Nodes[farthest].Position, graph.Nodes[farthest].ZoneId,
+                    farthest, PrimaryMonsterSpawnName));
+                return;
+            }
+
+            var seen = new HashSet<MapCell>();
+            for (var i = 0; i < _monsterStarts.Count; i++)
+            {
+                var cell = _monsterStarts[i];
+
+                if (!seen.Add(cell))
+                {
+                    throw new MapSketchException(
+                        "Two creatures are declared at " + cell + ". §12-B③ puts one on each floor's inner "
+                        + "rings, so two on one cell is a floor somewhere with none — and because the scene "
+                        + "builder is find-or-create by name, the duplicate would collapse into a single "
+                        + "object and the map would carry one creature fewer than it says it does.");
+                }
+
+                if (!nodeIdOf.TryGetValue(cell, out var node))
+                {
+                    throw new MapSketchException(
+                        "A creature is declared at " + cell + ", but the corridor runs straight through that "
+                        + "cell, so the graph has no node there and there is nothing to hang the spawn on. Put "
+                        + "it on a bend, a junction or an end. This used to fall back on 'as far from the 출입구 "
+                        + "as the building allows', which on §01's tower is another STOREY — the creature would "
+                        + "move floors and the §06 audit would report a floor it was never on.");
+                }
+
+                // Ordinal-last for everything but the primary: CompareOrdinal puts the bare
+                // name first, which is what pins MatchMap's MonsterSpawns[0] to this cell.
+                var isPrimary = i == _monsterStarts.Count - 1;
+                var name = isPrimary
+                    ? PrimaryMonsterSpawnName
+                    : PrimaryMonsterSpawnName + "_" + graph.Zones[graph.Nodes[node].ZoneId].Name + "_" + node;
+
+                markers.Add(new MapMarkerPlacement(
+                    MapMarkerKind.MonsterSpawn, graph.Nodes[node].Position, graph.Nodes[node].ZoneId, node, name));
+
+                if (isPrimary)
+                {
+                    // Printed because of what sits a few lines below it in the same log.
+                    // NavMeshConnectivity counts STOREYS WITH A MARKER, so the moment these
+                    // markers exist its §06 line reads "over 8 of 8 storeys" — and that is a
+                    // statement about the map, not about how many creatures the match runs.
+                    // MatchMap.TryRead still takes MonsterSpawns[0] and MatchDirector still
+                    // owns one agent, so until the runtime spawns one per marker the running
+                    // game has ONE creature on eight floors while the audit above it is green.
+                    // This line is the number to check that claim against; nothing inside a
+                    // map sketch can see MatchDirector, so the assertion that closes the gap
+                    // has to live beside the director and compare its agent count to this one.
+                    UnityEngine.Debug.Log(
+                        "[SceneGen] 괴물 시작점: " + _monsterStarts.Count + " declared, " + _monsterStarts.Count
+                        + " MonsterSpawn markers written. Primary '" + PrimaryMonsterSpawnName + "' at "
+                        + graph.Nodes[node].Position + " in " + graph.Zones[graph.Nodes[node].ZoneId].Name
+                        + " — a runtime that reads MatchMap.MonsterSpawns[0] instantiates that one and no other. "
+                        + "Count the agents the director ticks against " + _monsterStarts.Count
+                        + " before reading the §06 storey count below as a creature count.");
+                }
+            }
         }
 
         private int ZoneOfRoom(RoomRect room, Dictionary<MapCell, int> zoneOf)

@@ -34,8 +34,18 @@ namespace HorrorGame.Gameplay.Match
     /// <see cref="GameConstants.FixedStep"/>, in a defined order, and that is the whole
     /// job of this class. It owns <c>MatchClock</c>, <c>MatchState</c>, the team
     /// <c>Wallet</c> and <c>Shop</c>, the <c>ObjectiveResolver</c> that knows this
-    /// match's answer, and one <c>ClueReader</c> per player. It steps them, applies the
-    /// results to transforms and screens, and decides nothing itself.
+    /// match's answer, one <c>ClueReader</c> per player, and — since 하강 — one §06
+    /// creature per storey. It steps them, applies the results to transforms and screens,
+    /// and decides nothing itself.
+    /// </para>
+    /// <para>
+    /// <b>§12-B③ is a count, and this class is where it becomes true.</b> 「괴물이 안쪽을
+    /// 순찰한다」 is written about every floor and a 투하구 is a fall, not a path, so a
+    /// creature that starts on B5 patrols B5 and nowhere else. The map declares one start
+    /// per storey; <c>PrepareCreatures</c> stands one agent on each of them and
+    /// <c>VerifyCreatureCount</c> refuses the match if the two numbers ever differ — which
+    /// is the one thing standing between a §06 audit that reads "8 of 8 storeys" and a
+    /// game that still runs a single monster.
     /// </para>
     /// <para>
     /// <b>§07's partial reset is the subtlest thing here.</b> Surfacing clears the
@@ -82,7 +92,7 @@ namespace HorrorGame.Gameplay.Match
 
         [Header("Wiring")]
         [SerializeField]
-        [Tooltip("Left empty, the first MonsterAgent in the scene is used.")]
+        [Tooltip("The rig every creature is cut from. Left empty, the first MonsterAgent in the scene is used.")]
         private MonsterAgent? _monster;
 
         [SerializeField]
@@ -142,13 +152,49 @@ namespace HorrorGame.Gameplay.Match
         }
         private float _grabDistance;
 
-        /// <summary>§06's catch, as an act. See MonsterLunge — the rule is in Core.</summary>
-        private MonsterLunge _lunge;
+        /// <summary>
+        /// One creature: the agent, where it started, and its own §06 catch.
+        /// <para>
+        /// <b>The lunge is per creature and that is the reason this type exists.</b>
+        /// <see cref="MonsterLunge"/> is a struct holding a 0.55 s commit and a 0.8 s
+        /// recovery, and one shared copy across eight creatures would let the creature on
+        /// B3 commit and the creature on B4 recover — a runner who drops through a 투하구
+        /// mid-lunge would arrive to a creature that is already half way through a strike
+        /// it never started. §06 gives the catch to a creature, not to a match.
+        /// </para>
+        /// </summary>
+        private sealed class Creature
+        {
+            internal Creature(MonsterAgent agent, Transform? spawn, bool cloned)
+            {
+                Agent = agent;
+                Spawn = spawn;
+                Cloned = cloned;
+            }
+
+            /// <summary>The agent in the scene.</summary>
+            internal MonsterAgent Agent { get; }
+
+            /// <summary>The §07 start marker it belongs to, for §03's partial reset. Null on a scene with none.</summary>
+            internal Transform? Spawn { get; }
+
+            /// <summary>Whether this director cloned it, and therefore owns destroying it.</summary>
+            internal bool Cloned { get; }
+
+            /// <summary>§06's catch, as an act. See MonsterLunge — the rule is in Core.</summary>
+            internal MonsterLunge Lunge;
+        }
+
+        /// <summary>
+        /// Every creature this match is running, one per <see cref="MatchMap.MonsterSpawns"/>
+        /// entry. See PrepareCreatures for what guarantees that count.
+        /// </summary>
+        private readonly List<Creature> _creatures = new List<Creature>();
 
         /// <summary>Throttle for the proximity report. See CheckGrab.</summary>
         private float _lastGrabReport;
 
-        /// <summary>Ground covered since the last footstep was reported to §06. See ReportFootsteps.</summary>
+        /// <summary>Ground covered since the last footstep was raised for §06. See TakeFootstepCue.</summary>
         private float _strideTravelled;
 
         private Vector3 _lastFootstepPosition;
@@ -156,7 +202,7 @@ namespace HorrorGame.Gameplay.Match
         /// <summary>How loud the local player is. Optional — a rig without one still makes noise by speed.</summary>
         private NoiseMeter? _noise;
 
-        /// <summary>What the local player's microphone is doing this tick. See ReportVoice.</summary>
+        /// <summary>What the local player's microphone is doing this tick. See TakeVoiceCue.</summary>
         private VoiceEffort _voiceEffort;
 
         /// <summary>Every 투하구 in the scene, wired at match start. §01.</summary>
@@ -303,7 +349,54 @@ namespace HorrorGame.Gameplay.Match
         /// </summary>
         public LungeState LungePhase
         {
-            get { return _lunge.State; }
+            get
+            {
+                var here = LocalStoreyCreature();
+                return here != null ? here.Lunge.State : LungeState.Ready;
+            }
+        }
+
+        /// <summary>
+        /// How many §06 creatures this match is actually running. §12-B③.
+        /// <para>
+        /// <b>The number that has to match the audit.</b> <c>NavMeshConnectivity</c> counts
+        /// MonsterSpawn markers in the editor and prints 「over N of 8 storeys」; this counts
+        /// the agents standing in the world and being ticked. The whole point of the pair is
+        /// that a build can be caught claiming eight and running one — which is this
+        /// project's signature failure and was the shape of B-001, B-008 and the race that
+        /// recorded descents into an object nothing read.
+        /// </para>
+        /// <para>
+        /// <see cref="BeginMatch"/> refuses to start a match in which this disagrees with
+        /// <see cref="MatchMap.MonsterSpawns"/>, so a green run of anything is already
+        /// evidence that the two agree. This property is here so a test can say the number
+        /// out loud rather than infer it.
+        /// </para>
+        /// </summary>
+        public int MonsterCount
+        {
+            get { return _creatures.Count; }
+        }
+
+        /// <summary>
+        /// The creature on the local runner's own storey, or null when they are alone on
+        /// their floor.
+        /// <para>
+        /// <b>Everything that can only follow one creature should follow this one.</b> §06's
+        /// audio bed, §09's ghost camera and §14's guidance all took
+        /// <c>FindFirstObjectByType&lt;MonsterAgent&gt;()</c> when there was exactly one to
+        /// find. With one per storey that call returns an arbitrary floor's creature, so a
+        /// runner on B1 could be given the 추격 bed of the creature seven floors below —
+        /// the same class of defect as a HUD that disagrees with the ears (F-002).
+        /// </para>
+        /// </summary>
+        public MonsterAgent? LocalStoreyMonster
+        {
+            get
+            {
+                var here = LocalStoreyCreature();
+                return here != null ? here.Agent : null;
+            }
         }
 
         /// <summary>
@@ -392,7 +485,7 @@ namespace HorrorGame.Gameplay.Match
             _worldRoot = new GameObject("MatchWorld");
 
             CollectAreaLights();
-            var probe = PrepareMonster();
+            var probe = PrepareCreatures();
             if (probe == null)
             {
                 Debug.LogError(
@@ -402,6 +495,26 @@ namespace HorrorGame.Gameplay.Match
             }
 
             _probe = probe;
+
+            // ── §12-B③ 층마다 하나, checked rather than assumed ────────────────────
+            //
+            // THIS IS THE LINE THAT KEEPS THE §06 AUDIT HONEST. The audit counts
+            // MonsterSpawn markers in the editor and prints "over N of 8 storeys"; a map
+            // that grows eight starts turns that line green whether or not anything in the
+            // running game ever hunts on eight floors. So the host refuses to run a match
+            // in which the two disagree: one agent per declared start, counted, or no
+            // match at all. A build that ships one creature and an eight-storey audit
+            // cannot get past here, and the log below prints both numbers side by side so
+            // a reader never has to take either on trust.
+            //
+            // Refusing rather than warning, for the same reason ObjectiveResolver refuses a
+            // chain that does not converge: a match played against the wrong number of
+            // creatures is not a degraded match, it is a different game, and it would be
+            // measured as if it were this one.
+            if (!VerifyCreatureCount(map))
+            {
+                return false;
+            }
 
             // ── §01's race, or the co-operative recovery match it grew out of ──────
             //
@@ -419,8 +532,25 @@ namespace HorrorGame.Gameplay.Match
             // change nobody has to be brave about. docs/DESCENT-PIVOT.md §3.
             if (_raceMode)
             {
-                PlaceLoot();
-
+                // §08 is NOT laid out here, and its absence is the change. DESCENT-PIVOT §3
+                // lists 「§08 전리품 · 크레딧 · 판매」 under 버린다 with the reason 「통화가
+                // 없다」, and §7 step 7 is 「상점/전리품/단서 제거」 — a step that had never
+                // run. PlaceLoot stood at exactly this line, ABOVE MovePlayerToSpawn, while
+                // PlaceClues, PlaceObjective and PlaceVehicle all sat below on the
+                // co-operative path; that one misplaced call was the whole of §08 still
+                // shipping in a race. It put one piece on every one of the 152 LootSpawn
+                // markers of Map_FirstSketch_Solo — §12 puts one at every 막힌 길, 19 per
+                // storey — and the first draw is always §01's 궤짝: a 1.276 × 0.694 m chest
+                // held 1.05 m in front of the eyes, weighing GameConstants.LootWeightLargePiece
+                // (5, "equals WeightFreeMax, which is why one piece ends the free band"), for
+                // credits that no longer exist to spend anywhere. In a race about speed the
+                // reward for taking it is that you cannot see the gate you are running at.
+                //
+                // The carry MECHANIC is deliberately left standing: PlayerInteractor, the
+                // crosshair, the key and DropPlacement are all still wired, because F-006
+                // §5c puts battery cells on the floor for runners to find and that is the
+                // same path with a different thing on the end of it. What goes is §08's
+                // table, not the hands.
                 _state = new MatchState(BuildLineup(_localRole), startOnSurface: false);
                 _clock = new MatchClock(startOnSurface: false);
                 _clueContext = default(ClueReadContext);
@@ -510,7 +640,7 @@ namespace HorrorGame.Gameplay.Match
 
             // §06's ears. Optional on purpose: a rig assembled by a test has no audio on
             // it, and a monster that went deaf whenever the sound layer was absent would
-            // hide the very bug this wiring exists to fix. See ReportFootsteps.
+            // hide the very bug this wiring exists to fix. See TakeFootstepCue.
             _noise = _playerRoot != null ? _playerRoot.GetComponentInChildren<NoiseMeter>(true) : null;
             _lastFootstepPosition = _playerRoot != null ? _playerRoot.position : Vector3.zero;
             _strideTravelled = 0f;
@@ -839,7 +969,7 @@ namespace HorrorGame.Gameplay.Match
                 _clueContext = default(ClueReadContext);
             }
 
-            StepMonster();
+            StepCreatures();
             PushDoors();
             StepClueRead();
             CheckGrab();
@@ -855,50 +985,179 @@ namespace HorrorGame.Gameplay.Match
             CheckOutcome();
         }
 
-        private void StepMonster()
+        /// <summary>
+        /// Steps every §06 creature, and tells the one the runner is actually in the
+        /// building with where they are.
+        /// <para>
+        /// <b>Only the creature on the runner's own storey is told anything.</b> That is a
+        /// host decision and it is not tidiness — §06's sight test is FLAT
+        /// (<c>MonsterBrain.CanSee</c> compares <c>MagnitudeFlat</c>, dropping Y), written
+        /// when the building was one floor. 하강 stacks eight floors in one column and
+        /// <c>DescentMap.SeedCreature</c> posts every creature at its own storey's MIDDLE,
+        /// which is the same X and Z on all eight. So a runner standing in the middle of B3
+        /// is, in §06's arithmetic, nose to nose with all eight creatures at once; the only
+        /// thing between them is the slab's collider, and a 투하구 is a 1.4 m hole in it.
+        /// Without this filter the creature two floors down acquires a runner it can never
+        /// reach (<c>NavigableDistance</c> is +∞ across storeys), never returns to 순찰, and
+        /// §12-B③'s 「괴물이 안쪽을 순찰한다」 quietly stops being true on seven floors.
+        /// </para>
+        /// <para>
+        /// <b>The same fact is what makes the filter safe.</b> A creature cannot leave its
+        /// floor — §12-C makes the 투하구 one-way and not a NavMeshLink, and the NavMesh
+        /// audit reads <em>islands 8</em>, one per storey — so a creature on another floor
+        /// could do nothing with the report if it had it. The measurement that would refute
+        /// this is that audit line: if islands ever drops below 8, two storeys have been
+        /// joined, a creature CAN follow a runner down, and this filter becomes a lie.
+        /// </para>
+        /// <para>
+        /// Storey is asked with <see cref="MapGraph.StoreyChangeMetres"/>, the same
+        /// constant <c>MatchMap.IsOnSurface</c> uses, because 지상, 층 and §06 must not
+        /// answer "is this the same floor" three different ways.
+        /// </para>
+        /// </summary>
+        private void StepCreatures()
         {
-            var monster = _monster;
-            if (monster == null)
+            if (_creatures.Count == 0)
             {
                 return;
             }
 
-            // §07 is the only thing that sets the monster's speed and patrol scope, and
-            // MonsterAgent reads both off the tier for the elapsed time the host gives
-            // it. Handing it the clock rather than a speed keeps one authority.
-            monster.SetMatchElapsedSeconds(_clock.ElapsedSeconds);
-            if (_map != null)
-            {
-                monster.SetMapZoneCount(_map.ZoneCount);
-            }
+            var hunted = _onSurface || _playerRoot == null || LocalPlayerIsGhost
+                ? null
+                : LocalStoreyCreature();
 
-            if (_onSurface || _playerRoot == null || LocalPlayerIsGhost)
-            {
-                // §01 · §08 make the surface a 안전 지대, and §03's partial reset leaves
-                // the monster in the building when the team walks out. Reporting a
-                // target that is standing at the van would have it hunt the safe zone.
-                //
-                // A ghost is dropped for a different reason and it matters more than it
-                // looks: the rig stays where it fell, so without this the monster would
-                // stand over the corpse re-acquiring it every tick and §06's machine would
-                // never leave 추격 again. §09 takes the player out of the world; the seat
-                // has to leave §06's target list with them.
-                monster.ForgetTarget(LocalPlayerIndex);
-            }
-            else
-            {
-                // The true position, every tick. §06's perception rules are in Core and
-                // decide what the monster can actually see.
-                monster.ReportTarget(LocalPlayerIndex, _playerRoot.position);
-                ReportFootsteps(monster);
-                ReportVoice(monster);
-            }
+            // Taken once for the whole match, not once per creature. The stride is a
+            // property of the player's legs — ReportFootsteps used to advance an
+            // accumulator as a side effect of reporting, so a loop over eight creatures
+            // would have given the first one the step and the other seven silence.
+            //
+            // Taken even when nobody is listening, which is the other half of the same
+            // point: the accumulator measures ground covered, and letting it run on
+            // while the runner crosses a floor that has no creature would bank the whole
+            // storey and spend it as one enormous footstep the instant they landed on a
+            // floor that does. A step is a step; who hears it is decided below.
+            var footstep = TakeFootstepCue();
+            var voice = hunted != null ? TakeVoiceCue() : null;
 
-            monster.Simulate(GameConstants.FixedStep);
+            for (var i = 0; i < _creatures.Count; i++)
+            {
+                var creature = _creatures[i];
+                var monster = creature.Agent;
+                if (monster == null)
+                {
+                    continue;
+                }
+
+                // §07 is the only thing that sets the monster's speed and patrol scope, and
+                // MonsterAgent reads both off the tier for the elapsed time the host gives
+                // it. Handing it the clock rather than a speed keeps one authority. Per
+                // creature because §07 is per match: every one of them is at the same hour.
+                monster.SetMatchElapsedSeconds(_clock.ElapsedSeconds);
+                if (_map != null)
+                {
+                    monster.SetMapZoneCount(_map.ZoneCount);
+                }
+
+                if (!ReferenceEquals(creature, hunted))
+                {
+                    // §01 · §08 make the surface a 안전 지대, and §03's partial reset leaves
+                    // the monster in the building when the team walks out. Reporting a
+                    // target that is standing at the van would have it hunt the safe zone.
+                    //
+                    // A ghost is dropped for a different reason and it matters more than it
+                    // looks: the rig stays where it fell, so without this the monster would
+                    // stand over the corpse re-acquiring it every tick and §06's machine would
+                    // never leave 추격 again. §09 takes the player out of the world; the seat
+                    // has to leave §06's target list with them.
+                    //
+                    // And a creature on another storey is forgotten every tick, so that a
+                    // runner who drops through a 투하구 leaves nothing behind them: the floor
+                    // they left goes back to 순찰 rather than holding a reading of somebody
+                    // who is now three metres underneath it.
+                    monster.ForgetTarget(LocalPlayerIndex);
+                }
+                else
+                {
+                    // The true position, every tick. §06's perception rules are in Core and
+                    // decide what the monster can actually see.
+                    monster.ReportTarget(LocalPlayerIndex, _playerRoot!.position);
+
+                    if (footstep.HasValue)
+                    {
+                        monster.ReportSound(footstep.Value.At, footstep.Value.RangeMetres, footstep.Value.Loudness);
+                    }
+
+                    if (voice.HasValue)
+                    {
+                        monster.ReportSound(voice.Value.At, voice.Value.RangeMetres, voice.Value.Loudness);
+                    }
+                }
+
+                monster.Simulate(GameConstants.FixedStep);
+            }
         }
 
         /// <summary>
-        /// The player's feet, told to §06.
+        /// The creature the local runner shares a floor with, or null.
+        /// <para>
+        /// Nearest by flat distance among the creatures within
+        /// <see cref="MapGraph.StoreyChangeMetres"/> of the runner's height, because
+        /// §12-B③ puts one creature on a floor and "nearest" only has to break a tie a
+        /// correct map never offers.
+        /// </para>
+        /// </summary>
+        private Creature? LocalStoreyCreature()
+        {
+            var root = _playerRoot;
+            if (root == null)
+            {
+                return null;
+            }
+
+            Creature? best = null;
+            var bestDistance = float.PositiveInfinity;
+            var here = root.position;
+
+            for (var i = 0; i < _creatures.Count; i++)
+            {
+                var agent = _creatures[i].Agent;
+                if (agent == null || !OnSameStorey(agent.transform.position, here))
+                {
+                    continue;
+                }
+
+                var flat = agent.transform.position - here;
+                flat.y = 0f;
+
+                var distance = flat.sqrMagnitude;
+                if (distance < bestDistance)
+                {
+                    best = _creatures[i];
+                    bestDistance = distance;
+                }
+            }
+
+            return best;
+        }
+
+        /// <summary>
+        /// Whether two world points are on one storey.
+        /// <para>
+        /// <see cref="MapGraph.StoreyChangeMetres"/> — 1.8 m, "the vertical separation above
+        /// which two places are on different storeys and nothing sees between them", half
+        /// the kit's 3.75 m floor pitch. Not a number invented here, and the same one
+        /// <c>MatchMap.IsOnSurface</c> and <c>MapGraph</c> ask, so §01's 지상, §12's 층 and
+        /// §06's reach cannot disagree about what a floor is.
+        /// </para>
+        /// </summary>
+        private static bool OnSameStorey(Vector3 a, Vector3 b)
+        {
+            return Mathf.Abs(a.y - b.y) < MapGraph.StoreyChangeMetres;
+        }
+
+        /// <summary>
+        /// The player's feet, raised as a noise for §06. Delivered by
+        /// <see cref="StepCreatures"/> to the creature on the runner's own floor.
         /// <para>
         /// <b>This is the door out of 순찰, and it was nailed shut.</b> §06's table gives
         /// 순찰 exactly one transition — 소리 감지 → 경계 — and no sight edge, which is
@@ -927,12 +1186,12 @@ namespace HorrorGame.Gameplay.Match
         /// "hear it or be heard" stays one decision.
         /// </para>
         /// </summary>
-        private void ReportFootsteps(MonsterAgent monster)
+        private NoiseCue? TakeFootstepCue()
         {
             var root = _playerRoot;
             if (root == null)
             {
-                return;
+                return null;
             }
 
             var here = root.position;
@@ -944,7 +1203,7 @@ namespace HorrorGame.Gameplay.Match
 
             if (_strideTravelled < AudioTuning.FootstepStrideMetres)
             {
-                return;
+                return null;
             }
 
             _strideTravelled = 0f;
@@ -958,21 +1217,22 @@ namespace HorrorGame.Gameplay.Match
 
             if (effort <= 0.01f)
             {
-                return;
+                return null;
             }
 
             var clarity = ListenerAbility.ClarityOf(FloorSurfaces.Sample(here));
             var range = GameConstants.MonsterFootstepHearingRange * clarity * effort;
             if (range <= 0.1f)
             {
-                return;
+                return null;
             }
 
-            monster.ReportSound(here, range, effort);
+            return new NoiseCue(here, range, effort);
         }
 
         /// <summary>
-        /// The player's voice, told to §06.
+        /// The player's voice, raised as a noise for §06. Delivered by
+        /// <see cref="StepCreatures"/> to the creature on the runner's own floor.
         /// <para>
         /// §12-A's maze is meant to be argued through — two players who meet at a gate should
         /// be able to say which way they came. But §06 leaves 순찰 on 소리 감지 and nothing
@@ -988,22 +1248,53 @@ namespace HorrorGame.Gameplay.Match
         /// the shout.
         /// </para>
         /// </summary>
-        private void ReportVoice(MonsterAgent monster)
+        private NoiseCue? TakeVoiceCue()
         {
             var root = _playerRoot;
             if (root == null || _voiceEffort == VoiceEffort.Silent)
             {
-                return;
+                return null;
             }
 
             var here = root.position;
             var range = VoiceRules.MonsterHearingRangeMetres(_voiceEffort, FloorSurfaces.Sample(here));
             if (range <= 0.1f)
             {
-                return;
+                return null;
             }
 
-            monster.ReportSound(here, range, VoiceRules.SelfNoise(_voiceEffort));
+            return new NoiseCue(here, range, VoiceRules.SelfNoise(_voiceEffort));
+        }
+
+        /// <summary>
+        /// A noise the host raised this tick, held rather than delivered.
+        /// <para>
+        /// It exists because raising a noise and hearing one used to be the same call.
+        /// <c>ReportFootsteps(monster)</c> advanced the stride accumulator as a side effect
+        /// of telling one creature, which is exactly correct while there is one creature and
+        /// silently wrong the moment there are eight: the first agent in the loop would take
+        /// the step and reset the metre count, and the other seven would be handed a match
+        /// in which the player never walked. Separating "a step happened" from "who heard
+        /// it" is what makes the per-storey rule above expressible at all.
+        /// </para>
+        /// </summary>
+        private readonly struct NoiseCue
+        {
+            internal NoiseCue(Vector3 at, float rangeMetres, float loudness)
+            {
+                At = at;
+                RangeMetres = rangeMetres;
+                Loudness = loudness;
+            }
+
+            /// <summary>Where the noise was made.</summary>
+            internal Vector3 At { get; }
+
+            /// <summary>How far it carries, §12's surface and §04's effort already applied.</summary>
+            internal float RangeMetres { get; }
+
+            /// <summary>0~1. <c>MonsterBrain</c> takes the loudest cue in a tick.</summary>
+            internal float Loudness { get; }
         }
 
         /// <summary>
@@ -1224,26 +1515,6 @@ namespace HorrorGame.Gameplay.Match
         }
 
         /// <summary>
-        /// Leans the creature on whatever shut door is in its way.
-        /// <para>
-        /// §12's doors are a wall to the player and a delay to the creature, and this
-        /// method is the whole difference. Without it a shut door is permanent cover and
-        /// §01's 「이길 수 없는 존재」 becomes something you lock in a room.
-        /// </para>
-        /// <para>
-        /// It lives here rather than on <c>MonsterAgent</c> because of an assembly
-        /// boundary that is worth stating: the monster is its own asmdef and
-        /// <c>DoorInteractable</c> is in Assembly-CSharp, so the reference only runs one
-        /// way. The director can see both.
-        /// </para>
-        /// <para>
-        /// A sphere rather than the creature's path: the doors carve the NavMesh, so a
-        /// shut one is already routed AROUND and asking the path what blocks it returns
-        /// nothing. What the creature does is arrive and work on it, which is what a
-        /// player watching the handle shake would expect.
-        /// </para>
-        /// </summary>
-        /// <summary>
         /// Puts <see cref="DoorInteractable"/> on every door the generator laid down.
         /// <para>
         /// The scene carries a door's geometry — a frame, a hinged leaf, a blocking
@@ -1283,32 +1554,94 @@ namespace HorrorGame.Gameplay.Match
             }
         }
 
+        /// <summary>
+        /// Every creature leans on whatever shut door is in ITS way.
+        /// <para>
+        /// §12's doors are a wall to the player and a delay to the creature, and this
+        /// method is the whole difference. Without it a shut door is permanent cover and
+        /// §01's 「이길 수 없는 존재」 becomes something you lock in a room.
+        /// </para>
+        /// <para>
+        /// It lives here rather than on <c>MonsterAgent</c> because of an assembly
+        /// boundary that is worth stating: the monster is its own asmdef and
+        /// <c>DoorInteractable</c> is in Assembly-CSharp, so the reference only runs one
+        /// way. The director can see both.
+        /// </para>
+        /// <para>
+        /// A sphere rather than the creature's path: the doors carve the NavMesh, so a
+        /// shut one is already routed AROUND and asking the path what blocks it returns
+        /// nothing. What the creature does is arrive and work on it, which is what a
+        /// player watching the handle shake would expect.
+        /// </para>
+        /// <para>
+        /// Per creature because a door is a place, not a match state: a runner who shuts a
+        /// door on B2 has done nothing about the door the creature on B6 is already working
+        /// on. Each one gets its own <see cref="DoorReachMetres"/> sphere and pushes the
+        /// first blocking door in it, which is the same rule the single creature had.
+        /// </para>
+        /// <para>
+        /// The sphere is 3D and 1.4 m across, so it cannot reach through the kit's 3.75 m
+        /// storey — nothing here needs the storey test <see cref="StepCreatures"/> uses,
+        /// and saying so is cheaper than adding one that would never fire.
+        /// </para>
+        /// <para>
+        /// <c>Physics.OverlapSphereNonAlloc</c> into one shared buffer: this now runs
+        /// once per creature per fixed step — eight times at 50 Hz — and the allocating
+        /// overload would have made §12's doors 400 garbage arrays a second.
+        /// <see cref="DoorSearchBuffer"/> says what happens if it fills.
+        /// </para>
+        /// </summary>
         private void PushDoors()
         {
-            var monster = _monster;
-            if (monster == null)
+            for (var creature = 0; creature < _creatures.Count; creature++)
             {
-                return;
-            }
-
-            var found = Physics.OverlapSphere(monster.transform.position, DoorReachMetres,
-                ~0, QueryTriggerInteraction.Collide);
-            for (var i = 0; i < found.Length; i++)
-            {
-                var door = found[i].GetComponentInParent<DoorInteractable>();
-                if (door == null || !door.State.Blocks)
+                var monster = _creatures[creature].Agent;
+                if (monster == null)
                 {
                     continue;
                 }
 
-                if (door.Push(Time.deltaTime))
-                {
-                    Debug.Log("[Match] §12 문이 부서졌다 — " + door.name, this);
-                }
+                var found = Physics.OverlapSphereNonAlloc(
+                    monster.transform.position, DoorReachMetres, _doorSearch, ~0, QueryTriggerInteraction.Collide);
 
-                return;
+                for (var i = 0; i < found; i++)
+                {
+                    var collider = _doorSearch[i];
+                    if (collider == null)
+                    {
+                        continue;
+                    }
+
+                    var door = collider.GetComponentInParent<DoorInteractable>();
+                    if (door == null || !door.State.Blocks)
+                    {
+                        continue;
+                    }
+
+                    if (door.Push(Time.deltaTime))
+                    {
+                        Debug.Log("[Match] §12 문이 부서졌다 — " + door.name, this);
+                    }
+
+                    break;
+                }
             }
         }
+
+        /// <summary>
+        /// Colliders one creature's door search may return.
+        /// <para>
+        /// A 1.4 m sphere in §12's 2.2 m corridors touches a floor tile, a wall or two, a
+        /// ceiling cap and whatever prop is underfoot; 32 is several times that. If it ever
+        /// did fill, the cost is one creature failing to notice one door on one tick and
+        /// finding it on the next — which is why this is a fixed buffer rather than a
+        /// growing one. The allocating overload is what it replaced, and it was allocating
+        /// once per creature per fixed step.
+        /// </para>
+        /// </summary>
+        private const int DoorSearchBuffer = 32;
+
+        private readonly Collider[] _doorSearch = new Collider[DoorSearchBuffer];
 
         /// <summary>
         /// How far the creature reaches to lean on a door, metres. Its own agent radius
@@ -1329,92 +1662,137 @@ namespace HorrorGame.Gameplay.Match
         /// Now the creature commits at 1.8 m, travels at 7.0 m/s for 0.55 s, and the
         /// strike either lands or costs it 0.8 s of standing still.
         /// </para>
+        /// <para>
+        /// <b>The storey test is not defensive tidying, it is the whole reason a runner can
+        /// walk down this building alive.</b> The separation below is FLAT — <c>y</c> is
+        /// zeroed, and it has to be, because a creature's feet and a player's feet are at
+        /// different heights on the same floor. §01 stacks eight storeys in one column and
+        /// <c>DescentMap.SeedCreature</c> posts every creature at its own floor's MIDDLE,
+        /// which is the SAME X and Z on all eight. So the moment there is more than one
+        /// creature, a runner arriving at the middle of B3 is a flat 0.0 m from the
+        /// creatures on B1, B2, B4 … B8 as well, and an unguarded loop over them would kill
+        /// the runner instantly, from up to 26 m below, with the killer never appearing on
+        /// screen. Each creature is therefore asked only about a runner on its own floor —
+        /// <see cref="OnSameStorey"/>, <see cref="MapGraph.StoreyChangeMetres"/>, the same
+        /// constant §01's 지상 and §12's 층 already use.
+        /// </para>
+        /// <para>
+        /// Every creature is stepped, not just the near one, because <c>MonsterLunge.Tick</c>
+        /// is how a lunge is CANCELLED: given <c>chasing: false</c> it drops back to Ready.
+        /// A creature the runner dropped away from mid-commit would otherwise stay
+        /// Committed for the rest of the match, with the speed override
+        /// <see cref="MonsterAgent.SetLunge"/> left switched on — 7.0 m/s of §06 patrolling
+        /// a floor nobody is on.
+        /// </para>
         /// </summary>
         private void CheckGrab()
         {
             var state = _state;
-            var monster = _monster;
-            if (state == null || monster == null || _playerRoot == null || _onSurface)
+            if (state == null || _playerRoot == null || _onSurface || _creatures.Count == 0)
             {
                 return;
             }
 
-            // §09 leaves the body where it fell and it stays there for the rest of the
-            // match. A corpse is not catchable — MatchState.TryKill refuses a second kill
-            // anyway, but reaching it would drop an already-empty inventory and play the
-            // grab again over a player who is no longer there.
-            var chasing = monster.State == MonsterStateId.Chase && !LocalPlayerIsGhost;
+            var here = _playerRoot.position;
 
-            var separation = _playerRoot.position - monster.transform.position;
-            separation.y = 0f;
-
-            var distance = separation.magnitude;
-
-            // Why nothing is happening, said out loud. The owner stood in front of the
-            // creature and did not die, and there are four different reasons that can be
-            // true at once — it is not in 추격, they are already a ghost, they are on
-            // §01's surface apron, or the lunge is mid-recovery. Guessing between them
-            // from outside cost a rebuild; this says which.
-            if (distance < 6f && Time.time - _lastGrabReport > 0.5f)
+            for (var i = 0; i < _creatures.Count; i++)
             {
-                _lastGrabReport = Time.time;
-                Debug.Log("[Match] 괴물 " + distance.ToString("0.00") + " m · §06 " + monster.State
-                          + " · 덮치기 " + _lunge.State
-                          + (chasing ? string.Empty : "  ← 추격이 아니라 판정 없음")
-                          + (LocalPlayerIsGhost ? "  ← 이미 유령" : string.Empty), this);
+                var creature = _creatures[i];
+                var monster = creature.Agent;
+                if (monster == null)
+                {
+                    continue;
+                }
+
+                // §09 leaves the body where it fell and it stays there for the rest of the
+                // match. A corpse is not catchable — MatchState.TryKill refuses a second kill
+                // anyway, but reaching it would drop an already-empty inventory and play the
+                // grab again over a player who is no longer there.
+                //
+                // A creature on another floor is never chasing this runner for the purposes
+                // of a catch, however close the flat distance says it is. See the remarks.
+                var reachable = OnSameStorey(monster.transform.position, here);
+                var chasing = reachable && monster.State == MonsterStateId.Chase && !LocalPlayerIsGhost;
+
+                var separation = here - monster.transform.position;
+                separation.y = 0f;
+
+                // Out of reach by construction when the creature is on another storey, so
+                // MonsterLunge sees a distance it will never commit at and runs its
+                // recovery down honestly rather than being fed a false 0 m.
+                var distance = reachable ? separation.magnitude : float.PositiveInfinity;
+
+                // Why nothing is happening, said out loud. The owner stood in front of the
+                // creature and did not die, and there are four different reasons that can be
+                // true at once — it is not in 추격, they are already a ghost, they are on
+                // §01's surface apron, or the lunge is mid-recovery. Guessing between them
+                // from outside cost a rebuild; this says which.
+                if (reachable && distance < 6f && Time.time - _lastGrabReport > 0.5f)
+                {
+                    _lastGrabReport = Time.time;
+                    Debug.Log("[Match] 괴물 " + distance.ToString("0.00") + " m · §06 " + monster.State
+                              + " · 덮치기 " + creature.Lunge.State
+                              + (chasing ? string.Empty : "  ← 추격이 아니라 판정 없음")
+                              + (LocalPlayerIsGhost ? "  ← 이미 유령" : string.Empty), this);
+                }
+
+                // FixedStep, not Time.deltaTime. CheckGrab runs inside StepFixed, which
+                // StepMatch may call several times in one frame to burn down its
+                // accumulator — so a frame delta here advanced the strike by a whole frame
+                // per fixed step, and a 0.55 s commit resolved in a different number of
+                // steps depending on frame rate. §06's lunge is the one window where the
+                // player's survival is decided by tenths of a second, and it was being
+                // measured on the wrong clock.
+                var previous = creature.Lunge.State;
+                var outcome = creature.Lunge.Tick(GameConstants.FixedStep, chasing, distance);
+
+                if (previous != creature.Lunge.State || outcome != LungeEvent.None)
+                {
+                    monster.SetLunge(creature.Lunge.State == LungeState.Committed,
+                                     creature.Lunge.SpeedNow(monster.ChaseSpeed));
+                }
+
+                switch (outcome)
+                {
+                    case LungeEvent.Committed:
+                        // The clip plays NOW, while the creature is still travelling. That is
+                        // the whole change: an attack somebody can see coming.
+                        monster.PlayGrab();
+                        Debug.Log("[Match] §06 덮친다 — " + distance.ToString("0.00") + " m", this);
+                        continue;
+
+                    case LungeEvent.Missed:
+                        Debug.Log("[Match] §04 주자 — 덮치기를 피했다, " + distance.ToString("0.00") + " m", this);
+                        continue;
+
+                    case LungeEvent.Hit:
+                        break;
+
+                    default:
+                        continue;
+                }
+
+                var where = _playerRoot.position;
+
+                // §08: "사망자의 전리품 — 떨어진다." The pile stays where it fell so the team
+                // has a reason to come back for it, and its value is what §09 then makes the
+                // ghost watch — "자기 물건이 어디 있는지 보이는데 말할 수 없다."
+                var pileValue = DropEverything(where);
+
+                if (state.TryKill(LocalPlayerIndex, where.ToVec3()))
+                {
+                    Debug.Log("[Match] §09 잡혔다 — " + where, this);
+                    monster.ForgetTarget(LocalPlayerIndex);
+                    EnterGhost(state.PlayerAt(LocalPlayerIndex).Ghost, pileValue);
+                }
+
+                // The seat has resolved, so this tick is over. The other creatures' lunges
+                // resume on the next one, by which time LocalPlayerIsGhost is true and none
+                // of them can commit at a corpse — which is the rule the single-creature
+                // version got from `chasing` and this one has to get from the loop ending.
+                CheckOutcome();
+                break;
             }
-
-            // FixedStep, not Time.deltaTime. CheckGrab runs inside StepFixed, which
-            // StepMatch may call several times in one frame to burn down its
-            // accumulator — so a frame delta here advanced the strike by a whole frame
-            // per fixed step, and a 0.55 s commit resolved in a different number of
-            // steps depending on frame rate. §06's lunge is the one window where the
-            // player's survival is decided by tenths of a second, and it was being
-            // measured on the wrong clock.
-            var previous = _lunge.State;
-            var outcome = _lunge.Tick(GameConstants.FixedStep, chasing, distance);
-
-            if (previous != _lunge.State || outcome != LungeEvent.None)
-            {
-                monster.SetLunge(_lunge.State == LungeState.Committed,
-                                 _lunge.SpeedNow(monster.ChaseSpeed));
-            }
-
-            switch (outcome)
-            {
-                case LungeEvent.Committed:
-                    // The clip plays NOW, while the creature is still travelling. That is
-                    // the whole change: an attack somebody can see coming.
-                    monster.PlayGrab();
-                    Debug.Log("[Match] §06 덮친다 — " + distance.ToString("0.00") + " m", this);
-                    return;
-
-                case LungeEvent.Missed:
-                    Debug.Log("[Match] §04 주자 — 덮치기를 피했다, " + distance.ToString("0.00") + " m", this);
-                    return;
-
-                case LungeEvent.Hit:
-                    break;
-
-                default:
-                    return;
-            }
-
-            var where = _playerRoot.position;
-
-            // §08: "사망자의 전리품 — 떨어진다." The pile stays where it fell so the team
-            // has a reason to come back for it, and its value is what §09 then makes the
-            // ghost watch — "자기 물건이 어디 있는지 보이는데 말할 수 없다."
-            var pileValue = DropEverything(where);
-
-            if (state.TryKill(LocalPlayerIndex, where.ToVec3()))
-            {
-                Debug.Log("[Match] §09 잡혔다 — " + where, this);
-                monster.ForgetTarget(LocalPlayerIndex);
-                EnterGhost(state.PlayerAt(LocalPlayerIndex).Ghost, pileValue);
-            }
-
-            CheckOutcome();
         }
 
         /// <summary>
@@ -1468,7 +1846,14 @@ namespace HorrorGame.Gameplay.Match
             }
 
             ghosts.MatchEndRequested = ShowHeldEndScreen;
-            ghosts.Begin(ghost, _playerRoot, _monster);
+
+            // The creature on the floor the body is lying on, not simply "the monster".
+            // §09's whole promise is 「죽으면 지루하다 → 볼 게 있고 할 게 있다」, and what
+            // there is to watch is the thing that just killed you still hunting the floor
+            // you died on. Handed the primary instead, a ghost on B2 would spend the match
+            // watching a §06 state machine three storeys away. Falls back to the primary so
+            // that a death on a floor with no creature still has something to show.
+            ghosts.Begin(ghost, _playerRoot, LocalStoreyMonster ?? _monster);
         }
 
         /// <summary>
@@ -1828,6 +2213,15 @@ namespace HorrorGame.Gameplay.Match
             });
         }
 
+        /// <summary>
+        /// §08's table over §12's 막힌 길 — <b>on the co-operative branch only</b>.
+        /// <para>
+        /// DESCENT-PIVOT §7 step 7 「상점/전리품/단서 제거」 took the race's call to this out
+        /// of <see cref="BeginMatch"/>; the reasoning is written at the line it stood on.
+        /// It is still called for the recovery match this grew out of, where 전리품 has a
+        /// 차량 to be sold at and credits to become, and it will go with that branch.
+        /// </para>
+        /// </summary>
         private void PlaceLoot()
         {
             var map = _map;
@@ -2039,68 +2433,244 @@ namespace HorrorGame.Gameplay.Match
         }
 
         /// <summary>
-        /// Starts §06's monster on the host's seeded stream and takes its probe, which
-        /// is the same <see cref="IWorldProbe"/> §03's placement reasons through — one
-        /// answer about the world, not two.
+        /// Stands one §06 creature on every declared start and takes the primary's probe,
+        /// which is the same <see cref="IWorldProbe"/> §03's placement reasons through —
+        /// one answer about the world, not two.
+        /// <para>
+        /// <b>One agent per <see cref="MatchMap.MonsterSpawns"/> entry, cloned from the
+        /// scene's own rig.</b> §12-B③ writes 「괴물이 안쪽을 순찰한다」 about every floor and
+        /// <see cref="GameConstants.MonstersPerStorey"/> is the count that follows; §12-C
+        /// makes the 투하구 one-way and not a NavMeshLink, so a creature can never change
+        /// floors and eight floors need eight creatures. Cloned rather than built here
+        /// because the rig carries a NavMeshAgent sized to §12's corridors, a skinned mesh,
+        /// an animation driver, an audio driver and footsteps — a second creature assembled
+        /// from scratch would be a second, quietly different, monster.
+        /// </para>
+        /// <para>
+        /// <b>The primary start keeps the authored rig</b> and every other start gets a
+        /// clone, so a scene with one start behaves exactly as it did before this method
+        /// grew a loop — the same object, in the same place, found by the same
+        /// <c>FindFirstObjectByType</c> the presentation layers use.
+        /// </para>
+        /// <para>
+        /// Clones are parented under the match's world root and destroyed with it, and are
+        /// also held in <see cref="_creatures"/> so <see cref="ClearWorld"/> can take them
+        /// down BEFORE the next match reads the scene. A director that left them standing
+        /// would add eight creatures per <see cref="BeginMatch"/>, and the second match of
+        /// a session would be played against sixteen.
+        /// </para>
+        /// <para>
+        /// <b>§13 still replays.</b> All eight brains draw from the host's single seeded
+        /// stream rather than from eight streams of their own, which is deterministic
+        /// because both the order they are built in and the order
+        /// <see cref="StepCreatures"/> ticks them in are the order of
+        /// <see cref="MatchMap.MonsterSpawns"/> — a list this map sorts by marker name. Give
+        /// each creature its own <c>DeterministicRandom</c> and the seed would have to grow
+        /// a per-storey derivation nobody has written down; take the order away and the
+        /// same seed stops producing the same match.
+        /// </para>
         /// </summary>
-        private NavMeshWorldProbe? PrepareMonster()
+        private NavMeshWorldProbe? PrepareCreatures()
         {
-            var monster = _monster;
+            var authored = _monster;
             var rng = _rng;
-            if (monster == null || rng == null)
+            if (authored == null || rng == null)
             {
                 return null;
             }
 
-            if (_map != null && _map.MonsterSpawn != null)
+            _creatures.Clear();
+
+            var map = _map;
+            var spawns = map != null ? map.MonsterSpawns : null;
+            var primary = map != null ? map.MonsterSpawn : null;
+
+            if (spawns == null || spawns.Count == 0)
             {
-                monster.transform.position = _map.MonsterSpawn.position;
+                // No starts declared: the scene's own creature stays where it was authored.
+                // The old behaviour, and the only one available — inventing a spawn would
+                // put §06 somewhere no section chose.
+                _creatures.Add(new Creature(authored, null, cloned: false));
+            }
+            else
+            {
+                for (var i = 0; i < spawns.Count; i++)
+                {
+                    var spawn = spawns[i];
+                    var isPrimary = primary == null ? i == 0 : ReferenceEquals(spawn, primary);
+                    var agent = isPrimary ? authored : CloneCreature(authored, spawn);
+                    if (agent == null)
+                    {
+                        continue;
+                    }
+
+                    agent.transform.position = spawn.position;
+                    _creatures.Add(new Creature(agent, spawn, cloned: !isPrimary));
+                }
             }
 
-            monster.SelfDriven = false;
-            monster.Initialize(rng);
-            monster.ClearTargets();
-
-            var probe = monster.Probe;
-            if (probe != null)
+            NavMeshWorldProbe? primaryProbe = null;
+            for (var i = 0; i < _creatures.Count; i++)
             {
-                probe.LitQuery = IsAreaLit;
+                var agent = _creatures[i].Agent;
+
+                agent.SelfDriven = false;
+                agent.Initialize(rng);
+                agent.ClearTargets();
+
+                var probe = agent.Probe;
+                if (probe != null)
+                {
+                    probe.LitQuery = IsAreaLit;
+                }
+
+                if (ReferenceEquals(agent, authored) || primaryProbe == null)
+                {
+                    primaryProbe = probe;
+                }
             }
 
-            return probe;
+            return primaryProbe;
+        }
+
+        /// <summary>
+        /// A second creature, cut from the one the scene carries.
+        /// <para>
+        /// <c>Instantiate</c> rather than a prefab reference: the solo scene's creature is
+        /// assembled by <c>SoloPlaytest.SpawnMonster</c> at generation time, not saved as a
+        /// prefab, so the rig in the scene IS the authority for what a creature is. Copying
+        /// it means an animation clip, an audio driver or a NavMeshAgent radius fixed on the
+        /// original is fixed on all eight, which is the failure mode a hand-built second
+        /// creature has.
+        /// </para>
+        /// <para>
+        /// Nothing about the brain is copied — <c>MonsterBrain</c> and
+        /// <c>NavMeshWorldProbe</c> are plain fields, not serialised, so a clone arrives
+        /// with neither and is given both by <c>Initialize</c> on the host's own seeded
+        /// stream (§13).
+        /// </para>
+        /// </summary>
+        private MonsterAgent? CloneCreature(MonsterAgent authored, Transform spawn)
+        {
+            var copy = Instantiate(authored.gameObject, spawn.position, authored.transform.rotation);
+            copy.name = authored.name + " @ " + spawn.name;
+
+            if (_worldRoot != null)
+            {
+                copy.transform.SetParent(_worldRoot.transform, worldPositionStays: true);
+            }
+
+            var agent = copy.GetComponent<MonsterAgent>();
+            if (agent == null)
+            {
+                // The rig is a MonsterAgent by definition — this is here so that a copy
+                // that somehow arrives without one is destroyed rather than left standing
+                // in the building as a mute duplicate of the creature.
+                Debug.LogError("[Match] §06 창조물 복제본에 MonsterAgent가 없다 — " + copy.name, this);
+                Interactable.Despawn(copy);
+                return null;
+            }
+
+            return agent;
+        }
+
+        /// <summary>
+        /// §12-B③'s count, checked against the world instead of against the map.
+        /// <para>
+        /// <b>This is the answer to "what stops the audit going green on a game that still
+        /// runs one creature".</b> <c>NavMeshConnectivity</c> measures MonsterSpawn markers
+        /// in the editor; this measures agents standing in the scene and being ticked, and
+        /// refuses the match if the two numbers differ. Both numbers are then printed on one
+        /// line of the match log, so no reader has to hold one of them in their head.
+        /// </para>
+        /// <para>
+        /// It cannot be satisfied by half a change. A map that grows eight starts while the
+        /// runtime still stands up one fails here and the match does not begin — every
+        /// PlayMode test that calls <c>BeginMatch</c> goes red, loudly, naming both counts.
+        /// The reverse — this half landing without the map's — is the shipped map's own
+        /// case: one start, one creature, equal, and the audit still says <em>1 of 8
+        /// storeys</em>, which is the truth.
+        /// </para>
+        /// </summary>
+        private bool VerifyCreatureCount(MatchMap map)
+        {
+            var declared = map.MonsterSpawns.Count;
+            var standing = _creatures.Count;
+
+            if (declared > 0 && standing != declared)
+            {
+                Debug.LogError(
+                    "[Match] §12-B③ 창조물 수가 맞지 않는다 — 맵은 " + declared + "개의 시작점을 선언했는데 "
+                    + standing + "마리만 섰다. §06's audit counts the markers and would report "
+                    + map.MonsterStoreyCount + " storeys with a creature; the match would be played with "
+                    + standing + ". Refusing to start rather than run a building the report does not "
+                    + "describe.", this);
+                return false;
+            }
+
+            Debug.Log(
+                "[Match] §06 창조물 " + standing + "마리 — " + map.MonsterStoreyCount + "개 층에 선언된 시작점 "
+                + declared + "개. §12-B③ 층마다 " + GameConstants.MonstersPerStorey + "마리."
+                + (declared == 0 ? "  ← 이 맵에는 §06이 없다" : string.Empty), this);
+
+            return true;
         }
 
         /// <summary>
         /// §03's partial reset, monster half. The chase state, the position and the
         /// aggro go; the clock does not, and nobody here can make it.
+        /// <para>
+        /// Every creature, each back to its OWN start. Sending them all to the primary
+        /// would collapse eight floors' worth of §06 onto one storey on the first 귀환 —
+        /// and since a creature cannot climb, seven of them would never come back.
+        /// </para>
         /// </summary>
         private void ResetMonster()
         {
-            var monster = _monster;
             var map = _map;
             var rng = _rng;
-            if (monster == null || map == null || rng == null)
+            if (map == null || rng == null || _creatures.Count == 0)
             {
                 return;
             }
 
-            monster.ClearTargets();
-
-            var spawn = map.MonsterSpawn != null ? map.MonsterSpawn.position : monster.transform.position;
-            var facing = map.Entrance - spawn;
-            facing.y = 0f;
-
-            monster.Respawn(spawn, facing, rng);
-
-            // Respawn rebuilds the probe, so the light query has to be re-attached or
-            // §03's "is this area lit" quietly starts answering false.
-            _probe = monster.Probe;
-            if (_probe != null)
+            for (var i = 0; i < _creatures.Count; i++)
             {
-                _probe.LitQuery = IsAreaLit;
+                var creature = _creatures[i];
+                var monster = creature.Agent;
+                if (monster == null)
+                {
+                    continue;
+                }
+
+                monster.ClearTargets();
+
+                // Its own lunge goes with its aggro: §03 calls this a reset of 추격, and a
+                // creature left mid-commit would land a strike begun before the team walked
+                // out of the building.
+                creature.Lunge = default(MonsterLunge);
+
+                var spawn = creature.Spawn != null ? creature.Spawn.position : monster.transform.position;
+                var facing = map.Entrance - spawn;
+                facing.y = 0f;
+
+                monster.Respawn(spawn, facing, rng);
+
+                // Respawn rebuilds the probe, so the light query has to be re-attached or
+                // §03's "is this area lit" quietly starts answering false.
+                var probe = monster.Probe;
+                if (probe != null)
+                {
+                    probe.LitQuery = IsAreaLit;
+                }
+
+                if (ReferenceEquals(monster, _monster))
+                {
+                    _probe = probe;
+                }
             }
 
-            Debug.Log("[Match] §03 부분 리셋 — 괴물의 추격 · 위치 · 어그로 초기화. 시계는 "
+            Debug.Log("[Match] §03 부분 리셋 — 괴물 " + _creatures.Count + "마리의 추격 · 위치 · 어그로 초기화. 시계는 "
                 + _clock.ElapsedSeconds.ToString("0") + "s 그대로.", this);
         }
 
@@ -2258,6 +2828,8 @@ namespace HorrorGame.Gameplay.Match
             // a rig in that state would spawn a player who cannot move and cannot see.
             _ghosts?.End();
 
+            DespawnClonedCreatures();
+
             _droppedLoot.Clear();
             _hud?.HideEnd();
             _hud?.CloseShop();
@@ -2273,6 +2845,40 @@ namespace HorrorGame.Gameplay.Match
                 Interactable.Despawn(_worldRoot);
                 _worldRoot = null;
             }
+        }
+
+        /// <summary>
+        /// Takes down the creatures this director cloned, and leaves the scene's own alone.
+        /// <para>
+        /// <b>Deactivated first, then destroyed.</b> <c>Interactable.Despawn</c> is
+        /// <c>Destroy</c> in play mode, which does not take effect until the end of the
+        /// frame — so a clone destroyed here is still alive and still findable by
+        /// <c>FindFirstObjectByType&lt;MonsterAgent&gt;()</c> for the rest of the frame that
+        /// is laying out the next match. Switching it off first takes it out of that search
+        /// immediately, because the default <c>FindObjectsInactive.Exclude</c> skips it.
+        /// </para>
+        /// <para>
+        /// The authored rig is never destroyed: it belongs to the scene, the inspector
+        /// reference on this component points at it, and a second <c>BeginMatch</c> has to
+        /// find it exactly where the first one did.
+        /// </para>
+        /// </summary>
+        private void DespawnClonedCreatures()
+        {
+            for (var i = 0; i < _creatures.Count; i++)
+            {
+                var creature = _creatures[i];
+                if (!creature.Cloned || creature.Agent == null)
+                {
+                    continue;
+                }
+
+                var body = creature.Agent.gameObject;
+                body.SetActive(false);
+                Interactable.Despawn(body);
+            }
+
+            _creatures.Clear();
         }
     }
 }

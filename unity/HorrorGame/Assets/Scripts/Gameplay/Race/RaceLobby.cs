@@ -604,9 +604,16 @@ namespace HorrorGame.Gameplay.Race
             SetStage(LobbyStage.Starting, "씨앗 " + seed + " · 같은 건물로 내려간다.");
             Close();
 
+            // Taken before the load that is about to destroy the objects holding it. See
+            // RaceParty for why it is two fields and not the whole roster.
+            RaceParty.Settle(_localIndex, NetworkServer.active ? _connectionOrder : null);
+
+            var kept = KeepBodiesAcrossTheLoad();
+
             Debug.Log(
                 "[Lobby] Descending on seed " + seed + " with " + _runners.Count + " runner(s) — §11's field is "
-                + GameConstants.RaceRunnersMin + "~" + GameConstants.RaceRunnersMax + ".", this);
+                + GameConstants.RaceRunnersMin + "~" + GameConstants.RaceRunnersMax + ". "
+                + kept + " runner body/bodies carried across the scene load.", this);
 
             // The shell's own 시작 is what runs next, and it is also what opened this
             // lobby. The latch stops that being a loop.
@@ -619,6 +626,81 @@ namespace HorrorGame.Gameplay.Race
             }
 
             GameShell.Instance?.StartMatch();
+        }
+
+        /// <summary>
+        /// Moves every spawned runner out of the scene that is about to be thrown away.
+        /// <para>
+        /// <b>This is the link the race was missing.</b> The descent is entered with
+        /// <c>SceneManager.LoadSceneAsync(..., LoadSceneMode.Single)</c>, which destroys
+        /// every object in the old scene — and the runners
+        /// <c>HorrorGameNetworkManager.OnServerReady</c> built are ordinary objects in it.
+        /// On the host each one's <c>NetworkIdentity.OnDestroy</c> then calls
+        /// <c>NetworkServer.Destroy</c>, which despawns it for everybody; on a client the
+        /// same load destroys its copy. Nothing spawns them again, because a client sends
+        /// <c>ReadyMessage</c> exactly once, at connect. So the party arrived in the same
+        /// building on the same seed with nobody's body left in it — twenty people alone
+        /// in twenty identical mazes, and no test failed, because every test that has two
+        /// peers in it never loads a scene.
+        /// </para>
+        /// <para>
+        /// <b>Why this and not <c>ServerChangeScene</c>.</b> Mirror's own answer is
+        /// <c>NetworkManager.ServerChangeScene</c>, which tells clients to load and
+        /// re-spawns afterwards. Taking it would move the scene load out of
+        /// <c>GameShell</c> — the loading screen, the minimum-display floor, the Build
+        /// Settings error path — and put a second author on the flow the shell owns, for a
+        /// party that already agreed on its own scene through
+        /// <see cref="RaceLobbyBeginMessage"/>. Keeping the bodies is three lines and
+        /// leaves both owners where they are. The cost is that these objects now outlive
+        /// any scene: <see cref="StopSession"/> and <see cref="OnSessionEnded"/> are what
+        /// clear them, through Mirror's own shutdown.
+        /// </para>
+        /// <para>
+        /// Both dictionaries are swept because host mode populates both with the same
+        /// objects and a pure client only has the second; <c>DontDestroyOnLoad</c> is
+        /// idempotent, so the overlap costs nothing.
+        /// </para>
+        /// </summary>
+        /// <returns>How many distinct objects were carried over. Zero during a descent is a defect.</returns>
+        private static int KeepBodiesAcrossTheLoad()
+        {
+            var kept = new HashSet<int>();
+
+            KeepAll(NetworkServer.spawned.Values, kept);
+            KeepAll(NetworkClient.spawned.Values, kept);
+
+            return kept.Count;
+        }
+
+        private static void KeepAll(IEnumerable<NetworkIdentity> identities, HashSet<int> kept)
+        {
+            // Copied out first: DontDestroyOnLoad moves an object between scenes, and
+            // enumerating Mirror's dictionary while the engine reparents its contents is
+            // not a guarantee worth relying on.
+            var batch = new List<NetworkIdentity>();
+            foreach (var identity in identities)
+            {
+                if (identity != null)
+                {
+                    batch.Add(identity);
+                }
+            }
+
+            for (var i = 0; i < batch.Count; i++)
+            {
+                var go = batch[i].gameObject;
+
+                // DontDestroyOnLoad only accepts a root object. NetRunner.Build makes one,
+                // but a body attached by anything else might not be, and the alternative
+                // to detaching is a silent Unity warning and a destroyed runner.
+                if (go.transform.parent != null)
+                {
+                    go.transform.SetParent(null, worldPositionStays: true);
+                }
+
+                UnityEngine.Object.DontDestroyOnLoad(go);
+                kept.Add(go.GetInstanceID());
+            }
         }
 
         /// <summary>
@@ -637,6 +719,25 @@ namespace HorrorGame.Gameplay.Race
         /// </summary>
         private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
         {
+            // 메뉴로 나가기 in the middle of a race loads the menu scene without telling
+            // anybody, and a session left running behind it is worse than it looks: the
+            // host keeps a socket open, the runner bodies this class deliberately kept
+            // alive now outlive every scene, and the next 시작 opens a lobby whose
+            // RequestHost returns immediately because NetworkServer.active is still true.
+            // Leaving is leaving — §13 does not migrate and there is nothing to come back
+            // to.
+            if (string.Equals(scene.name, GameShell.DefaultMenuScene, StringComparison.Ordinal))
+            {
+                if (NetworkServer.active || NetworkClient.active)
+                {
+                    Debug.Log("[Lobby] 지상으로 나가면서 세션을 닫는다. §13 · 판은 이관되지 않는다.", this);
+                    StopSession();
+                    SetStage(LobbyStage.Offline, "판을 떠났다.");
+                }
+
+                return;
+            }
+
             if (AgreedSeed == 0)
             {
                 return;
@@ -656,7 +757,18 @@ namespace HorrorGame.Gameplay.Race
                 Debug.LogError(
                     "[Lobby] The descent refused to start on seed " + seed
                     + ", so the runners are not all in the same building. See the [Match] error above.", this);
+                return;
             }
+
+            // After BeginMatch and not before: the map is read out of the scene inside
+            // that call, and MovePlayerToSpawn puts this machine's rig on PlayerSpawns[0]
+            // — right for one player, and on twenty machines twenty people inside one
+            // cell. RaceRunners waits for §13's own answer and moves the rig there.
+            //
+            // Run on this component because it is the only MonoBehaviour in the flow that
+            // outlives the scene load, and it has to be a coroutine: on a client the
+            // answer is a SyncVar that has not arrived yet.
+            StartCoroutine(RaceRunners.TakeTheStartLine());
         }
 
         private void OnSessionEnded(NetSessionEndReason reason)
@@ -677,6 +789,9 @@ namespace HorrorGame.Gameplay.Race
             _seed = 0;
             _hostIndex = -1;
             _localIndex = -1;
+
+            RaceParty.Clear();
+            RaceRunners.Clear();
 
             string note;
             if (connecting)
@@ -713,6 +828,12 @@ namespace HorrorGame.Gameplay.Race
             _seed = 0;
             _hostIndex = -1;
             _localIndex = -1;
+
+            // Both of these outlive scenes on purpose — see KeepBodiesAcrossTheLoad — so
+            // the session ending is the only thing that can clear them. A second race, or
+            // a solo playtest afterwards, must not inherit the first one's seat number.
+            RaceParty.Clear();
+            RaceRunners.Clear();
         }
 
         private void SetStage(LobbyStage stage, string note)

@@ -54,8 +54,17 @@ namespace HorrorGame.Net
         /// </summary>
         private const string AssetIdSeed = "HorrorGame.Net.NetRunner";
 
-        /// <summary>Name given to the child the visual is parented under, when there is one.</summary>
-        private const string VisualChildName = "Visual";
+        /// <summary>
+        /// Name given to the child the visual is parented under, when there is one.
+        /// <para>
+        /// Public because the owner has to be able to find it again and switch it off:
+        /// §01's local player already has a rig of their own with the camera on it, so a
+        /// second body standing at their spawn marker would be a duplicate of themselves
+        /// that never moves. <see cref="NetLocalRunner"/> is the one that does it, and it
+        /// finds the child by this name rather than by index.
+        /// </para>
+        /// </summary>
+        public const string VisualChildName = "Visual";
 
         /// <summary>
         /// Where a runner visual may be found at run time if nothing set
@@ -98,6 +107,38 @@ namespace HorrorGame.Net
         public static Func<GameObject?>? VisualFactory { get; set; }
 
         /// <summary>
+        /// Produces the thing that drives §05's five rows on the machine that owns a
+        /// runner — the mouse, the keys and the legs — or null when this machine has no
+        /// player rig to drive them with.
+        /// <para>
+        /// <b>Why this seam exists at all.</b> <c>NetPlayer.BindLocalSource</c> had zero
+        /// callers outside tests for the whole life of the network layer, which meant the
+        /// wire worked and nobody was on it: two peers connected, twenty sockets were
+        /// accepted, and a human pressing W sent nothing. The interface was there and the
+        /// implementation was not, and no test failed — the fixtures supplied their own
+        /// <c>INetPlayerViewSource</c>, which is exactly the shape of a green number that
+        /// is not in the build.
+        /// </para>
+        /// <para>
+        /// A delegate rather than a direct reference, for the reason
+        /// <see cref="INetPlayerViewSource"/> states outright: ARCHITECTURE §3 forbids
+        /// this assembly from importing the movement controller to learn where a player
+        /// is looking. The implementation lives in <c>HorrorGame.Net.PlayerBridge</c> —
+        /// a satellite assembly that may see both halves, the same arrangement
+        /// <c>HorrorGame.Net.SteamTransport</c> already uses to keep Steamworks out of
+        /// this one — and installs itself from a
+        /// <c>[RuntimeInitializeOnLoadMethod]</c> so no scene has to remember to.
+        /// </para>
+        /// <para>
+        /// It returns null rather than throwing while there is no rig yet: a runner is
+        /// spawned when a connection reports ready, which is one phase before the match
+        /// scene exists (see <c>HorrorGameNetworkManager.OnServerReady</c>).
+        /// <see cref="NetLocalRunner"/> keeps asking.
+        /// </para>
+        /// </summary>
+        public static Func<INetPlayerViewSource?>? LocalViewSourceFactory { get; set; }
+
+        /// <summary>
         /// Assembles a runner, ready to be handed to
         /// <c>NetworkServer.Spawn(runner, NetRunner.AssetId, owner)</c> on the host or
         /// returned from the client's spawn handler.
@@ -132,6 +173,14 @@ namespace HorrorGame.Net
             // HorrorInterestManagement defaults to Perception anyway — stamped
             // explicitly so the default is a decision rather than an omission.
             NetInterestScope.Apply(runner, NetInterestClass.Perception);
+
+            // Added on both ends and on every copy, because neither end knows yet which
+            // copy this is: ownership arrives with the spawn message, after this function
+            // has returned. The component is inert on a copy this machine does not own —
+            // see NetLocalRunner — so building it unconditionally costs one MonoBehaviour
+            // per runner and removes the only alternative, which is a second construction
+            // path that only the owner takes and that therefore only the owner can break.
+            runner.AddComponent<NetLocalRunner>();
 
             AttachVisual(runner);
 

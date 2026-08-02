@@ -134,6 +134,19 @@ namespace HorrorGame.Net
             isOwned && _source != null ? MathfClamp01(_source.StaminaFraction) : ApproximateStaminaFraction;
 
         /// <summary>
+        /// Whether a local controller is attached and this avatar is therefore reporting.
+        /// <para>
+        /// Exposed so <see cref="NetLocalRunner"/> can stop hunting for a rig once one is
+        /// bound, and so a harness that binds its own source is not overwritten by the
+        /// shipped binder a frame later. It is deliberately not "is this a real player" —
+        /// a host with no window open owns a runner and reports nothing, and that is a
+        /// legal state (§13 has no dedicated server, but it does have a headless one in
+        /// CI).
+        /// </para>
+        /// </summary>
+        public bool HasLocalSource => _source != null;
+
+        /// <summary>
         /// Raised when this player's light goes on or off.
         /// <para>
         /// A discrete event rather than something to poll, because it has to be heard
