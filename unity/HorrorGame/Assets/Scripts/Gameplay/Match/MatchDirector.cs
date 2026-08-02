@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using HorrorGame.Core;
+using HorrorGame.Core.Monster;
 using HorrorGame.Core.Clues;
 using HorrorGame.Core.Economy;
 using HorrorGame.Core.Ghost;
@@ -115,6 +116,9 @@ namespace HorrorGame.Gameplay.Match
         private bool _running;
         private bool _onSurface = true;
         private float _grabDistance;
+
+        /// <summary>§06's catch, as an act. See MonsterLunge — the rule is in Core.</summary>
+        private MonsterLunge _lunge;
         private int _activeSeed;
         private bool _endScreenHeldForGhost;
 
@@ -817,38 +821,66 @@ namespace HorrorGame.Gameplay.Match
 
         /// <summary>
         /// §06 gives the state machine five states and a catch is not one of them, so
-        /// whether a player has been caught is the host's rule. The distance is the two
-        /// bodies touching — the monster's own agent radius plus the player's controller
-        /// radius — which is rig geometry rather than a tuned value, and it is only
-        /// checked in 추격 because §06's other four states are not an attack.
+        /// whether a player has been caught is the host's rule. The rule itself lives in
+        /// <see cref="MonsterLunge"/>, engine-free and tested; this is the wiring — it
+        /// feeds the struct a distance and a §06 state and does what the struct says.
+        /// <para>
+        /// <b>This used to be two capsules touching.</b> The instant the monster's agent
+        /// radius overlapped the player's controller radius, the player died, and the
+        /// 1.37 s <c>Grab</c> clip played over a body that was already dead. Nobody could
+        /// see an attack happen because there was not one — there was a proximity test.
+        /// Now the creature commits at 1.8 m, travels at 7.0 m/s for 0.55 s, and the
+        /// strike either lands or costs it 0.8 s of standing still.
+        /// </para>
         /// </summary>
         private void CheckGrab()
         {
             var state = _state;
             var monster = _monster;
-            if (state == null || monster == null || _playerRoot == null || _onSurface || _grabDistance <= 0f)
+            if (state == null || monster == null || _playerRoot == null || _onSurface)
             {
                 return;
             }
 
-            if (monster.State != MonsterStateId.Chase || LocalPlayerIsGhost)
-            {
-                // §09 leaves the body where it fell and it stays there for the rest of the
-                // match. A corpse is not catchable — <c>MatchState.TryKill</c> refuses a
-                // second kill anyway, but reaching it would drop an already-empty
-                // inventory and play the grab again over a player who is no longer there.
-                return;
-            }
+            // §09 leaves the body where it fell and it stays there for the rest of the
+            // match. A corpse is not catchable — MatchState.TryKill refuses a second kill
+            // anyway, but reaching it would drop an already-empty inventory and play the
+            // grab again over a player who is no longer there.
+            var chasing = monster.State == MonsterStateId.Chase && !LocalPlayerIsGhost;
 
             var separation = _playerRoot.position - monster.transform.position;
             separation.y = 0f;
-            if (separation.sqrMagnitude > _grabDistance * _grabDistance)
+
+            var previous = _lunge.State;
+            var outcome = _lunge.Tick(Time.deltaTime, chasing, separation.magnitude);
+
+            if (previous != _lunge.State || outcome != LungeEvent.None)
             {
-                return;
+                monster.SetLunge(_lunge.State == LungeState.Committed,
+                                 _lunge.SpeedNow(monster.ChaseSpeed));
+            }
+
+            switch (outcome)
+            {
+                case LungeEvent.Committed:
+                    // The clip plays NOW, while the creature is still travelling. That is
+                    // the whole change: an attack somebody can see coming.
+                    monster.PlayGrab();
+                    Debug.Log("[Match] §06 덮친다 — " + separation.magnitude.ToString("0.00") + " m", this);
+                    return;
+
+                case LungeEvent.Missed:
+                    Debug.Log("[Match] §04 주자 — 덮치기를 피했다, " + separation.magnitude.ToString("0.00") + " m", this);
+                    return;
+
+                case LungeEvent.Hit:
+                    break;
+
+                default:
+                    return;
             }
 
             var where = _playerRoot.position;
-            monster.PlayGrab();
 
             // §08: "사망자의 전리품 — 떨어진다." The pile stays where it fell so the team
             // has a reason to come back for it, and its value is what §09 then makes the

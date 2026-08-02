@@ -241,6 +241,37 @@ namespace HorrorGame.Core
         // §06 — Aggro, stamina, release.
         // ====================================================================
 
+        // ── The lunge ───────────────────────────────────────────────────────
+        // §06 gives the creature five states and none of them is an attack, because the
+        // catch used to be geometry: the two capsules touched and the player died. That
+        // is not a thing anybody can see happen, and the Grab clip — 1.37 s of it, built
+        // and rigged — only ever played over a corpse.
+        //
+        // These five make it an act. The creature COMMITS at MonsterAttackRange, lunges
+        // faster than it chases, and the strike lands MonsterAttackContactSeconds later
+        // if the player is still inside MonsterAttackReach. A miss costs it
+        // MonsterAttackRecoverySeconds, which is the only time in the game the monster is
+        // not closing.
+        //
+        // The numbers are not free: Validate() below asserts the outcome §06 asks for,
+        // which is that a running player cannot escape a committed lunge and a sprinting
+        // 주자 can. That is §04's whole role expressed as one moment.
+
+        /// <summary>Where the creature commits to a lunge, metres. §06.</summary>
+        public const float MonsterAttackRange = 1.8f;
+
+        /// <summary>How fast it travels during the lunge, m/s. Faster than a chase — a pounce is not a sprint.</summary>
+        public const float MonsterLungeSpeed = 7.0f;
+
+        /// <summary>Seconds from commit to the strike landing. The window the Grab clip plays in.</summary>
+        public const float MonsterAttackContactSeconds = 0.55f;
+
+        /// <summary>How far the strike reaches, metres. The two bodies touching.</summary>
+        public const float MonsterAttackReach = 0.8f;
+
+        /// <summary>Seconds a missed lunge costs the creature. The only time it is not closing.</summary>
+        public const float MonsterAttackRecoverySeconds = 0.8f;
+
         /// <summary>Distance at which aggro can break, metres. §06.</summary>
         public const float AggroReleaseDistance = 12f;
 
@@ -1416,6 +1447,26 @@ namespace HorrorGame.Core
         public static void Validate()
         {
             Require(WalkSpeed < RunSpeed, "§06: walking must be slower than running.");
+            Require(MonsterLungeSpeed > MonsterBaseSpeed,
+                "§06: a lunge that is no faster than the chase is not a lunge — the "
+                + "creature would commit and then fail to arrive.");
+            Require((MonsterLungeSpeed - RunSpeed) * MonsterAttackContactSeconds
+                    > MonsterAttackRange - MonsterAttackReach,
+                "§06: 「괴물은 이길 수 없는 존재」. A player who is merely running has to be "
+                + "caught by a committed lunge, or the creature has an attack that misses "
+                + "everybody and the chase stops meaning anything.");
+            Require((MonsterLungeSpeed - RunnerSprintSpeed) * MonsterAttackContactSeconds
+                    < MonsterAttackRange - MonsterAttackReach,
+                "§04 주자: the sprint has to survive one. If a lunge catches a sprinting "
+                + "Runner too, §04's role has no moment of its own and §06's 0.8 m/s of "
+                + "margin buys nothing at the only instant it matters.");
+            Require(MonsterAttackReach < MonsterAttackRange,
+                "§06: the creature must commit from further away than it can reach, or "
+                + "the lunge is the old touch-kill with an animation in front of it.");
+            Require(MonsterAttackRecoverySeconds > MonsterAttackContactSeconds * 0.5f,
+                "§06: a miss has to cost something. Recovery shorter than half the strike "
+                + "would let it re-commit before the player has covered any ground.");
+
             Require(RunSpeed < MonsterBaseSpeed,
                 "§06: the monster must out-run a running player, or ordinary roles could simply flee.");
             Require(MonsterBaseSpeed < RunnerSprintSpeed,

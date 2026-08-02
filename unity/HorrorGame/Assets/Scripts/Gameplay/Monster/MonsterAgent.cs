@@ -102,6 +102,13 @@ namespace HorrorGame.Gameplay.Monster
         private NavMeshWorldProbe? _probe;
         private ThreatTier _tier = ThreatCurve.At(0f);
 
+        /// <summary>
+        /// Speed a lunge is forcing, or negative for "§07 decides". See
+        /// <see cref="SetLunge"/> — the rule that sets it lives in
+        /// <c>HorrorGame.Core.Monster.MonsterLunge</c>, not here.
+        /// </summary>
+        private float _lungeOverride = -1f;
+
         // Both accumulators are double for the reason MatchClock gives: a 35-minute
         // match is 105,000 additions of FixedStep, and in float those drift by the
         // better part of a second — which would move §07's tier boundaries and change
@@ -357,6 +364,28 @@ namespace HorrorGame.Gameplay.Monster
         /// machine five states and a catch is not one of them, so whether a player has
         /// been caught is the host's rule to make and this is only how it looks.
         /// </summary>
+        /// <summary>§07's speed for the current match time. What a lunge overrides.</summary>
+        public float ChaseSpeed
+        {
+            get { return _tier.MonsterSpeed; }
+        }
+
+        /// <summary>
+        /// Hands the creature the speed <see cref="MonsterLunge"/> says it should be
+        /// travelling at. Negative clears the override and gives §07 its tier back.
+        /// <para>
+        /// A committed lunge is faster than a chase and a missed one is stationary, and
+        /// both are things the brain has no state for — §06 names five and none of them
+        /// is an attack. Pushing a speed in keeps the rule in Core and the steering here.
+        /// </para>
+        /// </summary>
+        /// <param name="committed">True while the strike is in the air.</param>
+        /// <param name="speed">What to travel at. Ignored when <paramref name="committed"/> is false and the value is negative.</param>
+        public void SetLunge(bool committed, float speed)
+        {
+            _lungeOverride = committed || speed <= 0f ? speed : -1f;
+        }
+
         public void PlayGrab()
         {
             if (_animation != null)
@@ -467,7 +496,11 @@ namespace HorrorGame.Gameplay.Monster
             // §07 is the only thing that sets the monster's speed, and it is read every
             // step rather than cached: the 초저녁 4.4 and the 동트기 전 5.2 are different
             // creatures, and a constant here would freeze the night at one of them.
-            var speed = _tier.MonsterSpeed;
+            // §07 sets it, and a lunge overrides it. MonsterLunge owns that decision —
+            // committed travels at MonsterLungeSpeed, a missed lunge stands still for its
+            // recovery, and everything else is the tier's. The override is a value the
+            // host pushes in rather than a second copy of the rule.
+            var speed = _lungeOverride >= 0f ? _lungeOverride : _tier.MonsterSpeed;
             var patrolZones = _mapZoneCount > 0
                 ? _tier.PatrolZoneCountFor(_mapZoneCount)
                 : _tier.PatrolZoneCount;
