@@ -518,3 +518,51 @@ whose publisher is not the project.
 
 The playable build is single-player; Mirror is compiled in but not exercised. So this
 blocks the four-player milestone and the store page, not tomorrow's playtest.
+
+---
+
+## B-009 · The NavMesh being audited is not the one for the geometry just built
+
+**Status:** 🔴 open — blocks the descent map reaching disk · **Found** 2026-08-02
+
+### The evidence, which is the whole finding
+
+Three regenerations, three genuinely different sets of geometry, one identical
+audit:
+
+| run | geometry | audit |
+|---|---|---|
+| caps as authored | 29 caps, 14 colliding pairs | 8717 complete · 93.5% · 17 islands · monster 0/3 |
+| caps 3 cells apart | fewer caps, **0** colliding pairs | 8717 complete · 93.5% · 17 islands · monster 0/3 |
+| **no caps at all** | **zero** DeadEndCap pieces placed | 8717 complete · 93.5% · 17 islands · monster 0/3 |
+
+Byte-identical, to the pair. The tile lists differ — the collision count was
+measured going 14 → 0 outside Unity, and the third run places no caps at all —
+so the audit cannot be reading the surface those tiles produce.
+
+### What this rules out
+
+Everything that has been suspected so far, and a lot of work went into each:
+
+- dead-end caps colliding (they do, and it does not matter here)
+- alcove spacing (changing it moved nothing)
+- the radial layout's adjacency patterns
+
+The marker names in the island dump ARE from the new map — `CandidateSite_B8
+굴착층_21` and so on — so the MARKERS come from the current build. Only the
+surface they are sampled against is suspect.
+
+### Where to look first
+
+`Assets/Scenes/Generated/NavMesh/NavMesh_Map_FirstSketch.asset` is a tracked
+file and has been showing as modified since before this hunt started. If the
+bake writes there and the audit samples a previously-loaded instance, or the
+bake is skipped when the asset exists, every number above is explained at once.
+
+### Why it matters beyond this map
+
+`NavMeshAudit` is the gate that decides whether a level ships. If it can report
+on a surface that is not the one just built, then every green audit in this
+project's history is worth less than it looked, including the ones that closed
+B-001. Whatever the cause, the fix has to include a check that the audit and the
+build agree — a triangle count, a bake timestamp, anything that cannot be stale.
