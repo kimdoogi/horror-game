@@ -285,7 +285,16 @@ namespace HorrorGame.EditorTools.SceneGen
         private readonly List<MapCell> _doorCells = new List<MapCell>();
         private readonly List<MapPropPlacement> _extraProps = new List<MapPropPlacement>();
         private readonly List<StairRun> _stairs = new List<StairRun>();
-        private readonly Dictionary<char, MapCell> _keyed = new Dictionary<char, MapCell>();
+        // Keyed BY STOREY, not by sketch. A plan key names a place inside one floor
+        // plan and is consumed by the Mark() calls immediately below it, so scoping it
+        // to the whole building only meant that authoring a new storey required reading
+        // every other storey's file to find out which characters were still free. Three
+        // floors written in parallel each hit that, and one of them collided on 'i'
+        // after every author had already gone hunting for punctuation nobody else had
+        // taken. A collision WITHIN a storey is still an error, because there it really
+        // does silently move whichever §12 requirement was hung on the first one.
+        private readonly Dictionary<int, Dictionary<char, MapCell>> _keyed =
+            new Dictionary<int, Dictionary<char, MapCell>>();
         private readonly List<RoomRect> _openRooms = new List<RoomRect>();
         private string _name = "unnamed map";
         private MapNodeKind _defaultKind = MapNodeKind.None;
@@ -517,15 +526,17 @@ namespace HorrorGame.EditorTools.SceneGen
                         continue;
                     }
 
-                    if (_keyed.ContainsKey(symbol))
+                    var keys = KeysOn(_level);
+                    if (keys.ContainsKey(symbol))
                     {
                         throw new MapSketchException(
-                            "Plan key '" + symbol + "' is used twice, at " + _keyed[symbol] + " and " + cell
-                            + ". A key names one place; reusing it would silently move whichever §12 requirement "
-                            + "was hung on the first one.");
+                            "Plan key '" + symbol + "' is used twice on storey " + _level + ", at "
+                            + keys[symbol] + " and " + cell + ". A key names one place; reusing it would "
+                            + "silently move whichever §12 requirement was hung on the first one. (Keys on "
+                            + "other storeys are free — this table is per storey.)");
                     }
 
-                    _keyed[symbol] = cell;
+                    keys[symbol] = cell;
                 }
             }
 
@@ -536,14 +547,28 @@ namespace HorrorGame.EditorTools.SceneGen
         /// <exception cref="MapSketchException">No plan used that character.</exception>
         public MapCell Key(char symbol)
         {
-            if (!_keyed.TryGetValue(symbol, out var cell))
+            if (!KeysOn(_level).TryGetValue(symbol, out var cell))
             {
                 throw new MapSketchException(
                     "No plan drew the key '" + symbol + "'. Every §12 requirement is hung on a key, so a missing "
-                    + "one means the rule it carried is not on the map at all.");
+                    + "one means the rule it carried is not on the map at all. Storey " + _level
+                    + " is the one being asked — keys are per storey, so a plan drawn on another "
+                    + "floor does not answer here.");
             }
 
             return cell;
+        }
+
+        /// <summary>The key table for one storey, created on first use.</summary>
+        private Dictionary<char, MapCell> KeysOn(int level)
+        {
+            if (!_keyed.TryGetValue(level, out var keys))
+            {
+                keys = new Dictionary<char, MapCell>();
+                _keyed[level] = keys;
+            }
+
+            return keys;
         }
 
         /// <summary>

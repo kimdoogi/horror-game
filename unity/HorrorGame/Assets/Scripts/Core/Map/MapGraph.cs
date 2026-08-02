@@ -125,6 +125,13 @@ namespace HorrorGame.Core.Map
     /// </summary>
     public sealed class MapGraph
     {
+        /// <summary>
+        /// Vertical separation, metres, above which two places are on different storeys
+        /// and nothing sees between them. Half of the kit's 3.75 m storey — far above
+        /// the centimetres a ramp or a sunken bay contributes, far below a floor.
+        /// </summary>
+        private const float StoreyChangeMetres = 1.8f;
+
         private readonly MapZone[] _zones;
         private readonly MapNode[] _nodes;
         private readonly MapEdge[] _edges;
@@ -370,9 +377,30 @@ namespace HorrorGame.Core.Map
                     "Edges " + inEdge + " and " + outEdge + " must both touch node " + nodeId + ".");
             }
 
-            var arriving = (_nodes[nodeId].Position - _nodes[from].Position).Flat;
-            var leaving = (_nodes[to].Position - _nodes[nodeId].Position).Flat;
-            return MathX.AngleBetween(arriving, leaving);
+            // A 계단 is a complete sight break and nothing else needs measuring.
+            //
+            // Every sight rule in this class asks this method, and it worked on .Flat —
+            // it dropped Y. That was invisible while the storeys spiralled, because a
+            // stair never continued a corridor's compass direction. Stacking three new
+            // floors under B5 made two landings collinear with the passages either side,
+            // and `straight-corridor` promptly reported a 25 m sight line running from
+            // 병동 down into 수몰층 — through a concrete slab, past the switchback, and
+            // out the other side. MapKitPiece.StairwellMetal is a 2 x 2 switchback with a
+            // spine wall between the flights and MapSketch.Stair has said in its own
+            // documentation from the beginning that "a stair always breaks a sight line".
+            // It was true of the geometry and untrue of the measurement.
+            //
+            // 180° rather than merely clearing MapSightBreakingBendDegrees: this is not a
+            // sharp corner, it is a floor. Nothing sees through it from any angle.
+            var arrivingFull = _nodes[nodeId].Position - _nodes[from].Position;
+            var leavingFull = _nodes[to].Position - _nodes[nodeId].Position;
+            if (System.Math.Abs(arrivingFull.Y) > StoreyChangeMetres
+                || System.Math.Abs(leavingFull.Y) > StoreyChangeMetres)
+            {
+                return 180f;
+            }
+
+            return MathX.AngleBetween(arrivingFull.Flat, leavingFull.Flat);
         }
 
         // ====================================================================

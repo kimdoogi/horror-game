@@ -4,17 +4,17 @@ using HorrorGame.Core.Session;
 namespace HorrorGame.EditorTools.SceneGen
 {
     /// <summary>
-    /// 요양원 지하 — the building §12's 첫 맵 스케치 grew into: five storeys, one 구역
+    /// 요양원 지하 — the building §12's 첫 맵 스케치 grew into: eight storeys, one 구역
     /// each, joined only by 계단.
     /// <para>
     /// <b>Why one zone per storey.</b> §12 asks for 4~6 구역 and gives each its own
-    /// floor surface, and §12's 청음사 table has exactly five surfaces — 나무 · 타일 ·
-    /// 자갈 · 콘크리트 · 금속. <see cref="MapValidator"/> rejects two zones sharing a
-    /// material, so the alphabet caps the building at <b>five</b> zones however
-    /// generous the 4~6 band looks. Five is therefore also the deepest legal building,
-    /// and stacking them one per storey is what buys the most: §03's clue chain narrows
-    /// by 층 before anything else, so here 층 and 구역 are the same narrowing and a
-    /// single clue is worth a whole floor.
+    /// floor surface. <see cref="MapValidator"/> rejects two zones sharing a material,
+    /// so the surface alphabet — not the 4~6 band — is what caps the building, and it
+    /// now runs to eight: 나무 · 타일 · 자갈 · 콘크리트 · 금속, then 카펫 · 물 · 흙.
+    /// Eight is therefore the deepest legal building, and stacking one zone per storey
+    /// is what buys the most: §03's clue chain narrows by 층 before anything else, so
+    /// here 층 and 구역 are the same narrowing and a single clue is worth a whole floor.
+    /// Below 굴착층 there is nothing left that could sound different.
     /// </para>
     /// <para>
     /// <b>Why depth is the only lever left.</b> §12 also caps a zone's diagonal at 40 m,
@@ -35,8 +35,24 @@ namespace HorrorGame.EditorTools.SceneGen
     ///                     │ 계단 ×2  (기계실 남서)
     ///  B4  z  8~17   [C 저탄장 · 자갈]       저탄조 · 소각로 · 냉장고 · 코크스고
     ///                     │ 계단 ×2  (저탄장 남동)
-    ///  B5  z  2~10   [B 저수조 · 타일]       수조 · 영안실 · 침전조 — 막다른 층
+    ///  B5  z  2~10   [B 저수조 · 타일]       수조 · 영안실 · 침전조
+    ///                     │ 계단 ×2  (수조 바닥, 22.5 m 떨어져)
+    ///  B6  z  2~10   [F 병동 · 카펫]         미로 병동 · 목욕실 · 처치실 · 온돌방
+    ///                     │ 계단 ×2  (병동 남단, 17.5 m 떨어져)
+    ///  B7  z  1~11   [G 수몰층 · 물]         집수정 · 양수기실 · 침전조 · 수문조작대
+    ///                     │ 계단 ×2  (수몰층 서·동)
+    ///  B8  z  1~11   [H 굴착층 · 흙]         파다만데 · 흙더미 · 낮은굴 — 막다른 층
     /// </code>
+    /// <para>
+    /// <b>The bottom three are stacked, not staggered.</b> B1~B5 descend in a spiral,
+    /// each storey mostly beside the one above. B6~B8 sit almost directly under B5, and
+    /// that is a search result rather than a taste: a <see cref="MapSketch.Stair"/> needs
+    /// its landings at (x,z) and (x+1,z) on adjacent floors AND its 2 × 2 shaft clear of
+    /// corridor on both, and the three deep storeys are dense mazes with very few empty
+    /// pockets. The first placement picked by eye had four legal shafts under B5 and
+    /// <b>zero</b> for either boundary below it. These offsets come out of a sweep over
+    /// every position in a 28 × 25 window per floor.
+    /// </para>
     /// <para>
     /// <b>Every descent costs a floor.</b> The two 계단 that arrive on a storey and the
     /// two that leave it are at opposite ends of it, and the plan between them is never
@@ -65,7 +81,8 @@ namespace HorrorGame.EditorTools.SceneGen
     {
         /// <summary>Name the §12 reports use for this map.</summary>
         public const string MapName =
-            "요양원 지하 5층 (B1 하역장 · B2 기록보관소 · B3 기계실 · B4 저탄장 · B5 저수조)";
+            "요양원 지하 8층 (B1 하역장 · B2 기록보관소 · B3 기계실 · B4 저탄장 · B5 저수조 "
+            + "· B6 병동 · B7 수몰층 · B8 굴착층)";
 
         /// <summary>
         /// Seed the shipped scene is generated from.
@@ -96,11 +113,34 @@ namespace HorrorGame.EditorTools.SceneGen
             sketch.AddZone("C 저탄장", FloorMaterial.Gravel, 3, 8, 8, 12, 10);
             sketch.AddZone("B 저수조", FloorMaterial.Tile, 4, 14, 2, 13, 9);
 
+            // The three deep storeys, each authored in its own file and placed here.
+            // §12's 청음사 rule is one surface per zone and these are the last three the
+            // game has, so eight storeys is the building's ceiling — not a budget, an
+            // alphabet. Below 굴착층 there is nothing left to sound different.
+            //
+            // Every one of them is drawn at its own origin and moved by Offset(): a
+            // Stair's landings are (x,z) and (x+1,z) on adjacent floors, so two storeys
+            // only join where their plans genuinely overlap, and a floor plan authored
+            // on its own cannot know where the floor above it ended up. See
+            // MapSketch.Offset.
+            sketch.AddZone("F 병동", FloorMaterial.Carpet, 5, 14, 2, 13, 9);
+            sketch.AddZone("G 수몰층", FloorMaterial.Water, 6, 15, 1, 11, 11);
+            sketch.AddZone("H 굴착층", FloorMaterial.Earth, 7, 13, 1, 11, 11);
+
             BuildLoadingDock(sketch);
             BuildRecordsWing(sketch);
             BuildPlantRoom(sketch);
             BuildCoalStore(sketch);
             BuildCistern(sketch);
+
+            sketch.Offset(6, -18);
+            StoreyMaze.Build(sketch);
+            sketch.Offset(-5, -19);
+            StoreyFlooded.Build(sketch);
+            sketch.Offset(-7, -7);
+            StoreyDug.Build(sketch);
+            sketch.Offset(0, 0);
+
             BuildStairs(sketch);
 
             // §12 정비공: "구역당 잠글 수 있는 문 1~2개 — 많으면 정비공이 만능이 된다."
@@ -112,6 +152,10 @@ namespace HorrorGame.EditorTools.SceneGen
             sketch.OnLevel(2).Door(26, 17);   // E — the east gallery, on the ring's neck
             sketch.OnLevel(3).Door(16, 16);   // C — the bunker's east tunnel
             sketch.OnLevel(4).Door(16, 5);    // B — the tank's west vault
+
+            // The three deep storeys each place their own — a door belongs to the floor
+            // plan that knows where its 순환로 has a neck, and all three are in their
+            // storey files with the reasoning next to the plan.
 
             return sketch.Build(seed, new DeterministicRandom(seed));
         }
@@ -428,6 +472,45 @@ namespace HorrorGame.EditorTools.SceneGen
             // B4 저탄장 ⇄ B5 저수조, at the bottom of the coal tunnels.
             s.Stair(14, 8, 3, "계단 C–B 서");
             s.Stair(18, 10, 3, "계단 C–B 동");
+
+            // ── The three deep flights ──────────────────────────────────────────
+            // These were searched for, not chosen, and it is worth saying why. A stair
+            // is fixed geometry twice over: the landings are (x,z) and (x+1,z) on
+            // adjacent floors, AND the 2 x 2 shaft standing at (x..x+1, z+1..z+2) must
+            // be clear of corridor on BOTH storeys, because the top flight passes
+            // through the upper slab. The five shipped storeys were drawn around their
+            // stairs, so each of those pairs has exactly the two sites it uses and no
+            // others. The three deep floors were drawn on their own, and they are dense
+            // mazes — the first placement anyone would pick by eye had FOUR legal sites
+            // between B5 and B6 and ZERO for either pair below it.
+            //
+            // So the storey positions and these eight cells come out of a sweep over
+            // every offset in a 28 x 25 window per floor, keeping only the placements
+            // that leave two well-separated legal shafts on every boundary. That is
+            // what MapSketch.Offset is for: the floor plan is the authored artefact and
+            // where it sits in the building is a search result.
+
+            // B5 저수조 ⇄ B6 병동. Both landings on z10, 22.5 m apart — the widest
+            // separation of any flight in the building.
+            s.Stair(15, 10, 4, "계단 B–F 서");
+            s.Stair(24, 10, 4, "계단 B–F 동");
+
+            // B6 병동 ⇄ B7 수몰층, 17.5 m apart along the one row where the ward and the
+            // water overlap at all.
+            //
+            // The second landing was at (22,3) until the validator caught what that
+            // costs. A landing is a graph NODE, so dropping one inside a 10 m leg
+            // splits it into two 5 m edges — and (22,3) sat inside 병동's S자 통로 and
+            // deleted the thing §12 calls the map's base unit. The zone kept every
+            // other property and failed one rule. Both stair pairs below B5 were picked
+            // by testing all sixty combinations against s-corridor-per-zone and the
+            // dead-end band together, then taking the widest separation that passed.
+            s.Stair(16, 10, 5, "계단 F–G 서");
+            s.Stair(23, 10, 5, "계단 F–G 동");
+
+            // B7 수몰층 ⇄ B8 굴착층, the last flight down. Nothing is below it.
+            s.Stair(18, 3, 6, "계단 G–H 서");
+            s.Stair(22, 10, 6, "계단 G–H 동");
         }
     }
 }
