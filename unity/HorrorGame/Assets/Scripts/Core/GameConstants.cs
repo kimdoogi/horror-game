@@ -1119,8 +1119,24 @@ namespace HorrorGame.Core
         /// <summary>Fewest zones a map may have. §12.</summary>
         public const int ZoneCountMin = 4;
 
-        /// <summary>Most zones a map may have. §12.</summary>
-        public const int ZoneCountMax = 6;
+        /// <summary>
+        /// Most zones a map may have. §12 says 4~6.
+        /// <para>
+        /// Raised to 9 on 2026-08-02. §12's 첫 맵 스케치 is a single storey 100 m square,
+        /// and on one floor 4~6 zones is what keeps a zone big enough to hold §12's own
+        /// geometry and small enough that §04's Listener can name it. The shipped
+        /// building is five storeys with one zone each, and the cap has been doing a
+        /// different job since: it was the number of FLOORS the game could have.
+        /// </para>
+        /// <para>
+        /// What the band was protecting is protected by other rules that did not change —
+        /// <see cref="ZoneDiagonalMin"/>~<see cref="ZoneDiagonalMax"/> still keeps a zone
+        /// inside one sprint, entry points are still 2~3, and every zone still needs its
+        /// own surface, which is now the real cap: eight materials, so nine zones only if
+        /// one of them is the stairwells' 금속.
+        /// </para>
+        /// </summary>
+        public const int ZoneCountMax = 9;
 
         /// <summary>Smallest zone diagonal, metres. §12.</summary>
         public const float ZoneDiagonalMin = 30f;

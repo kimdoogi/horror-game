@@ -389,6 +389,7 @@ namespace HorrorGame.Gameplay.Match
             MovePlayerToSpawn();
             _onSurface = true;
             _grabDistance = MeasureGrabDistance();
+            AttachDoors();
 
             BindHud();
 
@@ -843,6 +844,46 @@ namespace HorrorGame.Gameplay.Match
         /// player watching the handle shake would expect.
         /// </para>
         /// </summary>
+        /// <summary>
+        /// Puts <see cref="DoorInteractable"/> on every door the generator laid down.
+        /// <para>
+        /// The scene carries a door's geometry — a frame, a hinged leaf, a blocking
+        /// collider and a carving obstacle — and not its behaviour, because
+        /// <c>MapSceneBuilder</c> lives in its own editor assembly and cannot see a
+        /// runtime component. Attaching here is the same arrangement §09's
+        /// <c>GhostSession</c> uses, and it has the same benefit: a door works in any
+        /// scene the generator writes, with nothing to remember to author.
+        /// </para>
+        /// </summary>
+        private void AttachDoors()
+        {
+            var built = 0;
+            foreach (var group in FindObjectsByType<Transform>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            {
+                if (!group.name.StartsWith("Door_", System.StringComparison.Ordinal)
+                    || group.GetComponent<DoorInteractable>() != null)
+                {
+                    continue;
+                }
+
+                var hinge = group.Find("Hinge");
+                if (hinge == null)
+                {
+                    continue;
+                }
+
+                var door = group.gameObject.AddComponent<DoorInteractable>();
+                door.Bind(hinge, hinge.GetComponent<Collider>(),
+                          hinge.GetComponent<UnityEngine.AI.NavMeshObstacle>());
+                built++;
+            }
+
+            if (built > 0)
+            {
+                Debug.Log("[Match] §12 문 " + built + "개 — 닫을 수 있다", this);
+            }
+        }
+
         private void PushDoors()
         {
             var monster = _monster;

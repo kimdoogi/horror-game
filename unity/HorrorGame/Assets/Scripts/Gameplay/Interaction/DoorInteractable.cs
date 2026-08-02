@@ -170,6 +170,28 @@ namespace HorrorGame.Gameplay.Interaction
             return _brokenThisFrame;
         }
 
+        /// <summary>
+        /// Hands the component the three things the generator built for it.
+        /// <para>
+        /// Public because the scene cannot: <c>MapSceneBuilder</c> is in an editor
+        /// assembly that cannot reference this one, so it lays the geometry down and
+        /// <c>MatchDirector</c> attaches and binds at match start.
+        /// </para>
+        /// </summary>
+        public void Bind(Transform leaf, Collider? blocker, NavMeshObstacle? obstacle)
+        {
+            _leaf = leaf;
+            _blocker = blocker;
+            _obstacle = obstacle;
+            _shutRotation = leaf.localRotation;
+            if (_obstacle != null)
+            {
+                _obstacle.carving = true;
+            }
+
+            Apply();
+        }
+
         private void Awake()
         {
             _leaf ??= transform.childCount > 0 ? transform.GetChild(0) : transform;

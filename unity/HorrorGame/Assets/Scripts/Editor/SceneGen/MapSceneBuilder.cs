@@ -203,6 +203,12 @@ namespace HorrorGame.EditorTools.SceneGen
                     continue;
                 }
 
+                if (marker.Kind == MapMarkerKind.LockableDoor)
+                {
+                    BuildDoor(marker, markerRoot);
+                    continue;
+                }
+
                 if (!groups.TryGetValue(marker.Kind, out var group))
                 {
                     group = Child(markerRoot, marker.Kind.ToString() + "s");
@@ -222,6 +228,73 @@ namespace HorrorGame.EditorTools.SceneGen
                     go.transform.rotation = Quaternion.identity;
                 }
             }
+        }
+
+        /// <summary>
+        /// Builds §12's lockable door: a frame, a leaf that swings, a blocking collider
+        /// and a carving obstacle, with <c>DoorInteractable</c> on top.
+        /// <para>
+        /// <b>The kit has had these pieces since the first pass and the scene never
+        /// instantiated one.</b> <c>MapSketch.Door()</c> marked a cell, <c>MapValidator</c>
+        /// measured that shutting it would force a detour worth more than §06's release
+        /// time, and then nothing built a door — the rule was checked against geometry
+        /// that did not exist. Everything below is the missing half.
+        /// </para>
+        /// <para>
+        /// The leaf is a child so it can swing about its own hinge edge rather than about
+        /// the doorway's centre, which is what makes it read as a door instead of a
+        /// turnstile. The obstacle carves, so the creature's own pathing agrees with what
+        /// the player can see: an uncarved obstacle leaves the agent sliding along a shut
+        /// door looking for a gap, and §06 needs it to arrive and start working.
+        /// </para>
+        /// </summary>
+        private static void BuildDoor(MapMarkerPlacement marker, GameObject markerRoot)
+        {
+            var hinge = Child(markerRoot, marker.Name);
+            hinge.transform.position = ToUnity(marker.Position);
+
+            var frame = Place(MapKitPiece.DoorwayFrame, hinge, 0f);
+            if (frame != null)
+            {
+                frame.name = "Frame";
+                frame.transform.localPosition = Vector3.zero;
+            }
+
+            // The hinge sits at one jamb, not in the middle, so the leaf sweeps the
+            // doorway the way a door does.
+            var pivot = Child(hinge, "Hinge");
+            pivot.transform.localPosition = new Vector3(-MapKitCatalogue.CorridorClearWidth * 0.5f, 0f, 0f);
+
+            var leaf = Place(MapKitPiece.DoorPanelLockable, pivot, 0f);
+            if (leaf != null)
+            {
+                leaf.name = "Leaf";
+                leaf.transform.localPosition = new Vector3(MapKitCatalogue.CorridorClearWidth * 0.5f, 0f, 0f);
+            }
+
+            var blocker = pivot.AddComponent<BoxCollider>();
+            blocker.size = new Vector3(MapKitCatalogue.CorridorClearWidth, 2.4f, 0.14f);
+            blocker.center = new Vector3(MapKitCatalogue.CorridorClearWidth * 0.5f, 1.2f, 0f);
+
+            var obstacle = pivot.AddComponent<UnityEngine.AI.NavMeshObstacle>();
+            obstacle.shape = UnityEngine.AI.NavMeshObstacleShape.Box;
+            obstacle.size = blocker.size;
+            obstacle.center = blocker.center;
+            obstacle.carving = true;
+
+            // The reach a player needs to take hold of it, and the box the interactor
+            // raycasts against. A trigger so it never blocks anybody by itself — the
+            // blocking is the collider above, which the component switches.
+            var grab = hinge.AddComponent<BoxCollider>();
+            grab.isTrigger = true;
+            grab.size = new Vector3(MapKitCatalogue.CorridorClearWidth, 2.2f, 0.9f);
+            grab.center = new Vector3(0f, 1.1f, 0f);
+
+            // No DoorInteractable here. SceneGen is its own asmdef and the component is
+            // in Assembly-CSharp, so the reference only runs one way — the same boundary
+            // that keeps MonsterAgent from seeing a door. MatchDirector adds it at match
+            // start by finding this group, which is how GhostSession is attached too and
+            // means a door needs no scene authoring at all.
         }
 
         private static void BuildLight(MapMarkerPlacement marker, MapSketchResult map, GameObject[] zoneLightRoots)

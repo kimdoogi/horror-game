@@ -28,6 +28,18 @@ namespace HorrorGame.EditorTools.SceneGen
         /// <summary>A 전리품 drop (§08). Every 막힌 길 gets one — §12's "위험을 감수할 이유".</summary>
         LootSpawn,
 
+        /// <summary>
+        /// §12's 잠글 수 있는 문. Sits mid-passage on a 순환로's neck, which is why it is a
+        /// marker and not a node: <see cref="Door"/> names a CELL a corridor runs through,
+        /// and the graph has no vertex there.
+        /// <para>
+        /// The map has been placing these since the first sketch and the scene never built
+        /// one — the validator measured the detour a shut door would force and the door
+        /// itself was never instantiated. This is the marker that ends that.
+        /// </para>
+        /// </summary>
+        LockableDoor,
+
         /// <summary>A light the Engineer's 구역 조명 switches (§04). Starts off — §03 "어둠 = 목표의 잠금장치".</summary>
         ZoneLight,
 
@@ -1542,6 +1554,14 @@ namespace HorrorGame.EditorTools.SceneGen
             Dictionary<MapCell, int> lootAt)
         {
             var markers = new List<MapMarkerPlacement>();
+
+            foreach (var cell in _doorCells)
+            {
+                zoneOf.TryGetValue(cell, out var doorZone);
+                markers.Add(new MapMarkerPlacement(
+                    MapMarkerKind.LockableDoor, cell.Centre, doorZone, -1,
+                    "Door_" + cell));
+            }
 
             var entrances = graph.NodesOfKind(MapNodeKind.Entrance);
             if (entrances.Length == 0)
