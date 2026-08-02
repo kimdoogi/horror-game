@@ -666,7 +666,7 @@ taking an afternoon and taking three days.
 
 ---
 
-## B-009b · The audit is still stale, and the generator is now proved innocent
+## B-009b · ~~The audit is still stale~~ — WRONG. The chamber seals the middle its own way
 
 **Status:** 🔴 open · **Found** 2026-08-02, after B-009's first fix
 
@@ -721,19 +721,35 @@ the digit every one of those runs:
 complete 6863 (98.1 %)   islands 11   monster reach 0/3
 ```
 
-Two numbers that should move together do not. The generator is innocent — proved
-separately: 8 chambers, one per storey, at the right cell, nothing double-tiled.
-The bake is innocent — its own vertex count changes. **NavMeshConnectivity is not
-reading the surface that was just baked.**
+**That conclusion was wrong, and the same instrumentation disproves it.**
 
-### Where to look
+`NavMesh.CalculateTriangulation()` is read AFTER the bake and returns 9542
+vertices — that is the GLOBAL mesh, the one `SamplePosition` and `CalculatePath`
+query. It is fresh. So the audit is reading the surface that was just baked, and
+always was.
 
-- Is the NavMesh asset at `Assets/Scenes/Generated/NavMesh/` being reused rather
-  than rebuilt? `AssetDatabase.CreateAsset` runs after the bake, but the audit
-  runs later still and may resolve the asset rather than the live surface.
-- Does `MapPipeline` audit the scene it just built, or one it opened?
-- The bake now logs its vertex count. Log the TILE count beside it. Two numbers
-  that move together prove the chain; two that do not name the broken link.
+The two readings are not in conflict at all. A vertex count that moves and a
+connectivity result that does not is exactly what you get when the geometry
+changes and the TOPOLOGY OF ISOLATION does not: nine corridor tiles and one
+chamber have different vertex counts and leave the same markers cut off. 6863 and
+11 islands was never a stale number. It was the true answer, five times.
+
+**So the middle is still sealed — by the chamber now, for its own reason.** The
+audit has been right throughout and B-009b as originally written blamed the one
+component that had already been cleared.
+
+### Where to look, now that the audit is cleared
+
+The chamber's doorway and the corridor tile outside it are not joining. Both
+should be: `Chamber_Open_3x3` is authored with a 2.5 m gap in the middle cell of
+each edge, the corridor's clear width is 2.20 m, and the dock cell is tiled as a
+straight with both ends open.
+
+So the next measurement is the geometry itself, not another guess about the
+pipeline: put a probe at the chamber's south doorway and at the dock cell
+0.5 m outside it, and ask `NavMesh.SamplePosition` and then
+`NavMesh.CalculatePath` between them. Two points, one path, one answer. Floor
+height, wall overlap and doorway width each fail that test differently.
 
 Until this is closed no measurement of this map means anything, which is the same
 sentence B-009 opened with. Fixing half of it was worse than useless: it produced
