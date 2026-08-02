@@ -7,6 +7,7 @@ using HorrorGame.Core;
 using HorrorGame.Core.Abilities;
 using HorrorGame.Core.Map;
 using HorrorGame.Core.Monster;
+using HorrorGame.Core.Voice;
 using HorrorGame.Core.Clues;
 using HorrorGame.Core.Economy;
 using HorrorGame.Core.Ghost;
@@ -133,6 +134,9 @@ namespace HorrorGame.Gameplay.Match
 
         /// <summary>How loud the local player is. Optional — a rig without one still makes noise by speed.</summary>
         private NoiseMeter? _noise;
+
+        /// <summary>What the local player's microphone is doing this tick. See ReportVoice.</summary>
+        private VoiceEffort _voiceEffort;
         private int _activeSeed;
         private bool _endScreenHeldForGhost;
 
@@ -250,6 +254,16 @@ namespace HorrorGame.Gameplay.Match
         public bool LocalPlayerIsGhost
         {
             get { return _state != null && _state.PlayerAt(LocalPlayerIndex).IsGhost; }
+        }
+
+        /// <summary>
+        /// How hard the local player is speaking right now. The voice transport sets this
+        /// every tick; §06 hears the result. Silent when nobody is holding the key.
+        /// </summary>
+        public VoiceEffort VoiceEffort
+        {
+            get { return _voiceEffort; }
+            set { _voiceEffort = value; }
         }
 
         /// <summary>
@@ -795,6 +809,7 @@ namespace HorrorGame.Gameplay.Match
                 // decide what the monster can actually see.
                 monster.ReportTarget(LocalPlayerIndex, _playerRoot.position);
                 ReportFootsteps(monster);
+                ReportVoice(monster);
             }
 
             monster.Simulate(GameConstants.FixedStep);
@@ -872,6 +887,41 @@ namespace HorrorGame.Gameplay.Match
             }
 
             monster.ReportSound(here, range, effort);
+        }
+
+        /// <summary>
+        /// The player's voice, told to §06.
+        /// <para>
+        /// §12-A's maze is meant to be argued through — two players who meet at a gate should
+        /// be able to say which way they came. But §06 leaves 순찰 on 소리 감지 and nothing
+        /// else, so a voice has to be a sound or the whole coordination layer is free. It is
+        /// not free: a whisper is inaudible to the creature by construction, ordinary speech
+        /// carries as far as the surface underfoot allows, and a shout reaches it from further
+        /// than it reaches the person you are shouting at.
+        /// </para>
+        /// <para>
+        /// The loudness handed over is <see cref="VoiceRules.SelfNoise"/> rather than a fresh
+        /// scale, because <c>MonsterBrain</c> takes the LOUDEST cue in a tick and a voice has
+        /// to be able to beat a footstep. Somebody who shouts while walking should be found by
+        /// the shout.
+        /// </para>
+        /// </summary>
+        private void ReportVoice(MonsterAgent monster)
+        {
+            var root = _playerRoot;
+            if (root == null || _voiceEffort == VoiceEffort.Silent)
+            {
+                return;
+            }
+
+            var here = root.position;
+            var range = VoiceRules.MonsterHearingRangeMetres(_voiceEffort, FloorSurfaces.Sample(here));
+            if (range <= 0.1f)
+            {
+                return;
+            }
+
+            monster.ReportSound(here, range, VoiceRules.SelfNoise(_voiceEffort));
         }
 
         private void StepClueRead()
