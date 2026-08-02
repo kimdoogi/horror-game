@@ -7,6 +7,7 @@ using HorrorGame.Core;
 using HorrorGame.Core.Abilities;
 using HorrorGame.Core.Map;
 using HorrorGame.Core.Monster;
+using HorrorGame.Core.Race;
 using HorrorGame.Core.Voice;
 using HorrorGame.Core.Clues;
 using HorrorGame.Core.Economy;
@@ -18,6 +19,7 @@ using HorrorGame.Gameplay.Ghost;
 using HorrorGame.Gameplay.Interaction;
 using HorrorGame.Gameplay.Monster;
 using HorrorGame.Gameplay.Player;
+using HorrorGame.Gameplay.Race;
 using HorrorGame.UI;
 using UnityEngine;
 using MonsterStateId = HorrorGame.Core.Monster.MonsterStateId;
@@ -137,6 +139,12 @@ namespace HorrorGame.Gameplay.Match
 
         /// <summary>What the local player's microphone is doing this tick. See ReportVoice.</summary>
         private VoiceEffort _voiceEffort;
+
+        /// <summary>Every 투하구 in the scene, wired at match start. §01.</summary>
+        private readonly List<Chute> _chutes = new List<Chute>();
+
+        /// <summary>§02's standings. The host owns this — see RaceState.</summary>
+        private readonly RaceState _race = new RaceState(GameConstants.RaceRunnersMax);
         private int _activeSeed;
         private bool _endScreenHeldForGhost;
 
@@ -427,6 +435,7 @@ namespace HorrorGame.Gameplay.Match
             _onSurface = true;
             _grabDistance = MeasureGrabDistance();
             AttachDoors();
+            AttachChutes();
 
             // §06's ears. Optional on purpose: a rig assembled by a test has no audio on
             // it, and a monster that went deaf whenever the sound layer was absent would
@@ -763,6 +772,7 @@ namespace HorrorGame.Gameplay.Match
             PushDoors();
             StepClueRead();
             CheckGrab();
+            CheckChutes();
 
             while (_clock.TryDequeueTierAdvance(out var crossed))
             {
@@ -922,6 +932,101 @@ namespace HorrorGame.Gameplay.Match
             }
 
             monster.ReportSound(here, range, VoiceRules.SelfNoise(_voiceEffort));
+        }
+
+        /// <summary>
+        /// Finds every 투하구 the generator laid down and hands it its landing.
+        /// <para>
+        /// The markers come in pairs named by the map — "투하구 3북" and "투하구 3북 착지" —
+        /// so the pairing is done here by name rather than by a payload on the marker, which
+        /// is the same arrangement the doors already use.
+        /// </para>
+        /// </summary>
+        private void AttachChutes()
+        {
+            _chutes.Clear();
+
+            var landings = new Dictionary<string, Transform>();
+            foreach (var t in FindObjectsByType<Transform>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            {
+                if (t.name.EndsWith(" 착지", System.StringComparison.Ordinal))
+                {
+                    landings[t.name.Substring(0, t.name.Length - 3)] = t;
+                }
+            }
+
+            foreach (var t in FindObjectsByType<Transform>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            {
+                if (!t.name.StartsWith("투하구 ", System.StringComparison.Ordinal)
+                    || t.name.EndsWith(" 착지", System.StringComparison.Ordinal)
+                    || !landings.TryGetValue(t.name, out var landing))
+                {
+                    continue;
+                }
+
+                var chute = t.GetComponent<Chute>();
+                if (chute == null)
+                {
+                    chute = t.gameObject.AddComponent<Chute>();
+                }
+
+                // The storey is read off the landing's height rather than parsed out of the
+                // name: MapKitCatalogue.StoreyMetres is the authority for where a floor is,
+                // and a name is a label.
+                var storey = Mathf.RoundToInt(-landing.position.y / 3.75f);
+                chute.Bind(landing.position, storey);
+                _chutes.Add(chute);
+            }
+
+            if (_chutes.Count > 0)
+            {
+                Debug.Log("[Match] §01 투하구 " + _chutes.Count + "개 — 뛰어내리면 아래층 외곽이다", this);
+            }
+        }
+
+        /// <summary>
+        /// A runner standing in a 투하구 falls to the storey below.
+        /// <para>
+        /// §01: the landing is on the RIM, so each floor is its own maze solved from the
+        /// beginning. Dropped from a height rather than teleported, because the half second
+        /// of falling in the dark toward a floor you have not seen is the only moment of a
+        /// descent that is not navigation.
+        /// </para>
+        /// </summary>
+        private void CheckChutes()
+        {
+            var root = _playerRoot;
+            if (root == null || _chutes.Count == 0 || LocalPlayerIsGhost)
+            {
+                return;
+            }
+
+            for (var i = 0; i < _chutes.Count; i++)
+            {
+                if (!_chutes[i].Swallows(root.position))
+                {
+                    continue;
+                }
+
+                var to = _chutes[i].DropPoint();
+                var controller = root.GetComponent<CharacterController>();
+                if (controller != null)
+                {
+                    controller.enabled = false;
+                }
+
+                root.position = to;
+
+                if (controller != null)
+                {
+                    controller.enabled = true;
+                }
+
+                _race.ReportDescent(LocalPlayerIndex, _chutes[i].StoreyBelow, _clock.ElapsedSeconds);
+                Debug.Log("[Match] §01 B" + (_chutes[i].StoreyBelow + 1) + " 도착 — "
+                          + _clock.ElapsedSeconds.ToString("0") + "초", this);
+                return;
+            }
         }
 
         private void StepClueRead()

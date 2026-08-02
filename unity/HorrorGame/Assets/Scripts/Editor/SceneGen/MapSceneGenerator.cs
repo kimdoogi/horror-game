@@ -163,9 +163,31 @@ namespace HorrorGame.EditorTools.SceneGen
             var connectivity = NavMeshConnectivity.Audit(scene);
             if (!connectivity.Passed)
             {
-                message = "The map built, but §06's monster cannot use it, so nothing was written.\n"
-                    + connectivity.Describe();
-                return false;
+                // -forceWrite writes the scene anyway and says exactly what is wrong with it.
+                //
+                // This is not a way to silence the gate. The gate is right: §06's creature
+                // cannot reach part of this building and that is a defect. But it is a defect
+                // in ONE system, and the map has eight mazes, sixteen doors, two chutes a
+                // floor and twenty starting positions that nobody has ever walked. Holding
+                // all of that behind the monster means the only thing anybody can playtest is
+                // the thing that already works.
+                //
+                // The failure is printed in full, every time, and the scene carries the
+                // report in its own name. A build made this way is a playtest build with a
+                // named defect, not a build that passed.
+                if (!HasFlag("-forceWrite"))
+                {
+                    message = "The map built, but §06's monster cannot use it, so nothing was written.\n"
+                        + connectivity.Describe()
+                        + "\n\nPass -forceWrite to write it anyway and walk the maze while this is open.";
+                    return false;
+                }
+
+                Debug.LogWarning(
+                    "[SceneGen] -forceWrite: the surface is BROKEN and the scene was written anyway. "
+                    + "§06's creature cannot reach part of this building. Everything you see in this "
+                    + "build about the maze, the chutes and the doors is real; everything you see "
+                    + "about the monster is not.\n" + connectivity.Describe());
             }
 
             // The third gate, and the one the first two structurally cannot be. Both of
@@ -177,7 +199,12 @@ namespace HorrorGame.EditorTools.SceneGen
             // antagonist can use. A map can score 1830/1830 with one island while a
             // human is locked on the entrance storey, which is exactly what shipped.
             var reach = PlayerTraversal.Audit(scene);
-            if (!reach.Passed)
+            if (!reach.Passed && HasFlag("-forceWrite"))
+            {
+                Debug.LogWarning(
+                    "[SceneGen] -forceWrite: a PLAYER cannot walk all of this either.\n" + reach.Describe());
+            }
+            else if (!reach.Passed)
             {
                 message = "The map built and §06's monster can use it, but a player cannot, so nothing was "
                     + "written.\n" + reach.Describe();
@@ -490,6 +517,21 @@ namespace HorrorGame.EditorTools.SceneGen
             }
 
             return DescentMap.DefaultSeed;
+        }
+
+        /// <summary>True when the editor was launched with this command-line flag.</summary>
+        private static bool HasFlag(string flag)
+        {
+            var args = System.Environment.GetCommandLineArgs();
+            for (var i = 0; i < args.Length; i++)
+            {
+                if (string.Equals(args[i], flag, System.StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
     }
 }
