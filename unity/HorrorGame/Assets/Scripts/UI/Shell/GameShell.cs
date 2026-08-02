@@ -24,11 +24,23 @@ namespace HorrorGame.UI.Shell
     /// and a missing prefab reference is a menu that fails silently.
     /// </para>
     /// <para>
-    /// <b>What it deliberately does not do.</b> It does not host, join, pick roles or
-    /// step a match. §13 gives the host authority and §14 puts 매칭 · 로비 outside the
-    /// prototype; <c>MatchDirector</c> is the host and starts itself when its scene comes
-    /// up. This class chooses which scene that is and gets out of the way, which is why
-    /// it compiles without Mirror and without the Steam layer.
+    /// <b>What it deliberately does not do.</b> It does not host, join or step a match,
+    /// and it still compiles without Mirror and without the Steam layer. §13 gives the
+    /// host authority and <c>MatchDirector</c> starts itself when its scene comes up;
+    /// this class chooses which scene that is and gets out of the way.
+    /// </para>
+    /// <para>
+    /// <b>But it does ask whether anyone wants the flow first.</b> 시작 goes through
+    /// <see cref="LobbyEntry"/> — a one-way seam in this same assembly that the gameplay
+    /// layer installs itself into — so that a build with §11's lobby in it stops at the
+    /// lobby and a build without one descends alone, from the same button and with no
+    /// reference to Mirror on this side of the seam. The seam has to be one-way and it
+    /// has to be here: <c>RaceLobby</c>, the only caller of <c>StartHost</c> /
+    /// <c>StartClient</c> in the project, lives in <c>Assembly-CSharp</c> (there is no
+    /// asmdef under <c>Scripts/Gameplay/</c>), and no assembly definition can reference
+    /// the default assembly. Adding Mirror to <c>HorrorGame.UI.asmdef</c> would not help;
+    /// only the gameplay layer reaching back can, which is what
+    /// <c>RaceLobby.Install</c>'s <c>RuntimeInitializeOnLoadMethod</c> does.
     /// </para>
     /// </summary>
     [DisallowMultipleComponent]
@@ -108,10 +120,52 @@ namespace HorrorGame.UI.Shell
             _settings?.SetVisible(false);
             _loading?.Close();
 
-            _menu?.Open(StartMatch, OpenSettingsFromMenu, Quit);
+            _menu?.Open(BeginFromMenu, OpenSettingsFromMenu, Quit);
         }
 
-        /// <summary>§14 step 1 — build a match and go down.</summary>
+        /// <summary>
+        /// 시작, as the menu means it: ask §11's lobby first, descend alone only if there
+        /// is nothing listening.
+        /// <para>
+        /// Separate from <see cref="StartMatch"/> on purpose, and the separation is the
+        /// whole design. <c>StartMatch</c> keeps meaning exactly one thing — load the
+        /// match scene now — because three callers depend on that meaning: the editor's
+        /// solo playtest, <c>UiFlowTests</c>, and the lobby itself once the host has said
+        /// go. This method is the only one that asks a question, and it is the only one
+        /// the button is wired to.
+        /// </para>
+        /// <para>
+        /// It passes <em>itself</em> as the lobby's "now descend" callback rather than
+        /// <see cref="StartMatch"/>, which looks like a loop and is the opposite. The
+        /// lobby calls <c>LobbyEntry.PassNextThrough()</c> immediately before invoking
+        /// the callback, so the second visit falls through to the scene load and the
+        /// latch is consumed on the way past. Handing it <c>StartMatch</c> instead would
+        /// leave that latch armed, and the next 시작 after a race would silently skip
+        /// the lobby and start a solo run.
+        /// </para>
+        /// </summary>
+        public void BeginFromMenu()
+        {
+            if (_state == ShellState.Loading)
+            {
+                return;
+            }
+
+            EnsureScreens();
+
+            // Gone either way: the lobby draws over the whole screen and so does the
+            // loading screen. 뒤로 in the lobby calls ShowMenu(), which rebuilds it.
+            _menu?.Close();
+
+            if (LobbyEntry.TryOpen(BeginFromMenu))
+            {
+                return;
+            }
+
+            StartMatch();
+        }
+
+        /// <summary>§14 step 1 — build a match and go down. No lobby, no question asked.</summary>
         public void StartMatch()
         {
             if (_state == ShellState.Loading)
@@ -308,7 +362,7 @@ namespace HorrorGame.UI.Shell
             }
 
             _state = ShellState.Menu;
-            _menu?.Open(StartMatch, OpenSettingsFromMenu, Quit);
+            _menu?.Open(BeginFromMenu, OpenSettingsFromMenu, Quit);
         }
 
         private void OnResumed()

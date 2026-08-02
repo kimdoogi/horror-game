@@ -916,7 +916,11 @@ namespace HorrorGame.EditorTools.SceneGen
 
             var graph = finalBuilder.Build();
             var tiles = BuildTiles(zoneOf, doorEdgeCells);
-            var props = BuildProps(zoneOf, doorEdgeCells);
+
+            // No door cells passed to BuildProps: the 문짝 is hung off the LockableDoor
+            // marker by MapSceneBuilder.BuildDoor, and hanging a second one here is what
+            // put two leaves in every doorway. See BuildProps's remarks.
+            var props = BuildProps(zoneOf);
             var markers = BuildMarkers(graph, nodeIdOf, zoneOf, lootAt);
             return new MapSketchResult(seed, graph, tiles, props, markers, _zones.ToArray());
         }
@@ -1496,7 +1500,7 @@ namespace HorrorGame.EditorTools.SceneGen
                 var mask = MaskWithStair(cell, landings);
                 var count = CountBits(mask);
 
-                // §12 정비공's door is the graph edge and the leaf, not the frame.
+                // §12 정비공's door is the graph edge and ONE leaf, not the frame.
                 //
                 // MapKitPiece.DoorwayFrame bakes as a wall. Measured on the five-storey
                 // map: with the frame at all five 문 cells the surface came apart into
@@ -1509,12 +1513,27 @@ namespace HorrorGame.EditorTools.SceneGen
                 // doors sat on well-connected 순환로 necks, where a sealed cell costs a
                 // detour rather than a component.
                 //
-                // So the passage stays open geometry and the door is expressed by the
-                // DoorPanelLockable leaf BuildProps hangs at the same cell (which is
-                // already out of the bake, as a locked door has to be — §04 locks it at
-                // runtime, not at bake time). Restore the frame here when
-                // build_doorway_frame in tools/blender/gen_mapkit.py leaves a clear
-                // opening wider than 2 × agentRadius.
+                // So the passage stays open geometry and the 문 itself is the
+                // LockableDoor marker BuildMarkers emits at this same cell:
+                // MapSceneBuilder.BuildDoor hangs ONE Door_Panel_Lockable off a hinge
+                // there and MatchDirector.AttachDoors binds that hinge, which is what
+                // §04 swings, blocks with and carves with. It is out of the bake, as a
+                // runtime-locked door has to be. BuildProps used to hang a SECOND panel
+                // at this cell's centre — see the note there — and this tile is what it
+                // stood in front of.
+                //
+                // Keep this branch. It is not the only thing flooring the cell — the
+                // greedy run below refuses to pass THROUGH a 문 (the doorCells guard in
+                // its while) but would happily start a run AT one, so deleting this
+                // would still leave walkable geometry. What it is the only thing doing
+                // is making the 문 exactly one 2.5 m piece: the leaf's 2.20 m opening
+                // then has a tile seam at each jamb instead of sitting mid-way along a
+                // merged 10 m corridor, and a 계단 landing sharing the cell cannot turn a
+                // 문 into a JunctionT. Restore the frame here — INSTEAD of this piece,
+                // never on top of it, which is the mistake MapSceneBuilder.BuildDoor's
+                // remarks record — when build_doorway_frame in
+                // tools/blender/gen_mapkit.py leaves a clear opening wider than
+                // 2 × agentRadius.
                 if (doorCells.Contains(cell))
                 {
                     var axis = (mask & 0b0101) != 0 ? MapDirection.East : MapDirection.North;
@@ -1732,7 +1751,55 @@ namespace HorrorGame.EditorTools.SceneGen
             public MapDirection Inward { get; }
         }
 
-        private MapPropPlacement[] BuildProps(Dictionary<MapCell, int> zoneOf, HashSet<MapCell> doorCells)
+        /// <summary>
+        /// The kit pieces that are placed off the grid rather than on it: §12's 전기 패널,
+        /// and anything a map author added by hand with <see cref="Prop"/>.
+        /// <para>
+        /// <b>No 문짝 here, and that is the two-leaf door fixed.</b> This method used to add a
+        /// <see cref="MapKitPiece.DoorPanelLockable"/> at every 문 cell, so every door in
+        /// the building had TWO leaves. The keeper is the other one:
+        /// <c>MapSceneBuilder.BuildDoor</c> hangs a leaf off the LockableDoor marker's
+        /// hinge, <c>MatchDirector.AttachDoors</c> binds that hinge as §04's swinging
+        /// leaf, and the blocking collider and the carving <c>NavMeshObstacle</c> live on
+        /// it. The one deleted here had no interactable and nothing that could ever
+        /// rotate it, and — searched across the whole repo — no reader at all. The single
+        /// place that matches its name, <c>DressingSpace.CellInfo.IsDoorway</c>, walks
+        /// only <c>Zone_*/Tiles</c> and <c>Map/Shared</c>, while these props were
+        /// parented to <c>Zone_*/Props</c>.
+        /// </para>
+        /// <para>
+        /// Measured in the written scene before the fix (Map_FirstSketch.unity, 8 doors):
+        /// 16 <c>Door_Panel_Lockable</c> prefab instances — 8 at
+        /// <c>Map/Zone_*/Props/DoorPanel_L_X_Z</c> and 8 at
+        /// <c>Map/Markers/Door_(x,z@Ln)/Hinge/Leaf</c>. The prop was dropped at the cell
+        /// CENTRE at a fixed yaw 0, and the leaf's origin is its hinge stile, so its
+        /// 1.10 m of geometry ran from the cell centre to one jamb: a door standing shut
+        /// across exactly half of the corridor's 2.20 m clear width, on eight storeys,
+        /// with nothing in the game able to open it.
+        /// </para>
+        /// <para>
+        /// <b>And it was solid.</b> This was filed as cosmetic; it is not.
+        /// <c>MapSceneBuilder.Finish</c> gives every prop renderer a <c>MeshCollider</c>,
+        /// and the scene says so — each <c>DoorPanel_*</c> instance carries an
+        /// <c>m_Material</c> override pointing at a <c>PhysicsMaterial</c>
+        /// (<c>Assets/Scenes/Generated/Materials/Surface_*.asset</c>), which only a
+        /// collider has. So every 문 in the building was physically 1.10 m wide, not the
+        /// 2.20 m §12 sizes a 병목 at, while §06's creature — which navigates the baked
+        /// surface, and the prop was kept out of the bake — walked straight through the
+        /// closed half. Nothing failed because a runner's <c>CharacterController</c> is
+        /// 0.6 m across and still fitted.
+        /// </para>
+        /// <para>
+        /// Removing it cannot move the BAKE: the prop loop calls
+        /// <c>KeepOutOfNavMeshBake</c> and the scene carries <c>m_IgnoreFromBuild: 1</c>
+        /// on each, so islands and marker pairs are computed from unchanged input. §12's
+        /// "[ok] lockable-doors" is <c>MapValidator.CheckLockableDoors</c> reading the
+        /// GRAPH's <c>HasLockableDoor</c> edges and never saw a prop. The generator's own
+        /// "Scene contents" line is the cheap check that this landed: 16 props before,
+        /// 8 after, with 1488 kit pieces and 1099 markers unchanged.
+        /// </para>
+        /// </summary>
+        private MapPropPlacement[] BuildProps(Dictionary<MapCell, int> zoneOf)
         {
             var props = new List<MapPropPlacement>(_extraProps);
 
@@ -1753,18 +1820,6 @@ namespace HorrorGame.EditorTools.SceneGen
                 }
             }
 
-            foreach (var cell in doorCells)
-            {
-                if (!zoneOf.TryGetValue(cell, out var zone))
-                {
-                    continue;
-                }
-
-                props.Add(new MapPropPlacement(
-                    MapKitPiece.DoorPanelLockable, cell.Centre, 0f, zone,
-                    "DoorPanel_" + cell.Level + "_" + cell.X + "_" + cell.Z));
-            }
-
             props.Sort((a, b) => string.CompareOrdinal(a.Name, b.Name));
             return props.ToArray();
         }
@@ -1777,6 +1832,12 @@ namespace HorrorGame.EditorTools.SceneGen
         {
             var markers = new List<MapMarkerPlacement>();
 
+            // This marker IS the 문 — the whole door and its only leaf. The name is the
+            // contract: MapSceneBuilder.BuildDoor builds Door_(x,z@Ln)/Hinge/Leaf under
+            // it, and MatchDirector.AttachDoors finds a door by the "Door_" prefix and a
+            // child called "Hinge", so a renamed marker is a door §04 can never lock.
+            // Nothing else may place a Door_Panel_Lockable at these cells; BuildProps
+            // did, and that is what gave every doorway a second, permanently shut leaf.
             foreach (var cell in _doorCells)
             {
                 zoneOf.TryGetValue(cell, out var doorZone);

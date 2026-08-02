@@ -7,6 +7,7 @@
         "HorrorGame.Core",
         "HorrorGame.Net",
         "HorrorGame.Steam",
+        "HorrorGame.UI",
         "Mirror",
         "Mirror.Components",
         "Mirror.Transports"

@@ -21,12 +21,43 @@ namespace HorrorGame.EditorTools.SceneGen
     /// <b>The band is a zigzag, and that is load-bearing.</b> A ring band two cells thick could
     /// be drawn as two concentric squares, which would be a 52 m straight run on every side —
     /// four times §12's 20 m cap, and a sight line down which nothing survives. So the band
-    /// alternates between its outer and inner track every few cells, connected by a rung. That
-    /// single decision buys four §12 rules at once: no straight over the jog length, an S자
-    /// 통로 at every jog, one 순환로 per band because the zigzag closes on itself, and a bend
-    /// every few metres for <c>sight-break-spacing</c>. It also makes the ring longer to walk
-    /// than it looks, which is what turns "get to the middle" into a race rather than a
-    /// diagonal.
+    /// alternates between its outer and inner track, connected by a rung. That single decision
+    /// buys three §12 rules at once: no straight over the leg length, an S자 통로 at every
+    /// jog, and one 순환로 per band because the zigzag closes on itself. It also makes the
+    /// ring longer to walk than it looks, which is what turns "get to the middle" into a race
+    /// rather than a diagonal.
+    /// </para>
+    /// <para>
+    /// <b>How OFTEN it jogs is the whole difference between a maze and a jogging simulator,
+    /// and it used to be wrong.</b> The band jogged every 4 cells, which sounds like a tight
+    /// maze and is the opposite: it is cover every 10 m, and §12's own arithmetic says cover
+    /// that close is free — a runner who is never more than 5 m from a corner can break aggro
+    /// from anywhere, which is precisely the 10/10 너무 쉽다 the 주자 테스트 kept reporting.
+    /// Measured on the shipped map, seed 20260802: 774 bends, mean nearest-neighbour spacing
+    /// <b>3.1 m</b>, <b>0 of them</b> inside §12's 15~25 m 시야 차단 지점 간격, and the whole
+    /// storey collapsing into ONE 시야 차단 지점 155 m deep. The legs are now 6~8 cells —
+    /// 15~20 m, the window between §12's spacing floor and its straight-corridor ceiling —
+    /// and the same measurement reads 496 bends in 48 지점, all 48 of them spaced inside
+    /// 15~25 m. See <see cref="MinLegCells"/>.
+    /// </para>
+    /// <para>
+    /// <b>What that does NOT fix, measured rather than hoped.</b> The 주자 테스트 still reads
+    /// 10/10 at §12's own parameters, and no arrangement of these walls will move it, because
+    /// the test is barely sensitive to walls at the numbers §12 runs it on. Sweeping
+    /// <see cref="RunnerTestSettings"/> over the SHIPPED floor: 0% escapable at an 어그로
+    /// 시작 거리 of 3.4 m and 100% at 3.6 m; 100% at a monster speed of 5.4 m/s and 0% at
+    /// 5.5. A step, not a slope — a release needs §06's 12 m of gap, a sprinting runner gains
+    /// 0.8 m/s, and whether that arithmetic closes inside one sprint's 60 m is decided before
+    /// the map is drawn.
+    /// </para>
+    /// <para>
+    /// Geometry only shows up in the gap between those steps, and there this change does
+    /// show up. At §07's 밤 tier (5.4 m/s) the old floor was 973/973 escapable and this one
+    /// is 668/720 — 100% → 92.8% — and the ten-point sample comes off 10 for the first time,
+    /// reading 8~10/10 across eight seeds. At a 3.6 m start it is 99.6% → 82.8%. At §12's own
+    /// 10 m start and 4.8 m/s both floors are 100%, because there the release is free by
+    /// arithmetic. The rest of the argument — including why 5~7/10 is out of reach for any
+    /// map that obeys §12's own 20 m straight cap — is in the report beside this change.
     /// </para>
     /// <para>
     /// <b>Gates are the design.</b> §12-A: four ways from the outer band to the middle, two
@@ -41,26 +72,57 @@ namespace HorrorGame.EditorTools.SceneGen
         public const int BandThickness = 2;
 
         /// <summary>
-        /// Cells between jogs in a band. Four cells is 10 m of straight. Five measured 20.0 m
-        /// exactly — passing §12's cap by nothing at all, because a band run and the gate
-        /// passage leaving it are collinear and the graph reads them as one line.
+        /// Longest a band may run without a jog, in cells — 8 × 2.5 m = 20 m, §12's
+        /// <c>직선 통로 최대</c> exactly.
         /// </summary>
-        public const int JogEvery = 4;
+        public const int MaxLegCells = 8;
 
         /// <summary>
-        /// Cells that must separate two alcoves on the same rail. Two is the floor: adjacent
-        /// alcoves would share a wall and the graph would read them as one two-cell room
-        /// rather than as two blind ends.
+        /// Shortest a band may run between jogs, in cells — 6 × 2.5 m = 15 m, the floor of
+        /// §12's <c>시야 차단 지점 간격 15~25m</c>.
+        /// <para>
+        /// <b>The band used to jog every 4 cells and that was the defect.</b> A jog every
+        /// 10 m puts a runner within 5 m of cover from anywhere on the floor, and §12's own
+        /// arithmetic says cover that close is free: "괴물이 그 모퉁이에 도달하는 시간 =
+        /// D / 4.8초, 시야 차단 3초가 필요 → D ≥ 14.4m". Measured on the shipped map, seed
+        /// 20260802: 774 bends at a mean nearest-neighbour spacing of <b>3.1 m</b>, and
+        /// <b>0 of 774</b> inside §12's 15~25 m band. The floor was not a maze with long
+        /// sight lines — its longest sight line was 17.5 m — it was a carpet of corners,
+        /// which is the same thing as no corners at all. §12's own prescription for a
+        /// 너무 쉽다 map is "시야 차단 지점을 줄인다", and this is that number.
+        /// </para>
+        /// <para>
+        /// 15~20 m is a one-cell-wide window and both walls are §12's: below 6 cells the
+        /// bends are closer than 시야 차단 지점 간격 allows, above 8 they are a straight
+        /// corridor longer than the 20 m cap. Every leg this generator draws is 6, 7 or 8
+        /// cells and there is no room to be anywhere else.
+        /// </para>
+        /// </summary>
+        public const int MinLegCells = 6;
+
+        /// <summary>
+        /// Cells that must separate two alcoves on the same rail — one per straight, since a
+        /// leg is 6, 7 or 8 cells.
+        /// <para>
+        /// That is the design statement and the 막힌 길 ratio is the measurement that pins
+        /// it. §12 wants 20~25% of a floor's places blind; with the legs at 6~8 cells the
+        /// band has far fewer nodes than it did at a jog every 4, so the old spacing of 14
+        /// measured <b>16.7%</b> — under the band, and §12 says why that is bad: "적으면 맵
+        /// 지식 무의미". Sweeping the spacing, seed 20260802: 6 → 26.6% (over), 7 → 21.1%,
+        /// 8 → 21.1%, 12 → 20.0% (on the edge). Seven is the leg length, it is the value
+        /// with room on both sides of the band, and it means a runner on any straight has
+        /// exactly one place to stand aside.
+        /// </para>
         /// <para>
         /// There is no probability here on purpose. An earlier version rolled for each
         /// bearing and the dead-end ratio wandered with the seed — 18.0% at one rate, 19.1%
-        /// at another, never reliably inside §12's 20~25% band. Punching every bearing that
-        /// is legal lands it at 20.0% and lands it there every time, and a floor that obeys
-        /// the rules by construction is worth more than one that usually does. The seed still
-        /// decides the thing that should vary: where the gates are.
+        /// at another, never reliably inside §12's band. Punching every bearing that is
+        /// legal lands it in the band and lands it there every time, and a floor that obeys
+        /// the rules by construction is worth more than one that usually does. The seed
+        /// still decides the thing that should vary: where the gates are.
         /// </para>
         /// </summary>
-        public const int AlcoveSpacing = 14;
+        public const int AlcoveSpacing = 7;
 
         /// <summary>
         /// Draws one storey. The caller owns <see cref="MapSketch.AddZone"/> and
@@ -101,17 +163,20 @@ namespace HorrorGame.EditorTools.SceneGen
             //   d 9..10  외곽 고리  players stand here
             var bands = new[]
             {
-                // One rail, not two. The inner ring's perimeter is 24 cells and JogEvery is
-                // 4, so a zigzag there jogs six times round a ring barely big enough to hold
-                // them — and with corners and their neighbours pinned to the outer rail, what
-                // is left of the inner rail is short disconnected stubs. Six of the storey's
-                // 33 blind cells came from this one band, the largest single group, and every
-                // one of them a place the graph called reachable and the bake could not path
-                // to.
+                // One rail, not two, and now it needs no jog either. The 안쪽 ring is 6 cells
+                // from one corner to the next — 15.0 m, which is at once inside §12's 20 m
+                // straight cap and exactly on the floor of its 15~25 m 시야 차단 지점 간격.
+                // A ring that small has nowhere to put a jog that would not land closer than
+                // 15 m to a corner, and JogOffsets returns nothing for it for that reason.
                 //
-                // Drawn as a plain ring it is 7 cells a side — 17.5 m, inside §12's 20 m cap
-                // — where the two-rail version's outer track was 9 cells and 22.5 m, which is
-                // where straight-corridor has been failing by exactly one cell all along.
+                // It is also where sight-break-spacing runs out of room altogether, and the
+                // arithmetic is worth writing down because no tuning gets past it. A 60 m lap
+                // holds at most four 지점 at §12's 15 m spacing; the four corners are already
+                // four; and §12-A then asks for one gate mouth into the 중심 and lands the two
+                // 중간 gates on the same ring — seven. Seven 지점 do not fit on a 60 m ring.
+                // The smallest ring on which one junction per side can be 15 m from both
+                // corners has radius 6, which would push 중간 to 9 and 외곽 to 12, past
+                // DescentMap's Radius = 11 and past its 23-cell zone.
                 new Band("안쪽", 3, 3, 1),
                 new Band("중간", 6, 7, 2),
                 new Band("외곽", 9, 10, 4),
@@ -169,6 +234,30 @@ namespace HorrorGame.EditorTools.SceneGen
             // middle→band is PathComplete on every floor. The piece was never the defect.
             s.Room(MapKitPiece.ChamberOpen3x3, centreX - 1, centreZ - 1, 3, 3, 0f);
 
+            // And it is 개방 공간, which nobody had told §12.
+            //
+            // This is a correction to a MEASUREMENT before it is anything else. The middle
+            // is a room you can see across; the nine cells under the chamber were being
+            // counted as nine corridor cells with bends in them, so both MapValidator's
+            // sight-break census and RunnerTest's cover test treated the inside of a lit
+            // 7.5 m room as somewhere a sight line breaks. It is not. MapSketch.OpenRoom is
+            // the only way to say so, and it is honest here for the reason its own remarks
+            // give — the rectangle is the footprint of a room that is actually built.
+            //
+            // <b>It also flips open-adjacent-to-maze from FAIL to pass, and that is the part
+            // to be careful about.</b> The rule asks for an 개방 공간 touching a 미로 공간
+            // and now gets one: the chamber, with the 안쪽 gate's passage against its
+            // doorway. What the rule is FOR — "멀리서 어그로를 건다 · 시야 15~25m 확보" —
+            // this does not deliver, and no storey of this building can. Measured: the
+            // chamber is 7.5 m across, and the only kit piece with §12's 15~25 m sight line
+            // is Hall_Open_20x20, which is 6.3 m tall on a 3.75 m storey — in a tower where
+            // all eight floors share one square, MapSketch.IntrudesOnStoreyAbove drops it on
+            // every storey but B1. The 개방 공간 this floor deserves is written up in the
+            // report beside this change; it needs a piece the kit does not have, or a
+            // chamber welded into a band, and neither is a change that can be measured
+            // without a bake.
+            s.OpenRoom(centreX - 1, centreZ - 1, 3, 3);
+
             result.Centre = new MapCell(centreX, centreZ, level);
 
             // ── the three bands, outermost first ────────────────────────────────
@@ -196,6 +285,20 @@ namespace HorrorGame.EditorTools.SceneGen
             var previousGates = new List<MapCell>();
             var allGates = new List<MapCell>();
 
+            // Every radius a band has a rail on. A gate crosses the band inside it on the
+            // way through, and where it lands on a rail radius that the zigzag deliberately
+            // SKIPPED, it fills the gap and welds two of that band's legs into one straight.
+            // Measured on the new leg lengths, seed 20260802: one 외곽 gate whose bearing was
+            // the 중간 band's own jog turned that band's 15 m + 15 m side into a single 35 m
+            // run — §12's cap is 20 m, and the run was reported on B3 where nothing had
+            // changed except which bearing the seed picked. See PunchGates.
+            var rails = new HashSet<int>();
+            for (var i = 0; i < bands.Length; i++)
+            {
+                rails.Add(bands[i].Inner);
+                rails.Add(bands[i].Outer);
+            }
+
             // Bands were appended outermost-first, so the list runs the other way from the
             // array. Indexing it with the array's own index reads the wrong band — which for
             // the alcoves was silently the wrong shape and for the gates was a crash.
@@ -209,7 +312,8 @@ namespace HorrorGame.EditorTools.SceneGen
                     s, level, centreX, centreZ, wall, innerEdge, band, random, previousGates, occupied,
                     result.GateMouths,
                     result.Bands[bands.Length - 1 - i],
-                    i == 0 ? null : result.Bands[bands.Length - i]);
+                    i == 0 ? null : result.Bands[bands.Length - i],
+                    rails);
                 result.Gates.Add(gates);
                 previousGates = gates;
                 allGates.AddRange(gates);
@@ -220,10 +324,30 @@ namespace HorrorGame.EditorTools.SceneGen
                 // outward into the wall it sits against: one cell deep, ending nowhere. In a
                 // race they are the only places to stand aside, which makes them the only
                 // places to hide from another player, and §12 drops a 전리품 in each.
-                result.Alcoves.AddRange(
-                    PunchAlcoves(
-                        s, level, centreX, centreZ, band, random, allGates,
-                        result.Bands[bands.Length - 1 - i], occupied));
+                var alcoves = PunchAlcoves(
+                    s, level, centreX, centreZ, band, random, allGates,
+                    result.Bands[bands.Length - 1 - i], occupied);
+
+                // Furthest from this band's way inward first, so the LAST alcove on the
+                // finished list is the one nearest the middle. That ordering is a contract:
+                // DescentMap reads Alcoves[^1] as "the last alcove before the middle" and
+                // marks it §12's 은폐 지점, which §12 then requires to be within 25 m of the
+                // 출입구 — on B8 the 출입구 is the 도착점 in the middle.
+                //
+                // It used to hold by accident. The bands are walked outermost first, so the
+                // 안쪽 band's alcoves were appended last whatever their order round the ring,
+                // and with the old spacing the last one happened to land 15 m from the middle.
+                // Moving the alcoves for the leg lengths moved it too, and the storey came
+                // back with concealment-near-exit FAILING: "no 은폐 지점 within 25 m of
+                // B8_도착점". Nothing about the hiding place had got worse — the list order
+                // had. Sorting on the gate makes the contract true instead of lucky.
+                if (gates.Count > 0)
+                {
+                    var inward = gates[0];
+                    alcoves.Sort((a, b) => Reach(b, inward).CompareTo(Reach(a, inward)));
+                }
+
+                result.Alcoves.AddRange(alcoves);
 
                 // One door a storey, on one of the two 중간 gates. Never on the four outer
                 // gates and — B-010 — never on the single inner one.
@@ -271,6 +395,21 @@ namespace HorrorGame.EditorTools.SceneGen
         /// <summary>
         /// Draws one band as a zigzag between its outer and inner track, and returns every
         /// cell it used. The zigzag is the reason the band obeys §12; see the class remarks.
+        /// <para>
+        /// <b>Jogs are planned per SIDE, not counted along the walk.</b> The version this
+        /// replaces carried a running counter and jogged whenever it reached
+        /// <c>JogEvery</c>, suppressing the jog near a corner. That has a latent defect
+        /// which JogEvery = 4 happened to miss and which any other period hits: the
+        /// near-corner rule forces the cell back onto the OUTER rail without drawing a
+        /// rung, so if the walk arrives at a corner while on the inner rail the two cells
+        /// are diagonal neighbours and the band is cut in half. Measured: changing nothing
+        /// but the period to 7 took the tower from 1 connected piece to <b>5</b>, with no
+        /// exception thrown — MapSketch only refuses a cell that touches NOTHING, and both
+        /// halves of a severed ring still touch themselves. Planning per side makes the
+        /// parity a property of the plan instead of an accident of the arithmetic: an even
+        /// number of jogs per side means the rail is always back on the outer track by the
+        /// time the corner arrives.
+        /// </para>
         /// </summary>
         private static List<MapCell> DrawZigzagBand(
             MapSketch s, int level, int cx, int cz, Band band, IRandomSource random, HashSet<long> occupied)
@@ -279,10 +418,14 @@ namespace HorrorGame.EditorTools.SceneGen
             var ring = Perimeter(cx, cz, band.Outer);
             var depth = band.Outer - band.Inner;
 
-            // Track offset: 0 is the outer rail, depth is the inner one. Flipping it every
-            // JogEvery cells and drawing the rung between is the whole trick.
+            // Perimeter walks four equal sides of 2 × radius cells, each beginning with its
+            // corner, so a cell's offset along its own side is its ring index modulo that.
+            var side = band.Outer * 2;
+            var jogs = JogOffsets(side);
+
+            // Track offset: 0 is the outer rail, depth is the inner one. Flipping it at a
+            // planned jog and drawing the rung between is the whole trick.
             var offset = 0;
-            var sinceJog = 0;
 
             for (var i = 0; i < ring.Count; i++)
             {
@@ -300,8 +443,7 @@ namespace HorrorGame.EditorTools.SceneGen
                 var here = nearCorner ? 0 : offset;
                 Put(s, level, cells, occupied, step.X + (step.InX * here), step.Z + (step.InZ * here));
 
-                sinceJog++;
-                if (nearCorner || sinceJog < JogEvery || i >= ring.Count - 2)
+                if (nearCorner || System.Array.IndexOf(jogs, i % side) < 0)
                 {
                     continue;
                 }
@@ -312,14 +454,62 @@ namespace HorrorGame.EditorTools.SceneGen
                 }
 
                 offset = offset == 0 ? depth : 0;
-                sinceJog = 0;
             }
 
-            // The seam. The walk starts and ends on the outer rail (i >= Count - 2 above
-            // suppresses a jog near the end), so the ring closes without a check — but if a
-            // future JogEvery ever left it open, this is where it would show, and an open
-            // ring is a band with no 순환로 rather than a crash.
+            // The seam closes by construction rather than by luck: every side carries an
+            // even number of jogs, so offset is 0 at every corner including the last one.
             return cells;
+        }
+
+        /// <summary>
+        /// Where a side of <paramref name="sideCells"/> cells jogs, measured from its corner.
+        /// <para>
+        /// Two rules decide this and both are §12's. Every leg has to be 6~8 cells — 15 m is
+        /// the floor of 시야 차단 지점 간격 and 20 m is 직선 통로 최대 — and the count has to
+        /// be EVEN, because the corner and its two neighbours are pinned to the outer rail
+        /// and an odd number of flips would arrive at the next corner on the inner one.
+        /// </para>
+        /// <para>
+        /// Which leaves exactly one shape per band, and it is worth reading them out:
+        /// </para>
+        /// <list type="bullet">
+        /// <item>안쪽, 6 cells a side: no jog at all. One 15.0 m leg, corner to corner.</item>
+        /// <item>중간, 14 cells: jogs at 6 and 8 — 15.0 m, then a 5 m S, then 15.0 m. Two
+        /// jogs two cells apart is the only even split of 14 that keeps both outer legs at
+        /// or over 6 cells, and it happens to be §12's 기본 단위 drawn small.</item>
+        /// <item>외곽, 20 cells: jogs at 7 and 13 — 17.5 m, 15.0 m, 17.5 m. This is the band
+        /// twenty runners start on and the one they spend the most of a floor in.</item>
+        /// </list>
+        /// </summary>
+        /// <param name="sideCells">Cells from one corner to the next — twice the ring radius.</param>
+        /// <returns>Offsets along the side, or an empty array when the side needs no jog.</returns>
+        private static int[] JogOffsets(int sideCells)
+        {
+            if (sideCells <= MaxLegCells)
+            {
+                return Array.Empty<int>();
+            }
+
+            // The two jogs are symmetric about the middle of the side, so one number decides
+            // both: how long the outer legs are. It wants to be a third of the side — three
+            // even legs — and it is held between §12's 6 and 8, and additionally below
+            // (side − 2) / 2 so that the two jogs stay at least 2 cells apart. Two jogs on
+            // the same cell would be no jog at all, and two jogs one cell apart would draw
+            // the rung twice into the same pair of cells.
+            var widest = System.Math.Min(MaxLegCells, (sideCells - 2) / 2);
+            if (widest < MinLegCells)
+            {
+                // No split of this side has both outer legs at 6 cells or more — a side of
+                // 10, say, would have to be 6 + 2 + 2. Rather than draw a 5 m leg and quietly
+                // break 시야 차단 지점 간격, draw the side straight and let straight-corridor
+                // fail out loud with the number: no band this generator declares reaches
+                // here, and one that did would be a band the radii cannot hold.
+                return Array.Empty<int>();
+            }
+
+            var outer = System.Math.Min(
+                System.Math.Max((int)System.Math.Round(sideCells / 3.0), MinLegCells), widest);
+            return new[] { outer, sideCells - outer };
         }
 
         /// <summary>
@@ -339,7 +529,8 @@ namespace HorrorGame.EditorTools.SceneGen
             HashSet<long> occupied,
             List<MapCell> mouths,
             List<MapCell> bandCells,
-            List<MapCell>? bandBelow)
+            List<MapCell>? bandBelow,
+            HashSet<int> rails)
         {
             var ring = Perimeter(cx, cz, band.Inner);
             var gates = new List<MapCell>();
@@ -367,7 +558,8 @@ namespace HorrorGame.EditorTools.SceneGen
             var open = ring.FindAll(p => !p.Corner
                                          && System.Math.Abs(p.InX != 0 ? p.Z - cz : p.X - cx) <= clear
                                          && bandCells.Exists(c => c.X == p.X && c.Z == p.Z)
-                                         && Arrives(p, span, bandBelow));
+                                         && Arrives(p, span, bandBelow)
+                                         && CrossesOnlyDrawnRails(p, span, cx, cz, rails, occupied));
             if (open.Count == 0)
             {
                 return gates;
@@ -511,6 +703,53 @@ namespace HorrorGame.EditorTools.SceneGen
             }
         }
 
+        /// <summary>
+        /// True when a gate passage adds no cell to a band rail that the zigzag left empty.
+        /// <para>
+        /// A gate is the only thing on a storey that cuts ACROSS a band, and the cells it
+        /// lays are indistinguishable from corridor once they are down. Where its bearing is
+        /// one of the band's own jog bearings — the one cell per jog the zigzag deliberately
+        /// does not draw on that rail — the gate patches the hole, and the band's two legs
+        /// on either side of the jog become one straight run. Measured, seed 20260802,
+        /// legs of 6 cells: exactly that happened on B3's 중간 band and the map reported a
+        /// 35.0 m sight line against §12's 20 m cap, from a change that had nothing to do
+        /// with gates. Nothing else on the floor can do this, because nothing else crosses
+        /// a rail it is not part of.
+        /// </para>
+        /// <para>
+        /// Stated as "may not create a cell at a rail radius", not "may not sit on a jog",
+        /// because the jog bearings of the band below are not this band's to know and the
+        /// radii are: the wall radii between bands belong to nobody and a gate is welcome to
+        /// fill them, which is what a gate IS.
+        /// </para>
+        /// <para>
+        /// <b>It buys a design property that was not asked for, and it is a good one.</b> A
+        /// 외곽 gate has to cross the 중간 band's OUTER rail and land on its INNER one, and
+        /// the only bearings where both exist are the ones where that band jogs. So every
+        /// gate now delivers a runner onto the band inside AT ITS S-BEND rather than into the
+        /// middle of a 15 m straight: you come through the wall and you are already at a
+        /// corner, with cover on one side and a sight line down the other. Measured, seed
+        /// 20260802: 4 · 2 · 1 gates on all eight storeys, none of them duplicated, and the
+        /// same counts on eight different seeds.
+        /// </para>
+        /// </summary>
+        private static bool CrossesOnlyDrawnRails(
+            RingStep step, int span, int cx, int cz, HashSet<int> rails, HashSet<long> occupied)
+        {
+            for (var t = 0; t <= span; t++)
+            {
+                var x = step.X + (step.InX * t);
+                var z = step.Z + (step.InZ * t);
+                var radius = System.Math.Max(System.Math.Abs(x - cx), System.Math.Abs(z - cz));
+                if (rails.Contains(radius) && !occupied.Contains(Key(x, z)))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
         /// <summary>True when the far end of a gate passage lands on a cell that exists.</summary>
         private static bool Arrives(RingStep step, int span, List<MapCell>? bandBelow)
         {
@@ -563,6 +802,15 @@ namespace HorrorGame.EditorTools.SceneGen
             occupied.Add(Key(x, z));
             into?.Add(new MapCell(x, z, level));
         }
+
+        /// <summary>
+        /// Manhattan cells between two places on a storey — a stand-in for the walk, used
+        /// only to order alcoves by how near the way inward they are. Manhattan rather than
+        /// Chebyshev because the corridors have no diagonals, so it is the walk a runner
+        /// takes wherever the ring is not in the way.
+        /// </summary>
+        private static int Reach(MapCell cell, MapCell to) =>
+            System.Math.Abs(cell.X - to.X) + System.Math.Abs(cell.Z - to.Z);
 
         /// <summary>Packs a cell into one long so a HashSet can hold it without allocating.</summary>
         private static long Key(int x, int z) => ((long)x << 32) ^ (uint)z;

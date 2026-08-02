@@ -1,69 +1,91 @@
 # Pre-launch checklist — what is still missing before the page can go up
 
-[STEAM-RELEASE.md §7](../STEAM-RELEASE.md) already owns the full release
-checklist: partner registration, the $100 App ID, W-8BEN, depots, branches,
-promotion. **None of that is repeated here.** This file is only the store page,
-and only what is *not done* as of 2026-08-01.
+> **Rewritten 2026-08-03 for the race.** The previous version was measured on
+> 2026-08-01 against a four-player co-op looting game that was deleted the next day
+> ([DESCENT-PIVOT.md](../DESCENT-PIVOT.md)). Three of its six blocking defects went
+> away with the systems they were about; one much larger one arrived.
+
+[STEAM-RELEASE.md](../STEAM-RELEASE.md) owns the release process — partner
+registration, the $100 App ID, W-8BEN, depots, branches, promotion — and Part I of it
+owns the audit of where this repo stands. **None of that is repeated here.** This file
+is only the store page.
 
 ---
 
 ## 0 · The one-line answer
 
-**The page can go up. The trailer cannot, and four of its ten beats cannot be
-photographed at all.**
+**The copy can go up. The pictures cannot.**
 
-Capsules exist at every size Valve asks for, ten screenshots exist at 1920×1080,
-and both descriptions are written. That clears Valve's stated minimum for a Coming
-Soon page. What is missing is a trailer — the single highest-leverage asset on the
-page — and the reason it is missing is not scheduling. It is that §03's clue prop,
-§03's objective prop and §08's vehicle all render as untextured white primitives,
-and those three objects are what three of the four beats worth cutting are *about*.
+That is the exact inverse of what this file said on 2026-08-01, and it is worth
+saying in those words, because the instinct will be to reuse what was already there.
+Both descriptions have been rewritten for the race and every claim in them is traced
+in [copy-en.md §10](copy-en.md). What is now wrong is the imagery: **ten screenshots
+and thirteen trailer reference frames all photograph the deleted co-op building**,
+two of them photographing systems (the shop, "five storeys") that no longer exist in
+the design at all.
 
-§14's warning still governs: **do not defer the page waiting for those.** Put it
-up with what exists, and add the trailer as an update — a page live two months
-early with four screenshots beats a perfect page live two weeks early.
+Capsule *sizes* are all correct and were verified with `sips` on 2026-08-03
+([STEAM-RELEASE.md §I.3.2](../STEAM-RELEASE.md)) — but the name printed on them is
+one of the two open decisions below.
+
+§14's warning still governs: **do not defer the page.** But a Coming Soon page whose
+screenshots show a shop screen for a game with no economy is not "imperfect", it is
+inaccurate, and Valve's store review reads screenshots.
 
 ---
 
-## 1 · Blocking, and found by taking the screenshots
+## 1 · Blocking
 
-Every item here was discovered by pointing a camera at it tonight. None of them
-appears in [ART.md §7](../ART.md), [BLOCKERS.md](../BLOCKERS.md) or
-[STATUS.md §3](../STATUS.md), because nothing else in the project photographs
-these objects.
-
-| # | Defect | Consequence for the page | Evidence |
+| # | Item | Consequence for the page | Evidence |
 |:--:|---|---|---|
-| S-1 | **§03's clue prop is a plain emissive white square.** No text, no plate, no document — a glowing rectangle on a wall. | The design's central mechanic — read it here, remember it, say it out loud — **cannot be shown at all**, in a screenshot or in the trailer. This is the biggest single gap on the page. | rendered three ways from two sites and one surface site; all three are the same white square |
-| S-2 | **§08's surface vehicle is an untextured white box.** | The shop screenshot works only because §08's panel covers most of it; the box still shows through the panel as a grey rectangle. The "surface / round trip" beat cannot be shot. | `docs/store/trailer/beat02_surface.png` |
-| S-3 | **§03's objective prop is a plain emissive white capsule.** | The carry beat — two hands, no torch, somebody has to light you — cannot be shot. §03 calls this the last decision of a match. | rendered at the objective site, seed 1204 |
-| S-4 | **§08's loot props are plain emissive white cubes**, ~36 of them at 5 m spacing across the map. | Constrains framing everywhere. A search over six corridor anchors, every 0.5 m of advance, six glance angles and every monster distance from 3 m to 8 m found **exactly 6 clean framings, all at one anchor**, from which the monster is in frame and no white cube is. | search in `store_shots.py`'s probe output; the escape screenshot uses one of the six |
-| S-5 | **Sky is visible from a lower-storey corridor** at (68.75, −5.87, 62.50), looking at the oversize loot. | A screenshot of a fifth basement level with a night sky in the corner is the kind of detail a Steam commenter finds in an hour. | ART.md §7.4 predicted it; this is the first frame that photographs it |
-| S-6 | **Eight of the ten screenshots sit below ART.md's own legible-fraction floor** — 21.6 %–27.4 % against a 30 % floor — and the same eight are 41.4 %–46.7 % crushed against a 40 % ceiling. | The page will read as darker than every other horror page on Steam. **This is not a screenshot problem and must not be fixed in the screenshots** — STEAM-RELEASE.md §2.2: "Do not brighten the game for marketing; frame it instead." | `tools/render/frame_stats.py 'docs/store/screenshots/*.png'` |
+| B-1 | **All ten screenshots are of the deleted game.** `05_the_shop.png` photographs the §08 economy the pivot removed; `06_five_storeys.png` names five storeys where the design has eight; the rest are the five-storey sanatorium the descent map replaced. | The page cannot be submitted. It also makes the copy's closing sentence — *"Every screenshot is the game"* — false, and that sentence is the page's whole credibility argument. | `docs/store/screenshots/`, all dated 2026-08-01 01:59, seed 1204 |
+| B-2 | **The name is undecided and it is printed on eleven capsules.** The design documents say 하강, the shipped menu says 요양원 지하, the capsules say 요양원 지하 / SANATORIUM BELOW. | Valve requires the capsule to carry the store name. Submitting with the three disagreeing is a review round-trip. | [copy-en.md §1](copy-en.md) — with a recommendation and the one command that re-bakes the set |
+| B-3 | **The thirteen trailer reference frames and their camera spec are stale.** `tools/render/trailer_frames.json` holds coordinates on a map that is no longer generated. | Not blocking the page (Valve does not require a trailer for Coming Soon) but blocking every frame anybody tries to shoot. | [trailer.md §0](trailer.md) |
+| B-4 | **`docs/store/party.mp4` is not a trailer and is named after the deleted party.** 1280 × 720, 3.00 s, 24 fps, 1.62 Mbps against Valve's 1920 × 1080 / 30 or 60 fps / 5,000+ Kbps. | Only that somebody might mistake it for an asset. | `ffprobe`, quoted in [STEAM-RELEASE.md §I.3.3](../STEAM-RELEASE.md) |
+| B-5 | **Eight of the ten screenshots sit below ART.md's own legible-fraction floor** — 21.6 %–27.4 % against a 30 % floor, and 41.4 %–46.7 % crushed against a 40 % ceiling. | The page reads darker than every other horror page on Steam. **This is not a screenshot problem and must not be fixed in the screenshots** — STEAM-RELEASE.md §2.2: *"Do not brighten the game for marketing; frame it instead."* | `tools/render/frame_stats.py 'docs/store/screenshots/*.png'` |
 
-S-6 is the open darkness regression from the map growth (ART.md § Measured
-targets, STATUS §4.3), arriving on the store page. The two frames that *are* in
-band are the two with a bright subject — the shop panel (50.7 % legible) and the
-stairwell (33.0 %).
+B-5 survives the pivot unchanged: it is the open darkness regression from the map
+growth, and it will arrive on the new screenshots too unless the re-shoot frames for
+a subject. The descent gives it two subjects the old building did not have — the lit
+outer ring, and the glowing chute mouth visible from anywhere on the inner ring
+(§03). **Shoot those.**
+
+### What stopped being a blocker
+
+Three of the six defects on the old list were about props for systems that no longer
+exist. They are not fixed; they are irrelevant.
+
+| Old defect | State |
+|---|---|
+| S-1 · §03's clue prop is a plain emissive white square | **moot** — the clue system was deleted |
+| S-2 · §08's surface vehicle is an untextured white box | **moot** — there is no surface and no round trip |
+| S-3 · §03's objective prop is a plain emissive white capsule | **moot** — there is no objective to carry |
+| S-4 · §08's loot props are ~36 white cubes across the map | ⚠ **unresolved, and possibly still true.** The loot economy is deleted from the design. Whether the props are still spawned into the descent map decides whether they still constrain every framing in the building. **Check this while re-shooting** — it is the difference between six clean framings in a building and any framing you like |
+| S-5 · sky visible from a lower-storey corridor | ⚠ **re-check.** The descent stacks eight storeys in one column instead of spiralling; whether the leak survived that is unknown |
+
+The frames in `docs/store/defects/` document the old building and should be kept as
+evidence of what was measured, not deleted — but nothing there is a live defect
+report any more except S-4 and S-5.
 
 ---
 
 ## 2 · Copy claims that are not yet true
 
-Every ⚠ in [copy-en.md](copy-en.md) and [copy-ko.md](copy-ko.md), in one place. A
-claim here is either made true, or the sentence is cut before the page is
+Every ⚠ in [copy-en.md §10](copy-en.md) and [copy-ko.md §9](copy-ko.md), in one
+place. A claim here is either made true, or the sentence is cut before the page is
 submitted.
 
 | Claim | Why it is not true today | Where |
 |---|---|---|
-| "The night gets worse in stages" | ✅ **no longer a problem** — **33.6 % of simulated matches reach tier 2 of 5**, 17.4 % tier 3, 13.0 % tier 4. The 1.2 % this row used to carry was measured against a map the game does not ship. **Still do not add a duration to that paragraph**: the median match is 7.2 min against §01's 25–35. | [F-006](../BALANCE-FINDINGS.md#f-006) |
-| "One more floor is about three minutes… a battery run is one" | §07's *intended* costs, still not measured ones. The median simulated match is **7.2 minutes end to end** (re-measured 2026-08-01 on the real map; 2.5 was the wrong building), against §01's 25–35. | F-006 |
-| Any "25–35 minute matches" line | **not written into the copy at all, deliberately.** Do not add it. It is the most natural sentence to write about this design and it is currently false by a factor of about 3.5 — 7.2 min median, 15.8 % of matches inside the window. It was an order of magnitude out until 2026-08-01; it moved a long way and it is still false. | §01 vs F-006 |
-| Voice chat feature flag | `ProximityVoiceAudio.cs` and `SteamworksVoiceBackend.cs` exist; no two people have ever heard each other | STATUS §5 |
-| Four-player anything | Mirror, Steamworks.NET and FizzySteamworks wired, `NetTests` green in PlayMode, **no two-instance session ever run** | STATUS §5 |
-| Language: English interface | ⚠ **every screen in `Assets/Scripts/UI/` is Korean-only.** An English store page for a Korean-only UI is a refund queue. Either localise, or set the interface language honestly to Korean. | `docs/store/copy-ko.md` §7 |
-| System requirements | every figure is an estimate; no player build has been profiled on any machine but this M1 Pro | copy-en.md §6 |
-| The store name `Sanatorium Below` | a proposal. `요양원 지하` is the name of record (`MainMenuScreen.cs:128`). **Nobody has signed off the Latin name, and it is baked into every capsule.** | copy-en.md §1 |
+| "Every screenshot is the game" | The ten on disk are the deleted co-op building. **The single hardest gate on this page.** | B-1 above |
+| Proximity voice | `Assets/Scripts/Steam/Voice/` exists and `VoiceCutoffDistance = 30f`. **No two people have ever heard each other.** The Voice Chat category stays unticked | STEAM-RELEASE.md §I.4.1 |
+| "Twenty players" | Design, not measurement. `RaceRunnersMax = 20` but the cap that executes is `PlayersPerMatch = 4`, and **the measured peer count in this repository is zero**. The copy states this outright in its honest paragraph — do not let it drift into a boast anywhere else | STEAM-RELEASE.md §I.4.2–3 |
+| Ring lighting — outer lit, inner torch-only | §03's rule. Confirm the descent map actually carries per-ring lighting before that paragraph ships | copy-en.md §10 |
+| Battery fixed per match, no resupply | §03's rule, inherited from the deleted §08. Simpler now that there is no shop, never measured on a race map | copy-en.md §10 |
+| Any match duration | **Not written into the copy at all, deliberately.** Do not add one. §01 says 12–20 minutes and nothing has measured it; F-006's 7.2-minute median was measured on the co-op game and does not transfer | §01 vs F-006 |
+| Language: English interface | ⚠ **every screen in `Assets/Scripts/UI/` is Korean-only.** An English store page over a Korean-only UI is a refund queue. Either localise, or set the interface language honestly to Korean | copy-ko.md §8 |
+| System requirements | Every figure is an estimate, made for a four-player game, now describing one with up to twenty networked players. No player build has been profiled on any machine but this M1 Pro, and **no Windows IL2CPP player has ever been produced** | copy-en.md §7 |
+| The store name | Undecided. See B-2 | copy-en.md §1 |
 
 ---
 
@@ -71,12 +93,14 @@ submitted.
 
 | Item | State | Blocked by |
 |---|:--:|---|
-| Trailer | ❌ none exists | S-1/S-2/S-3, plus no capture route in the repo (trailer.md §6) |
-| A screenshot showing four players | ❌ impossible | no four-player session has ever been run |
-| A screenshot of a clue being read | ❌ impossible | S-1 |
-| First-launch headphone notice, in game | ❌ not built | nothing — this is an afternoon (headphone-notice.md §4) |
-| Real system requirements | ❌ estimates | no profiled player build |
-| Steam Playtest app | ❌ not requested | needs the page to exist first; then it is free and it is how §14's four-player questions get answered |
+| Screenshots of the descent | ❌ none exist | the re-shoot; the map is live work elsewhere in this repo |
+| A screenshot with more than one player in it | ❌ impossible | no two peers have ever connected |
+| Trailer | ❌ none exists | B-3, B-4, and four of ten beats need other players ([trailer.md §4](trailer.md)) |
+| Client icon, 32 × 32 TGA | ❌ wrong size and format on disk | `capsules/shortcut_icon_256x256.png` — see STEAM-RELEASE.md §I.3.3 |
+| Library hero 860 × 380 safe area | ⚠ unchecked | the number is not recorded in [assets.md](assets.md); re-check before upload |
+| First-launch headphone notice, in game | ❌ not built | nothing — it is an afternoon ([headphone-notice.md §4](headphone-notice.md)) |
+| Real system requirements | ❌ estimates | no profiled player build; no Windows IL2CPP build at all |
+| Steam Playtest app | ❌ not requested | needs the page to exist first; then it is free and it is how the twenty-player questions get answered |
 | Discord invite for the page | ❌ | §13 lists Discord as the community host |
 | Store page in Korean *and* English | ⚠ copy written, UI is Korean-only | localisation |
 
@@ -86,54 +110,52 @@ submitted.
 
 | Item | Where | Note |
 |---|---|---|
-| Header capsule 920×430 | `capsules/header_capsule_920x430.png` | ✅ |
-| Small capsule 462×174 | `capsules/small_capsule_462x174.png` | ✅ legible at 120×45 — proofs in `capsules/legibility/` |
-| Main capsule 1232×706 | `capsules/main_capsule_1232x706.png` | ✅ |
-| Vertical capsule 748×896 | `capsules/vertical_capsule_748x896.png` | ✅ |
-| Page background 1438×810 | `capsules/page_background_1438x810.png` | ✅ optional |
+| Header capsule 920 × 430 | `capsules/header_capsule_920x430.png` | ✅ size verified with `sips` 2026-08-03 |
+| Small capsule 462 × 174 | `capsules/small_capsule_462x174.png` | ✅ legible at 120 × 45 — proofs in `capsules/legibility/` |
+| Main capsule 1232 × 706 | `capsules/main_capsule_1232x706.png` | ✅ |
+| Vertical capsule 748 × 896 | `capsules/vertical_capsule_748x896.png` | ✅ |
+| Page background 1438 × 810 | `capsules/page_background_1438x810.png` | ✅ optional |
 | Library capsule / header / hero / logo | `capsules/library_*.png` | ✅ hero carries no text, logo is transparent |
-| Community icon 184×184, shortcut icon 256×256 | `capsules/*_icon_*.png` | ✅ |
-| ≥ 5 screenshots at 1920×1080 | `screenshots/` | ✅ ten, gameplay only, no overlaid marketing text |
-| Short description, both languages | copy-ko.md §2, copy-en.md §2 | ✅ 141 / 296 characters, both under the 300 limit |
-| About This Game, both languages | copy-ko.md §3, copy-en.md §3 | ✅ BBCode, paste-ready |
+| Community icon 184 × 184 | `capsules/community_icon_184x184.png` | ✅ |
+| Short description, both languages | copy-ko.md §2, copy-en.md §2 | ✅ **189 / 295 characters**, both under the 300 limit, both written to answer "what makes this different" |
+| About This Game, both languages | copy-ko.md §3, copy-en.md §3 | ✅ BBCode, paste-ready, race only |
 | Feature bullets, both languages | §4 of each | ✅ |
-| Tags | copy-en.md §5 | ✅ |
+| Tags | copy-en.md §5 | ✅ sixteen, with `Co-op` and `Online Co-Op` removed and a reason recorded for every removal |
+| Genre and category fields | copy-en.md §6 | ✅ including the decision **not** to tick Single-player |
 | Headphone notice, all four placements | headphone-notice.md | ✅ three written, one not built (§3 above) |
-| Trailer shot list | trailer.md | ✅ with 13 rendered reference frames |
+| Trailer shot list | trailer.md | ✅ ten beats for the race; four shootable today |
 
-Two corrections to [STEAM-RELEASE.md §2.1](../STEAM-RELEASE.md), which was written
-from memory and says so:
-
-- The client icon is listed there as **32 × 32 TGA**. Steamworks' current asset
-  index says **shortcut icon 256 × 256 .ico or .png** and **app icon 184 × 184
-  .jpg**. Both are generated here at the current sizes.
-- The library logo is listed as 1280 × 720; Steamworks says **"either 1280px wide
-  and/or 720px tall"**, which is a constraint on one dimension, not a fixed
-  canvas. 1280 × 720 satisfies it.
+**Every capsule is the right number of pixels and possibly the wrong name.** Sizes
+and names are separate problems and only the first one is solved (B-2).
 
 ---
 
 ## 5 · Recommended order
 
-1. **Pay the $100 and create the app.** It is the long pole: Valve requires ≥ 30
-   days between paying and releasing, and the store page public ≥ 2 weeks before
-   the release date. Everything else can happen while that clock runs.
-   ([STEAM-RELEASE.md §1.2](../STEAM-RELEASE.md))
-2. **Decide the Latin name.** It is baked into eleven capsule files and one
-   command re-bakes them. Do it before the page is submitted, not after.
-3. **Put the page up with what exists.** Capsules, ten screenshots, both
-   descriptions, tags, headphone notice, no trailer. §14: 「7번을 늦추지 말 것」.
-4. **Texture the four interactable props** — clue plate, objective, vehicle, loot.
-   Four assets. They unblock the trailer's three missing beats, the clue
-   screenshot and the surface screenshot, and they are the difference between a
-   page that looks finished and one that looks like a prototype with good
-   corridors.
-5. **Play a four-player match.** Then re-shoot beat 2 and take the screenshot this
-   page most needs and cannot have.
-6. **Cut the trailer** (trailer.md §6, route A).
-7. **Request a Steam Playtest.** Free, and it is how §14's questions 1 and 2 get
-   answered by people who are not you.
+This is the store-page slice of
+[STEAM-RELEASE.md §I.5.4](../STEAM-RELEASE.md)'s recommendation, and it does not
+disagree with it.
 
-Items 4 and 5 are not store-page work and they are what the store page is waiting
-for. That is worth saying plainly: **the page is not blocked on marketing, it is
-blocked on four textures and one multiplayer session.**
+1. **Pay the $100 and create the app.** Not store-page work, and still the longest
+   pole: Valve requires ≥ 30 days between paying and releasing and the page public
+   ≥ 2 weeks before the release date. Everything below runs while that clock does.
+2. **Decide the name** (B-2). It is baked into eleven capsule files and one menu
+   string, and one command re-bakes the set. Do it before the page is submitted, not
+   after. [copy-en.md §1](copy-en.md) recommends 하강 / DESCENT and says why.
+3. **Re-shoot the ten screenshots on the descent map** (B-1). This is the one item
+   that actually blocks submission. Frame for the two subjects the descent has that
+   the old building did not: the lit outer ring with the start marks on it, and the
+   glowing chute mouth seen from the dark inner ring. Check S-4 and S-5 while the
+   camera is out.
+4. **Put the page up.** Capsules, ten new screenshots, both descriptions, tags,
+   categories, headphone notice, no trailer, **no release date**.
+5. **Cut the 30-second teaser** from beats 1, 5, 7 and 8 ([trailer.md §4](trailer.md)).
+   Four beats, all shootable today, and they are the four strongest in the list.
+6. **Get two peers connected.** Then four. Then twenty. This is what beats 2, 6 and
+   half of 3, 4 and 9 are waiting on, and it is what the whole page is waiting on.
+7. **Request a Steam Playtest.** Free, and it is the only realistic way to find the
+   twenty-player problems, because one person on one machine cannot.
+
+> **The page is no longer blocked on marketing and it is no longer blocked on four
+> textures.** It is blocked on one camera pass over a map that is being built right
+> now, and everything after that is blocked on two computers talking to each other.

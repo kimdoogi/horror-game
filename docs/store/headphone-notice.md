@@ -1,37 +1,67 @@
 # The headphone notice
 
-§13's setup table lists **헤드폰 권장 표기** as a shipping item, alongside the App
-ID fee and the tax forms. It is not a courtesy line. §05 says why:
+> **Rewritten 2026-08-03 for the race.** The old version made the whole argument out
+> of the 청음사 — one of five roles, whose entire function was locating the creature
+> by ear. §04 deleted the roles on 2026-08-02, and the first reaction to that should
+> be *"so the headphone requirement is gone."* It is not. **It got broader**: what
+> used to be one player's job is now everybody's only source of information about
+> nineteen other people.
 
-> 청음사의 방향 판별 — **몸을 돌려 삼각측량.** 3D 오디오는 카메라 기준 → **헤드폰 필수**
+§13's setup table lists **헤드폰 권장 표기** as a shipping item, alongside the App ID
+fee and the tax forms. It is not a courtesy line. §05 says why:
 
-The 청음사 (Listener) locates the monster by ear: direction, distance, and which of
-§12's five floor materials it is walking on. That is the whole role. On stereo
-laptop speakers the cues collapse and **one of the five roles stops existing** —
-not "works worse", stops existing. §14's validation question 5 is literally about
-this, and it is a question about the player's output device as much as about the
-mix.
+> 소리의 방향 판별 — **몸을 돌려 삼각측량.** 3D 오디오는 카메라 기준 → **헤드폰 필수**
 
-So the notice goes in **four** places, because players arrive through different
-doors and most of them never read a store page.
+---
+
+## 0 · The argument, after the pivot
+
+Three things in the race are delivered by sound and by nothing else. None of them is
+a role any more; all of them apply to every player.
+
+**1 · Which floor somebody is on.** `DescentMap` gives each of the eight storeys its
+own surface — B1 concrete, B2 wood, B3 metal, B4 gravel, B5 tile, B6 carpet, B7
+water, B8 earth — and §12 calls that a system decision, not an art decision. A
+footstep is a floor number. On stereo speakers it is a noise.
+
+**2 · Where the one door is going.** One door per storey, at a middle gate. Whether
+somebody is closing it in front of you is a directional question with about a second
+to answer it (`DoorShutSeconds = 1.1f`).
+
+**3 · Proximity voice.** §13 plays a speaker's voice as a 3D audio source at their
+position — that is the entire implementation, and it is why there is no distance
+logic in it. Which means **the location of a voice is the information**, and on
+speakers a voice has no location. Cooperating with a stranger in a dark corridor
+stops being a thing you can do.
+
+And one thing that has not changed: §06's 정지 state, where the creature stops and
+goes silent. 「침묵이 가장 무서운 소리다」 only works on a player who was tracking it
+by ear in the first place.
+
+> **A microphone matters differently now.** The co-op game was unplayable in silence
+> — §03 forbade carrying a clue out, so the whole game was talking. The race is
+> playable in silence: you can win without saying a word. What a microphone buys is
+> the option to make a temporary ally, and the design says out loud that this is one
+> of the more interesting things in it. **Recommend it, do not require it.** The
+> minimum-spec wording below reflects that change.
 
 ---
 
 ## 1 · Short description
 
-Already in both drafts, as the closing clause — [copy-en.md](copy-en.md) §2,
-[copy-ko.md](copy-ko.md) §2.
+Already in both drafts as the closing clause — [copy-en.md §2](copy-en.md),
+[copy-ko.md §2](copy-ko.md).
 
 ```
-… Time is the only currency and the wallet is shared. Headphones recommended.
+… Being caught is being out, unranked. Headphones recommended.
 ```
 
 ```
-… 시간이 유일한 통화이고 지갑은 팀 공용이다. 헤드폰 권장.
+… 지하 8층 한가운데에 먼저 닿은 한 명이 이긴다. 헤드폰 권장.
 ```
 
-Last clause rather than first: the hook has to survive the 300-character limit,
-and a description that opens with a hardware note reads like an apology.
+Last clause rather than first: the hook has to survive the 300-character limit, and a
+description that opens with a hardware note reads like an apology.
 
 ---
 
@@ -41,89 +71,102 @@ Already in both drafts as the opening line of the body. Above the fold, above th
 first `[h2]`, before anything else competes with it.
 
 ```
-[b]HEADPHONES RECOMMENDED.[/b] One of the five roles locates the monster by ear alone — direction, distance, and which floor it is walking on. On laptop speakers that role does not function.
+[b]HEADPHONES RECOMMENDED.[/b] Footsteps are how you know where everybody else is. Every storey has a different floor under it — eight storeys, eight surfaces — so a footstep from below means somebody is already a floor ahead of you. On laptop speakers that information is simply gone.
 ```
 
 ```
-[b]헤드폰을 권장합니다.[/b] 다섯 직업 중 하나는 오직 소리만으로 괴물의 방향과 거리, 그리고 그것이 어떤 바닥을 밟고 있는지를 알아냅니다. 노트북 스피커로는 그 직업이 작동하지 않습니다.
+[b]헤드폰을 권장합니다.[/b] 이 게임에서 남이 어디 있는지는 발소리로 압니다. 층마다 바닥이 다르고 — 여덟 층, 여덟 가지 — 발밑에서 나는 소리는 누군가 이미 한 층 아래에 있다는 뜻입니다. 노트북 스피커에서는 그 정보가 통째로 사라집니다.
 ```
 
-**Do not move this to the bottom of the page.** A "recommended peripherals" line
-under the credits is where this notice goes to be ignored.
+It is a better line than the one it replaces, and for a reason worth keeping: the old
+one asked a reader to care about a role they had not met yet. This one describes a
+thing that happens to them.
+
+**Do not move it to the bottom of the page.** A "recommended peripherals" line under
+the credits is where this notice goes to be ignored.
 
 ---
 
 ## 3 · System requirements → Additional Notes
 
-Both minimum **and** recommended. Steam shows only one of the two tabs at a time,
-and a player comparing against a five-year-old laptop is reading the minimum tab.
-Full text in [copy-en.md](copy-en.md) §6 and [copy-ko.md](copy-ko.md) §6.
+Both minimum **and** recommended. Steam shows one tab at a time, and a player
+comparing against a five-year-old laptop is reading the minimum tab. Full text in
+[copy-en.md §7](copy-en.md) and [copy-ko.md §7](copy-ko.md).
 
 The minimum-tab wording is deliberately the blunt one:
 
-> HEADPHONES STRONGLY RECOMMENDED. One of the five roles locates the monster by
-> ear; stereo speakers make that role unplayable. A microphone is required for
-> team play — the game is built around talking.
+> HEADPHONES STRONGLY RECOMMENDED. Every storey has a different floor surface, and
+> footsteps are the only way to tell which floor someone is on and how close they
+> are. Stereo speakers lose that. A microphone is needed for proximity voice.
 
-The microphone half matters as much. §03 forbids carrying a clue out, so the game
-is unplayable in silence, and §13's proximity voice is the intended channel. A
-buyer who owns neither a headset nor a microphone should be able to work that out
-before paying.
+Note the last sentence is weaker than the one it replaces — *needed for proximity
+voice*, not *required for team play*. That is the honest version now (§0).
 
 ---
 
 ## 4 · In game, on first launch
 
-**The store page is not read by the friend who was invited into the lobby.** That
-person's first contact with the game is a Steam invite, and nothing on the store
-page ever reaches them. This is the placement that actually protects the 청음사.
-
-Two things already exist and one does not:
+**The store page is not read by the person who was invited into a lobby.** That
+person's first contact with the game is a Steam invite, and nothing on the store page
+ever reaches them.
 
 | Where | State |
 |---|---|
 | Main menu, along the bottom | ✅ **already there.** `Shots/menu_main.png` carries §05's headphone warning across the foot of the title screen (STATUS §4.2) |
 | Settings → audio bus rows | ✅ each row already carries the § reference for why its range is what it is |
-| First-launch, dismissible, once | ❌ **not built.** Tracked in [checklist.md](checklist.md) §3 |
+| First-launch, dismissible, once | ❌ **not built.** Tracked in [checklist.md §3](checklist.md) |
 
-The third one is the one that catches the invited friend, because a person who
-joins a lobby from a Steam invite may never see the main menu at all. One line, a
-dismiss button, a flag in Steam Cloud so it is never shown twice.
+The third is the one that catches the invited player. One line, a dismiss button, a
+flag in Steam Cloud so it is never shown twice.
 
-Suggested strings, in the game's own voice rather than a legal one:
-
-```
-헤드폰을 쓰세요. 괴물의 위치는 소리로만 알 수 있습니다.       [알겠습니다]
-```
+Suggested strings, in the game's own voice rather than a legal one — updated, because
+the old pair said the monster is the thing you locate by sound and in a race the more
+useful sentence is about the other nineteen people:
 
 ```
-Put headphones on. The monster is only ever located by sound.     [Got it]
+헤드폰을 쓰세요. 남이 몇 층에 있는지는 발소리로만 알 수 있습니다.      [알겠습니다]
+```
+
+```
+Put headphones on. Footsteps are the only thing that tells you what floor
+somebody is on.                                                          [Got it]
 ```
 
 ---
 
 ## 5 · The store's own audio flags
 
-Set on the partner site, not in the copy, and filterable — a player can browse
-Steam by these.
+Set on the partner site, not in the copy, and filterable — a player can browse Steam
+by these. The full category list is [copy-en.md §6](copy-en.md).
 
 | Flag | Set | Why |
 |---|---|---|
 | Stereo / surround / 3D audio support | ✅ 3D audio | §05 — the mix is camera-relative and binaural by design |
-| Voice chat | ⚠ **hold** | §13's proximity voice is written (`ProximityVoiceAudio.cs`, `SteamworksVoiceBackend.cs`) and has never been heard by two people. Claiming a feature that fails on launch day is worse than not listing it |
-| Captions / subtitles available | ❌ | there is no spoken dialogue to caption; do not tick it to look accessible |
+| Voice chat | ⚠ **hold** | §13's proximity voice is written (`Assets/Scripts/Steam/Voice/`, `VoiceCutoffDistance = 30f`) and **has never been heard by two people**. Claiming a feature that fails on launch day is worse than not listing it |
+| Captions / subtitles available | ❌ | there is no scripted dialogue to caption; do not tick it to look accessible |
 
 ---
 
 ## 6 · What this notice is not allowed to become
 
-An excuse. §14 question 5 — 「청음사가 방향·거리를 구별할 수 있는가?」 — is currently
-**unanswered**, and the measurements say it will be answered "yes near, no far":
-2.13× spectral separation dry, **1.396× at 25 m through a wall**, and one
-inverted clarity pair (gravel/concrete) where the HUD tells the player the
-opposite of what their ears report. Those are [F-002](../BALANCE-FINDINGS.md#f-002)
-and [F-003](../BALANCE-FINDINGS.md#f-003), both open.
+An excuse. And the pivot made the underlying measurement problem **worse**, not
+better, which is the opposite of what deleting a role suggests.
 
-A headphone notice does not fix an inverted clarity table. If the role still
-misinforms the player at release, the notice becomes the thing reviewers quote
-back. The notice is a hardware requirement, not a mix.
+The old game asked one player to hear the creature. The new copy asks every player to
+hear *what floor another player is on* — through a floor, through walls, at range.
+That is a strictly larger claim about the mix, and the two open findings against it
+were both measured under the smaller one:
+
+- [F-003](../BALANCE-FINDINGS.md#f-003) — spectral separation between surfaces is
+  **2.13× dry** and **1.396× at 25 m through a wall.** Through-structure is precisely
+  the case the new headline claim depends on.
+- [F-002](../BALANCE-FINDINGS.md#f-002) — gravel measures **26.1 dB quieter** than
+  concrete at the 800 Hz corner the mix uses, while the game tells the player gravel
+  is the clearer of the two. Those two surfaces are now **B4 and B1**, so an inverted
+  clarity pair is an inverted *floor number*.
+
+A headphone notice does not fix an inverted clarity table, and it does not make
+1.396× audible. If the copy still says "footsteps tell you which floor somebody is
+on" while F-002 and F-003 are open, the notice becomes the thing reviewers quote
+back. **The notice is a hardware requirement, not a mix**, and §14's validation
+question 5 — 「발소리의 방향·거리를 구별할 수 있는가?」 — is still unanswered.
