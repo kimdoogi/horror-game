@@ -33,7 +33,7 @@ namespace HorrorGame.Gameplay.PlayerEditor
     /// </summary>
     public static class PlayerFeelHarnessMenu
     {
-        private const string PlayerModelPath = "Assets/Models/Characters/Player.fbx";
+        private const string PlayerModelPath = "Assets/Models/Player/Runner.fbx";
         private const string FootstepFolder = "Assets/Audio/Footsteps";
         private const string ControlsPath =
             "Assets/Scripts/Gameplay/Player/Resources/PlayerControls.inputactions";
@@ -183,6 +183,13 @@ namespace HorrorGame.Gameplay.PlayerEditor
             // and a component that missed the subscription would drift out of phase
             // with the sound within a few seconds.
             var viewMotion = body.AddComponent<PlayerViewMotion>();
+
+            // §01's race is played over the shoulder, so the camera that does it has to be
+            // on the rig the moment the rig exists. It was written, committed, and attached
+            // to nothing — the owner played a build I had called third-person and got first
+            // person, because I checked the code instead of the scene. It ships off and
+            // costs nothing until V is pressed.
+            body.AddComponent<ThirdPersonCamera>();
 
             motor.Role = RoleId.Runner;
 

@@ -291,6 +291,13 @@ namespace HorrorGame.Gameplay.Player
             _footsteps = body.AddComponent<PlayerFootsteps>();
             _viewMotion = body.AddComponent<PlayerViewMotion>();
 
+            // §01's race is played over the shoulder, so the camera that does it has to be
+            // on the rig the moment the rig exists. It was written, committed, and attached
+            // to nothing — the owner played a build I had called third-person and got first
+            // person, because I checked the code instead of the scene. It ships off and
+            // costs nothing until V is pressed.
+            body.AddComponent<ThirdPersonCamera>();
+
             // AddComponent runs Awake immediately, so the pivot arrives through the public
             // setter rather than through the inspector field.
             look.PitchPivot = pivot;

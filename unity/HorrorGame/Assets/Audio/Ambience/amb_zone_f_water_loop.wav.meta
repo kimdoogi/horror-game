@@ -1,0 +1,23 @@
+fileFormatVersion: 2
+guid: 5c1ba68bd0069451387546e5a706fce0
+AudioImporter:
+  externalObjects: {}
+  serializedVersion: 8
+  defaultSettings:
+    serializedVersion: 2
+    loadType: 1
+    sampleRateSetting: 0
+    sampleRateOverride: 44100
+    compressionFormat: 1
+    quality: 0.7
+    conversionMode: 0
+    preloadAudioData: 1
+  platformSettingOverrides: {}
+  forceToMono: 0
+  normalize: 1
+  loadInBackground: 1
+  ambisonic: 0
+  3D: 1
+  userData: hgpolicy=2;role=AmbienceBed;spatial=2D;loop=1
+  assetBundleName: 
+  assetBundleVariant: 

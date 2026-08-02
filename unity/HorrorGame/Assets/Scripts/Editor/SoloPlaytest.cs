@@ -119,6 +119,36 @@ namespace HorrorGame.EditorTools
         }
 
         /// <summary>Batch entry point. Exits non-zero when §01's loop did not run end to end.</summary>
+        /// <summary>
+        /// Batch entry point that rebuilds the solo scene and nothing else.
+        /// <para>
+        /// It exists because of a specific failure. The eight-storey race map was
+        /// generated into <c>Map_FirstSketch.unity</c> and the game plays
+        /// <c>Map_FirstSketch_Solo.unity</c>, which is a SEPARATE scene built from it. So a
+        /// build was shipped, and reported as the race, that loaded the old five-storey
+        /// co-operative map — because the code was checked and the artefact was not.
+        /// </para>
+        /// <para>
+        /// <c>VerifyBatch</c> already rebuilds it, but it also runs the whole verification
+        /// pass, which is the wrong tool when all that is wanted is "put the current map
+        /// into the scene the player actually loads".
+        /// </para>
+        /// </summary>
+        public static void BuildBatch()
+        {
+            try
+            {
+                BuildScene();
+                Debug.Log("[SoloPlaytest] " + SoloScenePath + " rebuilt from " + MapScenePath + ".");
+                EditorApplication.Exit(0);
+            }
+            catch (System.Exception error)
+            {
+                Debug.LogError("[SoloPlaytest] " + error);
+                EditorApplication.Exit(1);
+            }
+        }
+
         public static void VerifyBatch()
         {
             var report = SoloMatchLoopTests.RunAll();
