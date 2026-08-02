@@ -621,6 +621,41 @@ a chamber is that at three times the span. Then:
    room's wall anywhere but a doorway — which is exactly the check this needs,
    and it is why a room is safer here than a pattern of corridors
 
+### The piece is done. The wiring is not, and here is the wall it hits
+
+`Chamber_Open_3x3` is authored, exported and registered (commit d92a023). Wiring
+`RadialStorey` to place it with `Room()` was tried and does not work yet, for a
+reason that has to be solved first:
+
+**`Room()` produces geometry and no graph.** The map graph is built from
+`_corridor` cells; `_rooms` cells are excluded from it (`InsideRoom`). So a
+chamber at the middle leaves its four dock cells with exactly one corridor
+neighbour each — four dead ends — and §12 correctly refuses to hang the inner
+gate's door on one:
+
+```
+A door was asked for at (12,10@L0), but no passage runs through that cell —
+it is a junction, a bend or an end.
+```
+
+It also refuses to mark §02's finish inside the room, for the same reason and
+just as correctly: a place nobody can stand in must not be counted.
+
+Two failures in a row, each naming itself at GENERATION time. That is the whole
+argument for the room — the same two defects inside the corridor kit showed up
+as one coordinate in an audit island list three days later.
+
+### What the wiring needs
+
+`OpenRoom()` is the model, not `Room()`. §12 counts 개방 공간 as graph nodes, so
+`OpenRoom` must already put cells in the graph while the hall piece covers them.
+Whatever it does for `HallOpen20x20`, the chamber needs the same: cells in
+`_corridor` for the graph, excluded from corridor TILING, covered by one piece.
+
+Until then the map is back to a filled 3 x 3 of corridor cells — measured 98.1%
+complete, 11 islands, §12 passing everything it still asks — with the middle
+sealed. That is the best state so far and it is what is committed.
+
 ### Do not skip the last line
 
 A room piece brings `VerifyRoomWalls` with it. That check is the reason to do
