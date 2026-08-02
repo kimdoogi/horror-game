@@ -60,7 +60,7 @@ namespace HorrorGame.EditorTools.SceneGen
         /// decides the thing that should vary: where the gates are.
         /// </para>
         /// </summary>
-        public const int AlcoveSpacing = 10;
+        public const int AlcoveSpacing = 14;
 
         /// <summary>
         /// Draws one storey. The caller owns <see cref="MapSketch.AddZone"/> and
@@ -124,6 +124,17 @@ namespace HorrorGame.EditorTools.SceneGen
             // A 3 × 3 room. Not a corridor: it is the one place on the floor where several
             // players can see each other arrive, and §01 needs the chutes to be a visible
             // choice rather than a cell you stumble into.
+            // A filled 3 x 3, and the plus that replaced it for one measurement is worth
+            // recording as a wrong turn. The block tiles into nine 2.5 m corridor pieces
+            // that wall each other, and the audit found it as a sealed island — one marker
+            // on its own, `[1] MonsterSpawn`. A plus reads unambiguously to the tiler, so
+            // it should have been better. It was worse: 11 islands became 18 and the
+            // completion rate fell 98.1% to 91.2%, because each of the four arms is a blind
+            // cell that takes a DeadEndCap, and four caps ringing the middle seal it more
+            // thoroughly than the block did.
+            //
+            // The middle needs a piece of its own — a room, not a pattern of corridor —
+            // and that is the next change rather than another arrangement of cells.
             for (var dx = -1; dx <= 1; dx++)
             {
                 for (var dz = -1; dz <= 1; dz++)
