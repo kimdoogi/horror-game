@@ -143,6 +143,23 @@ namespace HorrorGame.EditorTools.SceneGen
                 }
             }
 
+            // And ONE piece over the top of them. B-010.
+            //
+            // The cells stay — they are what the graph is built from, so the middle is nine
+            // places §12 can count, the inner gate has a passage to hang its door on, and
+            // §02's finish has somewhere to be marked. What changes is the GEOMETRY: the
+            // corridor tiler skips any cell inside a room, so instead of nine 2.5 m passages
+            // walling each other off it lays Chamber_Open_3x3, which is open at the middle of
+            // all four edges and nothing else.
+            //
+            // That split is the whole answer. Room() alone produced geometry with no graph —
+            // four dock cells with one neighbour each, §12 refusing to hang a door on a dead
+            // end and refusing to mark a finish inside a room, both correctly. Corridor cells
+            // alone produced a graph with sealed geometry — the audit found it as one marker
+            // on its own, `[1] MonsterSpawn`, which is why §06's creature reached nothing.
+            // Cells for the graph, a piece for the world.
+            s.Room(MapKitPiece.ChamberOpen3x3, centreX - 1, centreZ - 1, 3, 3, 0f);
+
             result.Centre = new MapCell(centreX, centreZ, level);
 
             // ── the three bands, outermost first ────────────────────────────────

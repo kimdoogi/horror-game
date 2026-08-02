@@ -662,3 +662,56 @@ A room piece brings `VerifyRoomWalls` with it. That check is the reason to do
 this properly rather than to keep rearranging cells: it fails loudly at generation
 time instead of silently at bake time, which is the difference between this bug
 taking an afternoon and taking three days.
+
+
+---
+
+## B-009b · The audit is still stale, and the generator is now proved innocent
+
+**Status:** 🔴 open · **Found** 2026-08-02, after B-009's first fix
+
+`NavMesh.RemoveAllNavMeshData()` before the bake moved the numbers once —
+93.5% → 98.1%, 17 islands → 11 — so it was a real cause. It was not the only one.
+
+Since then FOUR regenerations with genuinely different geometry have produced a
+byte-identical audit:
+
+```
+complete 6863 (98.1 %)   islands 11   monster reach 0/3
+```
+
+- the middle drawn as nine corridor cells
+- the middle drawn as a plus
+- the middle drawn as cells PLUS `Chamber_Open_3x3` over them (double-tiled)
+- the middle drawn as cells with the corridor tiler correctly skipping them
+
+### The generator is not the problem, and this is measured
+
+```
+tiles 1488   ChamberOpen3x3 placed: 8  (want 8)
+   at (11,11@L0) yaw 0
+   at (11,11@L1) yaw 0
+   at (11,11@L2) yaw 0
+tiles inside the L0 middle 3x3: 1  (want 1 — the chamber only)
+```
+
+Eight chambers, one per storey, at the right cell, and exactly one tile covering
+the middle. The sketch also passes every generation-time check it has, including
+`VerifyRoomWalls`, which named three separate defects at the right coordinates
+while this was being wired.
+
+So the tile list changes and the audit does not. Whatever remains is between
+`MapSceneBuilder` writing geometry and `NavMeshConnectivity` sampling it.
+
+### Where to look
+
+- Is the NavMesh asset at `Assets/Scenes/Generated/NavMesh/` being reused rather
+  than rebuilt? `AssetDatabase.CreateAsset` runs after the bake, but the audit
+  runs later still and may resolve the asset rather than the live surface.
+- Does `MapPipeline` audit the scene it just built, or one it opened?
+- The bake now logs its vertex count. Log the TILE count beside it. Two numbers
+  that move together prove the chain; two that do not name the broken link.
+
+Until this is closed no measurement of this map means anything, which is the same
+sentence B-009 opened with. Fixing half of it was worse than useless: it produced
+one real improvement and then four runs of false confidence.

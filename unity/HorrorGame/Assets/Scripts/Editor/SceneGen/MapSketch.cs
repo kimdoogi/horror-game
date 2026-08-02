@@ -1411,6 +1411,16 @@ namespace HorrorGame.EditorTools.SceneGen
                     continue;
                 }
 
+                // A cell a room already covers gets no corridor piece. Without this the
+                // chamber and nine corridor tiles were both placed on the same nine cells,
+                // and the corridor walls won — the audit came back byte-identical to the run
+                // with no room at all, which is how this was found. The room supplies the
+                // geometry; the cells stay only so the graph has places to count.
+                if (InsideRoom(cell))
+                {
+                    continue;
+                }
+
                 var mask = MaskWithStair(cell, landings);
 
                 // A landing has one corridor neighbour and looks exactly like a 막힌 길
@@ -1679,6 +1689,24 @@ namespace HorrorGame.EditorTools.SceneGen
                     yield return new DockSite(new MapCell(x0 + w, z0 + offset, room.Level), MapDirection.West);
                 }
 
+                yield break;
+            }
+
+            if (room.Piece == MapKitPiece.ChamberOpen3x3)
+            {
+                // The middle cell of each edge, and nowhere else — Chamber_Open_3x3 is
+                // authored open at 3.75 m along a 7.5 m side, which is the centre of the
+                // second of three cells.
+                //
+                // This entry is not bookkeeping. VerifyRoomWalls is the check that made the
+                // chamber worth using: with the room in place it named, at generation time,
+                // the exact passage crossing the exact wall. Without the entry its doorway
+                // list is empty and it refuses everything, which is the correct behaviour for
+                // a room it has never been told about.
+                yield return new DockSite(new MapCell(x0 + 1, z0 - 1, room.Level), MapDirection.North);
+                yield return new DockSite(new MapCell(x0 + 1, z0 + d, room.Level), MapDirection.South);
+                yield return new DockSite(new MapCell(x0 - 1, z0 + 1, room.Level), MapDirection.East);
+                yield return new DockSite(new MapCell(x0 + w, z0 + 1, room.Level), MapDirection.West);
                 yield break;
             }
 
