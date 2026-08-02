@@ -703,6 +703,29 @@ while this was being wired.
 So the tile list changes and the audit does not. Whatever remains is between
 `MapSceneBuilder` writing geometry and `NavMeshConnectivity` sampling it.
 
+### CONFIRMED by instrumentation, 2026-08-02
+
+The bake now reports the geometry it consumed. Across runs:
+
+```
+NavMesh baked: 9824 vertices
+NavMesh baked: 8975 vertices
+NavMesh baked: 9542 vertices ... from 2857 meshes / 3,916,192 triangles
+```
+
+The vertex count MOVES. The scene has 2857 meshes and 3.9 M triangles in it, so
+the geometry is real and it is different each time. And the audit is identical to
+the digit every one of those runs:
+
+```
+complete 6863 (98.1 %)   islands 11   monster reach 0/3
+```
+
+Two numbers that should move together do not. The generator is innocent — proved
+separately: 8 chambers, one per storey, at the right cell, nothing double-tiled.
+The bake is innocent — its own vertex count changes. **NavMeshConnectivity is not
+reading the surface that was just baked.**
+
 ### Where to look
 
 - Is the NavMesh asset at `Assets/Scenes/Generated/NavMesh/` being reused rather

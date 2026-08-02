@@ -947,8 +947,30 @@ namespace HorrorGame.EditorTools.SceneGen
             }
             else
             {
+                // The tile count beside the vertex count, and this pairing is the point.
+                // B-009b: four regenerations with demonstrably different tile lists produced
+                // a byte-identical audit — 6863 pairs, 98.1%, 11 islands, every time. Either
+                // the geometry is not reaching the scene or the audit is not reading it, and
+                // no amount of staring at the generator distinguishes those. Two numbers that
+                // move together prove the chain; two that do not name the broken link.
+                var meshes = 0;
+                var tris = 0;
+                foreach (var filter in root.GetComponentsInChildren<MeshFilter>(true))
+                {
+                    if (filter.sharedMesh == null)
+                    {
+                        continue;
+                    }
+
+                    meshes++;
+                    tris += filter.sharedMesh.triangles.Length / 3;
+                }
+
                 Debug.Log("[SceneGen] NavMesh baked: " + after + " vertices (was " + before
-                          + " before the clear). §06 paths on this and nothing else.");
+                          + " before the clear), from " + meshes + " meshes / " + tris
+                          + " triangles in the scene. §06 paths on this and nothing else. "
+                          + "If the triangle count moves between runs and the audit does not, "
+                          + "the audit is not reading this surface — B-009b.");
             }
 
             if (surface.navMeshData == null)
