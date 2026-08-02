@@ -356,6 +356,76 @@
       "note": "§12 분기 / loop feeder."
     },
     {
+      "name": "Chamber_Open_3x3",
+      "file": "Chamber_Open_3x3.fbx",
+      "kind": "room",
+      "grid_snapped": true,
+      "footprint_metres": [
+        7.5,
+        7.5
+      ],
+      "footprint_cells": [
+        3,
+        3
+      ],
+      "height_metres": 3.3,
+      "max_straight_run_metres": 7.5,
+      "floor_slot": "Floor_Concrete",
+      "material_slots": [
+        "Ceiling_Structure",
+        "Wall_Structure",
+        "Trim_Painted",
+        "Wall_Dado",
+        "Floor_Concrete",
+        "Trim_Steel"
+      ],
+      "triangles": 2880,
+      "vertices": 1574,
+      "docks": [
+        {
+          "edge": "-Y",
+          "centre": [
+            3.75,
+            0.0
+          ],
+          "width": 2.2,
+          "height": 3.0,
+          "level": 0.0
+        },
+        {
+          "edge": "+Y",
+          "centre": [
+            3.75,
+            7.5
+          ],
+          "width": 2.2,
+          "height": 3.0,
+          "level": 0.0
+        },
+        {
+          "edge": "-X",
+          "centre": [
+            0.0,
+            3.75
+          ],
+          "width": 2.2,
+          "height": 3.0,
+          "level": 0.0
+        },
+        {
+          "edge": "+X",
+          "centre": [
+            7.5,
+            3.75
+          ],
+          "width": 2.2,
+          "height": 3.0,
+          "level": 0.0
+        }
+      ],
+      "note": "§12-A 중심 — 투하구가 서는 방. B-010."
+    },
+    {
       "name": "Junction_Cross_4Way",
       "file": "Junction_Cross_4Way.fbx",
       "kind": "junction",

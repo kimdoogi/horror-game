@@ -36,6 +36,18 @@ namespace HorrorGame.EditorTools.SceneGen
         /// <summary>§12 순환로 crossing.</summary>
         JunctionCross4Way,
 
+        /// <summary>
+        /// §12-A's 중심 — the 7.5 m room a radial storey's 투하구 stand in, open at the
+        /// middle of all four edges.
+        /// <para>
+        /// A room rather than nine corridor cells, and B-010 is why: the kit tiles a cell
+        /// from its neighbour mask, so a filled 3 x 3 becomes nine 2.5 m passages meeting
+        /// at their own walls, and the NavMesh audit finds it as a sealed island. On B8
+        /// that middle is §02's finish.
+        /// </para>
+        /// </summary>
+        ChamberOpen3x3,
+
         /// <summary>§12 막힌 길 — plinth and alcove built in, which is where the 보상 goes.</summary>
         DeadEndCap,
 
@@ -180,6 +192,7 @@ namespace HorrorGame.EditorTools.SceneGen
                 case MapKitPiece.CorridorStraight5m: return "Corridor_Straight_5m";
                 case MapKitPiece.CorridorStraight10m: return "Corridor_Straight_10m";
                 case MapKitPiece.CorridorCornerL: return "Corridor_Corner_L";
+                case MapKitPiece.ChamberOpen3x3: return "Chamber_Open_3x3";
                 case MapKitPiece.SCorridorUnit10mX2: return "SCorridor_Unit_10m_x2";
                 case MapKitPiece.JunctionT: return "Junction_T";
                 case MapKitPiece.JunctionCross4Way: return "Junction_Cross_4Way";

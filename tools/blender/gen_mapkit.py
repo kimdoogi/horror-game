@@ -630,6 +630,64 @@ def build_junction_cross() -> list:
     return objs
 
 
+def build_chamber() -> list:
+    """The 7.5 m room at the middle of a radial storey (§12-A · §01's 투하구).
+
+    B-010: this exists because nine corridor cells in a square are not a room. The
+    kit tiles a cell from its neighbour mask, so a filled 3 x 3 becomes four L
+    corners, four T edges and a cross — nine 2.5 m passages, each walled where its
+    own mask says closed, meeting at their own walls. The NavMesh audit found it as
+    a sealed island carrying one marker, `[1] MonsterSpawn`, which is why §06's
+    creature reached nothing and why nobody could touch §02's finish on B8.
+
+    Drawing it as a plus was tried and measured worse — 11 islands became 18 —
+    because each arm is a blind cell and each blind cell takes a DeadEndCap, and
+    four caps ringing the middle seal it harder than the block did.
+
+    So: one piece, three grid cells square, open at the middle of all four edges,
+    with the corners carrying the ceiling. Build_junction_cross is the model — it
+    already has no walls at all — and this is that at three times the span, with
+    piers where a 7.5 m ceiling needs them.
+    """
+    span = 3 * GRID
+    objs: list = []
+    c, st = mat("Ceiling_Structure"), mat("Trim_Steel")
+
+    corridor_floor(objs, 0, span, 0, span, mat("Floor_Concrete"), drain_every=99.0)
+    objs.append(slab("Ceil", 0, span, 0, span, CLEAR_H, CLEAR_H + CEIL_T, c, trim=False))
+
+    # Wall stubs, not walls: each edge is closed except the middle cell, which is the
+    # doorway the plan docks against. Leaving a whole edge open would let a corridor
+    # meet the room anywhere along it, and MapSceneBuilder.VerifyRoomWalls exists to
+    # refuse exactly that — the check is the reason a room is safer here than a
+    # pattern of corridors.
+    for tag, x0, x1, y0, y1 in (
+            ("S0", 0, GRID, 0, WALL_T), ("S1", 2 * GRID, span, 0, WALL_T),
+            ("N0", 0, GRID, span - WALL_T, span), ("N1", 2 * GRID, span, span - WALL_T, span),
+            ("W0", 0, WALL_T, 0, GRID), ("W1", 0, WALL_T, 2 * GRID, span),
+            ("E0", span - WALL_T, span, 0, GRID), ("E1", span - WALL_T, span, 2 * GRID, span)):
+        objs.append(slab(f"Wall{tag}", x0, x1, y0, y1, 0.0, CLEAR_H, c))
+
+    for nx, ny in ((0, 0), (1, 0), (0, 1), (1, 1)):
+        corner_pier(objs, 0.0 if nx == 0 else span - WALL_T,
+                    0.0 if ny == 0 else span - WALL_T)
+
+    # Four piers at the inner corners of the middle cell. A 7.5 m ceiling wants
+    # carrying, and they give a torch something to catch — §05. They also make the
+    # room read as a place rather than as a gap in the maze, which is what §01 needs
+    # from the one spot where several runners can see each other arrive.
+    for cx in (GRID, 2 * GRID):
+        for cy in (GRID, 2 * GRID):
+            objs += column(f"Pier{cx:.0f}_{cy:.0f}", cx, cy, CLEAR_H, size=0.42)
+
+    # Services cross overhead and meet, the way they do at a junction.
+    objs.append(pipe("PipeY", "Y", 0.0, span, WALL_T + detail.PIPE_LANE,
+                     detail.PIPE_Z, detail.PIPE_R, st))
+    objs.append(pipe("PipeX", "X", 0.0, span, span - WALL_T - detail.TRAY_LANE,
+                     detail.PIPE_Z - 0.20, 0.045, st, sides=6))
+    return objs
+
+
 def build_dead_end() -> list:
     """A 2.5 x 5 m dead end whose reward is part of the geometry.
 
@@ -1493,6 +1551,12 @@ PIECES: list[PieceSpec] = [
                {"edge": "+Y", "centre": [GRID / 2, GRID], "width": CLEAR_W, "height": CLEAR_H, "level": 0.0},
                {"edge": "+X", "centre": [GRID, GRID / 2], "width": CLEAR_W, "height": CLEAR_H, "level": 0.0}],
               "§12 분기 / loop feeder."),
+    PieceSpec("Chamber_Open_3x3", build_chamber, (3 * GRID, 3 * GRID), 3 * GRID, 9000,
+              "room", "Floor_Concrete",
+              [{"edge": e, "centre": c, "width": CLEAR_W, "height": CLEAR_H, "level": 0.0}
+               for e, c in (("-Y", [3 * GRID / 2, 0.0]), ("+Y", [3 * GRID / 2, 3 * GRID]),
+                            ("-X", [0.0, 3 * GRID / 2]), ("+X", [3 * GRID, 3 * GRID / 2]))],
+              "§12-A 중심 — 투하구가 서는 방. B-010."),
     PieceSpec("Junction_Cross_4Way", build_junction_cross, (GRID, GRID), GRID, 4000,
               "junction", "Floor_Concrete",
               [{"edge": e, "centre": c, "width": CLEAR_W, "height": CLEAR_H, "level": 0.0}

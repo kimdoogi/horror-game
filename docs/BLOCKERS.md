@@ -566,3 +566,64 @@ on a surface that is not the one just built, then every green audit in this
 project's history is worth less than it looked, including the ones that closed
 B-001. Whatever the cause, the fix has to include a check that the audit and the
 build agree — a triangle count, a bake timestamp, anything that cannot be stale.
+
+
+---
+
+## B-010 · The middle of a radial storey has no piece, so it seals itself
+
+**Status:** 🔴 open — the last thing between the descent map and a scene on disk ·
+**Found** 2026-08-02 · **Supersedes the NavMesh half of** B-009
+
+### What happens
+
+`RadialStorey` draws the 3 × 3 middle as nine ordinary corridor cells. The kit
+tiles a cell from its neighbour mask, so nine cells in a square become four L
+corners, four T edges and a cross — nine 2.5 m passages, each walled on the sides
+its own mask calls closed, meeting at their own walls. The audit finds it as a
+sealed island:
+
+```
+[1] MonsterSpawn
+```
+
+That single line is why §06's creature reached 0 of 3 targets in every run of
+this map. On B8 the same middle is §02's finish, so it is also the reason nobody
+could win.
+
+### What has already been tried, and measured
+
+| attempt | complete | islands |
+|---|---|---|
+| filled 3 × 3 | 98.1% | 11 |
+| a plus instead | **91.2%** | **18** |
+
+The plus reads unambiguously to the tiler and should have been the fix. It was
+worse: each of its four arms is a blind cell, each blind cell takes a
+`DeadEndCap`, and four caps ringing the middle seal it more thoroughly than the
+block did. Reverted, with the reasoning left in `RadialStorey` because the next
+person will have the same idea.
+
+### The fix
+
+**The middle needs a PIECE.** Every version of this that stays inside the
+corridor kit hits the same wall, because the corridor kit's whole contract is
+"one cell, walls where the mask says" and a room is not that.
+
+Add `ChamberOpen3x3` to `tools/blender/gen_mapkit.py`: 7.5 m square, corner
+piers, openings mid-edge on all four sides, the same clear height as a corridor.
+`build_junction_cross` is the closest model — it already has no walls at all, and
+a chamber is that at three times the span. Then:
+
+1. `MapKitPiece.ChamberOpen3x3` + its filename and height in `MapKitCatalogue`
+2. `RadialStorey` places it with `Room()` rather than nine `Corridor()` calls
+3. `MapSceneBuilder.VerifyRoomWalls` already checks that no passage crosses a
+   room's wall anywhere but a doorway — which is exactly the check this needs,
+   and it is why a room is safer here than a pattern of corridors
+
+### Do not skip the last line
+
+A room piece brings `VerifyRoomWalls` with it. That check is the reason to do
+this properly rather than to keep rearranging cells: it fails loudly at generation
+time instead of silently at bake time, which is the difference between this bug
+taking an afternoon and taking three days.
