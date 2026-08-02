@@ -121,6 +121,25 @@ namespace HorrorGame.Gameplay.Match
         private double _accumulator;
         private bool _running;
         private bool _onSurface = true;
+
+        [Header("§01 하강")]
+        [SerializeField]
+        [Tooltip("§01's race. Off runs the co-operative recovery match this grew out of.")]
+        private bool _raceMode = true;
+
+        /// <summary>
+        /// True when this is §01's race rather than the co-operative recovery match.
+        /// <para>
+        /// The two share a map, a creature, a set of doors and a darkness, and share
+        /// nothing else: the race has no 지상, no shop, no objective and no way out but
+        /// down. Switching here rather than deleting keeps the old path readable while the
+        /// new one is being proven. See BeginMatch.
+        /// </para>
+        /// </summary>
+        public bool RaceMode
+        {
+            get { return _raceMode; }
+        }
         private float _grabDistance;
 
         /// <summary>§06's catch, as an act. See MonsterLunge — the rule is in Core.</summary>
@@ -382,6 +401,56 @@ namespace HorrorGame.Gameplay.Match
             }
 
             _probe = probe;
+
+            // ── §01's race, or the co-operative recovery match it grew out of ──────
+            //
+            // Everything between here and MovePlayerToSpawn is the old game: §03's clue
+            // chain, the objective, the loot, the van, the shop, and the 지상 apron that
+            // makes the surface a safe zone. The race has none of it. There is no way out
+            // of the building — the 출입구 marker is now §02's FINISH at the middle of B8 —
+            // so a surface phase is not a phase, it is a contradiction.
+            //
+            // GATED rather than deleted, and that is a decision worth defending. This file
+            // is 2,139 lines and the co-op systems reach into most of them; cutting them out
+            // on the same night five other things are being wired is how a night ends with
+            // nothing that compiles. Gated, the race path is short and readable and the old
+            // path is provably unreachable, and deleting it afterwards is a mechanical
+            // change nobody has to be brave about. docs/DESCENT-PIVOT.md §3.
+            if (_raceMode)
+            {
+                PlaceLoot();
+
+                _state = new MatchState(BuildLineup(_localRole), startOnSurface: false);
+                _clock = new MatchClock(startOnSurface: false);
+                _clueContext = default(ClueReadContext);
+                _clueReader.Cancel();
+                _revealedClueId = -1;
+                _accumulator = 0d;
+
+                MovePlayerToSpawn();
+
+                // Never true again for the rest of the match. §01's 지상 is where a
+                // co-operative team regroups and shops; a runner starts on the rim of B1
+                // with the maze in front of them and nothing behind.
+                _onSurface = false;
+
+                _grabDistance = MeasureGrabDistance();
+                AttachDoors();
+                AttachChutes();
+
+                _noise = _playerRoot != null ? _playerRoot.GetComponentInChildren<NoiseMeter>(true) : null;
+                _lastFootstepPosition = _playerRoot != null ? _playerRoot.position : Vector3.zero;
+                _strideTravelled = 0f;
+
+                BindHud();
+                _hud?.CloseShop();
+
+                _running = true;
+                _seed = seed;
+
+                Debug.Log("[Match] §01 하강 시작 — B1 외곽. 여덟 층 아래가 도착점이다.", this);
+                return true;
+            }
 
             try
             {
