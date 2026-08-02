@@ -1403,6 +1403,7 @@ namespace HorrorGame.EditorTools.SceneGen
 
             // Dead-end caps first: the cap is 2 cells long, so it has to claim its
             // outward cell before the straight tiler does.
+            var capOrigins = new List<MapCell>();
             foreach (var cell in ordered)
             {
                 if (consumed.Contains(cell))
@@ -1444,10 +1445,33 @@ namespace HorrorGame.EditorTools.SceneGen
                     continue;
                 }
 
+                // Not where another cap is already standing within two cells.
+                //
+                // A DeadEndCap is a solid two-cell box with one opening, and the radial
+                // storeys put blind cells close enough together that caps cluster: measured
+                // on one floor, 29 caps with 14 pairs inside two cells of each other, and in
+                // one 3 x 3 there were FOUR — at (17,4), (17,6), (15,6) and (17,7). Stacked
+                // like that they wall each other's openings off, and the floor ends up with
+                // pockets nothing can path out of. The graph says every one of those cells is
+                // reachable, §12 counts them, the checklist passes, and only the NavMesh bake
+                // disagrees — nine two-cell islands with no way in.
+                //
+                // Dropping the cap costs a dressed end wall and nothing else: the cell is
+                // still floor, still walled by its neighbours' geometry, still a 막힌 길 in
+                // the graph. Keeping it costs a floor nobody can finish.
+                if (capOrigins.Exists(o => o.Level == cell.Level
+                                           && System.Math.Max(System.Math.Abs(o.X - cell.X),
+                                                              System.Math.Abs(o.Z - cell.Z)) <= 3))
+                {
+                    continue;
+                }
+
                 // The cap is authored with its dock on −Y and its body running +Y, so
                 // it faces the corridor it closes off.
+                var capAt = MinCell(cell, beyond);
                 tiles.Add(new MapTilePlacement(
-                    MapKitPiece.DeadEndCap, MinCell(cell, beyond), MapDirections.YawFacing(inward), zoneOf[cell]));
+                    MapKitPiece.DeadEndCap, capAt, MapDirections.YawFacing(inward), zoneOf[cell]));
+                capOrigins.Add(capAt);
                 consumed.Add(cell);
                 consumed.Add(beyond);
             }
