@@ -5,7 +5,684 @@
 > **getting the game onto Steam** — the administrative work §13 calls
 > "인프라가 아니라 행정", the depot pipeline in `tools/steam/`, and the store page.
 
+> **This file has two parts.**
+> **Part I (audit)** — added 2026-08-03 — is *where this repo actually stands*: what
+> was measured on disk, what Valve requires as verified against Valve's own pages on
+> that date, and what is genuinely between here and a release. Read it first.
+> **Part II (process, §0–§9)** is the unchanged mechanics of registration, depots,
+> branches and the store page. Its Valve numbers were re-checked on 2026-08-03 and
+> are correct. Its *game* facts predate the 20인 경주 pivot
+> ([DESCENT-PIVOT.md](DESCENT-PIVOT.md), 2026-08-02) and §I.6 lists which.
+
 ---
+---
+
+# PART I — THE AUDIT (2026-08-03)
+
+## I.0 The one-paragraph answer
+
+Nothing can be released tomorrow, and nothing can be released in a week, because
+**the 30-day clock has not been started** — Valve requires 30 days between paying
+the app fee and releasing, and the app fee has not been paid. That is not the
+binding constraint for long, though. The binding constraint is that **no two peers
+have ever connected in this repository, by any evidence on disk**, in a game whose
+entire premise is twenty of them; that the shipped player's main menu contains no
+networking code at all and its Play button loads a *solo* scene; and that every
+word of the finished store copy describes a four-player co-op looting game that was
+deleted on 2026-08-02. The build pipeline is in good shape and a release path
+demonstrably works — on macOS. Windows, which is the product, has never once been
+built with IL2CPP. The fastest defensible path is **not** a release: it is to start
+the account clock today, put up a Coming Soon page for the race, and ship a Steam
+Playtest. §I.5 gives the order.
+
+---
+
+## I.1 The two lists
+
+The single most useful division, because the second list has lead times measured in
+days that no amount of engineering can compress, and every day the owner delays it
+is a day added to the end.
+
+### ACCOUNT AND LEGAL — only the owner can do these, on Valve's website
+
+Nothing in this repository blocks any of these. They can all start today. Several
+of them have waiting periods that run in the background while engineering
+continues, which is exactly why delaying them is pure dead time.
+
+| # | Item | Who | Lead time | Blocks |
+|:--:|---|---|---|---|
+| 1 | Steamworks partner registration; sign NDA + Steam Distribution Agreement | owner | same day | everything |
+| 2 | Bank account details; account holder name must match legal name | owner | days (Valve verifies) | being paid |
+| 3 | Tax interview — W-8BEN (개인) or W-8BEN-E (사업자), **foreign TIN filled in** | owner | form is same-day | treaty rate; see §1.3 |
+| 4 | Third-party identity/tax verification | Valve | **2–7 business days** | releasing |
+| 5 | **Pay the $100 Steam Direct fee** → mints the real App ID | owner | same day | **starts the 30-day clock** |
+| 6 | **30-day waiting period** between paying the fee and being allowed to release | Valve | **30 days, hard** | releasing |
+| 7 | Content survey — general, mature, **and generative-AI disclosure** | owner | ~1 hour | store/build review |
+| 8 | Store presence submitted for review | Valve | **3–5 business days** | page going live |
+| 9 | Coming Soon page public **≥ 2 weeks** before the release date | — | **14 days, hard** | releasing |
+| 10 | Click "Release App" — approved titles do not release themselves | owner | manual | releasing |
+| 11 | Asset provenance: state the licence of the two source sculpts (§I.4.4) | owner | unknown | legal safety |
+
+**Earliest possible release date = max(fee + 30 days, page public + 14 days,
+review + 3–5 business days).** If the fee were paid today, 2026-08-03, the earliest
+conceivable release is **2026-09-02**, and only if the store page also went public
+by 2026-08-19 and passed review. Realistically add a week for the review round-trip
+Valve tells you to budget: submit the page ≥ 7 days before you want it live.
+
+### ENGINEERING — someone can fix these in this repo
+
+Ordered by what blocks what, not by size.
+
+| # | Item | Evidence | Size |
+|:--:|---|---|---|
+| 1 | **Get two peers to connect, once** | §I.4.2 — never done | the whole risk |
+| 2 | A networked entry point in the shipped build (menu → host/join) | §I.4.1 — `GameShell` has none | days |
+| 3 | The race exists as a scene (`RaceDirector` is in no scene) | §I.4.3 | in progress elsewhere |
+| 4 | Reconcile the 4-vs-20 player cap | §I.4.3 | small, but touches Net |
+| 5 | A Windows **IL2CPP** player — never once produced | §I.2.3 | needs a Windows host |
+| 6 | Real App ID into `SteamAppConfig.cs` **and** `steam.config` together | §5.1 | one line each |
+| 7 | `steam_appid.txt` must not reach a depot | §I.2.5 defect 1 | one line in `EXCLUSIONS` |
+| 8 | Store copy + screenshots rewritten for the race | §I.3.3 | days |
+| 9 | A real trailer — the current file is a 3-second 720p clip | §I.3.3 | days |
+| 10 | Scale 20 players: interest management is written for 4 | §I.4.3 | weeks |
+
+---
+
+## I.2 A — Build configuration
+
+### I.2.1 Where it lives
+
+| Path | What it is |
+|---|---|
+| `tools/ci/build.sh` | the shell entry point; `./tools/ci/build.sh windows release` |
+| `unity/HorrorGame/Assets/Scripts/Editor/BuildPipelineOptions.cs` | argument parsing, App ID resolution |
+| `…/BuildPipelineBackend.cs` | IL2CPP-vs-Mono decision and the fallback warning |
+| `…/BuildPipelineSettingsScope.cs` | every setting `release` changes, and their restoration |
+| `…/BuildPipelineRunner.cs` | the run; preflight, `BuildPlayer`, message triage |
+| `…/BuildPipelineReport.cs` | `build-report.txt` / `build-report.json` |
+
+The configuration is never guessed. `BuildPipelineOptions.TryParse` fails outright
+with *"No `-buildConfig` given. It must be stated explicitly, because the difference
+between the two is whether the player can ship."* The default, when constructed
+rather than parsed, is `Development` — the safe default is the one that cannot ship.
+
+### I.2.2 What `release` actually changes
+
+Measured from `BuildPipelineSettingsScope.Apply` and `.OptionsFor`, not from prose:
+
+| Setting | `development` | `release` |
+|---|---|---|
+| Scripting backend | **Mono2x, always, on purpose** (links in seconds, managed debugger attaches) | **IL2CPP if the host OS matches the target**, otherwise Mono + a loud fallback |
+| IL2CPP compiler configuration | `Debug` | `Release` |
+| Managed stripping | `Disabled` | **`Low`** — deliberately capped, see below |
+| `stripEngineCode` | `false` | `true` |
+| IL2CPP code generation | untouched | `OptimizeSpeed` (set reflectively) |
+| `BuildOptions` | `Development \| AllowDebugging \| ConnectWithProfiler \| CompressWithLz4` | `CompressWithLz4HC` |
+| `steam_appid.txt` (pipeline's own writer) | written | **not** written — but see §I.2.5 |
+
+Architecture is a separate axis: `-buildPlatform win64 \| mac \| mac-arm64 \| mac-x64 \| all`.
+macOS architecture is applied by reflection on `UnityEditor.OSXStandalone.UserBuildSettings`
+so the editor assembly still compiles on a Windows runner without the macOS module.
+All of it is a scope — set, build, restore — so a CI run does not leave
+`ProjectSettings.asset` dirty.
+
+**Stripping is capped at `Low` on purpose, and that cap is an untested risk.** The
+source says why: Mirror's generated serialisers and Steamworks.NET's callback
+dispatch both resolve types *by name* at runtime, and stripping above `Low` removes
+exactly those. The comment then admits the gap — the alternative would need a
+`link.xml` *"nobody has validated against a live … session yet"*. Since no live
+session has ever happened (§I.4), nothing has validated `Low` either. **The first
+IL2CPP release build that reaches a real lobby is the first test of this setting.**
+Expect it to be where a "works in the editor, dead in the build" bug appears.
+
+### I.2.3 Does a release path exist, and has it been run? Yes — and only on macOS
+
+It exists and it works. Two runs prove it, and they prove opposite things.
+
+**macOS Release / IL2CPP: succeeded.** `dist/logs/build-mac-release-20260801T103111Z.log`:
+
+```
+[BuildPipeline] Scripting backend for macOS universal (Apple silicon + Intel): IL2CPP
+    — release build on a matching host, so the native toolchain for this target is available.
+[BuildPipeline] Building macOS universal (Apple silicon + Intel) (Release, IL2CPP) to
+    /Users/doogi/horror-game/dist/macos-universal/HorrorGame.app
+  macOS universal (Apple silicon + Intel)    Release     IL2CPP OK        2025.36 MB  20s
+```
+
+That artefact no longer exists — it was overwritten by a Development build on
+2026-08-02. But the path is proven on this machine.
+
+**Windows Release: succeeded as Mono, and is marked unshippable.** This is the only
+Windows release build on disk, `dist/windows-x64/build-report.txt`, built
+**2026-07-31T14:28:02Z** at commit `4fb93cd`, build number **2**, in **5m 15s**:
+
+```
+configuration:        Release
+scripting backend:    Mono
+backend reason:       IL2CPP is unavailable for Windows x64 on macOS (OSXEditor); fell back to Mono.
+shippable on Steam:   no — IL2CPP was unavailable on this host, so it is a Mono build
+```
+
+and the pipeline dropped `MONO-FALLBACK-DO-NOT-SHIP.txt` into the folder, ending
+*"Delete this file only after replacing this folder with an IL2CPP build."*
+
+> **No Windows IL2CPP player has ever been produced in this repository.** A Mac
+> cannot make one: IL2CPP transpiles to C++ and then needs MSVC. The only two routes
+> are a Windows machine or the CI job in `.github/workflows/unity.yml`, and that job
+> is gated `if: needs.preflight.outputs.enabled == 'true'`, which requires
+> `UNITY_EMAIL`/`UNITY_PASSWORD`/`UNITY_SERIAL` or `UNITY_LICENSE` secrets. There is
+> no evidence in the repo that it has ever run.
+
+The current state of `dist/` — the three build reports on disk:
+
+| Folder | Configuration | Backend | Built (UTC) | Size | shippable |
+|---|---|---|---|---|:--:|
+| `dist/windows-x64/` | **Release** | Mono (fallback) | 2026-07-31T14:28:02Z | 144.09 MB | no |
+| `dist/macos-arm64/` | Development | Mono | 2026-08-02T02:32:06Z | 277.68 MB | no |
+| `dist/macos-universal/` | Development | Mono | 2026-08-02T15:02:48Z | 572.69 MB | no |
+
+`dist/last-build-summary.txt` records the most recent run, and it was
+`-buildConfig development`.
+
+### I.2.4 The report format — how to recognise a good one
+
+`ShippableOnSteam` is one expression, in `BuildPipelineReport.cs`:
+
+```csharp
+public bool ShippableOnSteam
+{
+    get { return Succeeded && Configuration == BuildConfigurationId.Release && !MonoFallback; }
+}
+```
+
+A report you can upload from looks like this — every line below differs from what
+the repo produces today:
+
+```
+result:               Succeeded
+platform:             Windows x64 (windows-x64)
+configuration:        Release
+scripting backend:    IL2CPP
+backend reason:       release build on a matching host, so the native toolchain for this target is available.
+shippable on Steam:   yes
+
+version:              1.0.0   (VERSION)
+git commit:           <sha>          ← and NOT "(working tree dirty)"
+host:                 Windows (WindowsEditor)
+errors / warnings:    3 / n   (0 this project's, 3 known third-party defect(s), listed below)
+
+steam app id:         <your real numeric App ID>   (…)
+
+output folder contents (listed before this report was added)
+  HorrorGame.exe
+  HorrorGame_Data
+  MonoBleedingEdge            ← absent on a real IL2CPP build
+  UnityCrashHandler64.exe
+  UnityPlayer.dll
+                              ← no steam_appid.txt
+                              ← no MONO-FALLBACK-DO-NOT-SHIP.txt
+```
+
+Four things to read every time, in order: `shippable on Steam: yes`; `scripting
+backend: IL2CPP`; `steam app id:` is not 480; and the **output folder contents block
+contains no `steam_appid.txt`**. The last one is not paranoia — see the next section.
+
+### I.2.5 Three defects found in the artefacts
+
+**Defect 1 — the Release build shipped `steam_appid.txt`, and the report says it
+did not.**
+
+`dist/windows-x64/build-report.txt` states, under `notes`:
+
+> `* No steam_appid.txt was written: a release player must take its App ID from the`
+> `Steam client, not from a file in the depot.`
+
+The file is there. `dist/windows-x64/steam_appid.txt`, **3 bytes**, contents `480`,
+mtime `2026-07-31T23:33:17` — the same second as `build-report.txt`. The report's
+own `output folder contents` block lists it, four lines above the note denying it.
+
+The byte count identifies the culprit. There are two writers:
+
+| Writer | Gate | Writes |
+|---|---|---|
+| `BuildPipelineRunner.WriteSteamAppIdFile` | skips on Release | `AppId + "\n"` → **4 bytes** |
+| `Assets/Scripts/Steam/Editor/SteamAppIdFileTool.OnPostprocessBuild` | `[PostProcessBuild(1)]`, gated on `SteamAppIdFile.ShouldWrite` | **3 bytes** |
+
+and `SteamAppIdFile.ShouldWrite` is
+
+```csharp
+public static bool ShouldWrite => SteamAppConfig.IsDevelopmentAppId || Debug.isDebugBuild;
+```
+
+— true because `AppId == 480`, **regardless of build configuration**. The
+configuration-aware writer stands down on Release; the App-ID-aware one does not
+know about configurations at all, and fires. The 4-byte copies are in the
+Development mac folders' roots; the 3-byte copies are in `windows-x64/` and in each
+`HorrorGame.app/Contents/MacOS/`.
+
+Valve is unambiguous about why this matters
+([steam_api.h](https://partner.steamgames.com/doc/api/steam_api)): *"Make sure to
+remove the steam_appid.txt file when uploading the game to your Steam depot!"* —
+because *"if a steam_appid.txt file is present then `SteamAPI_RestartAppIfNecessary`
+will return false regardless of how the application was launched."* A shipped copy
+containing `480` also means the released game initialises Steamworks against
+Spacewar: no lobbies, no voice, no stats, and nothing in any error message pointing
+at the cause. That is the silent failure §5.1 already warns about, arriving by a
+route §5.1 does not cover.
+
+**And the depot stager would carry it up.** `tools/steam/lib/steampipe.py`
+`EXCLUSIONS` has ten rules — `*_BurstDebugInformation_DoNotShip`,
+`*_BackUpThisFolder_ButDontShipItWithYourGame`, `*.pdb`, `*.mdb`, `*.dSYM`,
+`.DS_Store`, `._*`, `__MACOSX`, `*.log`, `.git*` — and **`steam_appid.txt` is not
+among them**.
+
+*The fix is two lines, and it is not in my files. Reported, not made:*
+
+```python
+# in tools/steam/lib/steampipe.py, EXCLUSIONS
+("steam_appid.txt",
+ "Development-only App ID hint. Valve: 'Make sure to remove the steam_appid.txt "
+ "file when uploading the game to your Steam depot!' — a shipped copy also makes "
+ "SteamAPI_RestartAppIfNecessary return false, defeating the ownership restart."),
+("MONO-FALLBACK-DO-NOT-SHIP.txt",
+ "The build pipeline's own marker that this player must not be published."),
+```
+
+The condition self-corrects the day `SteamAppConfig.AppId` becomes the real ID —
+`ShouldWrite` goes false and the post-build step stands down. Add the exclusions
+anyway: the whole point of the `EXCLUSIONS` list is that it does not depend on
+another file being correct.
+
+**Defect 2 — `MONO-FALLBACK-DO-NOT-SHIP.txt` is not excluded either.** It sits in
+`dist/windows-x64/` today. Staging that folder as a depot would publish the
+pipeline's own do-not-ship marker to players. Same one-line fix, above.
+
+**Defect 3 — `shippable on Steam` does not look at the App ID.** The expression in
+§I.2.4 checks `Succeeded && Release && !MonoFallback` and nothing else. A Release
+IL2CPP build stamped with App ID 480, carrying a `steam_appid.txt` that says 480,
+will print `shippable on Steam: yes`. `BuildPipelineOptions.IsReleaseWithDevelopmentAppId`
+already computes exactly the missing condition and is only used for a note. The
+owner is being told to gate on a flag that cannot see the most likely release-day
+mistake.
+
+*Reported, not made — `BuildPipelineReport.cs` is outside my files:*
+
+```csharp
+// Add to ShippableOnSteam, and surface IsReleaseWithDevelopmentAppId as the reason:
+&& SteamAppId != BuildPipelineOptions.DefaultSteamAppId
+```
+
+---
+
+## I.3 B — What Valve requires that this repo does not have
+
+Every figure below was read off Valve's own partner documentation on **2026-08-03**.
+These are Valve's numbers to change; re-read before committing to a date.
+
+### I.3.1 The gates, verified
+
+| Requirement | Valve's figure | Source |
+|---|---|---|
+| Steam Direct app fee | **$100 USD per app**, not refundable but **recoupable** in the payment after the product reaches **$1,000 adjusted gross revenue** | [appfee](https://partner.steamgames.com/doc/gettingstarted/appfee) |
+| Wait between paying the fee and releasing | *"A 30-day waiting period between when you paid the app fee and when you can release your game."* | [onboarding](https://partner.steamgames.com/doc/gettingstarted/onboarding) |
+| Identity / tax verification | **2–7 business days**; tax info cannot be modified while it runs | [onboarding](https://partner.steamgames.com/doc/gettingstarted/onboarding) |
+| Store presence review | *"typically takes 3-5 business days"*; submit **≥ 7 days** before you want it live | [releasing](https://partner.steamgames.com/doc/store/releasing) |
+| Coming Soon page public before release | *"set to 'coming soon' for a[t] least 2 weeks and the build is reviewed"* | [releasing](https://partner.steamgames.com/doc/store/releasing) |
+| Release is manual | *"Approved titles will not release themselves -- you need to use these controls yourself"* | [releasing](https://partner.steamgames.com/doc/store/releasing) |
+| Content survey | Must be completed **before** submitting for review. Three sections: general content, mature content, **generative AI** | [contentsurvey](https://partner.steamgames.com/doc/gettingstarted/contentsurvey) |
+| Age ratings | The survey *"will generate ratings for several regional rating boards"*. Germany and Indonesia have mandatory regional requirements | [contentsurvey](https://partner.steamgames.com/doc/gettingstarted/contentsurvey) |
+| Build upload | SteamPipe via `steamcmd +run_app_build <app_build.vdf>`; depots defined by `FileMapping`/`FileExclusion` | [uploading](https://partner.steamgames.com/doc/sdk/uploading) |
+| Default branch | *"the 'default' branch can not be set live automatically. That must be done through the App Admin panel"* | [uploading](https://partner.steamgames.com/doc/sdk/uploading) |
+| `steam_appid.txt` | *"Make sure to remove the steam_appid.txt file when uploading the game to your Steam depot!"* | [steam_api.h](https://partner.steamgames.com/doc/api/steam_api) |
+
+Two notes for this project specifically:
+
+- **The generative-AI disclosure is not optional and not cosmetic.** It asks
+  separately about content generated *before* shipping and content generated *during
+  play*, and requires a description of how it is used. This repo generates almost all
+  of its art procedurally from Python (`tools/blender/gen_*.py`), which is not
+  generative AI — but the owner is the only person who can state the provenance of
+  `tools/blender/source/monster_creature_base.glb` and `monster_vessel_base.glb`
+  (§I.4.4). Answer the survey from fact, not from memory.
+- **Valve's rules are not overridden by disclosure**: *"Products on Steam must adhere
+  to the content rules, regardless of whether it is disclosed in these surveys."*
+
+### I.3.2 What this repo already HAS — with paths
+
+This part is genuinely in good shape, and the sizes are not merely claimed. Every
+capsule below was measured with `sips` on 2026-08-03 and **every one matches Valve's
+current specification exactly**:
+
+| Asset | Valve requires | On disk | Path |
+|---|:--:|:--:|---|
+| Header capsule | 920 × 430 | **920 × 430** ✅ | `docs/store/capsules/header_capsule_920x430.png` |
+| Small capsule | 462 × 174 | **462 × 174** ✅ | `docs/store/capsules/small_capsule_462x174.png` |
+| Main capsule | 1232 × 706 | **1232 × 706** ✅ | `docs/store/capsules/main_capsule_1232x706.png` |
+| Vertical capsule | 748 × 896 | **748 × 896** ✅ | `docs/store/capsules/vertical_capsule_748x896.png` |
+| Page background | 1438 × 810 | **1438 × 810** ✅ | `docs/store/capsules/page_background_1438x810.png` |
+| Library capsule | 600 × 900 | **600 × 900** ✅ | `docs/store/capsules/library_capsule_600x900.png` |
+| Library header | 920 × 430 | **920 × 430** ✅ | `docs/store/capsules/library_header_920x430.png` |
+| Library hero | 3840 × 1240 | **3840 × 1240** ✅ | `docs/store/capsules/library_hero_3840x1240.png` |
+| Library logo | 1280 wide and/or 720 tall, transparent PNG | **1280 × 720** ✅ | `docs/store/capsules/library_logo_1280x720.png` |
+| Community icon | 184 × 184 | **184 × 184** ✅ | `docs/store/capsules/community_icon_184x184.png` |
+| Screenshots | ≥ 5, 1920 × 1080 min, 16:9, gameplay only | **10 × 1920 × 1080** ✅ | `docs/store/screenshots/` |
+
+Also present and useful: legibility proofs at the auto-generated sizes
+(`docs/store/capsules/legibility/` — 120×45, 184×69, 292×136, 300×450, 374×214),
+Korean and English store copy (`docs/store/copy-ko.md`, `copy-en.md`), the headphone
+notice in the four places players see it (`docs/store/headphone-notice.md`), a
+ten-beat trailer shot list with 13 reference frames (`docs/store/trailer.md`,
+`docs/store/trailer/`), the asset spec with its sources (`docs/store/assets.md`),
+and an honest page checklist (`docs/store/checklist.md`). The generators are
+`tools/render/store_capsules.py`, `store_shots.py` and `store_shots.json`.
+
+> `docs/store/README.md` already carries the right warning about all of it:
+> **"Re-shoot before uploading."**
+
+### I.3.3 What this repo does NOT have
+
+**1. There is no trailer.** `docs/store/party.mp4` is the only video in the repo.
+Measured with `ffprobe`:
+
+```
+codec_name=h264   width=1280   height=720   r_frame_rate=24/1
+duration=3.000000  size=609331  bit_rate=1624882
+```
+
+**1280 × 720, three seconds, 24 fps, 1.62 Mbps.** Valve's trailer spec is *"up to
+1920 x 1080 resolution, 30/29.97 or 60/59.94 fps"* at *"high bit rate (5,000+
+Kbps)"*, H.264/AAC in `.mov`/`.wmv`/`.mp4`, audio at 44 or 48 kHz
+([trailer](https://partner.steamgames.com/doc/store/trailer)). The file misses the
+resolution, the frame rate and the bit rate, and three seconds is not a trailer in
+any case. `docs/store/trailer.md` is a shot list and `docs/store/trailer/` is 13
+still PNGs; **no video has been cut.** This is the single highest-leverage asset on
+a store page and it does not exist.
+
+**2. The client icon is missing.** Valve's client icon is a **32 × 32 TGA**. The
+repo has `docs/store/capsules/shortcut_icon_256x256.png` — wrong size, wrong format.
+
+**3. The library hero has an unchecked safe area.** Valve specifies a **860 × 380**
+safe area at the centre of the 3840 × 1240 hero, and the library logo is composited
+over it. `docs/store/assets.md` does not record this number. Re-check
+`library_hero_3840x1240.png` against it before upload.
+
+**4. Every word of the store copy describes a game that was deleted.**
+`docs/store/copy-en.md` was written 2026-08-01; the pivot landed 2026-08-02. It
+still says, verbatim:
+
+- line 42 — *"Four-player co-op horror… Time is the only currency and the wallet is shared."*
+- line 54 — *"Four people. Five roles. One of them is missing."*
+- line 96 — *"the four-player networking layer is written and passes its own tests, and nobody has yet played a four-player match"*
+- line 144 — tags: *"Co-op, Online Co-Op, Horror, Survival Horror, Multiplayer, Asymmetric…"*
+- line 197 — feature flag: *"Online Co-op ✅ 4 players"*
+
+The game is now a **20-player competitive race** with **no roles**, **no shared
+wallet** and **no co-op** ([DESCENT-PIVOT.md](DESCENT-PIVOT.md)). The screenshots
+match the old game too: `05_the_shop.png` photographs the §08 economy that the pivot
+deleted, and `06_five_storeys.png` names five storeys where the design now has
+eight. **Tags are a distribution decision** — shipping `Co-op` and `Online Co-Op` on
+a competitive race would put the page in front of precisely the wrong queue, and tag
+mistakes are slow to undo.
+
+*This is not a small edit. The copy is good writing about a different game.*
+
+---
+
+## I.4 C — Multiplayer, without softening
+
+The question is what the repo can *prove* about twenty players. The answer is
+nothing, and the reason is not that the netcode is weak. It is that the networking
+layer is not connected to the game that ships.
+
+### I.4.1 The shipped build has no networking in it at all
+
+The libraries are all present and correctly chosen —
+`unity/HorrorGame/Packages/manifest.json`:
+
+- `com.mirrornetworking.mirror` **96.6.4** (OpenUPM) — the transport-agnostic layer
+- `com.rlabrecque.steamworks.net` **2025.164.0** — the Steamworks C# binding
+- `com.mirror.steamworks.net` **FizzySteamworks-6.0.1** — Mirror over Steam sockets
+
+and there is a real, considered Steam adapter layer under
+`Assets/Scripts/Steam/`: `ILobbyService`, `IP2PTransportProvider`, `ICloudSaveService`,
+`IStatsService`, `IVoiceBackend`, each with a `Steamworks/` implementation and an
+`Offline/` null implementation, plus a full proximity-voice stack
+(`Voice/VoiceSession`, `VoiceRelay`, `VoiceJitterBuffer`, `VoiceRoster`, …).
+**NAT traversal is answered on paper**: `Assets/Scripts/Net/SteamTransport/FizzyTransportBackend.cs:45`
+sets `transport.AllowSteamRelay = true;`, which is Steam Datagram Relay — free, and
+the reason §8's "직접 띄울 서버가 0대" holds.
+
+None of it is reachable from the game.
+
+- **`Scenes/Bootstrap.unity` — scene 0 of the build — contains exactly three of this
+  project's scripts**: `MenuBackdrop`, `ThreatAtmosphereDirector`, `GameShell`. No
+  `NetworkManager`, no lobby, no Steam component.
+- **`Assets/Scripts/UI/Shell/GameShell.cs` states it outright** in its own class
+  comment:
+
+  > *"**What it deliberately does not do.** It does not host, join, pick roles or step
+  > a match… This class chooses which scene that is and gets out of the way, **which is
+  > why it compiles without Mirror and without the Steam layer.**"*
+
+- **And its assembly definition confirms it.** `Assets/Scripts/UI/HorrorGame.UI.asmdef`
+  references only `HorrorGame.Core`, `HorrorGame.Audio`,
+  `HorrorGame.Gameplay.Player`, `UnityEngine.UI`, `Unity.InputSystem` and the two URP
+  assemblies. **Not `Mirror`. Not `HorrorGame.Net`. Not `HorrorGame.Steam`.** The menu
+  literally cannot call them.
+- **The Play button loads a solo scene.** `GameShell.DefaultMatchScene = "Map_FirstSketch_Solo"`.
+
+`StartHost()` and `StartClient()` are called from exactly one file in the entire
+runtime tree — `Assets/Scripts/Gameplay/Race/RaceLobby.cs`, lines **236** and **273**.
+
+> **`RaceLobby` is referenced by nothing.** `grep -rn "RaceLobby"` across `Scripts/`
+> and `Tests/`, excluding its own file, returns zero hits. Its GUID
+> `d0193d794aaa24c97990a3069cb97066` appears in no `.unity`, no `.prefab` and no
+> `.asset`. `LobbyScreen.cs` (GUID `1ee10fcc8a8e5432ba850d80d7667e1f`) is likewise in
+> no scene or prefab.
+
+**There is no path from the shipped main menu to a networked session.** This is
+precisely the failure mode this repository's CLAUDE.md was written about — invisible
+in the source, obvious in the artefact.
+
+### I.4.2 No test has ever run more than one peer
+
+`Assets/Tests/PlayMode/Net/NetTests.cs` is the only networking test file. What it
+does, at lines 195, 274, 448 and 494:
+
+```csharp
+NetworkServer.Listen(GameConstants.PlayersPerMatch);
+
+var far  = new NetworkConnectionToClient(1) { isAuthenticated = true };
+var near = new NetworkConnectionToClient(2) { isAuthenticated = true };
+NetworkServer.AddConnection(far);
+NetworkServer.AddConnection(near);
+```
+
+`NetworkConnectionToClient` constructed directly and handed to `AddConnection` is an
+**in-process object**. No socket is opened, no transport runs, no second process
+exists, and no data crosses a wire. These are good tests of interest management and
+host authority — they are not evidence that two machines can talk. **No test
+anywhere in the repo calls `StartHost` or `StartClient`.**
+
+**The two-instance harness is dead.**
+`Assets/Scripts/Editor/SceneGen/LocalTwoInstance.cs` is §14 step 2 — *"Mirror 로컬
+호스트 — 같은 PC 2인스턴스"* — and it builds a player, launches two copies, and passes
+`-horror-host` to one and `-horror-client` to the other. Its own comment says:
+
+> *"The two processes are told which side they are by `HostArgument` / `ClientArgument`.
+> **Reading those is the Net layer's job** — this class only guarantees the argument is
+> there."*
+
+**Nothing reads them.** `grep -rn "horror-host\|horror-client\|HostArgument\|ClientArgument"`
+across `Scripts/` and `Tests/`, excluding that file, returns nothing. Every runtime
+consumer of `Environment.GetCommandLineArgs()` in the project is an Editor-only
+screenshot tool. So the command launches **two identical single-player main menus**,
+side by side, neither of which hosts or joins. §14 step 2 has never actually been
+performed, and it looks like it has.
+
+> **Peers ever connected in this repository, by any evidence on disk: zero.** Not
+> twenty. Not four. Not two.
+
+### I.4.3 The player cap is 4, not 20
+
+Two constants, both in `Assets/Scripts/Core/GameConstants.cs`:
+
+```csharp
+public const int RaceRunnersMin =  2;   // line 466
+public const int RaceRunnersMax = 20;   // line 478
+public const int PlayersPerMatch = 4;   // line 1097  ← the pre-pivot co-op party
+public const int RoleCount       = 5;   // line 1100  ← §04, deleted by the pivot
+```
+
+Which one executes:
+
+- `Assets/Scripts/Net/HorrorGameNetworkManager.cs:60` — `maxConnections = GameConstants.PlayersPerMatch;`
+  in `Awake()`, commented *"§11 fixes the party at four."*
+- `…:202` — the fifth connection is refused: *"Refusing a connection: all 4 seats are
+  taken."*, via `NetLobby`, which builds `PlayersPerMatch` seats.
+- `Assets/Scripts/Gameplay/Race/RaceLobby.cs:427` — `manager.maxConnections = GameConstants.RaceRunnersMax;`
+  with a careful comment explaining that twenty is a map limit, not a socket limit.
+
+`RaceLobby` never runs (§I.4.1). **So the only cap that can execute today is four,
+and a twentieth runner would be disconnected at the door.**
+
+The rest of the `Net/` layer is still the deleted game: `NetClueTerminal.cs`,
+`Host/HostClueAuthority.cs`, and `NetLobby`'s role seating. The tests assert it too —
+`TheLobbySeatsFourOfFiveRolesAndLeavesExactlyOneAbsent`, `TwoPlayersCannotTakeTheSameRole`
+— roles that §04 no longer has. `Net/Interest/HorrorInterestManagement.cs` documents
+its cost as `PlayersPerMatch` distance checks per spawned object; at twenty that is
+25× the work, and it has never been measured at any number.
+
+**The race is not in a scene, either.** `RaceDirector` (GUID
+`6d574d52940774f5b81d9ab2f033eb6d`) appears in **no** `.unity` file. The only
+playable scene, `Map_FirstSketch_Solo.unity`, contains `MatchDirector` — the
+pre-pivot co-op director. The eight-storey descent exists as code and as generators;
+integrating B6/B7/B8 into the map is live work elsewhere in this repo right now.
+
+### I.4.4 One legal item that is not multiplayer, found while looking
+
+`tools/blender/source/` contains two mesh files that are inputs to the character
+pipeline rather than outputs of it:
+
+```
+1568340  monster_creature_base.glb
+1790836  monster_vessel_base.glb
+```
+
+`docs/ART.md` records no provenance, licence or origin for either. Everything else
+in `tools/blender/` is procedural Python that generates its own geometry; these two
+are the exception. **Only the owner can say where they came from**, and a commercial
+Steam release needs that answer to be "I have the right to ship this" — plus the
+right answer on the content survey's AI section if any part of them was generated.
+This is a five-minute question with a potentially expensive wrong answer.
+
+---
+
+## I.5 D — The verdict, and one recommendation
+
+### I.5.1 What could be released tomorrow
+
+**Nothing.** Not "nothing good" — nothing at all. There is no app on Steam, the
+$100 has not been paid, so Valve's 30-day clock has not started. Even a finished,
+perfect game could not be released tomorrow.
+
+What *can* happen tomorrow is the entire ACCOUNT AND LEGAL list in §I.1 — items 1
+through 5 and 7. That is a few hours of forms and one card payment, and it starts
+both the 30-day clock and the 2–7 business-day identity verification running in the
+background. **Every day this is delayed is a day added to the earliest possible
+release date, and it buys nothing.**
+
+### I.5.2 What could be released in a week
+
+**Still nothing, on Steam.** The 30-day gate makes that arithmetic, not opinion.
+
+What can be *live* in a week is a **Coming Soon store page** — and only if the copy
+is rewritten for the race first (§I.3.3). The assets are ready; the words are about
+a deleted game. Budget: 2–3 days to rewrite `copy-ko.md`/`copy-en.md` and fix the
+tags, then submit and wait 3–5 business days for review. Valve says submit ≥ 7 days
+before you want it live.
+
+A trailer is not required for a Coming Soon page and should not be allowed to delay
+it. §0 of Part II is right about this and it is worth re-reading: the page exists to
+accumulate wishlists *before* the game is finished.
+
+### I.5.3 What is genuinely months away
+
+A shipped 20-player race. In order of how long each takes, longest first:
+
+1. **Twenty peers in one match.** Today the count is zero and the entry point does
+   not exist in the built game (§I.4.1–2). The path is: build a menu that can host and
+   join → get two peers connected once → four → twenty. Each step is where the bugs
+   are, and none of them has been taken. Nothing about the schedule can be estimated
+   honestly until step two happens, because step two is what tells you whether the
+   Steam transport, the relay, the lobby and the interest manager work at all.
+2. **Twenty-player scale.** Interest management, voice roster and lobby are all
+   written and reasoned about at four. Twenty is 25× the interest-management work and
+   a different bandwidth problem. Unmeasured at any player count.
+3. **The race existing as a scene** with its eight storeys and its gates.
+4. **A Windows IL2CPP player**, which needs a Windows machine or the licence secrets
+   for `.github/workflows/unity.yml` — plus the first real test of the `Low` stripping
+   setting (§I.2.2), which is where "worked in the editor, broken in the build" bugs
+   live.
+5. **Store content that matches the game**: copy, tags, screenshots, and a trailer.
+
+### I.5.4 The recommendation
+
+> **Pay the $100 today to start the 30-day clock. Put up a Coming Soon page for the
+> race within two weeks. Then ship a Steam Playtest — not a release. Do not set a
+> release date until twenty peers have finished one match.**
+
+In order:
+
+| When | Who | Do |
+|---|---|---|
+| **Today** | owner | Partner registration, agreements, bank details, tax interview (W-8BEN, **foreign TIN filled in**), **pay the $100**. Starts the 30-day and 2–7-day clocks. Nothing in the repo blocks it. |
+| **Days 1–3** | engineering | Real App ID into `SteamAppConfig.cs` **and** `tools/steam/steam.config` together; `tools/steam/upload.sh --dry-run` clean. Add `steam_appid.txt` and `MONO-FALLBACK-DO-NOT-SHIP.txt` to `EXCLUSIONS` (§I.2.5). Make `ShippableOnSteam` check the App ID. |
+| **Days 1–10** | content | Rewrite `copy-ko.md`/`copy-en.md` for a 20-player race; **fix the tags**; re-shoot screenshots once the race map lands; cut a real trailer (≥ 1920 × 1080, 30 or 60 fps, 5,000+ Kbps, H.264/AAC). |
+| **~Day 12** | owner | Complete the **content survey** — it gates review — then submit store presence. Wait 3–5 business days. |
+| **~Day 17** | — | **Coming Soon page live.** The two-week clock starts here. Wishlists accumulate from this moment and from no earlier moment. |
+| **In parallel** | engineering | One Windows IL2CPP build. Then **two peers connected, once**. Then four. Then twenty. Report the peer count honestly at each step. |
+| **When 20 peers finish a match** | both | Request a **Steam Playtest**, upload to it, and let strangers play. Only then choose a release date. |
+
+**Why a Playtest and not a release.** It is a separate free app — no second $100 —
+that puts a "Request Access" button on the store page and gives testers their own
+download without any key hand-out. For a game whose entire proposition is twenty
+simultaneous players and whose measured peer count is currently zero, releasing
+before a playtest would mean charging money for something no group of humans has
+ever played. The playtest is also the only realistic way to find the twenty-player
+problems, because they cannot be found by one person on one machine, and this
+project has never had more than one.
+
+**The one thing not to do:** do not set a release date on the store page until
+§I.4.2's number is twenty. A date is a promise Valve enforces with a two-week gate,
+and moving it is worse for the page's algorithmic standing than never having set it.
+
+---
+
+## I.6 What in Part II is stale after the pivot
+
+Part II's **Valve mechanics are correct** and were re-verified on 2026-08-03. Its
+**game facts** were written on 2026-07-30, before the 20인 경주 pivot of 2026-08-02.
+Where the two disagree, Part I wins. The specific lines:
+
+| Part II location | Says | Actually |
+|---|---|---|
+| §2.4 tags | Co-op, Asymmetrical, Online Co-Op | a competitive race — see §I.3.3 |
+| §2.5 | the 청음사 (Listener) class needs headphones | §04 roles were deleted; **the headphone requirement itself still holds** — §05's 3D audio is camera-relative regardless of roles |
+| §4.2 | `internal` branch is "you + 3 friends", "a 4-player game needs four people" | twenty; a private branch matters *more*, not less |
+| §4.3 | "a match is 25–35 minutes" | one descent, not a 25–35 min round trip |
+| §7 | "A four-player match completed… by four people on four machines" | **twenty**, and the current number is zero (§I.4.2) |
+| §7 | "Clue contents and objective location confirmed absent from client memory" | §03's clue system was deleted with the co-op game |
+| §8 | "직접 띄울 서버가 0대" | still true, and Steam Datagram Relay is enabled (§I.4.1) — but it is an unproven claim at 20 players, not a measured one |
+
+The checklist in §7 is still the right checklist. Read it with §I.1's two lists
+beside it: §7 tells you what to tick, §I.1 tells you who can tick it and how long
+they will wait.
+
+---
+---
+
+# PART II — THE PROCESS
 
 ## 0. Read this part first
 
@@ -309,7 +986,7 @@ either leave `auto` or paste the real IDs in.
 |---|:--:|---|---|
 | `default` | no | the public | The live game. **Never a script target.** |
 | `staging` | yes | you | Release candidate. The exact build that will be promoted. |
-| `internal` | yes | you + 3 friends | The workhorse. A 4-player game needs four people, so this branch is how anything gets tested at all. |
+| `internal` | yes | you + everyone you can get | The workhorse. A 20-runner race needs a crowd, so this branch is how anything gets tested at all — and see §4.4, because twenty is past the number of friends you can ask twice. |
 | `playtest` | yes | external testers | Wider testing without touching `default`. |
 
 Set branch passwords on the partner site (Builds → Manage betas). §11's four-player
@@ -541,8 +1218,12 @@ Work down it. Anything unchecked is a launch-day problem.
 - [ ] **≥ 30 days** between paying the fee and the chosen release date
 - [ ] Real App ID in **both** `tools/steam/steam.config` and
       `SteamAppConfig.AppId`; `--dry-run` clean (it cross-checks them)
-- [ ] `steam_appid.txt` no longer shipped beside the player — `SteamAppIdFile`
-      stops writing it once `AppId != DevAppId`, which is what Valve asks for
+- [ ] `steam_appid.txt` **absent from the staged depot** — verify by reading the
+      manifest, not by trusting the build report, which stated it was not written
+      while the file was in the folder (§I.2.5). `SteamAppIdFile.ShouldWrite` is
+      `IsDevelopmentAppId || Debug.isDebugBuild`, so a *development* build still
+      writes it after the App ID is real. Add it to `EXCLUSIONS` and the question
+      stops depending on any of that
 - [ ] Dedicated build account created with minimum permissions
 
 ### Store page
@@ -579,8 +1260,12 @@ Work down it. Anything unchecked is a launch-day problem.
 - [ ] One `--preview` run against the real App ID, clean
 - [ ] Build uploaded to `staging`, **installed from the Steam client and played
       through a full 25–35 minute match** (§01)
-- [ ] A four-player match completed on a private branch by four people on four
-      machines — §11's structure means nothing else counts as tested
+- [ ] **Two** peers connected on a private branch, ever — the count today is
+      **zero** (§I.4.2), and every other networking box below is unverifiable
+      until this one is ticked
+- [ ] A **twenty**-runner match completed on a private branch by twenty people on
+      twenty machines — §11's field means nothing else counts as tested
+      *(was "four" pre-pivot; see §I.4.3)*
 - [ ] Proximity voice cuts off at the sender past 30 m (§13 — receiving and
       muting locally is defeated by any client edit)
 - [ ] Clue contents and objective location confirmed absent from client memory

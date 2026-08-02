@@ -32,6 +32,13 @@ namespace HorrorGame.EditorTools.SceneGen
     /// good it looks.
     /// </para>
     /// <para>
+    /// <b>Two measures, and they are different questions.</b> The pair sweep asks whether a
+    /// storey is one piece of walkable surface. <see cref="MeasureMonsterReach"/> asks §06's
+    /// own question — can the creature get to a runner — and asks it of EVERY storey, naming
+    /// the ones that have no creature on them rather than reporting the average of the one
+    /// that does. On §01's tower those two used to disagree without anybody noticing.
+    /// </para>
+    /// <para>
     /// It lives in the scene-generation assembly rather than beside the batch entry
     /// point because generation has to be able to <em>fail</em> on it. A generated map
     /// that does not pass is not a map; it is a building with no antagonist, and
@@ -68,12 +75,23 @@ namespace HorrorGame.EditorTools.SceneGen
             // Snap first and report separately: a marker that is not on the surface at
             // all is a different bug from two surfaces that do not join, and conflating
             // them sends whoever reads this to the wrong place.
-            var snapped = new List<(string Name, Vector3 Position)>();
+            //
+            // Both positions are kept. The SNAPPED one is what NavMesh.CalculatePath is
+            // asked about, because a query has to start on the surface. The AUTHORED one is
+            // what says which storey the marker belongs to, and on §01's tower those are
+            // two different facts: the snap radius (4 m) is wider than the storey pitch
+            // (MapKitCatalogue.StoreyMetres, 3.75 m), so a marker whose own floor is missing
+            // under it lands on the floor above or below and, judged by where it ended up,
+            // changes storey. Measured on seed 20260802: worst snap 3.90 m, and the island
+            // list came back with B5, B6 and B7 markers sharing one island — which cannot
+            // happen for markers judged on their own floor, because no pair across storeys
+            // is ever unioned.
+            var snapped = new List<(string Name, Vector3 Authored, Vector3 Position)>();
             foreach (var (name, position) in points)
             {
                 if (NavMesh.SamplePosition(position, out var hit, SampleRadius, NavMesh.AllAreas))
                 {
-                    snapped.Add((name, hit.position));
+                    snapped.Add((name, position, hit.position));
 
                     // The snap radius is generous enough to cross a §12 grid cell, so a
                     // marker can pass this test by landing on the floor of somewhere
@@ -84,6 +102,18 @@ namespace HorrorGame.EditorTools.SceneGen
                     {
                         report.WorstSnap = moved;
                         report.WorstSnapName = name;
+                    }
+
+                    // Named, not failed. A marker standing on another storey's floor is a
+                    // hole in ITS OWN storey — the surface under it is absent or walled off —
+                    // and that is a geometry report, not a snapping policy. It is printed
+                    // because everything else this audit says about that marker (which floor,
+                    // which island, whether §06's creature can reach it) is now being decided
+                    // on its authored storey while the path query runs from somewhere else.
+                    if (Mathf.Abs(hit.position.y - position.y) >= MapKitCatalogue.StoreyMetres * 0.5f)
+                    {
+                        report.SnapCrossedStorey.Add(
+                            name + " " + position.ToString("0.0") + " → " + hit.position.ToString("0.0"));
                     }
                 }
                 else
@@ -107,14 +137,22 @@ namespace HorrorGame.EditorTools.SceneGen
             // taking a number from the caller keeps the rule with the thing it describes: a
             // five-storey co-operative map allows five, an eight-storey tower eight, and a
             // single-floor test scene still allows exactly one.
+            //
+            // Counted on the AUTHORED height. A storey is a decision the generator made, so
+            // reading it back off a snapped position asks the bake how many floors it thinks
+            // it built — and the bake is the thing under test.
             var storeys = new List<float>();
             foreach (var point in snapped)
             {
-                if (!storeys.Exists(y => Mathf.Abs(y - point.Position.y) < MapKitCatalogue.StoreyMetres * 0.5f))
+                if (!storeys.Exists(y => Mathf.Abs(y - point.Authored.y) < MapKitCatalogue.StoreyMetres * 0.5f))
                 {
-                    storeys.Add(point.Position.y);
+                    storeys.Add(point.Authored.y);
                 }
             }
+
+            // Deepest last, so index 0 is the floor the runners start on and the label this
+            // report prints matches the B1…B8 everyone says out loud. §01: the tower descends.
+            storeys.Sort((a, b) => b.CompareTo(a));
 
             report.IslandsAllowed = Mathf.Max(1, storeys.Count);
 
@@ -133,7 +171,14 @@ namespace HorrorGame.EditorTools.SceneGen
                     // stairwell is walkable, so those pairs were complete anyway and every
                     // pair inside a floor is still judged. What is no longer asserted is that
                     // you can WALK from B1 to B8, which in this game you cannot, on purpose.
-                    if (!SameStorey(snapped[i].Position, snapped[j].Position))
+                    //
+                    // Judged on where the generator PUT the markers, not on where the snap
+                    // left them. Deciding it on snapped positions let a marker that fell
+                    // through its own missing floor be paired with — and unioned into — the
+                    // floor below, which merges two islands and hides the hole that put it
+                    // there. That is why B5, B6 and B7 markers were sharing an island on seed
+                    // 20260802 while this loop was supposedly never crossing a storey.
+                    if (!SameStorey(snapped[i].Authored, snapped[j].Authored))
                     {
                         continue;
                     }
@@ -180,79 +225,137 @@ namespace HorrorGame.EditorTools.SceneGen
                 report.IslandMembers.Add(island);
             }
 
-            MeasureMonsterReach(snapped, report);
+            MeasureMonsterReach(snapped, storeys, report);
             return report;
         }
 
         /// <summary>
-        /// The question §06 actually asks: from where the monster starts, can it get to
-        /// every player and every place the objective might be?
+        /// §06's own question, asked once of every storey: from where a creature starts,
+        /// can it reach everywhere on its floor that this map has evidence of?
         /// <para>
-        /// It is implied by a 98% completion rate but not stated by it, and it is the
-        /// one line of this report that maps onto a design claim rather than onto a
-        /// number — §14's first verification question is about a chase that has to
-        /// start somewhere.
+        /// <b>Why per storey, and why "everywhere on its floor".</b> §12-B lists 「괴물이
+        /// 안쪽을 순찰한다」 as one of the four things that make the way to a floor's middle
+        /// hard, and it is written about the ring structure EVERY storey has — 외곽 is safe,
+        /// 중심 is dangerous, and 1등을 하려면 위험을 지나야 한다. DESCENT-PIVOT §2③ says the
+        /// same thing in the same shape: 「괴물은 중심에서 시작해 안쪽 두 고리를 돈다」. Neither
+        /// is a claim about one floor of eight; both describe a hazard a runner meets on the
+        /// floor they are running.
+        /// </para>
+        /// <para>
+        /// <b>It cannot follow anybody down.</b> §12-C: the 투하구 are the only vertical
+        /// connection and 「낙하는 되돌릴 수 없다」. §12-D's new validation table adds no link,
+        /// ladder or stair. So a cross-storey reach query measures the design, not a defect —
+        /// whole-building it reported 0 of 90 on a map with nothing wrong with it. And the
+        /// remedy that would make it true — an off-mesh link across a chute — is the exact
+        /// shape of B-001: <c>NavMesh.CalculatePath</c> routes through a link and
+        /// <c>MonsterBrain</c> steps along <c>NavMeshPath.corners</c>, so the link turns this
+        /// report green without moving the creature one metre. See <see cref="Report.Describe"/>.
+        /// </para>
+        /// <para>
+        /// <b>What the design does NOT say is how many creatures there are</b>, and this
+        /// audit does not decide it. §06, §07, §11 and §12 never give a count;
+        /// <c>DescentMap.PlaceStarts</c> places exactly one, at the middle of B5, for a
+        /// reason of its own ("the descent gets more dangerous rather than starting that
+        /// way") that leaves seven storeys — including B6, B7 and B8, where §01 says the
+        /// race is decided — with no antagonist at all, which is what §12-B's third lever
+        /// says a floor must have. That contradiction is a design gap. So every storey is
+        /// asked, and a storey with no MonsterSpawn is NAMED in the report rather than
+        /// averaged away: the previous version filtered targets to the creature's own floor
+        /// and then printed "3/3 player spawns and 후보 지점 reachable", on a scene whose 65
+        /// PlayerSpawn markers are all on B1 (y 0.0) and whose only creature is on B5
+        /// (y −15.0) — three 후보 지점 and ZERO player spawns, under a line that claimed both.
+        /// B-008 in docs/BLOCKERS.md is the same shape: "monster reach 19/19" on a building
+        /// four fifths of which no player could stand in. Both numbers were true; neither
+        /// answered the question printed beside it.
+        /// </para>
+        /// <para>
+        /// <b>Targets are every other marker on the storey</b>, not just spawns and 후보
+        /// 지점. In a race the runner crosses the whole floor, and <c>DescentMap.MarkPlaces</c>
+        /// says out loud that a storey's 후보 지점 and its 전리품 are the ONLY probes this
+        /// audit collects there — so anything narrower measures less of the floor than the
+        /// map has evidence for.
         /// </para>
         /// </summary>
+        /// <param name="snapped">Markers, each carrying where it was authored and where it snapped.</param>
+        /// <param name="storeys">Distinct authored floor heights, deepest last.</param>
+        /// <param name="report">Filled in.</param>
         private static void MeasureMonsterReach(
-            IReadOnlyList<(string Name, Vector3 Position)> snapped, Report report)
+            IReadOnlyList<(string Name, Vector3 Authored, Vector3 Position)> snapped,
+            IReadOnlyList<float> storeys,
+            Report report)
         {
-            var origins = new List<int>();
-            for (var i = 0; i < snapped.Count; i++)
-            {
-                if (snapped[i].Name.IndexOf("MonsterSpawn", StringComparison.OrdinalIgnoreCase) >= 0)
-                {
-                    origins.Add(i);
-                }
-            }
-
-            if (origins.Count == 0)
-            {
-                report.Notes.Add("No MonsterSpawn marker, so §06's own question could not be asked of this scene.");
-                return;
-            }
-
             var path = new NavMeshPath();
-            foreach (var origin in origins)
+            var origins = new List<int>();
+            var targets = new List<int>();
+
+            for (var s = 0; s < storeys.Count; s++)
             {
+                var label = StoreyLabel(s, storeys[s]);
+                origins.Clear();
+                targets.Clear();
+
                 for (var i = 0; i < snapped.Count; i++)
                 {
-                    if (i == origin)
+                    if (!SameStorey(snapped[i].Authored.y, storeys[s]))
                     {
                         continue;
                     }
 
-                    var name = snapped[i].Name;
-                    var isTarget = name.IndexOf("PlayerSpawn", StringComparison.OrdinalIgnoreCase) >= 0
-                        || name.IndexOf("Candidate", StringComparison.OrdinalIgnoreCase) >= 0;
-                    if (!isTarget)
+                    if (snapped[i].Name.IndexOf("MonsterSpawn", StringComparison.OrdinalIgnoreCase) >= 0)
                     {
-                        continue;
-                    }
-
-                    // The creature guards a LEVEL. It cannot follow anybody down a 투하구
-                    // and it is not meant to — DescentMap starts it halfway down so the
-                    // descent gets more dangerous rather than starting that way. Asking it to
-                    // reach the whole building reported 0 of 90 on a map that works.
-                    if (!SameStorey(snapped[origin].Position, snapped[i].Position))
-                    {
-                        continue;
-                    }
-
-                    report.MonsterTargets++;
-                    NavMesh.CalculatePath(
-                        snapped[origin].Position, snapped[i].Position, NavMesh.AllAreas, path);
-                    if (path.status == NavMeshPathStatus.PathComplete)
-                    {
-                        report.MonsterReached++;
+                        origins.Add(i);
                     }
                     else
                     {
-                        report.MonsterUnreachable.Add(name);
+                        targets.Add(i);
+                    }
+                }
+
+                if (origins.Count == 0)
+                {
+                    report.StoreysWithoutCreature.Add(label + ", " + targets.Count + " markers");
+                    continue;
+                }
+
+                report.StoreysWithCreature++;
+
+                foreach (var origin in origins)
+                {
+                    for (var t = 0; t < targets.Count; t++)
+                    {
+                        report.MonsterTargets++;
+                        NavMesh.CalculatePath(
+                            snapped[origin].Position, snapped[targets[t]].Position, NavMesh.AllAreas, path);
+                        if (path.status == NavMeshPathStatus.PathComplete)
+                        {
+                            report.MonsterReached++;
+                        }
+                        else
+                        {
+                            report.MonsterUnreachable.Add(label + " " + snapped[targets[t]].Name);
+                        }
                     }
                 }
             }
+
+            if (report.StoreysWithCreature == 0)
+            {
+                report.Notes.Add(
+                    "No MonsterSpawn marker on any storey, so §06's own question could not be asked of this scene.");
+            }
         }
+
+        /// <summary>
+        /// What to call a storey in the report. Index 0 is the highest floor, which on
+        /// §01's tower is B1 — the rim the twenty runners start on.
+        /// <para>
+        /// The height is printed beside it because the label is derived, not read: a scene
+        /// this audit has never seen may not be a 하강 tower at all, and "B3 (y −7.5)" can be
+        /// checked against the scene view while "B3" alone has to be trusted.
+        /// </para>
+        /// </summary>
+        private static string StoreyLabel(int index, float y) =>
+            "B" + (index + 1) + " (y " + y.ToString("0.0") + ")";
 
         /// <summary>
         /// Gathers the points the game actually navigates between: spawns, §12's
@@ -293,8 +396,11 @@ namespace HorrorGame.EditorTools.SceneGen
         /// is 3.75 m.
         /// </para>
         /// </summary>
-        private static bool SameStorey(Vector3 a, Vector3 b) =>
-            Mathf.Abs(a.y - b.y) < MapKitCatalogue.StoreyMetres * 0.5f;
+        private static bool SameStorey(Vector3 a, Vector3 b) => SameStorey(a.y, b.y);
+
+        /// <summary>True when two heights are on the same storey. See <see cref="SameStorey(Vector3,Vector3)"/>.</summary>
+        private static bool SameStorey(float a, float b) =>
+            Mathf.Abs(a - b) < MapKitCatalogue.StoreyMetres * 0.5f;
 
         private static void Union(int[] component, int a, int b)
         {
@@ -333,17 +439,45 @@ namespace HorrorGame.EditorTools.SceneGen
             /// <summary>Which marker that was.</summary>
             public string WorstSnapName = string.Empty;
 
-            /// <summary>Player spawns and §12 candidate sites tested from a MonsterSpawn.</summary>
+            /// <summary>
+            /// Markers tested from a MonsterSpawn on their own storey — every marker on a
+            /// storey that has a creature, excluding the creature's own marker.
+            /// </summary>
             public int MonsterTargets;
 
             /// <summary>How many of those the monster can path to.</summary>
             public int MonsterReached;
 
+            /// <summary>Storeys that have at least one MonsterSpawn on them.</summary>
+            public int StoreysWithCreature;
+
             /// <summary>Markers that are not on the navigable surface at all.</summary>
             public readonly List<string> OffSurface = new List<string>();
 
-            /// <summary>Targets §06's monster cannot reach from its spawn.</summary>
+            /// <summary>Targets §06's monster cannot reach from a spawn on the same storey.</summary>
             public readonly List<string> MonsterUnreachable = new List<string>();
+
+            /// <summary>
+            /// Storeys with no MonsterSpawn, and how many markers each of them holds.
+            /// <para>
+            /// Reported, not failed. §12-B wants a creature patrolling every floor's inner
+            /// rings and no section of the design says how many creatures a building has, so
+            /// this audit refuses to decide it — see <see cref="MeasureMonsterReach"/>. What
+            /// it will not do is print a reach figure that quietly excluded them.
+            /// </para>
+            /// </summary>
+            public readonly List<string> StoreysWithoutCreature = new List<string>();
+
+            /// <summary>
+            /// Markers whose snap moved them onto another storey's surface, authored → snapped.
+            /// <para>
+            /// A hole in the marker's OWN floor: <see cref="SampleRadius"/> is wider than
+            /// <c>MapKitCatalogue.StoreyMetres</c>, so a marker with no surface under it finds
+            /// the floor above or below instead. Everything else this report says about such a
+            /// marker is measured from a position on the wrong floor.
+            /// </para>
+            /// </summary>
+            public readonly List<string> SnapCrossedStorey = new List<string>();
 
             /// <summary>Marker names grouped by island, largest first.</summary>
             public readonly List<List<string>> IslandMembers = new List<List<string>>();
@@ -376,12 +510,23 @@ namespace HorrorGame.EditorTools.SceneGen
             /// that leaves it at 1 gets the old test, so nothing about the co-operative map
             /// changed.
             /// </para>
+            /// <para>
+            /// <b><see cref="MonsterUnreachable"/> is part of the test, because the paragraph
+            /// above says it is.</b> It said "the creature able to reach everything on ITS OWN
+            /// floor" and then did not check it: the §06 figure was printed and dropped, so an
+            /// audit could pass with the creature walled into a corner of its own storey. That
+            /// is the same class of defect as the figure itself measuring nothing. A storey
+            /// with no creature contributes no targets and so cannot fail this — it is named in
+            /// <see cref="StoreysWithoutCreature"/> instead, because how many creatures a
+            /// building has is a design question and not this audit's to answer.
+            /// </para>
             /// </summary>
             public bool Passed =>
                 Pairs > 0
                 && CompletionRate >= RequiredCompletionRate
                 && Islands <= IslandsAllowed
-                && OffSurface.Count == 0;
+                && OffSurface.Count == 0
+                && MonsterUnreachable.Count == 0;
 
             /// <summary>
             /// How many disconnected pieces of surface are legal. One unless the map joins
@@ -412,15 +557,38 @@ namespace HorrorGame.EditorTools.SceneGen
                 sb.AppendLine($"  worst snap       {WorstSnap:0.00} m"
                     + (string.IsNullOrEmpty(WorstSnapName) ? string.Empty : "  (" + WorstSnapName + ")"));
 
+                // Spelled out rather than shortened, because the line this replaced read
+                // "3/3 player spawns and 후보 지점 reachable from MonsterSpawn" on a scene with
+                // no player spawn on the creature's storey at all. Say which floors were asked
+                // and how many markers were on them, and the same mistake is unmissable.
+                var storeysTotal = StoreysWithCreature + StoreysWithoutCreature.Count;
                 if (MonsterTargets > 0)
                 {
-                    sb.AppendLine($"  monster reach    {MonsterReached}/{MonsterTargets} "
-                        + "player spawns and 후보 지점 reachable from MonsterSpawn (§06)");
+                    sb.AppendLine($"  monster reach    {MonsterReached}/{MonsterTargets} markers reachable from a "
+                        + $"MonsterSpawn on the SAME storey, over {StoreysWithCreature} of {storeysTotal} "
+                        + "storeys (§06)");
+                }
+
+                if (StoreysWithoutCreature.Count > 0)
+                {
+                    sb.AppendLine($"  no creature on   {StoreysWithoutCreature.Count} of {storeysTotal} storeys, "
+                        + "so §06 was not asked of them: " + string.Join("; ", StoreysWithoutCreature.Take(10)));
+                    sb.AppendLine("                   §12-B wants a creature patrolling every floor's inner rings "
+                        + "and no section gives a count — DescentMap places one. Design gap, not a bake fault.");
                 }
 
                 if (MonsterUnreachable.Count > 0)
                 {
                     sb.AppendLine("  the monster cannot reach: " + string.Join(", ", MonsterUnreachable.Take(10)));
+                }
+
+                if (SnapCrossedStorey.Count > 0)
+                {
+                    sb.AppendLine($"  snapped onto another storey  {SnapCrossedStorey.Count}: "
+                        + string.Join(", ", SnapCrossedStorey.Take(6)));
+                    sb.AppendLine("                   each of these has no walkable surface within "
+                        + (MapKitCatalogue.StoreyMetres * 0.5f).ToString("0.00")
+                        + " m of where it was authored — a hole in its OWN floor.");
                 }
 
                 if (OffSurface.Count > 0)

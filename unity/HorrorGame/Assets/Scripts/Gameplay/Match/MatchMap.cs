@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using HorrorGame.Core;
 using HorrorGame.Core.Clues;
+using HorrorGame.Core.Map;
 using HorrorGame.Core.Math;
 using HorrorGame.Gameplay.Monster;
 using UnityEngine;
@@ -75,6 +76,7 @@ namespace HorrorGame.Gameplay.Match
             Transform[] playerSpawns,
             Transform? monsterSpawn,
             Vector3 entrance,
+            bool hasSurface,
             int zoneCount)
         {
             Catalog = catalog;
@@ -83,6 +85,7 @@ namespace HorrorGame.Gameplay.Match
             _playerSpawns = playerSpawns;
             MonsterSpawn = monsterSpawn;
             Entrance = entrance;
+            HasSurface = hasSurface;
             ZoneCount = zoneCount;
         }
 
@@ -111,10 +114,43 @@ namespace HorrorGame.Gameplay.Match
         public Transform? MonsterSpawn { get; }
 
         /// <summary>
-        /// The 출입구. §01's loop turns here and §02's win condition is reaching it, so
-        /// the whole surface half of the game is measured from this point.
+        /// The 출입구, wherever the building keeps it.
+        /// <para>
+        /// On the co-operative map it is the door: §01's loop turns here, §02's win condition
+        /// is reaching it, and the whole surface half of that game is measured from this
+        /// point. On §01's tower there is no door — <c>DescentMap.MarkPlaces</c> marks
+        /// exactly one <c>MapNodeKind.Entrance</c>, the middle of B8, "because that is the
+        /// marker §12's rules are written against… and the only way out of this building is
+        /// down". There it is §02's FINISH, 26 m below the runners, and
+        /// <see cref="HasSurface"/> is false.
+        /// </para>
+        /// <para>
+        /// It is not what decides §02. <c>RaceDirector.LocateFinish</c> looks the finish up
+        /// itself, from the same EntranceLight, so the race does not inherit this property's
+        /// opinion about height.
+        /// </para>
         /// </summary>
         public Vector3 Entrance { get; }
+
+        /// <summary>
+        /// Whether this building has a §01 지상 at all.
+        /// <para>
+        /// <b>A race has none.</b> DESCENT-PIVOT §3 버린다 lists 「§01 왕복 · 지상 상점」 with the
+        /// reason 「경주에 재보급이 없다」, §08 is deleted outright, and §01's flow is 출발 → 도착
+        /// with no 귀환 in it. There is no van, no shop, no safe ground and no way out but down.
+        /// </para>
+        /// <para>
+        /// <b>Read off the building, not off a checkbox.</b> True unless the 출입구 is below
+        /// every player start — which is the same argument <c>RaceDirector</c> makes for
+        /// finding the finish: "a building whose exit is upstairs is the old co-operative
+        /// map". The generator hangs an EntranceLight from the ceiling of its own floor
+        /// (<c>MapSceneBuilder.BuildLight</c>, +2.8 m), so on the co-op map the light sits
+        /// ABOVE the spawns it is surrounded by and this stays true; on the tower it is 23.45 m
+        /// under them. Deriving it here rather than taking <c>MatchDirector._raceMode</c> means
+        /// the editor tools and tests that read a map without a director get the same answer.
+        /// </para>
+        /// </summary>
+        public bool HasSurface { get; }
 
         /// <summary>Zones §12 divided the map into. Fed to §07's 순찰 column.</summary>
         public int ZoneCount { get; }
@@ -153,8 +189,36 @@ namespace HorrorGame.Gameplay.Match
         }
 
         /// <summary>Whether a world position is on §01's 지상 — inside the 출입구's apron.</summary>
+        /// <remarks>
+        /// <b>On a race there is no 지상, so this is false everywhere.</b> See
+        /// <see cref="HasSurface"/>. Adding a height guard to the circle was not enough and
+        /// was in fact the harm: it correctly exempted B2–B8 and thereby planted the whole
+        /// 15 m apron on the middle of B1 — the one cell both of B1's 투하구 sit in. Standing
+        /// on the way down made §06 forget you (<c>MatchDirector.StepMonster</c> drops the
+        /// target when <c>_onSurface</c>) and fired §01's 귀환 in a game that has none, because
+        /// <c>UpdatePhase</c> runs in race mode too. A race's safe zone is the one thing §01
+        /// deleted, and putting it over the exit is the worst place to leave it.
+        /// <para>
+        /// <b>Height is still part of the question for the map that does have a 지상.</b> A
+        /// plan-only circle was harmless while the co-operative building sprawled sideways —
+        /// no two floors sat on the same square metre — and 하강 is what broke it. The vertical
+        /// tolerance is <see cref="MapGraph.StoreyChangeMetres"/> because that is already the
+        /// project's answer to "is this the same floor": the graph uses it to decide an edge
+        /// crosses a storey. Reusing it means 지상 and 층 cannot disagree.
+        /// </para>
+        /// </remarks>
         public bool IsOnSurface(Vector3 position)
         {
+            if (!HasSurface)
+            {
+                return false;
+            }
+
+            if (Mathf.Abs(position.y - Entrance.y) >= MapGraph.StoreyChangeMetres)
+            {
+                return false;
+            }
+
             var flat = position - Entrance;
             flat.y = 0f;
             return flat.sqrMagnitude <= SurfaceRadius * SurfaceRadius;
@@ -198,9 +262,10 @@ namespace HorrorGame.Gameplay.Match
             var playerSpawns = ChildrenOf(markers, PlayerSpawnGroup);
             var monsterSpawns = ChildrenOf(markers, MonsterSpawnGroup);
             var entrance = FindEntrance(root.transform, playerSpawns);
+            var hasSurface = !IsBelowEveryStart(entrance.y, playerSpawns);
 
-            var sites = OutsideTheApron(entrance, ChildrenOf(markers, CandidateSiteGroup), CandidateSiteGroup);
-            var loot = OutsideTheApron(entrance, ChildrenOf(markers, LootSpawnGroup), LootSpawnGroup);
+            var sites = OutsideTheApron(entrance, hasSurface, ChildrenOf(markers, CandidateSiteGroup), CandidateSiteGroup);
+            var loot = OutsideTheApron(entrance, hasSurface, ChildrenOf(markers, LootSpawnGroup), LootSpawnGroup);
 
             if (sites.Length == 0)
             {
@@ -224,6 +289,7 @@ namespace HorrorGame.Gameplay.Match
                 playerSpawns,
                 monsterSpawns.Length > 0 ? monsterSpawns[0] : null,
                 entrance,
+                hasSurface,
                 zoneCount);
 
             failure = string.Empty;
@@ -245,9 +311,29 @@ namespace HorrorGame.Gameplay.Match
         /// runtime that nudged one would make the validated graph stop describing the
         /// scene players walk in.
         /// </para>
+        /// <para>
+        /// <b>Nothing is dropped when the building has no 지상.</b> The whole argument above
+        /// is that the apron is a 안전 지대; where there is no apron there is nothing to be
+        /// free inside. And the test below is deliberately flat — the co-operative map is one
+        /// storey and Y would only add noise — which on a tower means a circle round the
+        /// middle punches through all eight floors at once. Measured on
+        /// <c>Map_FirstSketch_Solo</c>, seed 20260802: 29 of 199 LootSpawn markers were being
+        /// dropped, 3 or 4 on every storey including B8, because they lie within 15 m in plan
+        /// of a door that is 26 m below them.
+        /// </para>
         /// </summary>
-        private static Transform[] OutsideTheApron(Vector3 entrance, Transform[] markers, string groupName)
+        /// <param name="entrance">§01's 출입구. Ignored when <paramref name="hasSurface"/> is false.</param>
+        /// <param name="hasSurface">Whether this building has a 지상 at all. See <see cref="HasSurface"/>.</param>
+        /// <param name="markers">The group's markers.</param>
+        /// <param name="groupName">What to call the group if any are dropped.</param>
+        private static Transform[] OutsideTheApron(
+            Vector3 entrance, bool hasSurface, Transform[] markers, string groupName)
         {
+            if (!hasSurface)
+            {
+                return markers;
+            }
+
             var kept = new List<Transform>(markers.Length);
             var dropped = 0;
 
@@ -425,6 +511,23 @@ namespace HorrorGame.Gameplay.Match
         /// Locates §01's way out. The burning EntranceLight is the generator's own mark
         /// for it ("the way out stays lit"); a scene without one falls back to the
         /// average of the player spawns, which the generator placed around that door.
+        /// <para>
+        /// <b>The light's height is dropped to the players' floor only when that is the
+        /// light's own floor.</b> A fitting hangs from a ceiling — <c>MapSceneBuilder.BuildLight</c>
+        /// puts it 2.8 m up — so its Y is a light's Y and not a place to stand, and on the
+        /// co-operative map, where every spawn is scattered round this same door
+        /// (<c>MapSketch</c> uses <c>NodesWithinWalk(entrance, LineOfSightBreakSpacingMin)</c>),
+        /// the spawn floor is exactly the correction that wants making.
+        /// </para>
+        /// <para>
+        /// On §01's tower it was a lie that moved the building. The only 출입구 mark is §02's
+        /// finish at the middle of B8 — <c>EntranceLight_B8 굴착층_910</c> at
+        /// (31.25, −23.45, 31.25) — and the 65 runners start eight storeys above it at y 0,
+        /// so taking the light's X and Z with the spawns' Y resolved the 출입구 to
+        /// (31.25, 0.0, 31.25): <b>the middle of B1</b>, the cell both of B1's 투하구 sit in.
+        /// Keep the mark's own height and that cannot happen; see <see cref="HasSurface"/>
+        /// for what the height then tells us.
+        /// </para>
         /// </summary>
         private static Vector3 FindEntrance(Transform root, Transform[] playerSpawns)
         {
@@ -434,7 +537,9 @@ namespace HorrorGame.Gameplay.Match
                 if (lights[i].name.StartsWith(EntranceLightPrefix, StringComparison.Ordinal))
                 {
                     var position = lights[i].transform.position;
-                    return new Vector3(position.x, FloorHeight(playerSpawns, position.y), position.z);
+                    return IsBelowEveryStart(position.y, playerSpawns)
+                        ? position
+                        : new Vector3(position.x, FloorHeight(playerSpawns, position.y), position.z);
                 }
             }
 
@@ -450,6 +555,33 @@ namespace HorrorGame.Gameplay.Match
             }
 
             return sum / playerSpawns.Length;
+        }
+
+        /// <summary>
+        /// True when a height is under every player start — the shape of a building whose
+        /// way out is down.
+        /// <para>
+        /// No tolerance and no threshold, because none is needed and any would be invented.
+        /// The generator's EntranceLight hangs 2.8 m ABOVE its own floor, so on a map where
+        /// the door and the starts share a storey this is false by 2.8 m; on §01's tower it
+        /// is true by 23.45 m. There is nothing in between to tune.
+        /// </para>
+        /// <para>
+        /// A scene with no player starts answers false — it has no descent to be at the
+        /// bottom of, and the co-operative behaviour is what nothing-known should fall back to.
+        /// </para>
+        /// </summary>
+        private static bool IsBelowEveryStart(float height, Transform[] playerSpawns)
+        {
+            for (var i = 0; i < playerSpawns.Length; i++)
+            {
+                if (height >= playerSpawns[i].position.y)
+                {
+                    return false;
+                }
+            }
+
+            return playerSpawns.Length > 0;
         }
 
         private static float FloorHeight(Transform[] playerSpawns, float fallback)

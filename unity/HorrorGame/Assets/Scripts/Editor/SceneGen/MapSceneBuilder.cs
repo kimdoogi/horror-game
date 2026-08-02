@@ -231,8 +231,22 @@ namespace HorrorGame.EditorTools.SceneGen
         }
 
         /// <summary>
-        /// Builds §12's lockable door: a frame, a leaf that swings, a blocking collider
-        /// and a carving obstacle, with <c>DoorInteractable</c> on top.
+        /// Thickness of the box that stands in the opening while the door is shut, metres.
+        /// <para>
+        /// The leaf itself is 0.12 m of door — <c>build_door_panel</c> in
+        /// tools/blender/gen_mapkit.py lays a 0.06 m core between two 0.03 m faces — with
+        /// hardware standing off to 0.175 m. 0.14 m is the door and its stop bead and
+        /// nothing else: thick enough that a runner cannot be pushed through it by a frame
+        /// of physics, thin enough that carving it never reaches the jambs, which would
+        /// widen a shut door into a wall the creature routes around from further away than
+        /// the player can see the reason for.
+        /// </para>
+        /// </summary>
+        private const float DoorLeafThickness = 0.14f;
+
+        /// <summary>
+        /// Builds §12's lockable door: a leaf that swings, a blocking collider and a
+        /// carving obstacle, with <c>DoorInteractable</c> on top.
         /// <para>
         /// <b>The kit has had these pieces since the first pass and the scene never
         /// instantiated one.</b> <c>MapSketch.Door()</c> marked a cell, <c>MapValidator</c>
@@ -247,18 +261,64 @@ namespace HorrorGame.EditorTools.SceneGen
         /// the player can see: an uncarved obstacle leaves the agent sliding along a shut
         /// door looking for a gap, and §06 needs it to arrive and start working.
         /// </para>
+        /// <para>
+        /// <b>No Doorway_Frame, and that is B-010.</b> A 문 is a PASSAGE plus a PANEL, and
+        /// only the panel may ever be in the way. This method used to hang a whole
+        /// <see cref="MapKitPiece.DoorwayFrame"/> — a 2.5 m walled cell — off the marker,
+        /// and three separate things about that sealed the maze:
+        /// <list type="number">
+        /// <item>It was baked. <see cref="BakeNavMesh"/> collects render meshes and nothing
+        /// took this group out of the bake, so the frame's partition, jambs and lintel were
+        /// static geometry. <c>MapSketch</c> had already measured that piece and refused to
+        /// tile with it — its opening does not survive Recast's erosion at agentRadius
+        /// 0.5 m — and lays <see cref="MapKitPiece.CorridorStraight2m5"/> at every 문 cell
+        /// instead (MapSketch.BuildTiles). The frame arrived by the marker path, where that
+        /// workaround never reached, and put the rejected piece back on top of the
+        /// replacement.</item>
+        /// <item>It was in the wrong place. <see cref="Place"/> sets rotation only, so the
+        /// frame's pivot landed on the cell CENTRE. Measured off the imported FBX rather
+        /// than deduced — ChamberDockProbe, /tmp/probe1.log: the marker for Door_(12,10@L0)
+        /// is at (31.25, 0.00, 26.25) and the frame it hung came out min (28.75, −0.15,
+        /// 23.75) max (31.25, 3.15, 26.25). The pivot is the footprint's MAX corner in X
+        /// and Z once the kit is imported, and 0.15 m above its own base, so
+        /// <c>localPosition = Vector3.zero</c> put a 2.5 m cell a half-cell diagonally out
+        /// and a floor thickness down. Both claims about the pivot are true of different
+        /// spaces: the kit authors from the min corner in Blender, and the importer negates
+        /// X while the stand-up rotation sends Blender +Y to Unity −Z, so the authored min
+        /// corner arrives as the Unity max corner. Anything hung off a marker must be
+        /// <see cref="AlignMinCorner"/>'d exactly like a tile, which is the one thing
+        /// markers never were.</item>
+        /// <item>It was always at yaw 0. The piece's passage runs one way and the sketch
+        /// puts doors on whichever axis the gate is on, so on half the storeys its two side
+        /// walls stood across the corridor.</item>
+        /// </list>
+        /// It is not restored aligned, because it cannot be: <c>build_doorway_frame</c> and
+        /// <c>build_straight</c> pour the same floor over the same 2.5 m cell, and dress the
+        /// same wall faces at x ∈ [0, 0.15] and [2.35, 2.5]. Aligned, the frame is coplanar
+        /// with the corridor tile underneath it on the floor, both walls and the ceiling —
+        /// z-fighting over every surface of eight cells — and the kit exports one merged
+        /// mesh per piece, so the lintel cannot be kept while the duplicated shell is
+        /// dropped. The doorway's clear width is now the corridor's own 2.20 m with nothing
+        /// standing in it, which is the widest a 문 can be and still be at a 병목.
+        /// </para>
+        /// <para>
+        /// <b>A door is authored OPEN.</b> <see cref="DoorState"/>'s default phase is Open
+        /// (DoorStateTests.A_door_starts_open_and_lets_everything_through) and §04 locks a
+        /// door at RUNTIME, so the blocker and the obstacle are laid down disabled — exactly
+        /// the state <c>DoorInteractable.Apply</c> puts them in the moment
+        /// <c>MatchDirector</c> binds them. Left enabled they are a shut door in the bake:
+        /// the collider stands across the corridor before any match starts, and a carving
+        /// obstacle cuts the surface the audit is about to measure. Shutting one enables
+        /// both again, which is §04's mechanic unchanged — see
+        /// DoorStateTests.Shutting_one_takes_the_time_it_says_and_then_blocks for the rule
+        /// and MapTests.LockingADoor_LengthensTheWayRoundByAtLeastAnAggroRelease for what
+        /// blocking it is worth.
+        /// </para>
         /// </summary>
         private static void BuildDoor(MapMarkerPlacement marker, GameObject markerRoot)
         {
             var hinge = Child(markerRoot, marker.Name);
             hinge.transform.position = ToUnity(marker.Position);
-
-            var frame = Place(MapKitPiece.DoorwayFrame, hinge, 0f);
-            if (frame != null)
-            {
-                frame.name = "Frame";
-                frame.transform.localPosition = Vector3.zero;
-            }
 
             // The hinge sits at one jamb, not in the middle, so the leaf sweeps the
             // doorway the way a door does.
@@ -272,23 +332,44 @@ namespace HorrorGame.EditorTools.SceneGen
                 leaf.transform.localPosition = new Vector3(MapKitCatalogue.CorridorClearWidth * 0.5f, 0f, 0f);
             }
 
+            // The opening, not the leaf: one Door_Panel_Lockable is half of the kit's
+            // double door (LEAF_W = 1.10 m), and what a shut 문 has to stop is everything
+            // in the 2.20 m the corridor is clear. Height from the kit rather than typed
+            // in, so a re-export that changes the leaf moves the box with it.
+            var leafHeight = MapKitCatalogue.HeightMetres(MapKitPiece.DoorPanelLockable);
             var blocker = pivot.AddComponent<BoxCollider>();
-            blocker.size = new Vector3(MapKitCatalogue.CorridorClearWidth, 2.4f, 0.14f);
-            blocker.center = new Vector3(MapKitCatalogue.CorridorClearWidth * 0.5f, 1.2f, 0f);
+            blocker.size = new Vector3(MapKitCatalogue.CorridorClearWidth, leafHeight, DoorLeafThickness);
+            blocker.center = new Vector3(MapKitCatalogue.CorridorClearWidth * 0.5f, leafHeight * 0.5f, 0f);
+            blocker.enabled = false;
 
             var obstacle = pivot.AddComponent<UnityEngine.AI.NavMeshObstacle>();
             obstacle.shape = UnityEngine.AI.NavMeshObstacleShape.Box;
             obstacle.size = blocker.size;
             obstacle.center = blocker.center;
             obstacle.carving = true;
+            obstacle.enabled = false;
 
             // The reach a player needs to take hold of it, and the box the interactor
             // raycasts against. A trigger so it never blocks anybody by itself — the
             // blocking is the collider above, which the component switches.
+            //
+            // It stays enabled while the door is open on purpose: MatchDirector.PushDoors
+            // finds a door with Physics.OverlapSphere, and the blocker is disabled on an
+            // open one, so this trigger is the only thing the creature can find a 문 by.
             var grab = hinge.AddComponent<BoxCollider>();
             grab.isTrigger = true;
             grab.size = new Vector3(MapKitCatalogue.CorridorClearWidth, 2.2f, 0.9f);
             grab.center = new Vector3(0f, 1.1f, 0f);
+
+            // The whole door group out of the bake, and this is the other half of B-010.
+            // §04 locks a door at runtime; the surface §06's monster paths on is baked once,
+            // in this method's own editor session, and anything of a door's that reaches it
+            // is a door that is shut for the whole match with nobody able to open it. Every
+            // MapSketch prop already leaves the bake in Build's prop loop for that reason,
+            // and KeepOutOfNavMeshBake's own remarks name the 문짝 leaf as the case that
+            // severs a 2.2 m corridor twice over — it was the one thing never actually kept
+            // out. applyToChildren carries it to the leaf, the only renderer left under here.
+            KeepOutOfNavMeshBake(hinge);
 
             // No DoorInteractable here. SceneGen is its own asmdef and the component is
             // in Assembly-CSharp, so the reference only runs one way — the same boundary

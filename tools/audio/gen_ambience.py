@@ -6,7 +6,7 @@ header for why that matters for a Steam release.
 WHAT EACH FILE IS FOR, in gameplay terms
 ════════════════════════════════════════
 
-Zone beds — `amb_zone_{a,b,c,d}_*_loop.wav`, `amb_stairwell_metal_loop.wav`
+Zone beds — `amb_zone_{a..g}_*_loop.wav`, `amb_stairwell_metal_loop.wav`
     §12 turns floor material into a *gameplay channel*: the Listener (청음사)
     locates the monster by which surface its footsteps land on, and §12 says so
     explicitly — "바닥 재질이 지도다 … 아트 결정이 아니라 시스템 결정이다".
@@ -21,6 +21,25 @@ Zone beds — `amb_zone_{a,b,c,d}_*_loop.wav`, `amb_stairwell_metal_loop.wav`
       C 자갈 (gravel)      loose, shifting, dripping
       D 콘크리트 (concrete) dead, low rumble — this is the 출구 zone
       계단 금속 (stairs)    metal, resonant, with the sense of vertical space
+
+    §04 then adds three floors §12's original table does not name, and adds them
+    on a *different* axis: they are a loudness ladder, not three more timbres.
+    gen_footsteps.py says the same thing about its own clips, and the beds have
+    to agree with the footsteps or the zone tells the player one thing while the
+    steps in it tell them another:
+      E 카펫 (carpet)      B6 병동. §04 clarity 0.22 — the Listener's blind spot.
+                           The quietest bed in the game by a clear margin, and
+                           near-empty above 500 Hz. Standing here you cannot hear
+                           anything approaching, and the bed has to make that
+                           feel like a property of the floor rather than a bug.
+      F 침수 (water)       B7 수몰층. §04 clarity 1.00 — the loudest and by far
+                           the brightest bed. It is the only one with a real top
+                           end, and that top end is the floor's design problem:
+                           it sits exactly where a footstep transient lives, so a
+                           player standing in the water is deaf to the monster.
+      G 흙 (earth)         B8 굴착층. §04 clarity 0.40 — unfinished tunnels. Low,
+                           close, almost everything under 300 Hz. Pressure rather
+                           than space: the feeling of being under something.
 
 Surface / vehicle — `amb_surface_vehicle_loop.wav`
     §08 makes the 지상 차량 the safe zone, the shop and the 보급소. This is the
@@ -60,7 +79,7 @@ Tension beds — `amb_tension_t{1..5}_*_loop.wav`
 
 CHANNEL POLICY — deliberate, per clip
 ═════════════════════════════════════
-STEREO (11 files): the zone beds, the stairwell, the surface, and the five
+STEREO (14 files): the seven zone beds, the stairwell, the surface, and the five
     tension beds. None of these is a point source — they are 2D layers that play
     at fixed volume regardless of where the player looks — so a real stereo image
     costs nothing and buys the enclosing-space feeling that §05's mandatory
@@ -73,7 +92,7 @@ MONO (10 files): the four drips, the five creaks, and the generator hum. Every
 TWO DELIBERATE DEVIATIONS FROM THE HOUSE WRITER — both measured, not assumed
 ═══════════════════════════════════════════════════════════════════════════
 `synth.write_wav` is used for the nine one-shots, where it is exactly right. The
-twelve loops are written by `_write_loop_wav` below, for two reasons that were
+fifteen loops are written by `_write_loop_wav` below, for two reasons that were
 verified against synth.py rather than guessed:
 
 1. `write_wav` applies `fade(out, 0.002, 0.006)` to every buffer, which sets the
@@ -104,6 +123,10 @@ leave 15+ dB of peak headroom so several can overlap with footsteps on top.
 Run:
     /Users/doogi/horror-game/tools/audio/.venv/bin/python \
         /Users/doogi/horror-game/tools/audio/gen_ambience.py
+
+    # one clip group only; everything else is read from disk and still measured,
+    # because §12's zone-separation matrix is meaningless without every bed in it
+    ... gen_ambience.py --only zone_e zone_f zone_g
 """
 
 from __future__ import annotations
@@ -147,7 +170,39 @@ WRITE_FADE_OUT = 0.006
 ZONE_RMS_DB = -31.0
 """All five §12 surfaces sit at one level: the player is in exactly one zone at a
 time, so an equal bed level means a zone change reads as a change of *character*
-rather than a change of volume."""
+rather than a change of volume.
+
+E, F and G are the two deliberate exceptions and the one confirmation — see
+CARPET_RMS_DB and WATER_RMS_DB below. G 흙 stays here: §04 puts 흙 in the middle
+of its clarity ladder, so earth has to differ from the other zones by weight and
+by darkness, not by volume."""
+
+CARPET_RMS_DB = -39.0
+"""§04's 사각 (blind spot), as a number: 8 dB under every other zone bed.
+
+This breaks ZONE_RMS_DB's one-level rule on purpose, and it is the only bed that
+does so downward. §04 gives 카펫 clarity 0.22 against 콘크리트's 0.50 and 침수's
+1.00 — the Listener's channel does not get *worse* on carpet, it runs out — and
+gen_footsteps.py already asserts that the carpet footstep is the quietest clip of
+its eight surfaces. If the bed then sat at ZONE_RMS_DB with everything else, the
+zone that is supposed to feel like the sound drained out of the world would
+announce itself at exactly the same loudness as the tiled hall.
+
+8 dB, not 3: 3 dB is the step the surface bed and §07's tension ladder use for
+"more present", so anything at that distance reads as a level trim. 8 dB is past
+the point where the ear stops hearing a quieter version of the same thing and
+starts hearing an absence — and it is still 40 dB clear of the 16-bit floor, so
+what is left is signal, not dither."""
+
+WATER_RMS_DB = -28.0
+"""B7's 수몰층, 3 dB over the other zones — the same step SURFACE_RMS_DB uses.
+
+Level is the smaller half of why this bed masks. The larger half is spectral: see
+zone_f_water's docstring. Held to 3 dB rather than pushed further because the
+peak ceiling is the binding constraint on a bed this dense — at -27 the drips put
+the crest into BED_CEILING_DB, which clamps the gain and quietly hands back the
+loudness that was the point. A bed that has to be clamped is a bed that is not
+being levelled, it is being limited."""
 
 SURFACE_RMS_DB = -28.0
 """§08's vehicle is relief. 3 dB more present than the zones, which is most of
@@ -578,9 +633,23 @@ ZONE_SPACES = {
     "zone_b_tile":     (_rt(2.25), 0.45, 3400.0, 4202),   # §12's 개방 공간: hard tiled hall
     "zone_c_gravel":   (_rt(1.30), 0.28, 2000.0, 4303),   # gravel and water both absorb
     "zone_d_concrete": (_rt(0.75), 0.13, 900.0, 4404),    # 둔탁: short and very dark
+    "zone_e_carpet":   (_rt(0.20), 0.04, 550.0, 4707),    # pile + partitions: the deadest room
+    "zone_f_water":    (_rt(1.60), 0.34, 6000.0, 5808),   # hard walls above the waterline
+    "zone_g_earth":    (_rt(0.32), 0.09, 450.0, 4909),    # soil absorbs everything, darkly
     "stairwell_metal": (_rt(3.10), 0.42, 6500.0, 4505),   # a tall shaft rings longest
     "surface_vehicle": (_rt(0.28), 0.07, 2200.0, 4606),   # outdoors: only the vehicle body
 }
+# E, F and G, in the same terms §12 uses for A-D:
+#   E 카펫    the shortest RT60 and lowest mix in the table. Wool over partitions
+#             is the most absorbent room in the game, and a corridor maze made of
+#             identical rooms has nothing far enough away to reflect from anyway.
+#   F 침수    a hard tiled storey with a lake in it. The walls above the waterline
+#             still ring, so the tail is long; the damping is the *brightest* in
+#             the table because a flat water surface is a mirror, not a curtain,
+#             and it is that bright tail that does the masking.
+#   G 흙      dug soil is the best absorber there is at every frequency and the
+#             darkest at high ones, so: short, quiet, and damped harder than
+#             concrete. An unfinished tunnel has no room tone, only pressure.
 
 
 def _space(l: np.ndarray, r: np.ndarray, key: str) -> tuple[np.ndarray, np.ndarray]:
@@ -800,6 +869,311 @@ def zone_d_concrete() -> tuple[np.ndarray, np.ndarray]:
         _place_wrap(right, tr, at, gn)
 
     return _space(left, right, "zone_d_concrete")
+
+
+def zone_e_carpet() -> tuple[np.ndarray, np.ndarray]:
+    """E 카펫 — B6 병동. Near-silence that is not silence. §04's 사각.
+
+    Every other bed in this file is trying to tell the player something about
+    where they are. This one is built around what it withholds. B6 is a maze of
+    identical patient corridors, so there is nothing to hear in the distance
+    because there is no distance — the pile takes the footstep, the partitions
+    take the reflection, and §04 gives 카펫 clarity 0.22, which is the Listener's
+    channel running out rather than degrading.
+
+    The horror is a *negative* space, and negative space is easy to get wrong in
+    two opposite ways. Silence reads as the audio dropping out, which is a bug
+    report, not a scare. A quiet version of an ordinary room bed reads as a
+    volume trim, which is nothing at all. So this bed is built to be continuously
+    present and continuously uninformative: the slab under the wool is still
+    there and still breathing, there is a narrow dead band where the room tone
+    would be, and there is deliberately almost nothing above 500 Hz — which is
+    precisely the band a footstep transient lives in. A player standing here
+    hears a floor that is definitely working and definitely not telling them
+    anything, and cannot tell whether the thing that killed the sound is the
+    carpet or the fact that nothing is moving.
+
+    Three things carry that and nothing else does:
+
+      slab   gen_footsteps.py builds 카펫 as "15 mm of wool over the same slab
+             zone D is made of", so the weight underneath is common with 콘크리트
+             and has to still be audible. It is the only layer here with any real
+             level, which is why the bed reads as *muffled* rather than as
+             *distant* — distance rolls off the top, a covering rolls off the top
+             while leaving the bottom exactly where it was.
+      wool   A narrow, motionless 130-480 Hz band. Where a room tone would be.
+      hush   About one part in thirty, from 700 Hz to 2.4 kHz. This layer exists
+             only so the bed is not a brick wall. A hard spectral edge is audible
+             as an edge — the ear hears "the top end was removed" and stops
+             believing the room. Leaving a trace of it means the ear hears
+             "there is nothing up there", which is the thing that is true.
+
+    Events are three muffled far-off thuds and nothing else. They are the only
+    proof the building still exists, and each one is low-passed to 260 Hz — a
+    door closing two corridors away, through pile and two partitions. Nothing
+    close, nothing sharp, nothing that would let anybody triangulate.
+    """
+    # Highly correlated on purpose: decorrelation is width, and width is a cue.
+    # Wool over identical partitions gives the ears nothing to disagree about, so
+    # this is the narrowest stereo image of any bed in the file.
+    lo_l, lo_r = _noise_pair(LOOP_SECONDS, 11001, -6.0, corr=0.92)
+    mid_l, mid_r = _noise_pair(LOOP_SECONDS, 11011, -3.0, corr=0.74)
+
+    def bed(lo, mid, ph):
+        # The slab, through the pile. Order 6 at 90 Hz because a covering is a
+        # steep rolloff, not a gentle tilt — that steepness is what a covering is.
+        slab = _at_rms(_circ_lp(lo, 90.0, order=6), BED_RMS * 0.92) \
+            * _lfo(LOOP_SECONDS, _q(0.0333), 0.22, ph)
+        # Wool. Almost no LFO: air does not move in a corridor with no openings,
+        # and a bed that visibly breathes is a bed that is doing something.
+        wool = _at_rms(_circ_bp(mid, 130.0, 480.0), BED_RMS * 0.30) \
+            * _lfo(LOOP_SECONDS, _q(0.0667), 0.12, ph + 1.4)
+        # The trace above 500 Hz. Tiny, and the number is load-bearing: it is set
+        # where the measured centroid clears 콘크리트's by more than the 1.15x
+        # §12 separation this file already enforces, without ever becoming air.
+        # At 0.020 the bed measured 306 Hz against 콘크리트's 261, which is 1.17x
+        # — passing, but by 0.02x, on the pair a player is most likely to walk
+        # between (B6 카펫 is directly above B7 and one storey from D 콘크리트).
+        # A margin that thin is not a design, it is a coincidence that held.
+        hush = _at_rms(_circ_bp(mid, 700.0, 2400.0), BED_RMS * 0.030)
+        return (slab + wool + hush).astype(np.float32)
+
+    left, right = bed(lo_l, mid_l, 0.0), bed(lo_r, mid_r, math.pi * 0.35)
+    ev = EVENT_CREST * _rms(left)
+
+    # Three thuds in 30 s — the sparsest event list of any bed here. Panned
+    # narrow as well as filtered dark: through two partitions there is no
+    # interaural difference left to hear, and a thud that localises would hand
+    # back exactly the information this zone exists to take away.
+    for i, (at, pan) in enumerate(((7.9, -0.28), (17.3, 0.22), (26.1, -0.15))):
+        thud = _metal_tap(11200 + i, 0.42,
+                          [S.Mode(_q(52.0 + 11.0 * i), 0.055, 1.0),
+                           S.Mode(_q(88.0 + 17.0 * i), 0.032, 0.38),
+                           S.Mode(_q(147.0 + 26.0 * i), 0.014, 0.11)],
+                          noise=0.18)
+        thud = S.lowpass(thud, 260.0)
+        tl, tr = _pan(thud, pan)
+        _place_wrap(left, tl, at, ev * 0.30)
+        _place_wrap(right, tr, at, ev * 0.30)
+
+    return _space(left, right, "zone_e_carpet")
+
+
+def zone_f_water() -> tuple[np.ndarray, np.ndarray]:
+    """F 침수 — B7 수몰층, flooded to the ankle. The bed that masks.
+
+    §04 gives 침수 clarity 1.00, the top of its ladder, and gen_footsteps.py
+    asserts that the water footstep is the loudest clip of all eight surfaces:
+    the monster cannot cross this floor quietly at any speed. That is the half of
+    the design everybody remembers. The other half is that the player is standing
+    in the same water, and this bed is that half.
+
+    It is the only bed in the file with a real top end, and the top end is the
+    whole point. The other six zone beds are effectively empty above 2 kHz — 나무
+    measures 0.2% of its energy up there and 콘크리트 measures none — because
+    that band is where a footstep transient lives and a bed has no business in
+    it. This one is deliberately in it: trickle through the mids, spray above,
+    and a bright reverb tail that keeps both. Masking is a spectral phenomenon
+    before it is a loudness one, so a broadband bed only 3 dB up (WATER_RMS_DB)
+    takes far more of the Listener's channel than a dark bed 10 dB up would.
+
+    So B7's design problem is a real one and it is stated in the audio rather
+    than in a tooltip: the floor that guarantees the monster is audible is the
+    floor on which you cannot hear it. §04's clarity number is the monster's side
+    of that trade and this bed is the player's, and a Listener who walks into B7
+    should feel their one ability close over rather than be told it has.
+
+    Four layers, in the order they matter:
+
+      trickle  800 Hz - 4.5 kHz, the loudest layer, and the masker proper. Water
+               running somewhere out of sight, continuously, never resolving.
+      spray    3-12 kHz. The surface of a moving sheet coming apart. This is the
+               band no other bed in the game occupies at all.
+      mass     Under 220 Hz. The body of standing water shifting as a whole,
+               which is what stops the bed reading as a tap left on.
+      drips    Fourteen across 30 s, roughly one every two seconds — twice 자갈's
+               density, because 자갈 is a zone *near* water and this is a zone
+               *under* it. Plus three distant slosh events: something displacing
+               water where the player cannot see it.
+    """
+    lo_l, lo_r = _noise_pair(LOOP_SECONDS, 12001, -6.0, corr=0.82)
+    wet_l, wet_r = _noise_pair(LOOP_SECONDS, 12011, -3.0, corr=0.26)
+    # White, not pink: the spray band has to stay flat to the top rather than
+    # tilt away from it. A -3 dB/oct source loses 12 dB across 3-12 kHz, which is
+    # most of the band this bed exists to hold.
+    top_l, top_r = _noise_pair(LOOP_SECONDS, 12021, 0.0, corr=0.14)
+
+    def bed(lo, wet, top, ph):
+        mass = _at_rms(_circ_lp(lo, 220.0), BED_RMS * 0.32) \
+            * _lfo(LOOP_SECONDS, _q(0.0333), 0.34, ph)
+        trickle = _at_rms(_circ_bp(wet, 800.0, 4500.0), BED_RMS * 0.56) \
+            * _lfo(LOOP_SECONDS, _q(0.1667), 0.26, ph + 1.1)
+        # Two counter-phased spray bands rather than one: a sheet of water does
+        # not hiss at a fixed brightness, its top end moves as the surface
+        # breaks and closes. One band at a fixed level reads as tape hiss, and
+        # tape hiss is the one thing this layer must not be mistaken for.
+        #
+        # The upper band runs to 15 kHz and the layer carries more level than the
+        # trickle does. Both numbers are set by the §12 separation check rather
+        # than by ear: at 12 kHz and BED_RMS * 0.46 this bed measured 3853 Hz
+        # against 자갈's 3548, a 1.09x separation, i.e. below the 1.15x this file
+        # requires of any two zones. 자갈 is the other broadband bright floor in
+        # the game, so it is the pair that has to be forced apart, and the only
+        # honest direction to force it is up: 침수 owning the top outright is the
+        # design, whereas dulling 자갈 would be moving a shipped zone to make room
+        # for a new one.
+        spray = (_circ_bp(top, 3200.0, 8000.0) * _lfo(LOOP_SECONDS, _q(0.2333), 0.40, ph + 2.2)
+                 + _circ_bp(top, 7000.0, 15000.0) * _lfo(LOOP_SECONDS, _q(0.3), 0.46, ph + 4.4))
+        spray = _at_rms(spray, BED_RMS * 0.72)
+        return (mass + trickle + spray).astype(np.float32)
+
+    left = bed(lo_l, wet_l, top_l, 0.0)
+    right = bed(lo_r, wet_r, top_r, math.pi * 0.62)
+    ev = EVENT_CREST * _rms(left)
+
+    # Drips. Ankle-deep water over a hard floor drips into itself, so every one
+    # of these gets a pool component — the 자갈 set leaves it off half of them
+    # because that zone's water is somewhere else.
+    g = S.rng(12300)
+    drip_specs = (
+        (1520.0, 2050.0, 0.024, 0.20, -5.0, 210.0),
+        (1180.0, 1520.0, 0.034, 0.26, -7.0, 168.0),
+        (900.0, 1160.0, 0.048, 0.34, -10.0, 142.0),
+        (1780.0, 2380.0, 0.020, 0.18, -4.0, 232.0),
+        (760.0, 970.0, 0.058, 0.38, -12.0, 126.0),
+    )
+    for i, at in enumerate((0.85, 2.4, 4.7, 6.15, 8.9, 10.3, 12.75, 15.1,
+                            17.05, 19.6, 21.35, 24.2, 26.05, 28.4)):
+        f0, f1, tau, dur, cdb, pool = drip_specs[i % len(drip_specs)]
+        d = _drip(12400 + i * 11, f0, f1, tau, dur, cdb, pool_hz=pool)
+        # Much less distance rolloff than 자갈's 3.4-6.2 kHz: these drips are in
+        # the room the player is standing in, and their click is part of the
+        # mask rather than a hint about somewhere else.
+        d = S.lowpass(d, float(g.uniform(7000.0, 12000.0)))
+        dl, dr = _pan(d, float(g.uniform(-0.95, 0.95)))
+        gn = ev * float(g.uniform(0.22, 0.52))
+        _place_wrap(left, dl, at, gn)
+        _place_wrap(right, dr, at, gn)
+
+    # Slosh. Something moved water somewhere else on this floor, and it is
+    # deliberately unreadable as to what: a swell of low body with spray riding
+    # on it, no transient at the front. A slosh with an attack would be a cue.
+    for i, (at, pan, dur) in enumerate(((5.3, -0.72, 1.35), (14.6, 0.66, 1.05),
+                                        (23.8, -0.38, 1.60))):
+        body = S.lowpass(S.white(dur, 12500 + i, SR), 900.0)
+        surf = S.bandpass(S.white(dur, 12600 + i, SR), 1600.0, 8000.0, sr=SR)
+        env = S.adsr(dur, attack=dur * 0.42, decay=dur * 0.24, sustain=0.45,
+                     release=dur * 0.34)
+        sl_ = S.normalize(((body * 1.0 + surf * 0.55).astype(np.float32) * env), 0.0)
+        # Fade the ends: this is a noise burst, so without it the event welds a
+        # step into wherever it lands — and _place_wrap can land it on the seam.
+        sl_ = S.fade(sl_, 0.004, 0.010)
+        a, b = _pan(sl_, pan)
+        _place_wrap(left, a, at, ev * 0.34)
+        _place_wrap(right, b, at, ev * 0.34)
+
+    return _space(left, right, "zone_f_water")
+
+
+def zone_g_earth() -> tuple[np.ndarray, np.ndarray]:
+    """G 흙 — B8 굴착층. Low, close, pressure.
+
+    Somebody dug down here and stopped. §04 gives 파헤쳐진 흙 clarity 0.40,
+    between 콘크리트's 0.50 and 카펫's 0.22, and gen_footsteps.py describes dug
+    soil as having nowhere to put the energy: no slab to ring, no cavity to
+    resonate. A bed for that floor cannot be built out of space, because there is
+    no space — an unfinished tunnel is the one location in the game where the
+    walls are closer than the player's own reach.
+
+    So this is the only bed here whose subject is *weight* rather than a room.
+    Almost all of it is under 300 Hz, and that is not a rolloff, it is where the
+    content is: a slow mass that breathes at the edge of pitch, three tunnel
+    modes low enough to be felt rather than named, and a dull soil band above
+    them. It is the darkest bed in the game by measured centroid, darker than
+    콘크리트, which matters because 콘크리트 is the zone next door in §12's table
+    and B8 is directly beneath it. The two must not be confusable, and they are
+    separated by the axis that cannot be faked: 콘크리트 is a dead *room* and this
+    is not a room at all.
+
+    Against 카펫, which is also dark and also quiet, the separation is the other
+    way round. E is dark because something absorbent was laid over the top of it;
+    G is dark because there is nothing but mass in every direction. E measures
+    quieter and brighter, G measures louder and lower, and standing in one does
+    not feel like a softer version of the other.
+
+    The events are small falls of loose soil — a wall that has not been shored
+    letting go of a handful — plus the ceiling taking its own weight. Both are
+    kept under 1.6 kHz: soil scattering off soil has no click in it, and a click
+    would be the sound of gravel, which is a different zone with a different
+    clarity number.
+    """
+    # The most correlated pair in the file. Sub-bass has no interaural difference
+    # in life, and BASS_MONO_HZ collapses this range at write time anyway — the
+    # correlation here is so the mid layer above it does not fight that.
+    lo_l, lo_r = _noise_pair(LOOP_SECONDS, 13001, -6.0, corr=0.94)
+    mid_l, mid_r = _noise_pair(LOOP_SECONDS, 13011, -3.0, corr=0.58)
+
+    def bed(lo, mid, ph):
+        # Mass. The dominant layer by a wide margin — order 6 at 80 Hz, i.e.
+        # steeper and lower than 콘크리트's rumble, which is the whole difference
+        # between a heavy room and being under something heavy.
+        mass = _at_rms(_circ_lp(lo, 80.0, order=6), BED_RMS * 1.00) \
+            * _lfo(LOOP_SECONDS, _q(0.0333), 0.32, ph)
+        # The tunnel's own modes. Deliberately below where a listener can name a
+        # pitch: a tunnel small enough to touch would ring higher than this, and
+        # a nameable pitch would read as a machine, i.e. as another human being
+        # having been here. Nobody has been here. This is the ground itself.
+        press = np.zeros(len(lo), dtype=np.float32)
+        for f, amp, q in ((_q(41.0), 1.0, 11.0), (_q(63.0), 0.66, 13.0),
+                          (_q(97.0), 0.38, 15.0)):
+            press += _circ_res(lo, f, q) * amp
+        press = _at_rms(_circ_lp(press, 200.0), BED_RMS * 0.44)
+        # Soil. Dull, narrow, no air above it.
+        soil = _at_rms(_circ_bp(mid, 120.0, 300.0), BED_RMS * 0.26) \
+            * _lfo(LOOP_SECONDS, _q(0.0667), 0.24, ph + 2.3)
+        # Same job as 카펫's `hush` and an order of magnitude smaller: enough
+        # that the top is absent rather than removed, little enough that this
+        # stays the darkest bed of the seven.
+        trace = _at_rms(_circ_bp(mid, 400.0, 1100.0), BED_RMS * 0.008)
+        return (mass + press + soil + trace).astype(np.float32)
+
+    left, right = bed(lo_l, mid_l, 0.0), bed(lo_r, mid_r, math.pi * 0.4)
+    ev = EVENT_CREST * _rms(left)
+
+    # Falls of loose soil. _grain_layer is 자갈's mechanism — many tiny
+    # independent contacts — with the bands moved down by roughly a decade and
+    # the whole thing low-passed. Gravel is stones landing on stone and rings;
+    # soil landing on soil is a hundred contacts that each die on impact, so what
+    # survives is the envelope and not the grains.
+    for i, (at, pan, dur) in enumerate(((3.4, 0.44, 0.55), (11.2, -0.52, 0.34),
+                                        (16.9, 0.18, 0.72), (22.5, -0.30, 0.42),
+                                        (28.2, 0.36, 0.60))):
+        fall = _grain_layer(dur, 13200 + i, int(dur * 260),
+                            ((180.0, 520.0), (300.0, 900.0), (500.0, 1500.0)))
+        fall = (fall * S.adsr(dur, dur * 0.06, dur * 0.30, 0.28, dur * 0.60)).astype(np.float32)
+        fall = S.fade(S.lowpass(S.normalize(fall, 0.0), 1600.0), 0.003, 0.012)
+        fl, fr = _pan(fall, pan)
+        gn = ev * 0.26
+        _place_wrap(left, fl, at, gn)
+        _place_wrap(right, fr, at, gn)
+
+    # The ceiling taking its own weight. Lower and shorter than 콘크리트's four
+    # settling thuds: there is no slab here to carry the load sideways, so what
+    # the player hears is the load arriving rather than a structure answering it.
+    g = S.rng(13300)
+    for i, at in enumerate((6.8, 14.1, 20.7, 27.3)):
+        press = _metal_tap(13400 + i, 0.62,
+                           [S.Mode(_q(33.0 + 9.0 * g.random()), 0.13, 1.0),
+                            S.Mode(_q(57.0 + 14.0 * g.random()), 0.08, 0.36),
+                            S.Mode(_q(104.0 + 28.0 * g.random()), 0.035, 0.10)],
+                           noise=0.16)
+        press = S.lowpass(press, 300.0)
+        pl, pr = _pan(press, float(g.uniform(-0.35, 0.35)))
+        gn = ev * float(g.uniform(0.40, 0.72))
+        _place_wrap(left, pl, at, gn)
+        _place_wrap(right, pr, at, gn)
+
+    return _space(left, right, "zone_g_earth")
 
 
 def stairwell_metal() -> tuple[np.ndarray, np.ndarray]:
@@ -1161,6 +1535,24 @@ def _channels(path: str) -> list[np.ndarray]:
     return [data] if nch == 1 else [data[0::2], data[1::2]]
 
 
+def _hf_energy_fraction(path: str, above_hz: float, sr: int = SR) -> float:
+    """Fraction of a bed's energy above `above_hz`, mono-summed.
+
+    Spectral centroid is the axis §12's separation check already uses, and it is
+    the right one for "are these two zones distinguishable". It is the wrong one
+    for "does this bed mask a footstep", because a centroid is a mean: a bed can
+    be dragged bright by a whisper of top while carrying no energy up there at
+    all. §04's 침수 claim is specifically about masking, so it is checked on the
+    band a footstep transient actually occupies rather than on the mean.
+    """
+    chans = _channels(path)
+    mono = np.mean(chans, axis=0)
+    power = np.square(np.abs(np.fft.rfft(mono * np.hanning(len(mono)))))
+    freqs = np.fft.rfftfreq(len(mono), 1.0 / sr)
+    total = float(power.sum())
+    return float(power[freqs >= above_hz].sum() / total) if total > 0.0 else 0.0
+
+
 def measure_seam(path: str, sr: int = SR) -> SeamReport:
     """Measures the loop point of a written file, per channel, worst case wins."""
     worst: SeamReport | None = None
@@ -1280,24 +1672,79 @@ def _sha(path: str) -> str:
         return hashlib.sha256(f.read()).hexdigest()[:12]
 
 
+def _file_levels(path: str) -> tuple[float, float]:
+    """(peak dBFS, per-channel RMS dBFS), read back off the file that ships.
+
+    _write_loop_wav already returns the gain it applied, but only for the clips a
+    given run actually wrote. Measuring the file instead means a bed skipped by
+    --only reports on exactly the same axis as one built a second ago, so the
+    level table below compares like with like however the run was invoked. The
+    two figures agree to far better than 0.01 dB: 16-bit rounding error sits ~60
+    dB under a bed at these levels.
+    """
+    stacked = np.concatenate(_channels(path))
+    return (S.gain_to_db(float(np.max(np.abs(stacked)))),
+            S.gain_to_db(float(np.sqrt(np.mean(np.square(stacked))))))
+
+
 # ── Main ────────────────────────────────────────────────────────────────────
 
+CLIP_GROUPS = ("zone_a", "zone_b", "zone_c", "zone_d", "zone_e", "zone_f",
+               "zone_g", "stairwell", "surface", "hum", "tension", "drips",
+               "creaks")
+"""Selectable build groups for --only. One per clip or per set-of-siblings."""
 
-def main() -> int:
+
+def main(only: Sequence[str] | None = None) -> int:
+    """Writes the ambience set and verifies §12's zone separation across all of it.
+
+    `only` restricts which groups are *written*; everything is still measured, by
+    reading whatever is already on disk for the rest. That split matters here for
+    the same reason it does in gen_footsteps.py: the §12 separation check is a
+    statement about the whole set of beds, so it has to see every bed, while
+    rebuilding one zone must not rewrite the twenty other files somebody else may
+    be working against. The seeds make a full rebuild deterministic in principle,
+    but "in principle" is not what should stand between a one-zone change and
+    every ambience asset in the project.
+    """
     os.makedirs(OUT_DIR, exist_ok=True)
+    write_keys = set(CLIP_GROUPS) if not only else set(only)
+    unknown = write_keys - set(CLIP_GROUPS)
+    if unknown:
+        raise SystemExit(f"unknown clip group(s): {', '.join(sorted(unknown))}")
+
     reports: list[S.ClipReport] = []
     seams: list[SeamReport] = []
     levels: dict[str, tuple[float, float]] = {}
     channels: dict[str, int] = {}
+    groups: dict[str, str] = {}
 
     def out(name: str) -> str:
         return os.path.join(OUT_DIR, name)
 
-    def emit_loop(name: str, chans: Sequence[np.ndarray], **kw) -> None:
-        # One place, so no bed can be shipped with a smeared low end by omission.
-        if len(chans) == 2:
-            chans = list(_mono_bass(chans[0], chans[1]))
-        path, pk, rm = _write_loop_wav(out(name), chans, **kw)
+    def _require(key: str, path: str) -> bool:
+        """True if this clip should be built now; raises if it can be neither
+        built nor read. A missing file is not something to skip quietly — every
+        cross-clip assert below would then be checking a smaller set than it
+        claims to, and would pass for the wrong reason."""
+        if key in write_keys:
+            return True
+        if not os.path.exists(path):
+            raise SystemExit(
+                f"{os.path.basename(path)} is not on disk and was not selected for "
+                f"writing. §12's zone separation and §07's tension ladder are both "
+                f"statements about the whole set; run without --only to build it.")
+        return False
+
+    def emit_loop(key: str, name: str, build: Callable[[], Sequence[np.ndarray]],
+                  **kw) -> None:
+        path = out(name)
+        if _require(key, path):
+            chans = list(build())
+            # One place, so no bed can be shipped with a smeared low end by omission.
+            if len(chans) == 2:
+                chans = list(_mono_bass(chans[0], chans[1]))
+            _write_loop_wav(path, chans, **kw)
         r = S.assert_usable(path)
         s = measure_seam(path)
         if not s.ok:
@@ -1309,36 +1756,49 @@ def main() -> int:
                 f"HF rank {s.hf_percentile:.1f} pct")
         reports.append(r)
         seams.append(s)
-        levels[name] = (pk, rm)
-        channels[name] = len(chans)
+        levels[name] = _file_levels(path)
+        channels[name] = r.channels
+        groups[name] = key
 
-    def emit_oneshot(name: str, buf: np.ndarray, peak_db: float) -> None:
+    def emit_oneshot(key: str, name: str, build: Callable[[], np.ndarray],
+                     peak_db: float) -> None:
         # synth.write_wav is exactly right here: a one-shot *should* be faded to
         # zero at both ends, and these are mono positional clips.
-        path = S.write_wav(out(name), buf, headroom_db=peak_db, stereo=False)
+        path = out(name)
+        if _require(key, path):
+            S.write_wav(path, build(), headroom_db=peak_db, stereo=False)
         r = S.assert_usable(path)
         if r.channels != 1:
             raise AssertionError(f"{name}: positional clip must be mono")
         reports.append(r)
-        levels[name] = (r.peak_db, S.gain_to_db(r.rms))
+        levels[name] = _file_levels(path)
         channels[name] = 1
+        groups[name] = key
 
     print("building zone beds (§12) ...")
-    emit_loop("amb_zone_a_wood_loop.wav", zone_a_wood(), rms_db=ZONE_RMS_DB)
-    emit_loop("amb_zone_b_tile_loop.wav", zone_b_tile(), rms_db=ZONE_RMS_DB)
-    emit_loop("amb_zone_c_gravel_loop.wav", zone_c_gravel(), rms_db=ZONE_RMS_DB)
-    emit_loop("amb_zone_d_concrete_loop.wav", zone_d_concrete(), rms_db=ZONE_RMS_DB)
-    emit_loop("amb_stairwell_metal_loop.wav", stairwell_metal(), rms_db=ZONE_RMS_DB)
+    emit_loop("zone_a", "amb_zone_a_wood_loop.wav", zone_a_wood, rms_db=ZONE_RMS_DB)
+    emit_loop("zone_b", "amb_zone_b_tile_loop.wav", zone_b_tile, rms_db=ZONE_RMS_DB)
+    emit_loop("zone_c", "amb_zone_c_gravel_loop.wav", zone_c_gravel, rms_db=ZONE_RMS_DB)
+    emit_loop("zone_d", "amb_zone_d_concrete_loop.wav", zone_d_concrete, rms_db=ZONE_RMS_DB)
+    # §04's three extra floors. Two of them break ZONE_RMS_DB on purpose — see
+    # CARPET_RMS_DB and WATER_RMS_DB — because §04 states them as a loudness
+    # ladder rather than as three more timbres, and a bed that ignored that would
+    # contradict the footsteps played on top of it.
+    emit_loop("zone_e", "amb_zone_e_carpet_loop.wav", zone_e_carpet, rms_db=CARPET_RMS_DB)
+    emit_loop("zone_f", "amb_zone_f_water_loop.wav", zone_f_water, rms_db=WATER_RMS_DB)
+    emit_loop("zone_g", "amb_zone_g_earth_loop.wav", zone_g_earth, rms_db=ZONE_RMS_DB)
+    emit_loop("stairwell", "amb_stairwell_metal_loop.wav", stairwell_metal, rms_db=ZONE_RMS_DB)
 
     print("building the surface (§08) ...")
-    emit_loop("amb_surface_vehicle_loop.wav", surface_vehicle(), rms_db=SURFACE_RMS_DB)
-    emit_loop("amb_generator_hum_loop.wav", [generator_hum()], peak_db=HUM_PEAK_DB,
-              ceiling_db=0.0)
+    emit_loop("surface", "amb_surface_vehicle_loop.wav", surface_vehicle,
+              rms_db=SURFACE_RMS_DB)
+    emit_loop("hum", "amb_generator_hum_loop.wav", lambda: [generator_hum()],
+              peak_db=HUM_PEAK_DB, ceiling_db=0.0)
 
     print("building tension beds (§07) ...")
     for tier in range(1, 6):
-        emit_loop(f"amb_tension_{TENSION_NAMES[tier - 1]}_loop.wav",
-                  tension_bed(tier), rms_db=TENSION_RMS_DB[tier - 1])
+        emit_loop("tension", f"amb_tension_{TENSION_NAMES[tier - 1]}_loop.wav",
+                  (lambda t=tier: tension_bed(t)), rms_db=TENSION_RMS_DB[tier - 1])
 
     print("building water drips (§03) ...")
     drips = (
@@ -1349,8 +1809,9 @@ def main() -> int:
         (4404, 1390.0, 1810.0, 0.029, 0.34, -6.0, None, 0.085),
     )
     for i, (seed, f0, f1, tau, dur, cdb, pool, echo) in enumerate(drips, start=1):
-        emit_oneshot(f"sfx_water_drip_{i:02d}.wav",
-                     _drip(seed, f0, f1, tau, dur, cdb, pool_hz=pool, echo_at=echo),
+        emit_oneshot("drips", f"sfx_water_drip_{i:02d}.wav",
+                     (lambda s=seed, a=f0, b=f1, t=tau, d=dur, c=cdb, p=pool, e=echo:
+                      _drip(s, a, b, t, d, c, pool_hz=p, echo_at=e)),
                      DRIP_PEAK_DB)
 
     print("building distant creaks (§06) ...")
@@ -1362,7 +1823,7 @@ def main() -> int:
         (5404, 1.75, ((113.0, 1.0, 42.0), (194.0, 0.60, 31.0), (338.0, 0.24, 23.0)), 32.0, 17.0, 61.0, 2400.0),
         (5505, 1.10, ((141.0, 1.0, 37.0), (238.0, 0.54, 28.0), (409.0, 0.21, 21.0)), 46.0, 25.0, 76.0, 2900.0),
     )
-    for i, (seed, dur, modes, r0, r1, groan, lp) in enumerate(creaks, start=1):
+    def _distant_creak(seed, dur, modes, r0, r1, groan, lp) -> np.ndarray:
         body = _creak(dur, seed, modes, r0, r1, attack=dur * 0.26, band=(70.0, lp))
         # A low groan under the slip: the beam bending, not just slipping.
         g = (S.sweep(groan, groan * 0.78, dur, log=True)
@@ -1373,8 +1834,11 @@ def main() -> int:
         # attenuate. §06's 정지 state is what these are really for: when the
         # monster stops it makes no sound at all, and the building has to keep
         # being audible or the silence reads as a bug instead of a threat.
-        mixed = S.mix(body, S.lowpass(g, groan * 4.0), gains=[1.0, 0.34])
-        emit_oneshot(f"sfx_creak_distant_{i:02d}.wav", S.lowpass(mixed, lp), CREAK_PEAK_DB)
+        return S.lowpass(S.mix(body, S.lowpass(g, groan * 4.0), gains=[1.0, 0.34]), lp)
+
+    for i, spec in enumerate(creaks, start=1):
+        emit_oneshot("creaks", f"sfx_creak_distant_{i:02d}.wav",
+                     (lambda s=spec: _distant_creak(*s)), CREAK_PEAK_DB)
 
     # ── Report ──────────────────────────────────────────────────────────────
     print()
@@ -1419,13 +1883,21 @@ def main() -> int:
     # §12 gives each zone a different material and a different room. If two beds
     # measure the same, the zone identity the Listener relies on is not there.
     print()
-    print("§12 ZONE SEPARATION — spectral centroid of each bed")
+    print("§12 ZONE SEPARATION — level and brightness of every bed a player stands on")
     zone_files = ("amb_zone_a_wood_loop.wav", "amb_zone_b_tile_loop.wav",
                   "amb_zone_c_gravel_loop.wav", "amb_zone_d_concrete_loop.wav",
-                  "amb_stairwell_metal_loop.wav")
+                  "amb_zone_e_carpet_loop.wav", "amb_zone_f_water_loop.wav",
+                  "amb_zone_g_earth_loop.wav", "amb_stairwell_metal_loop.wav")
     cents = {f: next(r.spectral_centroid for r in reports if r.path.endswith(f)) for f in zone_files}
+    # Fraction of energy above 2 kHz — the band a footstep transient lives in,
+    # and therefore the band a bed masks in. Centroid alone cannot say this: a
+    # bed can be pulled bright by a thin top without ever covering anything.
+    hf = {f: _hf_energy_fraction(os.path.join(OUT_DIR, f), 2000.0) for f in zone_files}
+    print(f"  {'bed':<40} {'rms dB':>8} {'peak dB':>9} {'centroid':>10} {'>2 kHz':>9}")
+    print("  " + "-" * 78)
     for f, c in sorted(cents.items(), key=lambda kv: kv[1]):
-        print(f"  {f:<40} {c:>8.0f} Hz")
+        pk, rm = levels[f]
+        print(f"  {f:<40} {rm:>8.1f} {pk:>9.1f} {c:>7.0f} Hz {hf[f] * 100:>7.2f} %")
     ratios = []
     keys = list(cents)
     for i in range(len(keys)):
@@ -1438,6 +1910,51 @@ def main() -> int:
         raise AssertionError(
             f"§12 zone beds too alike: {ratios[0][1]} and {ratios[0][2]} differ by only "
             f"{ratios[0][0]:.2f}x in centroid — the Listener's zone map needs them distinct")
+
+    # §04's three extra floors are a *ladder*, not three more timbres, and the
+    # ladder has an order. Each of these three is the whole reason its bed was
+    # built the way it was, so each is asserted rather than described. The set is
+    # the seven zones a player can stand on; the stairwell is a transition, not a
+    # floor, and §12 lists it separately.
+    print()
+    print("§04 EXTRA-FLOOR INTENTS — the three claims E/F/G are built to make")
+    floors = [f for f in zone_files if f != "amb_stairwell_metal_loop.wav"]
+    carpet, water, earth = (f"amb_zone_{k}_loop.wav" for k in ("e_carpet", "f_water", "g_earth"))
+
+    rms_of = {f: levels[f][1] for f in floors}
+    quietest = min(rms_of, key=lambda f: rms_of[f])
+    runner_up = min((f for f in floors if f != carpet), key=lambda f: rms_of[f])
+    print(f"  carpet quietest : {rms_of[carpet]:>7.1f} dB vs next-quietest "
+          f"{rms_of[runner_up]:.1f} dB ({runner_up.split('_')[2]}) "
+          f"— margin {rms_of[runner_up] - rms_of[carpet]:.1f} dB")
+    if quietest != carpet:
+        raise AssertionError(
+            f"§04 gives 카펫 clarity 0.22 — the Listener's blind spot — so its bed must be "
+            f"the quietest floor in the game. It is not: {os.path.basename(quietest)} measures "
+            f"{rms_of[quietest]:.1f} dB against carpet's {rms_of[carpet]:.1f} dB")
+
+    brightest = max(floors, key=lambda f: cents[f])
+    second = max((f for f in floors if f != water), key=lambda f: cents[f])
+    print(f"  water brightest : {cents[water]:>7.0f} Hz vs next-brightest {cents[second]:.0f} Hz "
+          f"({second.split('_')[2]}) — {cents[water] / cents[second]:.2f}x; "
+          f"{hf[water] * 100:.1f}% of its energy is above 2 kHz against "
+          f"{hf[second] * 100:.1f}%")
+    if brightest != water:
+        raise AssertionError(
+            f"§04 gives 침수 clarity 1.00 and B7 masks by owning the top end, so its bed must be "
+            f"the brightest floor in the game. It is not: {os.path.basename(brightest)} measures "
+            f"{cents[brightest]:.0f} Hz against water's {cents[water]:.0f} Hz")
+
+    darkest = min(floors, key=lambda f: cents[f])
+    next_dark = min((f for f in floors if f != earth), key=lambda f: cents[f])
+    print(f"  earth darkest   : {cents[earth]:>7.0f} Hz vs next-darkest {cents[next_dark]:.0f} Hz "
+          f"({next_dark.split('_')[2]}) — {cents[next_dark] / cents[earth]:.2f}x")
+    if darkest != earth:
+        raise AssertionError(
+            f"B8 굴착층 is pressure under 300 Hz, so its bed must be the darkest floor in the "
+            f"game — darker than 콘크리트, which is the zone directly above it. It is not: "
+            f"{os.path.basename(darkest)} measures {cents[darkest]:.0f} Hz against earth's "
+            f"{cents[earth]:.0f} Hz")
 
     # §07's curve must be monotonic. If tier 4 is not more oppressive than tier
     # 3, the crossfade tells the player the night is improving.
@@ -1473,12 +1990,15 @@ def main() -> int:
         prev_ch, prev_sum, prev_cent = ch_rms, sum_rms, r.spectral_centroid
 
     print()
-    print("FILES WRITTEN")
+    print("FILES  — 'built' this run, or 'on disk' and measured but not rewritten")
+    if only:
+        print(f"  --only {' '.join(sorted(write_keys))}")
     total = 0
     for r in reports:
         size = os.path.getsize(r.path)
         total += size
-        print(f"  {_sha(r.path)}  {size / 1024:>8.0f} KiB  {r.path}")
+        state = "built  " if groups[os.path.basename(r.path)] in write_keys else "on disk"
+        print(f"  {state}  {_sha(r.path)}  {size / 1024:>8.0f} KiB  {r.path}")
     print(f"  {len(reports)} files, {total / 1048576:.1f} MiB total")
     print()
     print("all clips passed synth.assert_usable; all loops passed the seam check")
@@ -1486,4 +2006,12 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    import argparse
+
+    parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    parser.add_argument(
+        "--only", nargs="+", metavar="GROUP", choices=sorted(CLIP_GROUPS),
+        help="write only these clip groups; the rest are read from disk and still "
+             "measured, because §12's zone separation and §07's tension ladder are "
+             "checks on the whole set")
+    raise SystemExit(main(parser.parse_args().only))

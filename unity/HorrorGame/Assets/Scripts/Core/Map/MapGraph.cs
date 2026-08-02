@@ -129,8 +129,13 @@ namespace HorrorGame.Core.Map
         /// Vertical separation, metres, above which two places are on different storeys
         /// and nothing sees between them. Half of the kit's 3.75 m storey — far above
         /// the centimetres a ramp or a sunken bay contributes, far below a floor.
+        /// <para>
+        /// Public because 하강 stacks all eight storeys in one column, so "same floor?" stops
+        /// being a graph-internal question — <c>MatchMap.IsOnSurface</c> has to ask it too,
+        /// and the two must not answer differently.
+        /// </para>
         /// </summary>
-        private const float StoreyChangeMetres = 1.8f;
+        public const float StoreyChangeMetres = 1.8f;
 
         private readonly MapZone[] _zones;
         private readonly MapNode[] _nodes;

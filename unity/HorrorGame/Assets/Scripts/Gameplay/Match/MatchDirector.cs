@@ -165,8 +165,6 @@ namespace HorrorGame.Gameplay.Match
         /// <summary>§02's standings in the scene. Null outside race mode.</summary>
         private RaceDirector? _raceDirector;
 
-        /// <summary>§02's standings. The host owns this — see RaceState.</summary>
-        private readonly RaceState _race = new RaceState(GameConstants.RaceRunnersMax);
         private int _activeSeed;
         private bool _endScreenHeldForGhost;
 
@@ -1096,7 +1094,17 @@ namespace HorrorGame.Gameplay.Match
                     controller.enabled = true;
                 }
 
-                _race.ReportDescent(LocalPlayerIndex, _chutes[i].StoreyBelow, _clock.ElapsedSeconds);
+                // §02 through the director, not through a RaceState of our own. There used
+                // to be a second RaceState on this class and this line fed it, so every
+                // descent in the game was recorded somewhere nothing read: the HUD, the
+                // finish check and the standings all hang off _raceDirector, and its rule
+                // refuses ReportFinish to a runner it never saw descend. The race was
+                // unwinnable and nothing failed.
+                if (_raceDirector != null)
+                {
+                    _raceDirector.ReportDescent(LocalPlayerIndex, _chutes[i].StoreyBelow, _clock.ElapsedSeconds);
+                }
+
                 Debug.Log("[Match] §01 B" + (_chutes[i].StoreyBelow + 1) + " 도착 — "
                           + _clock.ElapsedSeconds.ToString("0") + "초", this);
                 return;

@@ -2,11 +2,14 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Security.Cryptography;
 using HorrorGame.Core.Map;
+using Unity.AI.Navigation;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.AI;
+using UnityEngine.SceneManagement;
 
 namespace HorrorGame.EditorTools.SceneGen
 {
@@ -97,13 +100,46 @@ namespace HorrorGame.EditorTools.SceneGen
         }
 
         /// <summary>
-        /// Sketches, validates, builds and saves. Returns false with the failing §12
-        /// rules in <paramref name="message"/> and writes nothing.
+        /// Sketches, validates, builds, audits, and — only if all of that holds —
+        /// commits the scene and its bake as one generation. Returns false with the
+        /// failing rules in <paramref name="message"/>, having left every file it is
+        /// allowed to write byte-identical to how it found them.
+        /// <para>
+        /// <b>Why this method is a transaction.</b> The three gates below decide whether
+        /// the scene reaches disk; the NavMesh bake was never behind them.
+        /// <c>MapSceneBuilder.BakeNavMesh</c> ends in
+        /// <c>AssetDatabase.DeleteAsset</c> + <c>CreateAsset</c>, which fires the moment
+        /// the surface is built — before a single gate has run — and the file it
+        /// replaces is the one the shipped scene references by GUID
+        /// (<c>26ffd78e0ece1459686bbf4580765605</c>). Measured on disk 2026-08-03:
+        /// <c>Map_FirstSketch.unity</c> 01:03, <c>Map_FirstSketch_Solo.unity</c> 01:08,
+        /// <c>NavMesh_Map_FirstSketch.asset</c> <b>01:59</b> — the 01:59 run is the one
+        /// whose log ends "so nothing was written". The scene was pathed against a
+        /// surface baked from geometry the generator had judged unfit and thrown away,
+        /// and nothing on disk said so.
+        /// </para>
+        /// <para>
+        /// That is not a cosmetic mismatch. It is why B-009 got three byte-identical
+        /// audits off changing geometry and why B-010's playthrough measurement had to
+        /// be discarded: the instrument and the specimen came from different runs. So
+        /// from the first line that can touch disk this method holds a snapshot of
+        /// everything the generator is allowed to write, and either commits a whole
+        /// generation or puts every byte back.
+        /// </para>
+        /// <para>
+        /// <c>-forceWrite</c> still works and still writes a COHERENT pair: it moves a
+        /// run from "rejected" to "committed", never from "rejected" to "half written".
+        /// The scene, the bake and the log all carry the same generation stamp with
+        /// <c>-forced</c> in it, so a forced build is identifiable from the artefact
+        /// rather than from whoever remembers running it.
+        /// </para>
         /// </summary>
         /// <param name="seed">Fixes the map. The same seed gives the same scene.</param>
         /// <param name="message">Report text, on success and on failure.</param>
         public static bool Generate(int seed, out string message)
         {
+            var generation = NewGenerationId(seed);
+
             MapSketchResult map;
             try
             {
@@ -148,84 +184,400 @@ namespace HorrorGame.EditorTools.SceneGen
 
             VerifyKitManifest();
 
-            var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+            // ── everything below this line can touch disk ────────────────────────────
+            //
+            // Captured BEFORE EnsureFolder, because creating a folder is already a write
+            // and a rollback that cannot undo it is not a rollback. See the class docs
+            // on GeneratedTree for what is snapshotted and what is only watched.
             var sceneName = Path.GetFileNameWithoutExtension(SceneGenPaths.MapScene);
-            SceneGenPaths.EnsureFolder(SceneGenPaths.SceneRoot);
-            SceneGenPaths.EnsureFolder(SceneGenPaths.GeneratedRoot);
+            var tree = GeneratedTree.Capture(NavMeshAssetPathFor(sceneName));
 
-            MapSceneBuilder.Build(map, sceneName);
+            // Set on every path that has already decided what disk should look like —
+            // committed, or rolled back by Reject. Anything that leaves the try block
+            // without it left the tree mid-generation, which is what the finally is for.
+            var settled = false;
 
-            // The second gate, and the one §12's checklist cannot be: MapValidator
-            // judged the graph, and a graph is joined whatever the baked surface does.
-            // B-001 is exactly that gap — thirteen islands under a map that passed
-            // 17/17 — so the scene is measured against the surface the monster will
-            // actually path on before it is allowed onto disk.
-            var connectivity = NavMeshConnectivity.Audit(scene);
-            if (!connectivity.Passed)
+            try
             {
-                // -forceWrite writes the scene anyway and says exactly what is wrong with it.
-                //
-                // This is not a way to silence the gate. The gate is right: §06's creature
-                // cannot reach part of this building and that is a defect. But it is a defect
-                // in ONE system, and the map has eight mazes, sixteen doors, two chutes a
-                // floor and twenty starting positions that nobody has ever walked. Holding
-                // all of that behind the monster means the only thing anybody can playtest is
-                // the thing that already works.
-                //
-                // The failure is printed in full, every time, and the scene carries the
-                // report in its own name. A build made this way is a playtest build with a
-                // named defect, not a build that passed.
-                if (!HasFlag("-forceWrite"))
+                var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+                SceneGenPaths.EnsureFolder(SceneGenPaths.SceneRoot);
+                SceneGenPaths.EnsureFolder(SceneGenPaths.GeneratedRoot);
+
+                // The return value used to be dropped. It is the only handle on the
+                // NavMeshSurface this run baked, and the commit below needs it to prove
+                // that the asset the scene will reference is the one this run produced.
+                var root = MapSceneBuilder.Build(map, sceneName);
+
+                // Gates that were forced past, in the order they were forced. Empty on a
+                // clean generation, and it is what puts "-forced" in the stamp.
+                var forced = new List<string>();
+
+                // The second gate, and the one §12's checklist cannot be: MapValidator
+                // judged the graph, and a graph is joined whatever the baked surface does.
+                // B-001 is exactly that gap — thirteen islands under a map that passed
+                // 17/17 — so the scene is measured against the surface the monster will
+                // actually path on before it is allowed onto disk.
+                var connectivity = NavMeshConnectivity.Audit(scene);
+                if (!connectivity.Passed)
                 {
-                    message = "The map built, but §06's monster cannot use it, so nothing was written.\n"
-                        + connectivity.Describe()
-                        + "\n\nPass -forceWrite to write it anyway and walk the maze while this is open.";
-                    return false;
+                    // -forceWrite writes the scene anyway and says exactly what is wrong with it.
+                    //
+                    // This is not a way to silence the gate. The gate is right: §06's creature
+                    // cannot reach part of this building and that is a defect. But it is a defect
+                    // in ONE system, and the map has eight mazes, sixteen doors, two chutes a
+                    // floor and twenty starting positions that nobody has ever walked. Holding
+                    // all of that behind the monster means the only thing anybody can playtest is
+                    // the thing that already works.
+                    //
+                    // The failure is printed in full, every time, and the generation stamp on
+                    // the scene, on the bake and in the log says -forced. A build made this way
+                    // is a playtest build with a named defect, not a build that passed.
+                    if (!HasFlag("-forceWrite"))
+                    {
+                        settled = true;
+                        return Reject(
+                            tree,
+                            generation,
+                            "the §06 NavMesh gate",
+                            "The map built, but §06's monster cannot use it, so nothing was written.\n"
+                            + connectivity.Describe()
+                            + "\n\nPass -forceWrite to write it anyway and walk the maze while this is open.",
+                            out message);
+                    }
+
+                    forced.Add("§06 NavMesh connectivity");
+                    Debug.LogWarning(
+                        "[SceneGen] -forceWrite: the surface is BROKEN and the scene was written anyway. "
+                        + "§06's creature cannot reach part of this building. Everything you see in this "
+                        + "build about the maze, the chutes and the doors is real; everything you see "
+                        + "about the monster is not.\n" + connectivity.Describe());
                 }
 
-                Debug.LogWarning(
-                    "[SceneGen] -forceWrite: the surface is BROKEN and the scene was written anyway. "
-                    + "§06's creature cannot reach part of this building. Everything you see in this "
-                    + "build about the maze, the chutes and the doors is real; everything you see "
-                    + "about the monster is not.\n" + connectivity.Describe());
+                // The third gate, and the one the first two structurally cannot be. Both of
+                // them measure the monster: §12's checklist is a graph the monster's chase
+                // is derived from, and the connectivity audit walks the surface the monster
+                // is baked onto. Neither has ever asked whether a *player* can walk the
+                // building, and the two bodies are not the same — agentClimb is 0.75 m and
+                // stepOffset is 0.40 m, so every riser between them is a stair only the
+                // antagonist can use. A map can score 1830/1830 with one island while a
+                // human is locked on the entrance storey, which is exactly what shipped.
+                var reach = PlayerTraversal.Audit(scene);
+                if (!reach.Passed && HasFlag("-forceWrite"))
+                {
+                    forced.Add("player traversal");
+                    Debug.LogWarning(
+                        "[SceneGen] -forceWrite: a PLAYER cannot walk all of this either.\n" + reach.Describe());
+                }
+                else if (!reach.Passed)
+                {
+                    settled = true;
+                    return Reject(
+                        tree,
+                        generation,
+                        "the player-traversal gate",
+                        "The map built and §06's monster can use it, but a player cannot, so nothing was "
+                        + "written.\n" + reach.Describe(),
+                        out message);
+                }
+
+                if (forced.Count > 0)
+                {
+                    generation += "-forced";
+                }
+
+                if (!Commit(scene, root, sceneName, generation, forced, out var refusal))
+                {
+                    // Commit only returns false before the scene reaches disk, so the
+                    // rollback below is enough to leave nothing half-written.
+                    settled = true;
+                    return Reject(tree, generation, "the commit", refusal, out message);
+                }
+
+                settled = true;
+                message = "Wrote " + SceneGenPaths.MapScene + " and " + NavMeshAssetPathFor(sceneName)
+                    + " from seed " + seed + ", both as " + generation + ".\n"
+                    + quality.Describe()
+                    + Summarise(map)
+                    + connectivity.Describe()
+                    + reach.Describe();
+                return true;
+            }
+            finally
+            {
+                // An exception between the first write and the commit is the same defect
+                // as a failed gate — a bake on disk from a generation with no scene — so
+                // it unwinds the same way rather than leaving the tree mid-generation.
+                if (!settled)
+                {
+                    Debug.LogError(
+                        "[SceneGen] " + generation + " threw after it had started writing. Rolling back so the "
+                        + "bake on disk does not outlive the scene it belongs to. " + RollBackEverything(tree));
+                }
+            }
+        }
+
+        /// <summary>
+        /// Puts the tree back and says so in one line, then hands the caller the failure
+        /// report with the rollback appended.
+        /// </summary>
+        /// <param name="gate">Which gate refused, named the way a human would say it.</param>
+        /// <param name="reason">The gate's own report — what is wrong with the map.</param>
+        private static bool Reject(
+            GeneratedTree tree, string generation, string gate, string reason, out string message)
+        {
+            var rollback = RollBackEverything(tree);
+            Debug.Log("[SceneGen] " + generation + " was REJECTED at " + gate + " — " + rollback);
+            message = reason + "\n\n" + rollback;
+            return false;
+        }
+
+        /// <summary>
+        /// Undoes a rejected run on disk AND in the session, which are two different
+        /// places the same generation can survive in.
+        /// <para>
+        /// <c>BuildNavMesh</c> registers its data with the global NavMesh — that is the
+        /// mesh <c>SamplePosition</c> and <c>CalculatePath</c> read — so a rejected bake
+        /// stays queryable in this editor session after its files are gone. Leaving it
+        /// there would recreate B-009 from the other end: a tool run next in the same
+        /// session, against a scene it did not reload, would measure a generation that
+        /// exists nowhere on disk. Clearing it costs nothing, because opening any scene
+        /// re-registers its surfaces on load.
+        /// </para>
+        /// </summary>
+        private static string RollBackEverything(GeneratedTree tree)
+        {
+            NavMesh.RemoveAllNavMeshData();
+            return tree.RollBack();
+        }
+
+        /// <summary>
+        /// Writes the scene and the bake as one generation, stamps both with the same id,
+        /// and then reads the artefact back to check that is what actually happened.
+        /// <para>
+        /// The order is the fix. <c>NavMeshSurface.BuildNavMesh()</c> never touches the
+        /// file system — it calls <c>NavMeshBuilder.BuildNavMeshData</c>, assigns the
+        /// result to <c>m_NavMeshData</c> and registers it with the global NavMesh — so
+        /// the bake can exist, be audited, and be thrown away without leaving a trace.
+        /// The only line that reaches disk is <c>AssetDatabase.CreateAsset</c>, and that
+        /// belongs HERE, after the gates, in the same breath as <c>SaveScene</c>.
+        /// </para>
+        /// <para>
+        /// It has to be in that order and not the other way round: a NavMeshData that is
+        /// not yet an asset when the scene is saved has no file for the surface to point
+        /// at, so <c>NavMeshSurface.m_NavMeshData</c> serialises as <c>{fileID: 0}</c> —
+        /// a scene with no surface at all, which every audit in this project would
+        /// happily call a pass, because <c>SamplePosition</c> against nothing reports
+        /// nothing rather than failing. That is why this method re-reads the saved
+        /// <c>.unity</c> afterwards and looks for the GUID. It looks for the GUID and not
+        /// for <c>{fileID: 0}</c> because every scene has one of those already: the
+        /// legacy <c>NavMeshSettings</c> block at the top of the file carries an empty
+        /// <c>m_NavMeshData</c> whenever the map is baked through a surface, which is
+        /// always here.
+        /// </para>
+        /// </summary>
+        /// <param name="root">The map root <see cref="MapSceneBuilder.Build"/> returned.</param>
+        /// <param name="forced">Gates this run was forced past; empty on a clean run.</param>
+        /// <param name="refusal">Why nothing was written. Only set when this returns false.</param>
+        private static bool Commit(
+            Scene scene,
+            GameObject root,
+            string sceneName,
+            string generation,
+            List<string> forced,
+            out string refusal)
+        {
+            var navPath = NavMeshAssetPathFor(sceneName);
+            var surface = root != null ? root.GetComponentInChildren<NavMeshSurface>(true) : null;
+            var data = surface != null ? surface.navMeshData : null;
+
+            if (data == null)
+            {
+                // Not fatal — the scene is still worth having — but it is the one state in
+                // which §06 cannot exist, and it has shipped unnoticed before.
+                Debug.LogError(
+                    "[SceneGen] " + generation + " has no baked NavMeshData to commit, so the scene about to be "
+                    + "written references no surface and §06's creature cannot move in it.");
+            }
+            else if (!AssetDatabase.Contains(data))
+            {
+                // The forward-compatible half. Today MapSceneBuilder.BakeNavMesh has
+                // already written the asset by the time we get here; when that write moves
+                // out of the builder (see the report on this change), this is the line that
+                // keeps the pair coherent, and it runs after the gates by construction.
+                SceneGenPaths.EnsureFolder(SceneGenPaths.NavMeshRoot);
+                AssetDatabase.DeleteAsset(navPath);
+                AssetDatabase.CreateAsset(data, navPath);
+            }
+            else
+            {
+                // The builder's path formula is duplicated in NavMeshAssetPathFor, so it is
+                // checked rather than trusted: a bake committed anywhere else is a scene
+                // referencing a file nobody maintains.
+                var actual = AssetDatabase.GetAssetPath(data);
+                if (!string.Equals(actual, navPath, StringComparison.Ordinal))
+                {
+                    Debug.LogError(
+                        "[SceneGen] " + generation + " baked into " + actual + " but this generator commits "
+                        + navPath + ". The scene is about to reference the first and every tool in the "
+                        + "repository looks for the second.");
+                    navPath = actual;
+                }
             }
 
-            // The third gate, and the one the first two structurally cannot be. Both of
-            // them measure the monster: §12's checklist is a graph the monster's chase
-            // is derived from, and the connectivity audit walks the surface the monster
-            // is baked onto. Neither has ever asked whether a *player* can walk the
-            // building, and the two bodies are not the same — agentClimb is 0.75 m and
-            // stepOffset is 0.40 m, so every riser between them is a stair only the
-            // antagonist can use. A map can score 1830/1830 with one island while a
-            // human is locked on the entrance storey, which is exactly what shipped.
-            var reach = PlayerTraversal.Audit(scene);
-            if (!reach.Passed && HasFlag("-forceWrite"))
+            // The stamp, in the scene. A named empty transform and nothing else: a
+            // component would have to live in an editor assembly, which is not in the
+            // player, so the shipped scene would carry a missing script instead of a
+            // fact. The name is chosen to match none of the prefixes NavMeshConnectivity
+            // and PlayerTraversal collect ("PlayerSpawn", "CandidateSite", "LootSpawn",
+            // "Exit"…), so stamping cannot move a future audit's numbers.
+            var stampName = GenerationStampPrefix + generation;
+            var stamp = new GameObject(stampName);
+            if (stamp.scene != scene)
             {
-                Debug.LogWarning(
-                    "[SceneGen] -forceWrite: a PLAYER cannot walk all of this either.\n" + reach.Describe());
-            }
-            else if (!reach.Passed)
-            {
-                message = "The map built and §06's monster can use it, but a player cannot, so nothing was "
-                    + "written.\n" + reach.Describe();
-                return false;
+                SceneManager.MoveGameObjectToScene(stamp, scene);
             }
 
             if (!EditorSceneManager.SaveScene(scene, SceneGenPaths.MapScene))
             {
-                message = "Built the map but could not save it to " + SceneGenPaths.MapScene + ".";
+                refusal = "Built the map but could not save it to " + SceneGenPaths.MapScene + ".";
                 return false;
+            }
+
+            // The stamp, on the bake. userData rather than the object's name because the
+            // .asset is Unity's binary format and the name is not greppable in it, while
+            // the .meta is text, is tracked in git, and sits beside the file it describes
+            // — the same reason AssetImportPolicy records intent there. Written after the
+            // save so no reimport can interleave with serialising the scene.
+            var stamped = false;
+            var importer = AssetImporter.GetAtPath(navPath);
+            if (importer != null)
+            {
+                importer.userData = generation + "; the bake for " + SceneGenPaths.MapScene
+                    + (forced.Count > 0 ? "; forced past " + string.Join(", ", forced) : string.Empty);
+
+                // Flush the .meta without a reimport first, then check the file — the
+                // stamp is only worth having if it is actually in the bytes, and this
+                // whole change exists because "the call was made" and "the file says so"
+                // turned out to be different things. SaveAndReimport is the fallback and
+                // is safe here only because the scene is already written.
+                AssetDatabase.WriteImportSettingsIfDirty(navPath);
+                stamped = string.Equals(ReadStamp(navPath), generation, StringComparison.Ordinal);
+                if (!stamped)
+                {
+                    importer.SaveAndReimport();
+                    stamped = string.Equals(ReadStamp(navPath), generation, StringComparison.Ordinal);
+                }
             }
 
             AssetDatabase.SaveAssets();
             RegisterScenes();
 
-            message = "Wrote " + SceneGenPaths.MapScene + " from seed " + seed + ".\n"
-                + quality.Describe()
-                + Summarise(map)
-                + connectivity.Describe()
-                + reach.Describe();
+            // ── the artefact, read back ─────────────────────────────────────────────
+            // Not a formality. Every defect this file's history is made of was invisible
+            // in the source and obvious in the file: a map generated into the wrong
+            // scene, a bake belonging to a different run. The scene is 11 MB of text and
+            // the two facts that matter are one IndexOf each.
+            var guid = AssetDatabase.AssetPathToGUID(navPath);
+            var sceneText = File.Exists(SceneGenPaths.MapScene)
+                ? File.ReadAllText(SceneGenPaths.MapScene)
+                : string.Empty;
+            var referencesBake = !string.IsNullOrEmpty(guid)
+                && sceneText.IndexOf("guid: " + guid, StringComparison.Ordinal) >= 0;
+            var carriesStamp = sceneText.IndexOf(stampName, StringComparison.Ordinal) >= 0;
+
+            if (!referencesBake)
+            {
+                Debug.LogError(
+                    "[SceneGen] " + SceneGenPaths.MapScene + " was written WITHOUT a reference to " + navPath
+                    + " (guid " + guid + "). §06 has no surface in the scene that ships, and no audit run "
+                    + "afterwards would say so — SamplePosition against nothing reports nothing, not a failure.");
+            }
+
+            if (!carriesStamp || !stamped)
+            {
+                Debug.LogError(
+                    "[SceneGen] " + generation + " could not stamp both artefacts (scene "
+                    + (carriesStamp ? "ok" : "MISSING") + ", bake meta " + (stamped ? "ok" : "MISSING")
+                    + "). The pair on disk is coherent, but nothing on disk proves it, which is the state "
+                    + "this change exists to end.");
+            }
+
+            // The one line. Everything a human needs to decide whether a number they are
+            // about to quote is about this map: which generation, which two files, how big
+            // the surface is, and whether a gate was forced. The vertex count is the GLOBAL
+            // triangulation — the mesh SamplePosition and CalculatePath read, which
+            // MapSceneBuilder cleared before baking, so it is the same surface both audits
+            // above walked and not a second opinion about it.
+            var bytes = File.Exists(navPath) ? new FileInfo(navPath).Length : 0L;
+            Debug.Log(
+                "[SceneGen] " + generation + ": " + SceneGenPaths.MapScene + " and " + navPath
+                + " were BOTH written by this run — " + NavMesh.CalculateTriangulation().vertices.Length
+                + " vertices, " + bytes.ToString("N0", CultureInfo.InvariantCulture) + " bytes"
+                + (forced.Count > 0 ? ", FORCED past " + string.Join(" and ", forced) : string.Empty)
+                + "; the same stamp is on '" + stampName + "' in the scene and in " + navPath
+                + ".meta, so anything else claiming to be this map is one grep from being caught.");
+
+            refusal = null;
             return true;
+        }
+
+        /// <summary>
+        /// Names one run, in a form that survives into the artefacts and sorts by time:
+        /// <c>gen-20260803-021407-seed20260802</c>, plus <c>-forced</c> when a gate was
+        /// overridden. Only characters that are safe in a GameObject name and in the
+        /// plain YAML scalar of a <c>.meta</c> — no colons, no hashes, no quotes.
+        /// </summary>
+        private static string NewGenerationId(int seed) =>
+            "gen-" + DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture)
+            + "-seed" + seed.ToString(CultureInfo.InvariantCulture);
+
+        /// <summary>Prefix of the empty transform that carries the generation id in the scene.</summary>
+        private const string GenerationStampPrefix = "SceneGen_";
+
+        /// <summary>
+        /// Where the bake for a scene lives. Mirrors the path
+        /// <c>MapSceneBuilder.BakeNavMesh</c> builds; <see cref="Commit"/> checks the two
+        /// agree rather than assuming it, because a silent disagreement here is a scene
+        /// referencing a file no other tool in the repository ever looks at.
+        /// </summary>
+        private static string NavMeshAssetPathFor(string sceneName) =>
+            SceneGenPaths.NavMeshRoot + "/NavMesh_" + sceneName + ".asset";
+
+        /// <summary>
+        /// Reads the generation id back out of a bake's <c>.meta</c>, or null when the
+        /// file predates stamping — which is itself the useful answer, because it means
+        /// something other than this generator last wrote that surface.
+        /// </summary>
+        private static string ReadStamp(string assetPath)
+        {
+            var meta = assetPath + ".meta";
+            if (!File.Exists(meta))
+            {
+                return null;
+            }
+
+            foreach (var line in File.ReadAllLines(meta))
+            {
+                var trimmed = line.TrimStart();
+                if (!trimmed.StartsWith("userData:", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                // Unquoted in practice — the id is letters, digits and dashes — but a
+                // future longer stamp could make Unity quote the scalar, and a stamp that
+                // reads back with a stray quote would look like a mismatch and cry wolf.
+                var value = trimmed.Substring("userData:".Length).Trim().Trim('\'', '"');
+                if (value.Length == 0)
+                {
+                    return null;
+                }
+
+                var end = value.IndexOf(';');
+                return end < 0 ? value : value.Substring(0, end);
+            }
+
+            return null;
         }
 
         /// <summary>
@@ -532,6 +884,243 @@ namespace HorrorGame.EditorTools.SceneGen
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// A byte-level snapshot of everything a generator run is allowed to write,
+        /// taken before the first write and put back when the run is rejected.
+        /// <para>
+        /// <b>Why the whole folder and not the one file.</b> The NavMesh asset is the
+        /// escape that cost three days, but it is not the only one:
+        /// <c>MapSceneBuilder.SurfaceAssets</c> mints <c>Floor_*.mat</c> and
+        /// <c>Surface_*.asset</c> with <c>AssetDatabase.CreateAsset</c> during the same
+        /// unconditional build pass, and any future generated thing will land in the same
+        /// place. <see cref="SceneGenPaths.GeneratedRoot"/> is already defined as
+        /// "everything a generated scene references … disposable, overwritable from the
+        /// same seed", so snapshotting the folder catches the next escape without anyone
+        /// having to remember to add it here.
+        /// </para>
+        /// <para>
+        /// The scenes are WATCHED rather than snapshotted — their digests are recorded
+        /// and compared, but they are never rewritten. A rejected run must not reach
+        /// <c>SaveScene</c> at all, so a scene that changed is not something to repair
+        /// quietly; it is a defect that should be shouted about.
+        /// </para>
+        /// <para>
+        /// Empty folders are the one thing not restored: a run that created
+        /// <c>Generated/NavMesh/</c> and was then rejected leaves the directory behind
+        /// with no files in it. git does not track directories, so the repository is
+        /// still byte-identical; the claim in the log is about files, and it is worded
+        /// that way on purpose.
+        /// </para>
+        /// </summary>
+        private sealed class GeneratedTree
+        {
+            private readonly Dictionary<string, byte[]> _snapshot =
+                new Dictionary<string, byte[]>(StringComparer.Ordinal);
+
+            private readonly Dictionary<string, string> _watched =
+                new Dictionary<string, string>(StringComparer.Ordinal);
+
+            private string _digest;
+            private string _navPath;
+            private string _previousGeneration;
+
+            /// <summary>Reads every file the generator may write, plus the scenes it must not.</summary>
+            /// <param name="navMeshAssetPath">The bake this run will replace, named so the rollback can say whose it is.</param>
+            public static GeneratedTree Capture(string navMeshAssetPath)
+            {
+                var tree = new GeneratedTree { _navPath = navMeshAssetPath };
+
+                foreach (var pair in ReadFolder(SceneGenPaths.GeneratedRoot))
+                {
+                    tree._snapshot[pair.Key] = pair.Value;
+                }
+
+                tree._digest = Digest(tree._snapshot);
+
+                foreach (var scene in new[]
+                         {
+                             SceneGenPaths.MapScene, SceneGenPaths.MatchScene, SceneGenPaths.BootstrapScene,
+                         })
+                {
+                    tree._watched[scene] = File.Exists(scene) ? Sha(File.ReadAllBytes(scene)) : "(absent)";
+                }
+
+                // Whose bake is currently on disk. Read now because the run is about to
+                // overwrite it, and a rollback that can name the generation it restored is
+                // the difference between "nothing was written" and "nothing was written,
+                // and what is there belongs to the scene that is there".
+                tree._previousGeneration = ReadStamp(navMeshAssetPath);
+                return tree;
+            }
+
+            /// <summary>
+            /// Restores every file, deletes every file the run added, and then MEASURES
+            /// that the folder is back to the digest it started from rather than claiming
+            /// it. Returns the one line a human reads.
+            /// </summary>
+            public string RollBack()
+            {
+                var restored = new List<string>();
+                var removed = new List<string>();
+
+                foreach (var pair in _snapshot)
+                {
+                    if (File.Exists(pair.Key) && SameBytes(File.ReadAllBytes(pair.Key), pair.Value))
+                    {
+                        continue;
+                    }
+
+                    var folder = Path.GetDirectoryName(pair.Key);
+                    if (!string.IsNullOrEmpty(folder))
+                    {
+                        Directory.CreateDirectory(folder);
+                    }
+
+                    File.WriteAllBytes(pair.Key, pair.Value);
+                    restored.Add(pair.Key);
+                }
+
+                foreach (var path in ReadFolder(SceneGenPaths.GeneratedRoot).Keys)
+                {
+                    if (_snapshot.ContainsKey(path))
+                    {
+                        continue;
+                    }
+
+                    File.Delete(path);
+                    removed.Add(path);
+                }
+
+                if (restored.Count > 0 || removed.Count > 0)
+                {
+                    // ForceUpdate rather than a plain Refresh: a restored .meta carries the
+                    // GUID the shipped scenes reference, and Unity has to re-read it for
+                    // that mapping to come back — the same thing that happens when a
+                    // deleted asset is checked out again.
+                    AssetDatabase.Refresh(ImportAssetOptions.ForceUpdate);
+                }
+
+                var after = ReadFolder(SceneGenPaths.GeneratedRoot);
+                var digest = Digest(after);
+                var identical = string.Equals(digest, _digest, StringComparison.Ordinal);
+
+                if (!identical)
+                {
+                    Debug.LogError(
+                        "[SceneGen] The rollback did NOT restore " + SceneGenPaths.GeneratedRoot
+                        + ": digest " + _digest + " before, " + digest + " after, " + _snapshot.Count
+                        + " files then, " + after.Count + " now. Treat every measurement taken against "
+                        + "this tree as suspect until it is checked by hand.");
+                }
+
+                foreach (var pair in _watched)
+                {
+                    var now = File.Exists(pair.Key) ? Sha(File.ReadAllBytes(pair.Key)) : "(absent)";
+                    if (!string.Equals(now, pair.Value, StringComparison.Ordinal))
+                    {
+                        Debug.LogError(
+                            "[SceneGen] " + pair.Key + " CHANGED during a run that wrote nothing. A rejected "
+                            + "generation must never reach SaveScene; this one did, and the scene on disk is "
+                            + "not the one the last accepted generation left.");
+                    }
+                }
+
+                return "nothing was written; the " + after.Count + " files under " + SceneGenPaths.GeneratedRoot
+                    + " are byte-identical to before this run"
+                    + (identical ? " (digest " + digest + ")" : " — THEY ARE NOT, see the error above")
+                    + (restored.Count > 0 || removed.Count > 0
+                        ? ", after putting back " + restored.Count + " and removing " + removed.Count
+                        : string.Empty)
+                    + ", so " + Path.GetFileName(_navPath) + " still belongs to "
+                    + (string.IsNullOrEmpty(_previousGeneration)
+                        ? "an unstamped generation (it predates the stamp, or something other than this "
+                          + "generator wrote it)"
+                        : _previousGeneration) + ".";
+            }
+
+            /// <summary>Every file under a folder, keyed by the project-relative path Unity uses.</summary>
+            private static Dictionary<string, byte[]> ReadFolder(string folder)
+            {
+                var files = new Dictionary<string, byte[]>(StringComparer.Ordinal);
+                if (!Directory.Exists(folder))
+                {
+                    return files;
+                }
+
+                foreach (var path in Directory.GetFiles(folder, "*", SearchOption.AllDirectories))
+                {
+                    var key = path.Replace('\\', '/');
+                    files[key] = File.ReadAllBytes(path);
+                }
+
+                return files;
+            }
+
+            /// <summary>
+            /// One number for a whole tree — path, length and contents of every file, in a
+            /// fixed order. Quoted in the log so two runs can be compared by eye.
+            /// </summary>
+            private static string Digest(Dictionary<string, byte[]> files)
+            {
+                var keys = new List<string>(files.Keys);
+                keys.Sort(StringComparer.Ordinal);
+
+                using (var stream = new MemoryStream())
+                {
+                    foreach (var key in keys)
+                    {
+                        var header = System.Text.Encoding.UTF8.GetBytes(key + "\n" + files[key].Length + "\n");
+                        stream.Write(header, 0, header.Length);
+                        stream.Write(files[key], 0, files[key].Length);
+                    }
+
+                    stream.Position = 0;
+                    using (var sha = SHA256.Create())
+                    {
+                        return Hex(sha.ComputeHash(stream));
+                    }
+                }
+            }
+
+            private static string Sha(byte[] bytes)
+            {
+                using (var sha = SHA256.Create())
+                {
+                    return Hex(sha.ComputeHash(bytes));
+                }
+            }
+
+            /// <summary>Twelve hex characters: enough to compare two runs, short enough to read.</summary>
+            private static string Hex(byte[] hash)
+            {
+                var text = new System.Text.StringBuilder(12);
+                for (var i = 0; i < 6 && i < hash.Length; i++)
+                {
+                    text.Append(hash[i].ToString("x2", CultureInfo.InvariantCulture));
+                }
+
+                return text.ToString();
+            }
+
+            private static bool SameBytes(byte[] left, byte[] right)
+            {
+                if (left.Length != right.Length)
+                {
+                    return false;
+                }
+
+                for (var i = 0; i < left.Length; i++)
+                {
+                    if (left[i] != right[i])
+                    {
+                        return false;
+                    }
+                }
+
+                return true;
+            }
         }
     }
 }

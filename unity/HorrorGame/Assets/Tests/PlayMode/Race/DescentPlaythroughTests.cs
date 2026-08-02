@@ -1,0 +1,962 @@
+#if UNITY_INCLUDE_TESTS
+#nullable enable
+
+using System.Collections;
+using System.Collections.Generic;
+using System.Text;
+using HorrorGame.Core;
+using HorrorGame.Core.Race;
+using HorrorGame.Gameplay.Match;
+using HorrorGame.Gameplay.Monster;
+using HorrorGame.Gameplay.Race;
+using NUnit.Framework;
+using UnityEngine;
+using UnityEngine.AI;
+using UnityEngine.SceneManagement;
+using UnityEngine.TestTools;
+
+namespace HorrorGame.Tests.PlayMode.Racing
+{
+    /// <summary>
+    /// §01·§02, played: B1의 외곽에서 B8의 중심까지, 여덟 층을 실제로 내려간다.
+    /// <para>
+    /// <b>Why this exists.</b> Nobody has ever played this game from B1 to B8 — not the owner,
+    /// not a test. <c>RaceTests</c> proves §02's rule against a rule; <c>RaceDirectorTests</c>
+    /// proves the finish circle against a bare <c>GameObject</c> with no building round it; the
+    /// NavMesh audit proves a bake against a graph. Every one of them is true and not one of
+    /// them has ever put a body on the rim of B1 and taken it to the bottom. The chain nobody
+    /// has walked is the chain the game <i>is</i>: spawn on a rim → cross a maze to the middle
+    /// → step into a 투하구 → land on the rim below → seven times → touch the middle of B8 →
+    /// win.
+    /// </para>
+    /// <para>
+    /// <b>The maze is not solved, and that is deliberate.</b> A test cannot out-navigate a
+    /// concentric maze with four gates and there is no reason for it to try, so the runner is
+    /// warped along <see cref="NavMesh.CalculatePath"/>'s own corners the way
+    /// <c>MonsterKillTests</c> warps toward the creature. Nothing about the descent is faked by
+    /// that: the route is the baked NavMesh's own answer, the 투하구 does its own swallowing
+    /// inside <c>MatchDirector.CheckChutes</c> at the same 50 Hz the shipped game gives it, and
+    /// §02's standings are read off the <see cref="RaceDirector"/> the real match attaches. What
+    /// the warp removes is only the question of whether a human is good at mazes, which is not
+    /// the thing that has never been proven.
+    /// </para>
+    /// <para>
+    /// <b>Nothing is asserted until the whole building has been measured.</b> An assertion on
+    /// the first storey would report one broken link and hide seven. So each storey's
+    /// reachability, drop and bookkeeping are recorded into <see cref="Leg"/>s, the descent
+    /// carries on past a failure — warping where the NavMesh could not path, and marking the
+    /// storey as warped — and the assertions fire at the end with the whole table attached. One
+    /// run therefore names every storey that is broken rather than the first.
+    /// </para>
+    /// <para>
+    /// It lives in the predefined assembly because <c>MatchDirector</c> does, and an
+    /// <c>.asmdef</c> cannot reference one. Compiles out of a player build on
+    /// <c>UNITY_INCLUDE_TESTS</c>.
+    /// </para>
+    /// </summary>
+    public sealed class DescentPlaythroughTests
+    {
+        /// <summary>§13's seed for the layout under test — <c>SoloPlaytest.PlaytestSeed</c>.</summary>
+        private const int Seed = 20260731;
+
+        /// <summary>The scene <c>SoloPlaytest.BuildScene</c> writes, and the one the game loads.</summary>
+        private const string SoloScene = "Map_FirstSketch_Solo";
+
+        /// <summary>
+        /// Metres between two floors. <c>MapKitCatalogue.StoreyMetres</c> is the authority and it
+        /// lives in an editor assembly this one cannot reference, so it is quoted here in the
+        /// same shape and for the same reason <c>MatchDirector.AttachChutes</c> quotes it.
+        /// Measured in the artefact: the 착지 markers sit at 0, −3.75 … −26.25.
+        /// </summary>
+        private const float StoreyPitchMetres = 3.75f;
+
+        /// <summary>One cell. <c>MapKitCatalogue.GridMetres</c>, quoted for the same reason.</summary>
+        private const float CellMetres = 2.5f;
+
+        /// <summary>
+        /// Chebyshev radius, in metres, of the wall between 중간 고리 and 외곽 고리 —
+        /// <c>RadialStorey</c>'s band table, <c>d 8 = wall, 4 gates</c>, at
+        /// <see cref="CellMetres"/> a cell. Anything beyond this is on the rim, which is the
+        /// whole structural claim §01 makes about a 투하구: "착지는 다음 층의 외곽". Chebyshev
+        /// and not Euclidean because <c>RadialStorey</c> builds square rings, so the map's own
+        /// metric for "how far out" is the square one.
+        /// </summary>
+        private const float RimWallMetres = 8f * CellMetres;
+
+        /// <summary>
+        /// How far a NavMesh sample may reach for a floor. Deliberately under half of
+        /// <see cref="StoreyPitchMetres"/> (1.875 m): every storey of this tower sits directly on
+        /// top of the last, so a generous snap radius would answer a question about B5 with the
+        /// floor of B4 and the whole test would pass against the wrong building.
+        /// </summary>
+        private const float NavSnapMetres = 1.8f;
+
+        /// <summary>
+        /// Metres of unexplained movement that mean the match moved the body rather than the
+        /// test. The only thing in a headless race step that moves a player at all is
+        /// <c>MatchDirector.CheckChutes</c>, and it moves them from the middle of a storey to a
+        /// corner of the one below — 25 m in plan on this map. Five metres is comfortably under
+        /// that and comfortably over anything a <c>CharacterController</c> can do to itself
+        /// depenetrating out of a wall the warp put it in.
+        /// </summary>
+        private const float CarriedMetres = 5f;
+
+        /// <summary>
+        /// §12's 투하구 count: one pair per storey but the last. Seven drops take a runner through
+        /// eight storeys — B1 is where the race starts, not somewhere anybody falls to.
+        /// </summary>
+        private const int Drops = RaceState.Storeys - 1;
+
+        /// <summary>
+        /// Whole-test cap, milliseconds. The building is on the order of a kilometre of corridor
+        /// at <see cref="GameConstants.RunnerSprintSpeed"/> — a few hundred seconds of simulated
+        /// time and some ten thousand fixed steps — and the wall-clock cost is dominated by
+        /// loading a 50 MB scene. Ten minutes is many times that, so reaching it means something
+        /// hung rather than something was slow.
+        /// </summary>
+        private const int TimeoutMilliseconds = 600000;
+
+        /// <summary>What one storey of the descent did. Filled in as it is walked, asserted at the end.</summary>
+        private sealed class Leg
+        {
+            public int Storey;
+            public Vector3 StartedAt;
+            public bool StartOnNavMesh;
+            public bool MiddleOnNavMesh;
+            public NavMeshPathStatus MiddleStatus;
+            public bool MiddleReachable;
+            public float MiddlePathMetres;
+            public float MiddleGapMetres;
+            public Vector3 MiddlePathEnded;
+            public bool Warped;
+            public bool MatchRunning;
+            public bool SurfaceAtTheMiddle;
+            public bool MapSaysTheMiddleIsSurface;
+            public bool HadChute;
+            public bool Carried;
+            public bool LandedWhereTheChuteSaid;
+            public float MissedDropPointBy;
+            public int LandedStorey = -1;
+            public float LandingRimMetres;
+            public int RecordedStorey = -1;
+        }
+
+        private readonly List<Leg> _legs = new List<Leg>();
+
+        /// <summary>The last place this test put the body. See <see cref="CarriedByTheMatch"/>.</summary>
+        private Vector3 _placed;
+
+        /// <summary>
+        /// Where the body was the instant the match took it, sampled inside the step rather than
+        /// after the next <c>yield</c>. It has to be: the scene's own rig is live in a PlayMode
+        /// test, so <c>PlayerMotor</c> keeps running and a body left three metres in the air for
+        /// one frame has already started falling by the time a coroutine looks at it. Measuring
+        /// after the yield would report the fall and blame the chute.
+        /// </summary>
+        private Vector3 _carriedTo;
+
+        [SetUp]
+        public void QuietenTheImporter()
+        {
+            // Loading the eight-storey scene re-emits Mirror's packaging complaint about an
+            // immutable folder nobody is allowed to fix, and the Test Framework fails a test on
+            // any unexpected LogError. Safe only because every step below is asserted.
+            LogAssert.ignoreFailingMessages = true;
+            _legs.Clear();
+        }
+
+        /// <summary>
+        /// Puts the building back. An eight-storey map left in the active scene has failed
+        /// audio-occlusion tests that ran after it — see <c>InteractionPickupTests</c>.
+        /// </summary>
+        [UnityTearDown]
+        public IEnumerator PutTheWorldBack()
+        {
+            var solo = SceneManager.GetSceneByName(SoloScene);
+            if (solo.IsValid() && solo.isLoaded)
+            {
+                var empty = SceneManager.CreateScene("DescentPlaythroughTests_Empty");
+                SceneManager.SetActiveScene(empty);
+                yield return SceneManager.UnloadSceneAsync(solo);
+            }
+
+            LogAssert.ignoreFailingMessages = false;
+        }
+
+        /// <summary>
+        /// The race, run. Eight storeys, seven 투하구, one finish.
+        /// </summary>
+        [UnityTest]
+        [Timeout(TimeoutMilliseconds)]
+        public IEnumerator A_runner_can_descend_from_the_rim_of_B1_to_the_middle_of_B8()
+        {
+            SceneManager.LoadScene(SoloScene, LoadSceneMode.Single);
+            yield return null;
+            yield return null;
+
+            var found = Object.FindFirstObjectByType<MatchDirector>();
+            Assert.That(found, Is.Not.Null, "the solo scene has no MatchDirector — there is no match to run.");
+
+            var director = found!;
+            if (director.Map == null)
+            {
+                Assert.That(director.BeginMatch(Seed), Is.True,
+                    "BeginMatch refused, so nothing below this line can be measured. The reason is in the "
+                    + "[Match] error logged immediately above this failure.");
+            }
+
+            yield return null;
+
+            Assert.That(director.RaceMode, Is.True,
+                "§01's race is gated behind MatchDirector.RaceMode and it is off in this scene. What would be "
+                + "measured below is the co-operative recovery match, which has no 투하구 and no finish.");
+
+            // ── §06 is not what is being tested, and it is standing on the target ──
+            // DescentMap puts the creature in the middle of a storey halfway down — "괴물은
+            // 여기서 시작한다, 절반쯤 내려간 곳" — which is exactly the cell this test walks to.
+            // Left alive it would kill the runner on that storey every single run, and the
+            // report would be "caught on B5" instead of anything about the descent. The creature
+            // has two tests of its own (MonsterKillTests, MonsterChaseTests) and this one is the
+            // chain. Destroyed rather than disabled, because MatchDirector calls
+            // MonsterAgent.Simulate directly and a disabled component still answers a call.
+            var monster = Object.FindFirstObjectByType<MonsterAgent>();
+            if (monster != null)
+            {
+                Object.Destroy(monster.gameObject);
+            }
+
+            yield return null;
+
+            var rig = FindPlayerRoot();
+            Assert.That(rig, Is.Not.Null, "no player rig in the scene, so nobody can run the race.");
+
+            var attached = director.GetComponent<RaceDirector>();
+            Assert.That(attached, Is.Not.Null,
+                "MatchDirector has no RaceDirector on it — AttachRace never ran, so §02 has no standings, no "
+                + "places and no winner no matter where anybody walks.");
+
+            var player = rig!;
+            var race = attached!;
+            var seat = director.LocalPlayerIndex;
+
+            Assert.That(race.Started, Is.True, "§02 never began — RaceDirector.Begin was refused. §11 sizes the field.");
+            Assert.That(race.FinishFound, Is.True,
+                "§02's 도착점 was not located, so RaceDirector.CheckFinish returns on its first line and nobody "
+                + "can ever win this match. The scene needs an object named '" + RaceDirector.FinishMarkerName
+                + "' or an '" + MatchMap.EntranceLightPrefix + "…' light under '" + MatchMap.MapRootName + "'.");
+
+            var descentsAnnounced = 0;
+            race.Descended += (id, landedOn) =>
+            {
+                if (id == seat)
+                {
+                    descentsAnnounced++;
+                }
+            };
+
+            var middleX = race.Finish.x;
+            var middleZ = race.Finish.z;
+
+            // ── The 투하구, gathered by the storey whose middle they sit in ───────
+            var chutesByStorey = new List<Chute>?[RaceState.Storeys];
+            var allChutes = Object.FindObjectsByType<Chute>(FindObjectsSortMode.None);
+            for (var i = 0; i < allChutes.Length; i++)
+            {
+                var above = allChutes[i].StoreyBelow - 1;
+                if (above < 0 || above >= RaceState.Storeys)
+                {
+                    continue;
+                }
+
+                (chutesByStorey[above] ??= new List<Chute>()).Add(allChutes[i]);
+            }
+
+            // ── Link one: where the runner woke up ───────────────────────────────
+            // One step first. §01's phase flag is recomputed inside StepMatch, so reading it
+            // straight after BeginMatch reports the constructor rather than the world. That trap
+            // caught MonsterKillTests first time out and it is the same flag.
+            director.StepMatch(GameConstants.FixedStep);
+            yield return null;
+
+            var spawn = player.position;
+            _placed = spawn;
+
+            var spawnStorey = StoreyOf(spawn.y);
+            var spawnRim = Chebyshev(spawn.x - middleX, spawn.z - middleZ);
+
+            Assert.That(director.LocalPlayerOnSurface, Is.False,
+                "§01's race has no 지상: a runner starts on the rim of B1 with the maze in front of them and "
+                + "nothing behind. A match that begins on the surface is running the co-operative flow.");
+            Assert.That(spawnStorey, Is.Zero,
+                "the runner did not spawn on B1. They are on B" + (spawnStorey + 1) + ", y = "
+                + spawn.y.ToString("0.00") + " m. §01: 20명이 B1 외곽 고리에서 출발한다.");
+            Assert.That(spawnRim, Is.GreaterThan(RimWallMetres),
+                "the runner spawned " + spawnRim.ToString("0.0") + " m (Chebyshev) from the middle of B1, inside "
+                + "RadialStorey's d = 8 wall. They belong on the 외곽 고리 at d ≥ 9 — beyond "
+                + RimWallMetres.ToString("0.0") + " m — with the whole storey between them and the 투하구. "
+                + "Spawning inside the wall gives away most of a floor before anybody moves.");
+
+            // ── Down the building ────────────────────────────────────────────────
+            for (var storey = 0; storey < RaceState.Storeys; storey++)
+            {
+                var floorY = -storey * StoreyPitchMetres;
+                var middle = new Vector3(middleX, floorY, middleZ);
+
+                var leg = new Leg { Storey = storey, StartedAt = player.position };
+                _legs.Add(leg);
+
+                // ── B-010: is this storey's middle reachable from its rim? ───────
+                // Pure NavMesh, measured before anybody walks anywhere, so the answer belongs to
+                // the bake and not to the warp that follows it.
+                leg.StartOnNavMesh = NavMesh.SamplePosition(
+                    player.position, out var fromHit, NavSnapMetres, NavMesh.AllAreas);
+                leg.MiddleOnNavMesh = NavMesh.SamplePosition(
+                    middle, out var middleHit, NavSnapMetres, NavMesh.AllAreas);
+
+                var middlePath = new NavMeshPath();
+                if (leg.StartOnNavMesh && leg.MiddleOnNavMesh
+                    && NavMesh.CalculatePath(fromHit.position, middleHit.position, NavMesh.AllAreas, middlePath))
+                {
+                    var corners = middlePath.corners;
+                    leg.MiddleStatus = middlePath.status;
+                    leg.MiddlePathMetres = PathLength(corners);
+                    leg.MiddlePathEnded = corners.Length > 0 ? corners[corners.Length - 1] : middle;
+                    leg.MiddleGapMetres = corners.Length > 0
+                        ? Chebyshev(corners[corners.Length - 1].x - middleX, corners[corners.Length - 1].z - middleZ)
+                        : float.PositiveInfinity;
+                    leg.MiddleReachable = middlePath.status == NavMeshPathStatus.PathComplete;
+                }
+                else
+                {
+                    leg.MiddleStatus = NavMeshPathStatus.PathInvalid;
+                    leg.MiddleGapMetres = float.PositiveInfinity;
+                }
+
+                // ── Where this leg walks to ──────────────────────────────────────
+                // On the bottom storey that is §02's finish. Everywhere else it is the nearer of
+                // the storey's two 투하구, which is what a runner picks and is DescentMap's whole
+                // argument for hanging two of them.
+                var chutes = chutesByStorey[storey];
+                Chute? chute = null;
+                if (storey < RaceState.Storeys - 1 && chutes != null && chutes.Count > 0)
+                {
+                    chute = Nearest(chutes, player.position);
+                }
+
+                leg.HadChute = chute != null;
+                var target = chute != null ? chute.transform.position : middle;
+
+                // ── Cross the maze ───────────────────────────────────────────────
+                var walkPath = new NavMeshPath();
+                var walkable = leg.StartOnNavMesh
+                               && NavMesh.SamplePosition(target, out var targetHit, NavSnapMetres, NavMesh.AllAreas)
+                               && NavMesh.CalculatePath(fromHit.position, targetHit.position, NavMesh.AllAreas, walkPath)
+                               && walkPath.status == NavMeshPathStatus.PathComplete;
+
+                if (walkable)
+                {
+                    yield return Follow(director, player, walkPath.corners);
+                }
+                else
+                {
+                    // The NavMesh cannot get there. Recorded as the failure it is, and then
+                    // stepped over — so the storeys below this one are still measured by this
+                    // run instead of being hidden behind it.
+                    leg.Warped = true;
+                    Place(player, new Vector3(target.x, player.position.y, target.z));
+
+                    // StepAndWatch and not a bare StepMatch, and before the yield rather than
+                    // after it: a warp lands squarely in the mouth, so the 투하구 fires on this
+                    // very step. Stepping without watching left _carriedTo holding whatever the
+                    // last leg put there — on the first run of this test that was Vector3.zero,
+                    // and it produced seven confident failures measured against the world origin.
+                    StepAndWatch(director, player);
+                    yield return null;
+                }
+
+                // The last couple of metres, straight, inside Chamber_Open_3x3 — 7.5 m across, so
+                // this never crosses a wall. NavMesh.SamplePosition may leave the path's end up
+                // to NavSnapMetres from the mouth, which is outside Chute.MouthRadiusMetres
+                // (1.4 m), and a runner who stopped there would stand beside the hole forever.
+                if (!CarriedByTheMatch(player) && Flat(player.position - target) > 0.05f)
+                {
+                    yield return Approach(director, player, target);
+                }
+
+                // Read at the middle, which is the only place these two can be wrong. §01's
+                // 지상 apron is a circle in plan around MatchMap.Entrance, and on the descent
+                // map that marker IS the middle of the tower — so the question "am I on the
+                // surface" is asked of a point every storey sits directly under.
+                leg.MatchRunning = director.IsRunning;
+                leg.SurfaceAtTheMiddle = director.LocalPlayerOnSurface;
+
+                // The same question asked of the geometry rather than of a flag. The flag is
+                // recomputed inside StepFixed, which MatchDirector also runs from its own
+                // FixedUpdate, so which side of the line it happens to be on when a coroutine
+                // looks depends on frame timing. MatchMap.IsOnSurface does not: it is the rule
+                // itself, and if it calls a storey's middle 지상 then it does so every tick a
+                // runner spends there.
+                var map = director.Map;
+                leg.MapSaysTheMiddleIsSurface = map != null && map.IsOnSurface(middle);
+
+                if (chute == null)
+                {
+                    break;
+                }
+
+                // ── Down the hole ────────────────────────────────────────────────
+                // Standing in the mouth and holding the ground, the way the owner stood in front
+                // of the creature. Three seconds is 150 samples of a check that runs every step.
+                var stood = player.position;
+                var waited = 0f;
+                var breaths = 0;
+                var carried = CarriedByTheMatch(player);
+                while (waited < 3f && !carried)
+                {
+                    Place(player, stood);
+                    carried = StepAndWatch(director, player);
+                    waited += GameConstants.FixedStep;
+
+                    // Yielded in batches, and only while nothing has happened. MatchDirector
+                    // steps itself from its own FixedUpdate, so a frame handed back to the
+                    // engine is a step this test did not watch — harmless while the runner is
+                    // just standing there, and the thing to avoid at the instant of the drop.
+                    if (!carried && ++breaths % 25 == 0)
+                    {
+                        yield return null;
+                        carried = Caught(player);
+                    }
+                }
+
+                leg.Carried = carried;
+
+                // Which one took them, rather than which one they were walking to. A storey has
+                // two 투하구 two cells apart, and a route to the far one can pass through the
+                // near one's mouth — that is a runner falling down a chute, not a bug, and
+                // asserting against the chosen one would call it a bug.
+                var taken = chute;
+                leg.MissedDropPointBy = float.PositiveInfinity;
+                if (leg.Carried && chutes != null)
+                {
+                    for (var c = 0; c < chutes.Count; c++)
+                    {
+                        var miss = Vector3.Distance(_carriedTo, chutes[c].DropPoint());
+                        if (miss < leg.MissedDropPointBy)
+                        {
+                            leg.MissedDropPointBy = miss;
+                            taken = chutes[c];
+                        }
+                    }
+
+                    // A centimetre. The drop is a straight assignment of Chute.DropPoint inside
+                    // CheckChutes, so the only thing between it and this reading is float
+                    // arithmetic — not a tolerance for how far off the mark is acceptable.
+                    leg.LandedWhereTheChuteSaid = leg.MissedDropPointBy < 0.01f;
+                }
+
+                leg.LandedStorey = StoreyOf(taken.Landing.y);
+                leg.LandingRimMetres = Chebyshev(taken.Landing.x - middleX, taken.Landing.z - middleZ);
+
+                var duringDescent = race.Rules;
+                leg.RecordedStorey = duringDescent != null ? duringDescent[seat].Storey : -1;
+
+                // ── Stand up on the rim below ────────────────────────────────────
+                // §05's gravity does the last three metres in the shipped game; a headless test
+                // steps no PlayerMotor, so the body is set down on the landing the chute itself
+                // chose. What is asserted above is the chute's own arithmetic, before the setting
+                // down touches anything.
+                var landing = taken.Landing;
+                if (NavMesh.SamplePosition(landing, out var landHit, NavSnapMetres, NavMesh.AllAreas))
+                {
+                    landing = landHit.position;
+                }
+
+                Place(player, landing);
+                director.StepMatch(GameConstants.FixedStep);
+                yield return null;
+            }
+
+            // ── Touch the middle of B8 ───────────────────────────────────────────
+            // RaceDirector samples arrivals inside its own Tick, which MatchDirector runs at the
+            // end of every fixed step. Half a second standing on the finish is 25 samples of a
+            // 2.5 m circle.
+            var settle = 0f;
+            while (settle < 0.5f)
+            {
+                Place(player, player.position);
+                director.StepMatch(GameConstants.FixedStep);
+                settle += GameConstants.FixedStep;
+                yield return null;
+            }
+
+            var atTheEnd = race.Rules;
+            var finalStorey = atTheEnd != null ? atTheEnd[seat].Storey : -1;
+            var finalPlace = atTheEnd != null ? atTheEnd[seat].Place : -1;
+            var report = Report(race, player.position, middleX, middleZ, seat, descentsAnnounced, allChutes.Length);
+
+            // ── Every broken link, gathered before any of them is thrown ─────────
+            // Not a chain of Assert.That. The first one to fire would end the test and hide
+            // everything under it, and "B1's middle is unreachable" would then be the whole
+            // report of a building with eight storeys in it. Collected in the order the game
+            // depends on them, so the first line of the failure is the deepest cause.
+            var broken = new List<string>();
+
+            // ── Link two: every storey's middle is reachable from its rim (B-010) ─
+            for (var i = 0; i < _legs.Count; i++)
+            {
+                var leg = _legs[i];
+                if (leg.MiddleReachable)
+                {
+                    continue;
+                }
+
+                broken.Add(
+                    "B-010 · B" + (leg.Storey + 1) + " — 외곽에서 중심까지 갈 수 없다: " + leg.MiddleStatus
+                    + (leg.MiddleOnNavMesh ? string.Empty
+                        : " (중심 " + NavSnapMetres.ToString("0.0") + " m 안에 NavMesh가 없다)")
+                    + (leg.StartOnNavMesh ? string.Empty : " (출발점이 NavMesh 밖이다)")
+                    + ". 중심 " + new Vector3(middleX, -leg.Storey * StoreyPitchMetres, middleZ).ToString("0.00")
+                    + " 에서 " + Chebyshev(leg.StartedAt.x - middleX, leg.StartedAt.z - middleZ).ToString("0.0")
+                    + " m 떨어진 외곽 " + leg.StartedAt.ToString("0.00") + " 에서 출발했고, 경로는 "
+                    + (float.IsInfinity(leg.MiddleGapMetres)
+                        ? "만들어지지도 않았다"
+                        : leg.MiddlePathEnded.ToString("0.00") + " 에서 끊겼다 — 중심까지 "
+                          + leg.MiddleGapMetres.ToString("0.0") + " m ("
+                          + (leg.MiddleGapMetres / CellMetres).ToString("0.0")
+                          + " 칸) 남은 자리. RadialStorey의 d = 2 벽, 중심 방으로 들어가는 단 하나의 관문이다")
+                    + ". 이 층이 막혀 있으면 §01의 하강은 그 아래로 존재하지 않는다 — 아무도 이 층의 "
+                    + "투하구에 닿지 못하고, 밑의 층들은 도달할 수 없는 방이다.");
+            }
+
+            // ── Link three: a 투하구 drops one storey, onto the rim ───────────────
+            for (var i = 0; i < _legs.Count; i++)
+            {
+                var leg = _legs[i];
+                if (leg.Storey >= RaceState.Storeys - 1)
+                {
+                    continue;
+                }
+
+                if (!leg.HadChute)
+                {
+                    broken.Add(
+                        "투하구 · B" + (leg.Storey + 1) + " has no 투하구 paired with a 착지, so the descent stops "
+                        + "here. §01 gives every storey but the last a pair; a storey without one is the bottom "
+                        + "of the game whatever the map says.");
+                    continue;
+                }
+
+                if (!leg.Carried)
+                {
+                    broken.Add(
+                        "투하구 · B" + (leg.Storey + 1) + ": the runner stood in the mouth for three seconds and "
+                        + "was not taken. MatchDirector.CheckChutes or Chute.Swallows refused — the mouth is "
+                        + Chute.MouthRadiusMetres.ToString("0.0") + " m in plan with a 2.6 m height window, and an "
+                        + "unbound chute swallows nobody at all.");
+                    continue;
+                }
+
+                if (!leg.LandedWhereTheChuteSaid)
+                {
+                    broken.Add(
+                        "투하구 · B" + (leg.Storey + 1) + ": the match moved the runner, but to a point "
+                        + leg.MissedDropPointBy.ToString("0.00") + " m from the nearest of this storey's drop "
+                        + "points. Chute.DropPoint is its 착지 plus " + Chute.DropHeightMetres.ToString("0.0")
+                        + " m and CheckChutes assigns it directly, so this reading was taken inside the step "
+                        + "that moved them — nothing had a frame in which to fall.");
+                }
+
+                if (leg.LandedStorey != leg.Storey + 1)
+                {
+                    broken.Add(
+                        "투하구 · B" + (leg.Storey + 1) + "'s chute landed the runner on B" + (leg.LandedStorey + 1)
+                        + ". A chute is exactly one storey; anything else is a hole through the building.");
+                }
+
+                if (leg.LandingRimMetres <= RimWallMetres)
+                {
+                    broken.Add(
+                        "투하구 · B" + (leg.Storey + 1) + "'s chute landed the runner "
+                        + leg.LandingRimMetres.ToString("0.0") + " m (Chebyshev) from the middle of B"
+                        + (leg.LandedStorey + 1) + ", inside RadialStorey's d = 8 wall. §01: 착지는 다음 층의 "
+                        + "외곽이다. Land anybody near a middle and one runner reaching one centre falls the rest "
+                        + "of the way — the building becomes a single maze.");
+                }
+            }
+
+            // ── Link four: §02 wrote the descents down ───────────────────────────
+            if (descentsAnnounced != Drops)
+            {
+                broken.Add(
+                    "§02 · the race heard " + descentsAnnounced + " descent(s) for seat " + seat
+                    + " and the runner fell " + Drops + " times. RaceDirector.Descended is what the standings, "
+                    + "the HUD and §13's clients are all built on: a drop the race never hears did not happen as "
+                    + "far as §02 is concerned.");
+            }
+
+            if (finalStorey != RaceState.Storeys - 1)
+            {
+                broken.Add(
+                    "§02 · the race still has the runner on B" + (finalStorey + 1) + " after " + Drops
+                    + " 투하구. RaceState.ReportFinish refuses an arrival from anybody whose storey is not the "
+                    + "bottom one — 'you have to have got there' — so while this number is wrong the finish is "
+                    + "unreachable no matter where the body stands.");
+            }
+
+            // ── Link five: the finish fires ──────────────────────────────────────
+            if (race.WinnerId != seat)
+            {
+                broken.Add(
+                    "§02 · the runner is standing on the middle of B8 and the race has no winner (WinnerId "
+                    + race.WinnerId + "). This is the end of the whole chain — spawn, cross, fall, seven times, "
+                    + "arrive — and the arrival did not register.");
+            }
+            else if (finalPlace != 1)
+            {
+                broken.Add("§02 · the first to touch the middle of B8 is 1위, and this runner was given "
+                           + finalPlace + ".");
+            }
+
+            if (race.ExitOf(seat) != RaceExit.Finished)
+            {
+                broken.Add("§02 · the runner's race was closed as " + race.ExitOf(seat) + ", not Finished.");
+            }
+
+            // ── Link six: the middle of a storey is not §01's 지상 ────────────────
+            // BeginMatch says of the race path that the surface flag is "never true again for the
+            // rest of the match". The apron is a MatchMap.SurfaceRadius circle around
+            // MatchMap.Entrance, MatchMap.IsOnSurface zeroes the y before measuring, and on this
+            // map the 출입구 marker is the middle of B8 — which every other storey's middle sits
+            // directly above. Last in the list because it breaks the race rather than the chain:
+            // a runner still reaches the bottom, they just do the last stretch of every floor in
+            // a 안전 지대 where §06 has to forget them and §01's 귀환 fires once per storey.
+            for (var i = 0; i < _legs.Count; i++)
+            {
+                if (!_legs[i].MatchRunning)
+                {
+                    broken.Add(
+                        "§01 · the match stopped stepping while the runner was in the middle of B"
+                        + (_legs[i].Storey + 1) + ". MatchDirector.StepMatch is a no-op once EndMatch has run, so "
+                        + "everything measured below this storey is a frozen world.");
+                }
+
+                if (_legs[i].MapSaysTheMiddleIsSurface)
+                {
+                    broken.Add(
+                        "§01 · MatchMap.IsOnSurface calls the middle of B" + (_legs[i].Storey + 1) + " 지상"
+                        + (_legs[i].SurfaceAtTheMiddle ? ", and the runner standing there was flagged as being on "
+                            + "the surface" : string.Empty)
+                        + ". The race has no surface — the whole building is 위험 구역 — but the rule measures a "
+                        + MatchMap.SurfaceRadius.ToString("0") + " m circle in plan around the 출입구 marker with "
+                        + "the height thrown away, and on this map that marker is the middle of the tower which "
+                        + "every storey sits directly above. §06 has to forget a runner inside it and §01's 귀환 "
+                        + "fires there: 숨 돌리기, sell, resupply — once per storey, six cells short of the 투하구.");
+                }
+            }
+
+            if (broken.Count > 0)
+            {
+                var why = new StringBuilder();
+                why.AppendLine("§01의 하강이 끊긴 곳 " + broken.Count + "군데. 위에서부터 원인에 가깝다:");
+                why.AppendLine();
+                for (var i = 0; i < broken.Count; i++)
+                {
+                    why.AppendLine("  " + (i + 1) + ". " + broken[i]);
+                    why.AppendLine();
+                }
+
+                why.Append(report);
+                Assert.Fail(why.ToString());
+            }
+
+            Debug.Log("[Test] §01 하강 완주 — B1 외곽에서 B8 중심까지, 투하구 " + descentsAnnounced + "회." + report);
+        }
+
+        // ------------------------------------------------------------------
+        // Walking.
+        // ------------------------------------------------------------------
+
+        /// <summary>
+        /// Warps the runner along a NavMesh path, corner to corner, stepping the real match at
+        /// <see cref="GameConstants.FixedStep"/> the whole way — so the 투하구 gets exactly the
+        /// sampling rate the shipped game gives it. Stops the moment the match takes the body.
+        /// </summary>
+        private IEnumerator Follow(MatchDirector director, Transform player, Vector3[] corners)
+        {
+            var step = GameConstants.RunnerSprintSpeed * GameConstants.FixedStep;
+            var frames = 0;
+
+            for (var c = 0; c < corners.Length; c++)
+            {
+                var corner = corners[c];
+
+                // Bounded by the distance rather than by a clock: a corner that cannot be reached
+                // is a bug in this loop, not in the game, and an unbounded while would hang the
+                // run instead of failing it.
+                var guard = Mathf.CeilToInt(Flat(corner - player.position) / step) + 10;
+
+                while (guard-- > 0 && Flat(corner - player.position) > step)
+                {
+                    Place(player, Vector3.MoveTowards(player.position, corner, step));
+
+                    if (StepAndWatch(director, player))
+                    {
+                        yield break;
+                    }
+
+                    // Yielded in batches. Ten thousand fixed steps is ten thousand frames
+                    // otherwise, and nothing in a headless match needs a frame between two 11 cm
+                    // moves — though the engine does need one occasionally.
+                    if (++frames % 25 == 0)
+                    {
+                        yield return null;
+
+                        // The match stepped itself while that frame was out. See Caught.
+                        if (Caught(player))
+                        {
+                            yield break;
+                        }
+                    }
+                }
+
+                Place(player, corner);
+
+                if (StepAndWatch(director, player))
+                {
+                    yield break;
+                }
+            }
+
+            yield return null;
+        }
+
+        /// <summary>
+        /// The last stretch, straight and at walking pace. Only ever used inside the middle
+        /// chamber, where there is nothing to walk into.
+        /// </summary>
+        private IEnumerator Approach(MatchDirector director, Transform player, Vector3 target)
+        {
+            var step = GameConstants.WalkSpeed * GameConstants.FixedStep;
+            var flatTarget = new Vector3(target.x, player.position.y, target.z);
+            var guard = Mathf.CeilToInt(Flat(flatTarget - player.position) / step) + 25;
+            var frames = 0;
+
+            while (guard-- > 0)
+            {
+                var to = Vector3.MoveTowards(player.position, flatTarget, step);
+                to.y = player.position.y;
+                Place(player, to);
+
+                if (StepAndWatch(director, player) || Flat(player.position - flatTarget) <= 0.01f)
+                {
+                    break;
+                }
+
+                if (++frames % 25 == 0)
+                {
+                    yield return null;
+                }
+            }
+
+            yield return null;
+        }
+
+        /// <summary>
+        /// Puts a body somewhere and remembers where, so <see cref="CarriedByTheMatch"/> can tell
+        /// the test's own warping apart from the match moving the player.
+        /// <para>
+        /// A <c>CharacterController</c> ignores writes to <c>transform.position</c> while it is
+        /// enabled, which is exactly the kind of silent no-op that makes a test pass against a
+        /// player who never moved.
+        /// </para>
+        /// </summary>
+        private void Place(Transform root, Vector3 to)
+        {
+            var controller = root.GetComponent<CharacterController>();
+            if (controller == null)
+            {
+                root.position = to;
+                _placed = root.position;
+                return;
+            }
+
+            controller.enabled = false;
+            root.position = to;
+            controller.enabled = true;
+            _placed = root.position;
+        }
+
+        /// <summary>
+        /// True when the body is somewhere this test did not put it. In a headless race step the
+        /// only thing that moves a player is <c>MatchDirector.CheckChutes</c>, so this is the
+        /// 투하구 firing — observed rather than assumed, which is the difference between testing
+        /// the chute and testing the arithmetic this file could have done itself.
+        /// </summary>
+        private bool CarriedByTheMatch(Transform root)
+        {
+            return (root.position - _placed).sqrMagnitude > CarriedMetres * CarriedMetres;
+        }
+
+        /// <summary>
+        /// One fixed step of the real match, and a look at the body the instant it returns.
+        /// Records <see cref="_carriedTo"/> the moment the 투하구 fires, before any frame passes
+        /// and before §05's gravity gets a chance to move the evidence.
+        /// </summary>
+        private bool StepAndWatch(MatchDirector director, Transform player)
+        {
+            director.StepMatch(GameConstants.FixedStep);
+            if (!CarriedByTheMatch(player))
+            {
+                return false;
+            }
+
+            _carriedTo = player.position;
+            return true;
+        }
+
+        /// <summary>
+        /// The same look, taken after a frame was handed back to the engine rather than after a
+        /// step this test drove. <c>MatchDirector.FixedUpdate</c> steps the match on its own, so
+        /// a 투하구 can fire inside a <c>yield</c>; this catches that, at the cost of whatever
+        /// §05's gravity did in the one physics tick in between.
+        /// </summary>
+        private bool Caught(Transform player)
+        {
+            if (!CarriedByTheMatch(player))
+            {
+                return false;
+            }
+
+            _carriedTo = player.position;
+            return true;
+        }
+
+        // ------------------------------------------------------------------
+        // The report.
+        // ------------------------------------------------------------------
+
+        private string Report(
+            RaceDirector race, Vector3 finalPosition, float middleX, float middleZ, int seat, int announced, int chutes)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine();
+            sb.AppendLine();
+
+            // Which building this was measured in. The NavMesh is a separate asset the scene
+            // references by GUID, so a scene and a bake of different vintages is a real way for
+            // every number below to be true of nothing — say what was loaded rather than assume.
+            sb.AppendLine("씬 " + SoloScene + " · 시드 " + Seed + " · 투하구 " + chutes + "개 (필요 "
+                          + (Drops * 2) + "개, 층마다 남북 한 쌍)");
+            sb.AppendLine("── §01 하강, 층별 ────────────────────────────────────────────────");
+            sb.AppendLine("층   외곽→중심 (B-010)                투하구                        §02 기록  중심에서");
+
+            for (var i = 0; i < _legs.Count; i++)
+            {
+                var leg = _legs[i];
+
+                var reach = leg.MiddleReachable
+                    ? "PathComplete " + leg.MiddlePathMetres.ToString("0.0") + " m"
+                    : leg.MiddleStatus + (leg.MiddleOnNavMesh ? string.Empty : " (중심에 NavMesh 없음)");
+                if (leg.Warped)
+                {
+                    reach += " [경로 없음 — 테스트가 건너뜀]";
+                }
+
+                var drop = !leg.HadChute
+                    ? (leg.Storey == RaceState.Storeys - 1 ? "도착점" : "투하구 없음")
+                    : !leg.Carried
+                        ? "삼키지 않음"
+                        : "↓ B" + (leg.LandedStorey + 1) + "  외곽 " + leg.LandingRimMetres.ToString("0.0") + " m"
+                          + (leg.LandedWhereTheChuteSaid
+                              ? string.Empty
+                              : " (착지점에서 " + leg.MissedDropPointBy.ToString("0.00") + " m)");
+
+                var recorded = leg.RecordedStorey >= 0 ? "B" + (leg.RecordedStorey + 1) : "—";
+                var here = (leg.MatchRunning ? string.Empty : " 경기 정지됨")
+                           + (leg.MapSaysTheMiddleIsSurface ? " 중심이 §01 지상" : string.Empty)
+                           + (leg.SurfaceAtTheMiddle ? " (주자도 지상 판정)" : string.Empty);
+
+                sb.AppendLine(
+                    ("B" + (leg.Storey + 1)).PadRight(5) + reach.PadRight(33) + drop.PadRight(30)
+                    + recorded.PadRight(9) + here);
+            }
+
+            var rules = race.Rules;
+
+            sb.AppendLine();
+            sb.AppendLine("도착점 " + race.Finish.ToString("0.00") + " (판정은 X/Z만), 마지막 위치 "
+                          + finalPosition.ToString("0.00") + ", 중심까지 "
+                          + Flat(new Vector3(finalPosition.x - middleX, 0f, finalPosition.z - middleZ)).ToString("0.00")
+                          + " m — 판정 반경은 " + RaceDirector.FinishRadiusMetres.ToString("0.0") + " m");
+            sb.AppendLine("§02 Descended " + announced + "회 / 필요 " + Drops + "회 · 좌석 " + seat + "의 층 "
+                          + (rules != null ? "B" + (rules[seat].Storey + 1) : "—")
+                          + " · 승자 " + race.WinnerId + " · 완주 " + race.Finishers + "명 · 경과 "
+                          + race.ElapsedSeconds.ToString("0") + "초");
+            return sb.ToString();
+        }
+
+        // ------------------------------------------------------------------
+        // Measurements.
+        // ------------------------------------------------------------------
+
+        /// <summary>
+        /// Which storey a height belongs to — the same rule <c>MatchDirector.AttachChutes</c>
+        /// uses to bind a chute: the floor's own y over the storey pitch. 0 is B1.
+        /// </summary>
+        private static int StoreyOf(float y)
+        {
+            return Mathf.RoundToInt(-y / StoreyPitchMetres);
+        }
+
+        /// <summary>
+        /// Square-ring distance. <c>RadialStorey</c> lays its bands as square rings at Chebyshev
+        /// radii, so "how far out is this" is a max and not a hypotenuse — a corner cell of the
+        /// 외곽 고리 is on the rim even though it is 35 m from the middle as the crow flies.
+        /// </summary>
+        private static float Chebyshev(float dx, float dz)
+        {
+            return Mathf.Max(Mathf.Abs(dx), Mathf.Abs(dz));
+        }
+
+        private static float Flat(Vector3 v)
+        {
+            v.y = 0f;
+            return v.magnitude;
+        }
+
+        private static float PathLength(Vector3[] corners)
+        {
+            var total = 0f;
+            for (var i = 1; i < corners.Length; i++)
+            {
+                total += Vector3.Distance(corners[i - 1], corners[i]);
+            }
+
+            return total;
+        }
+
+        private static Chute Nearest(List<Chute> chutes, Vector3 from)
+        {
+            var best = chutes[0];
+            var bestGap = Flat(best.transform.position - from);
+            for (var i = 1; i < chutes.Count; i++)
+            {
+                var gap = Flat(chutes[i].transform.position - from);
+                if (gap < bestGap)
+                {
+                    best = chutes[i];
+                    bestGap = gap;
+                }
+            }
+
+            return best;
+        }
+
+        private static Transform? FindPlayerRoot()
+        {
+            var motor = Object.FindFirstObjectByType<HorrorGame.Gameplay.Player.PlayerMotor>();
+            return motor != null ? motor.transform : null;
+        }
+    }
+}
+#endif

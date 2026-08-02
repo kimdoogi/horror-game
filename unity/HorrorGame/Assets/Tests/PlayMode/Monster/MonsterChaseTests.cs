@@ -37,7 +37,9 @@ namespace HorrorGame.Tests.PlayMode.Monster
     /// surface:
     /// </para>
     /// <list type="number">
-    /// <item>The monster closes on a player it has been told about, and arrives.</item>
+    /// <item>The monster closes on a runner it has been told about, and arrives —
+    /// anywhere on its own storey, because §12-C's 투하구 are one-way and a creature is a
+    /// per-storey hazard.</item>
     /// <item>§06's release fires at 12 m + 3 s of cover, and sends the monster to the
     /// <em>last seen</em> position rather than to where the player actually is — the
     /// clause that makes the direction of an escape a strategy.</item>
@@ -172,8 +174,8 @@ namespace HorrorGame.Tests.PlayMode.Monster
         // ====================================================================
 
         /// <summary>
-        /// The monster is told where a player is and hunts them across the map, from its
-        /// own §12 spawn to a player spawn, on the baked surface.
+        /// The monster is told where a runner is and hunts them across its own storey,
+        /// from its §12 spawn to the furthest place on that floor, on the baked surface.
         /// <para>
         /// Two assertions, and the second is the one B-001 failed. <b>Closing:</b> the
         /// walk still to be done shrinks, sampled every second, so a monster that made
@@ -184,25 +186,64 @@ namespace HorrorGame.Tests.PlayMode.Monster
         /// <para>
         /// The player stands still. That is not a soft case — it is the isolating one:
         /// a stationary target removes every variable except whether the navigation
-        /// surface joins the two spawns, which is precisely what was broken.
+        /// surface joins the two points, which is precisely what was broken.
+        /// </para>
+        /// <para>
+        /// <b>Why the target is no longer a PlayerSpawn.</b> §01's race stacks eight
+        /// storeys in one column, starts all twenty runners on the rim of B1, and starts
+        /// the creature in the middle of B5. Every <c>PlayerSpawn_</c> marker is therefore
+        /// on B1 and the creature is three floors under them, so the co-operative version
+        /// of this question — "walk to a player spawn" — has no answer on this map and
+        /// failed with <i>no 'PlayerSpawn_' marker has a complete NavMesh path</i>. That is
+        /// not the creature being broken; it is the question being stale. §12-B lever 3
+        /// (「괴물이 안쪽을 순찰한다」) is written about the ring structure <em>every</em>
+        /// storey has, and §12-C makes the 투하구 the only vertical connection and makes it
+        /// one-way, so the honest question on a tower is <b>can the creature reach a runner
+        /// anywhere on its own floor</b> — which is what a runner descending through B5
+        /// actually meets.
+        /// </para>
+        /// <para>
+        /// <b>The storey is asserted, not assumed.</b> The sweep takes the furthest marker
+        /// with a complete path, and on a correct tower that can only be a marker on the
+        /// creature's own floor. If it ever is not, something has joined two storeys —
+        /// almost certainly a <c>NavMeshLink</c> laid over a 투하구, which is B-001's exact
+        /// reprise: <c>NavMesh.CalculatePath</c> routes through a link and
+        /// <c>MonsterBrain</c> walks <c>NavMeshPath.corners</c>, so a link turns the
+        /// connectivity audit green without the creature ever being able to make the drop
+        /// a runner has to make. The height check below is the tripwire for that.
         /// </para>
         /// </summary>
         [UnityTest]
-        public IEnumerator MonsterClosesDistanceAndReachesAPlayerAcrossTheMap()
+        public IEnumerator MonsterClosesDistanceAndReachesARunnerAcrossItsOwnStorey()
         {
             yield return LoadMap();
 
             var monsterSpawn = RequireMarker("MonsterSpawn");
-            var playerSpawn = FurthestReachableMarker(monsterSpawn, "PlayerSpawn_");
+            var runnerAt = FurthestReachableMarker(monsterSpawn);
 
-            var agent = BuildMonster(monsterSpawn, playerSpawn - monsterSpawn);
-            var player = playerSpawn;
+            // §01's storeys are one-way-connected, so a complete path may not change
+            // floor. Measured against the pitch the scene itself declares — see
+            // StoreyPitchMetres — rather than against a number written down here.
+            var pitch = StoreyPitchMetres();
+            var climb = Mathf.Abs(runnerAt.y - monsterSpawn.y);
+            if (pitch > 0f)
+            {
+                Assert.That(climb, Is.LessThan(pitch * 0.5f),
+                    "the furthest place the creature can walk to is " + Metres(climb) + " above or below its "
+                    + "own storey, and §12-C's 투하구 are one-way holes with no way back up. Something has "
+                    + "joined two floors on the NavMesh — a link over a chute is the likely one, and it makes "
+                    + "the connectivity audit green while the creature still cannot follow a runner down. "
+                    + "The storey pitch this scene declares is " + Metres(pitch) + ".");
+            }
+
+            var agent = BuildMonster(monsterSpawn, runnerAt - monsterSpawn);
+            var player = runnerAt;
 
             var opening = PathLength(agent.transform.position, player);
             Assert.That(opening, Is.LessThan(float.PositiveInfinity),
-                "There is no complete NavMesh path from the monster spawn to " + playerSpawn
-                + ". This is B-001 exactly: the antagonist cannot reach the player, and every "
-                + "assertion below would be measuring a monster walking into a wall.");
+                "There is no complete NavMesh path from the creature's spawn to " + runnerAt
+                + ". This is B-001 exactly: the antagonist cannot reach a runner standing on its own "
+                + "floor, and every assertion below would be measuring a monster walking into a wall.");
 
             var grab = MonsterRadius + PlayerRadius;
             var elapsed = 0f;
@@ -274,9 +315,12 @@ namespace HorrorGame.Tests.PlayMode.Monster
 
             var closingSpeed = reachedAt > 0f ? (opening - grab) / reachedAt : 0f;
 
-            Line("§14 Q1 — can the monster reach a player at all?");
-            Line("  route            " + Metres(opening) + " of NavMesh path, monster spawn → " + playerSpawn);
-            Line("  straight line    " + Metres(FlatDistance(monsterSpawn, playerSpawn)));
+            Line("§14 Q1 — can the creature reach a runner on its own storey at all?");
+            Line("  route            " + Metres(opening) + " of NavMesh path, creature spawn → " + runnerAt);
+            Line("  straight line    " + Metres(FlatDistance(monsterSpawn, runnerAt)));
+            Line("  storey           creature " + monsterSpawn.y.ToString("0.00", CultureInfo.InvariantCulture)
+                + " m, runner " + runnerAt.y.ToString("0.00", CultureInfo.InvariantCulture)
+                + " m, pitch " + (pitch > 0f ? Metres(pitch) : "no 투하구 on this map"));
             Line("  chase entered    " + (enteredChaseAt >= 0f ? Seconds(enteredChaseAt) : "never"));
             Line("  reached          " + (reachedAt > 0f ? Seconds(reachedAt) : "NOT REACHED in "
                 + Seconds(HuntTimeoutSeconds)));
@@ -297,8 +341,8 @@ namespace HorrorGame.Tests.PlayMode.Monster
             Assert.That(reachedAt, Is.GreaterThan(0f),
                 "The monster never got within " + Metres(grab) + " of a stationary player in "
                 + Seconds(HuntTimeoutSeconds) + ", starting " + Metres(opening) + " away along a complete "
-                + "path. This is B-001: §06's chase, §12's escape geometry and the Runner role all "
-                + "assume the antagonist can follow you anywhere you can walk. Read the post-mortem "
+                + "path. This is B-001: §06's chase and §12's escape geometry both assume the antagonist "
+                + "can follow you anywhere on its floor that you can walk. Read the post-mortem "
                 + "above — if the path is complete and corner 1 is 0.0 m away, the surface is fine and "
                 + "the monster is deadlocked on a duplicated path corner, which is what "
                 + "NavMesh.CalculatePath emits at a NavMeshLink.");
@@ -336,7 +380,7 @@ namespace HorrorGame.Tests.PlayMode.Monster
         /// and deliberately: the release rules and the ability to cross the map are two
         /// different claims, and hanging this measurement off a map-length hunt would let
         /// one broken surface hide the answer to the other question. See
-        /// <see cref="MonsterClosesDistanceAndReachesAPlayerAcrossTheMap"/> for that one.
+        /// <see cref="MonsterClosesDistanceAndReachesARunnerAcrossItsOwnStorey"/> for that one.
         /// </para>
         /// </summary>
         [UnityTest]
@@ -1218,17 +1262,27 @@ namespace HorrorGame.Tests.PlayMode.Monster
         }
 
         /// <summary>
-        /// The marker of its kind that is furthest from <paramref name="from"/> by NavMesh
+        /// The gameplay marker that is furthest from <paramref name="from"/> by NavMesh
         /// path — the longest honest hunt the map offers, and therefore the one most likely
         /// to cross whatever seam is left in the bake.
+        /// <para>
+        /// No name filter. On §01's tower the reachability test <em>is</em> the storey
+        /// filter: the 투하구 are one-way holes and not NavMesh links, so the set of markers
+        /// with a complete path from the creature is exactly the set on its own floor.
+        /// Asking for a particular kind of marker on top of that was what broke this test —
+        /// every <c>PlayerSpawn_</c> is on B1 and the creature is on B5, so the filter and
+        /// the map disagreed and the disagreement read as B-001.
+        /// </para>
         /// </summary>
-        private static Vector3 FurthestReachableMarker(Vector3 from, string prefix)
+        private static Vector3 FurthestReachableMarker(Vector3 from)
         {
             var best = Vector3.zero;
             var bestLength = -1f;
+            var considered = 0;
 
-            foreach (var candidate in Markers(prefix))
+            foreach (var candidate in Markers(string.Empty))
             {
+                considered++;
                 var length = PathLength(from, candidate);
                 if (length < float.PositiveInfinity && length > bestLength)
                 {
@@ -1238,10 +1292,71 @@ namespace HorrorGame.Tests.PlayMode.Monster
             }
 
             Assert.That(bestLength, Is.GreaterThan(0f),
-                "No '" + prefix + "' marker in " + MapScenePath + " has a complete NavMesh path from "
-                + from + ". That is B-001: the monster's spawn is on its own island.");
+                "None of the " + considered + " gameplay markers in " + MapScenePath + " has a complete "
+                + "NavMesh path from " + from + ". That is B-001: the creature's spawn is on its own island, "
+                + "and on a per-storey design that means its whole floor is unwalkable rather than merely "
+                + "cut off from the others.");
 
             return best;
+        }
+
+        /// <summary>
+        /// The height of one storey, read off the scene rather than written down.
+        /// <para>
+        /// The 투하구 mouths are laid one per storey down the same column, so the smallest
+        /// gap between two distinct mouth heights is the storey pitch — which makes this a
+        /// measurement of the building under test rather than a copy of
+        /// <c>MapKitCatalogue.StoreyMetres</c>, a constant this assembly cannot reference
+        /// (it is editor-only) and should not duplicate.
+        /// </para>
+        /// <para>
+        /// Returns 0 on a map with no 투하구, i.e. one that is not a §01 tower at all, and
+        /// the caller skips the storey check rather than inventing a pitch for it.
+        /// </para>
+        /// </summary>
+        private static float StoreyPitchMetres()
+        {
+            var heights = new List<float>();
+
+            for (var s = 0; s < SceneManager.sceneCount; s++)
+            {
+                var scene = SceneManager.GetSceneAt(s);
+                if (!scene.isLoaded)
+                {
+                    continue;
+                }
+
+                foreach (var root in scene.GetRootGameObjects())
+                {
+                    foreach (var t in root.GetComponentsInChildren<Transform>(includeInactive: true))
+                    {
+                        if (!t.name.StartsWith("투하구 ", System.StringComparison.Ordinal)
+                            || t.name.EndsWith(" 착지", System.StringComparison.Ordinal))
+                        {
+                            continue;
+                        }
+
+                        heights.Add(t.position.y);
+                    }
+                }
+            }
+
+            heights.Sort();
+
+            var pitch = float.PositiveInfinity;
+            for (var i = 1; i < heights.Count; i++)
+            {
+                var gap = heights[i] - heights[i - 1];
+
+                // Two mouths on the SAME storey are the pair §01 puts either side of the
+                // middle; they are the same height and must not be read as a pitch.
+                if (gap > 0.01f && gap < pitch)
+                {
+                    pitch = gap;
+                }
+            }
+
+            return float.IsInfinity(pitch) ? 0f : pitch;
         }
 
         /// <summary>

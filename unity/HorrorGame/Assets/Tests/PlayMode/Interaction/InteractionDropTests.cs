@@ -16,17 +16,23 @@ using UnityEngine.TestTools;
 namespace HorrorGame.Tests.PlayMode.Interaction
 {
     /// <summary>
-    /// The two things the owner found by playing: §08's dropped 전리품 hanging in the air,
-    /// and §08's shop opening without being asked for. Both are checked the way they were
-    /// found — a player standing in the world, a crosshair ray, and a real key event.
+    /// A thing the owner found by playing: a dropped 전리품 hanging in the air. It is
+    /// checked the way it was found — a player standing in the world, a crosshair ray, and
+    /// a real key event.
+    /// <para>
+    /// This file used to hold a second test, over §08's shop opening without being asked
+    /// for. §01's race deleted §08 and with it the 차량 the shop lived on, so that test was
+    /// removed rather than silenced; the reasoning is written out where it stood, below the
+    /// remaining test.
+    /// </para>
     /// <para>
     /// <b>Why not in EditMode.</b> <c>SoloMatchLoopTests</c> and
     /// <c>DropPlacementTests</c> both cover parts of this and both call the methods
     /// directly. That leaves the player's own path untested: the crosshair finding the
-    /// piece, the key being read, the panel taking the mouse. This project has already
-    /// shipped a build where every rule was right and none of that worked, with 575 green
-    /// tests behind it — <c>InteractionPickupTests</c> exists for exactly that reason and
-    /// this file is its other half.
+    /// piece and the key being read. This project has already shipped a build where every
+    /// rule was right and none of that worked, with 575 green tests behind it —
+    /// <c>InteractionPickupTests</c> exists for exactly that reason and this file is its
+    /// other half.
     /// </para>
     /// <para>
     /// It lives in the predefined assembly because <c>MatchDirector</c> and
@@ -221,85 +227,32 @@ namespace HorrorGame.Tests.PlayMode.Interaction
                 + Diagnose(camera!, piece, interactor));
         }
 
-        /// <summary>
-        /// §01's 귀환. Arriving at the van sells the 전리품 and it does not put a screen
-        /// up: the shop is the one panel operated with a cursor, and taking the mouse on a
-        /// position test is what the owner reported as 갑자기 상점이 열림. The key at the
-        /// 차량 is what opens it, and the prompt has to say so before it is pressed.
-        /// </summary>
-        [UnityTest]
-        public IEnumerator The_shop_stays_shut_on_arrival_and_opens_on_the_key_at_the_vehicle()
-        {
-            yield return LoadMatch();
-
-            var director = Object.FindFirstObjectByType<MatchDirector>();
-            var motor = Object.FindFirstObjectByType<PlayerMotor>();
-            Assert.That(director, Is.Not.Null, "the solo scene has no MatchDirector");
-            Assert.That(motor, Is.Not.Null, "the solo scene has no player rig");
-
-            var interactor = motor!.GetComponentInChildren<PlayerInteractor>();
-            var camera = motor.GetComponentInChildren<Camera>();
-            var input = motor.GetComponentInChildren<PlayerInputRouter>();
-            var map = director!.Map;
-            Assert.That(interactor, Is.Not.Null, "the player rig has no PlayerInteractor");
-            Assert.That(map, Is.Not.Null, "the match has no map");
-
-            var vehicle = Object.FindFirstObjectByType<SurfaceVehicleInteractable>();
-            Assert.That(vehicle, Is.Not.Null, "§08's 지상 차량 was never placed");
-
-            // Go down, then come back — the transition is the thing under test, and it
-            // only fires on the edge.
-            var below = Underground(map!);
-            Assert.That(below, Is.Not.Null, "every candidate site is inside the 출입구 apron; the map is unusable");
-
-            Warp(motor, below!.Value);
-            yield return WaitForFixedSteps();
-            Assert.That(director.LocalPlayerOnSurface, Is.False, "walking away from the 출입구 did not descend");
-
-            Warp(motor, map!.Entrance);
-            yield return WaitForFixedSteps();
-            Assert.That(director.LocalPlayerOnSurface, Is.True, "walking into the apron did not surface");
-
-            // The defect, in one line.
-            Assert.That(director.ShopOpen, Is.False,
-                "§08's shop opened by itself the moment the player reached the apron. §01 makes surfacing a "
-                + "deliberate act and this panel takes the mouse; it must wait to be asked for.");
-            Assert.That(input == null || input.LockCursor, Is.True,
-                "arriving at the van released the cursor, which is the mouse being taken away mid-play");
-
-            // Walk up to it and read the prompt. §03 forbids a HUD marker, so this line is
-            // the only place a player can learn which key opens §08's shop.
-            var standing = Approach(vehicle!, out var survey);
-            Assert.That(standing, Is.Not.Null,
-                "the 차량 could not be walked up to and looked at, so the shop cannot be opened at all.\n" + survey);
-
-            Park(motor, camera!, standing!.Value, AimPoint(vehicle!));
-            yield return null;
-
-            Assert.That(interactor!.Focus, Is.SameAs(vehicle),
-                "the crosshair does not find the 차량 from the apron.\n" + Diagnose(camera!, vehicle!, interactor));
-
-            var prompt = interactor.Prompt;
-            Assert.That(prompt, Is.Not.Null, "the interactor built no prompt screen");
-            Assert.That(prompt!.IsVisible, Is.True, "the prompt is not drawn while the 차량 is in the crosshair");
-            Assert.That(prompt.CurrentAction, Does.Contain(PlayerInteractor.InteractKeyLabel),
-                "the prompt never names the key that opens §08's shop. Action line was: '"
-                + prompt.CurrentAction + "'");
-
-            yield return PressInteract();
-
-            Assert.That(director.ShopOpen, Is.True,
-                "pressing the key at the 차량 did not open §08's shop (" + vehicle!.Refusal + ")");
-            Assert.That(input == null || !input.LockCursor, Is.True,
-                "§08's shop is open and the cursor is still locked, so nothing on it can be clicked");
-
-            yield return PressInteract();
-
-            Assert.That(director.ShopOpen, Is.False, "the same key did not close §08's shop again");
-            Assert.That(input == null || input.LockCursor, Is.True,
-                "closing §08's shop did not give §05's camera the mouse back");
-        }
-
+        // ------------------------------------------------------------------
+        // The_shop_stays_shut_on_arrival_and_opens_on_the_key_at_the_vehicle was
+        // DELETED here on 2026-08-03, with §08 itself.
+        //
+        // It asserted that arriving at the 차량 did not open the shop and that the key
+        // there did, and it failed with "§08's 지상 차량 was never placed". That is true
+        // and correct: the van is placed by MatchDirector.PlaceVehicle, which is on the
+        // co-operative branch of BeginMatch, and Map_FirstSketch_Solo.unity — the only
+        // scene in the project with a MatchDirector — serialises _raceMode: 1. §01's race
+        // has no 지상, no 차량 and no economy to shop in; DESCENT-PIVOT deleted §08.
+        //
+        // Coverage lost, and whether anything still needs it:
+        //   · The van, the shop panel and the surfacing edge that used to open it. Nothing
+        //     needs them — all three are unreachable on every scene the game ships.
+        //   · The cursor rule the test doubled as a guard for ("a panel that takes the
+        //     mouse must be asked for") is NOT lost: MatchPause is the only screen left
+        //     that takes the cursor, it sets PlayerInputRouter.LockCursor itself
+        //     (Scripts/UI/Shell/MatchPause.cs:121), and it is opened by a key by
+        //     construction — there is no position test left in the game that could open a
+        //     panel by itself, which was the whole defect.
+        //   · The crosshair-and-key path over a large prop is still covered, on the same
+        //     rig and in the same file, by the 궤짝 test above.
+        //
+        // The harness this test owned alone — Warp, WaitForFixedSteps, Underground and
+        // FixedStepsWaited — went with it; every one of them existed to cross §01's
+        // surface boundary, and MatchMap.HasSurface is false on a tower.
         // ------------------------------------------------------------------
         // Harness.
         // ------------------------------------------------------------------
@@ -320,79 +273,15 @@ namespace HorrorGame.Tests.PlayMode.Interaction
         }
 
         /// <summary>
-        /// Enough frames for <c>FixedUpdate</c> to have run at least once, so §01's phase
-        /// transition has had its chance. Yielding <c>WaitForFixedUpdate</c> alone can
-        /// return inside the same physics step the warp happened in.
-        /// </summary>
-        private static IEnumerator WaitForFixedSteps()
-        {
-            for (var i = 0; i < FixedStepsWaited; i++)
-            {
-                yield return new WaitForFixedUpdate();
-            }
-
-            yield return null;
-        }
-
-        /// <summary>Moves the rig without the controller undoing it on its next step.</summary>
-        private static void Warp(PlayerMotor motor, Vector3 target)
-        {
-            var controller = motor.GetComponent<CharacterController>();
-            if (controller != null)
-            {
-                controller.enabled = false;
-            }
-
-            motor.transform.position = target;
-
-            if (controller != null)
-            {
-                controller.enabled = true;
-            }
-
-            Physics.SyncTransforms();
-        }
-
-        /// <summary>
-        /// Somewhere outside §01's apron, as far from the monster's start as the layout
-        /// allows: §06's monster would legitimately walk over and end a test that stands
-        /// still, which would be correct behaviour and a useless run.
-        /// </summary>
-        private static Vector3? Underground(MatchMap map)
-        {
-            Vector3? best = null;
-            var bestDistance = -1f;
-            var monsterStart = map.MonsterSpawn != null ? map.MonsterSpawn.position : map.Entrance;
-
-            for (var i = 0; i < map.CandidateSites.Count; i++)
-            {
-                var site = map.CandidateSites[i].position;
-                if (map.IsOnSurface(site))
-                {
-                    continue;
-                }
-
-                var distance = Vector3.Distance(site, monsterStart);
-                if (distance > bestDistance)
-                {
-                    bestDistance = distance;
-                    best = site;
-                }
-            }
-
-            return best;
-        }
-
-        /// <summary>
         /// Where a player would stand to use a thing: on a floor, inside its own reach,
         /// with nothing between the eye and it.
         /// <para>
-        /// Rings of bearings rather than one fixed offset, because the two props this file
-        /// walks up to are 1.28 m and 6.69 m long and both are placed against §12's
-        /// geometry. A single stand-off would fail on the layout rather than on the defect
-        /// it is watching — and the inner rings matter for the 차량 specifically: its
-        /// trigger box is the size of the van, and a ray that starts <em>inside</em> a
-        /// collider does not hit it, so standing too close is the same as not being there.
+        /// Rings of bearings rather than one fixed offset, because the piece this file walks
+        /// up to is 1.28 m long, is dropped wherever the player was standing, and is placed
+        /// against §12's geometry. A single stand-off would fail on the layout rather than
+        /// on the defect it is watching. The inner rings still matter: a ray that starts
+        /// <em>inside</em> a trigger collider does not hit it, so standing too close is the
+        /// same as not being there.
         /// </para>
         /// </summary>
         private static Vector3? Approach(Interactable prop, out string survey)
@@ -566,9 +455,6 @@ namespace HorrorGame.Tests.PlayMode.Interaction
         /// <summary>Frames the key is held. More than one so a one-frame scheduling slip is visible.</summary>
         private const int HeldFrames = 3;
 
-        /// <summary>Physics steps waited on after a warp, so §01's phase edge is certain to have run.</summary>
-        private const int FixedStepsWaited = 3;
-
         /// <summary>The harness rig's eye above its feet, metres. Used only to aim the approach probe.</summary>
         private const float EyeHeightMetres = 1.63f;
 
@@ -578,7 +464,11 @@ namespace HorrorGame.Tests.PlayMode.Interaction
         /// <summary>How much further out each ring is, metres.</summary>
         private const float ApproachRingStepMetres = 0.6f;
 
-        /// <summary>Rings tried. The outermost has to clear a 6.69 m 차량's own trigger box.</summary>
+        /// <summary>
+        /// Rings tried. Eight is inherited from when this harness also had to clear a
+        /// 6.69 m §08 van's trigger box; it is kept because the 궤짝 is dropped in whatever
+        /// dead end the runner was in, and §12's dead ends are the tightest cells on the map.
+        /// </summary>
         private const int ApproachRings = 8;
 
         /// <summary>Bearings tried per ring. §12 puts things in corners and against walls.</summary>

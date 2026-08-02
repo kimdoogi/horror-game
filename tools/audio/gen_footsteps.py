@@ -4,6 +4,10 @@ Run:
     /Users/doogi/horror-game/tools/audio/.venv/bin/python \
         /Users/doogi/horror-game/tools/audio/gen_footsteps.py
 
+    # one material only; the other seven are read from disk and still measured,
+    # because the separation matrix is meaningless without all eight in it
+    ... gen_footsteps.py --only carpet
+
 WHAT THIS IS FOR IN GAMEPLAY TERMS
 ----------------------------------
 §04 gives the 청음사 (Listener) exactly one ability: read the monster's
@@ -14,10 +18,21 @@ on:
 
     A 나무 삐걱   B 타일 딱딱+반향   C 자갈 부스럭   D 콘크리트 둔탁   계단 금속 울림
 
+§04 then adds three more floors that §12's original table does not name, and adds
+them on a *different* axis. 침수, 흙 and 카펫 are a loudness ladder rather than
+three more timbres: water is the one surface that cannot be crossed unheard,
+carpet is where the Listener's channel runs out entirely, and earth sits between
+concrete and gravel. Their clarity numbers live in
+`GameConstants.ListenerClarity*` — 1.00, 0.40 and 0.22 — and section [6] of this
+file's output is where the shipped clips are checked against them.
+
+    침수 첨벙(가장 큼)   흙 퍽(둔함)   카펫 거의 무음(청음사의 사각)
+
 That makes these clips a **gameplay channel, not decoration**. §12 says it in as
 many words: "아트 결정이 아니라 시스템 결정이다." A player who cannot tell tile
 from concrete has no Listener role, so the deliverable here is not "footstep
-sounds" but *five mutually separable spectral identities*, verified by
+sounds" but *eight mutually separable identities* — separable by spectrum for the
+five §12 floors, and by spectrum *and level* for §04's three — verified by
 measurement at the bottom of this file, plus a monster whose steps are
 unmistakably not a teammate's.
 
@@ -49,7 +64,7 @@ The three actors, and why each exists
   band-limited **drag/scrape** after the impact, and an off-beat second contact
   ~85 ms late that no human gait produces.
 
-Four variants of each, per surface (60 clips). A single repeated footstep is
+Four variants of each, per surface (8 x 3 x 4 = 96 clips). A single repeated footstep is
 what makes a horror game feel cheap, and worse here: a machine-gun-identical
 step reads as a looping sound cue rather than as a creature walking, which is
 exactly the information §04 asks the Listener to extract.
@@ -117,6 +132,22 @@ The number the task pins, and it is not arbitrary: two materials inside ~1.4x
 of each other are the same timbre to a listener under stress in a dark room, and
 §12's zone-identification then fails silently — the Listener does not notice
 being wrong, they just report the wrong zone."""
+
+
+CLARITY: Dict[str, float] = {
+    "metal": 1.00, "water": 1.00, "tile": 0.85, "wood": 0.80,
+    "gravel": 0.70, "concrete": 0.50, "earth": 0.40, "carpet": 0.22,
+}
+"""§04's per-surface clarity, mirroring GameConstants.ListenerClarity*.
+
+Printed beside the measured levels so the two can be compared at a glance. It is
+deliberately *not* a formula the levels are derived from: clarity drives how
+accurate the Listener's position fix is, which is a Core rule, while the level
+below drives what a player's ears get, and the five original floors already show
+the two are only loosely coupled (금속 is clarity 1.00 at -0.5 dB, 타일 is 0.85 at
+0.0 dB). What the three new surfaces must honour is the *ordering* at the ends —
+침수 loudest, 카펫 quietest — because those two are the ones §04 makes promises
+about."""
 
 
 def seed_for(*parts: object) -> int:
@@ -212,8 +243,48 @@ class Surface:
     grain_band: Tuple[float, float] = (1500.0, 9000.0)
     grain_spread: float = 0.075
     grain_thud: float = 0.0
-    """Gravel only. §12: 부스럭 — many tiny impacts, so there is no single
-    struck object to model and `grains` replaces the modal body."""
+    """Gravel and water. Many tiny impacts, so there is no single struck object
+    to model and `grains` replaces the modal body — §12's 자갈 부스럭 is a bed of
+    stones shifting, and §04's 침수 is a sheet of water coming apart into spray.
+    Both are scatters; what separates them is `grain_band`, how far the scatter
+    is allowed to fly (`grain_spread`), and the slap underneath it."""
+
+    grit: float = 0.0
+    grit_count: int = 0
+    grit_band: Tuple[float, float] = (900.0, 4200.0)
+    grit_spread: float = 0.055
+    """Earth. A scatter laid *over* a modal body rather than replacing it.
+
+    Dug soil is not gravel: the foot compresses a mass that answers as one dull
+    body, and only the loose particles on top rattle. Modelling it as pure
+    grains loses the compression, and as a pure impact loses the 흙 entirely, so
+    this is the one surface that needs both. It is also the whole reason earth
+    measures clear of concrete — the grit is what lifts the centroid the ~1.6x
+    that keeps zone D and a dug floor from being the same symbol."""
+
+    sheet: float = 0.0
+    sheet_band: Tuple[float, float] = (600.0, 5200.0)
+    sheet_tau: float = 0.11
+    """Water. The mass of water itself moving, under the spray.
+
+    Every other surface in the set is an impact: energy arrives, the material
+    rings, it stops. Water is the one floor that keeps *making* sound after the
+    foot has landed, because what was displaced has to come back. Without this
+    the clip is a burst and a gap, which measures loud on peak and reads quiet —
+    and 침수 is the surface whose entire job is being impossible to miss."""
+
+    glug: float = 0.0
+    glug_count: int = 0
+    glug_band: Tuple[float, float] = (240.0, 950.0)
+    glug_at: Tuple[float, float] = (0.30, 0.55)
+    """Water. The suck as the foot comes back out.
+
+    A bubble resonates by Minnaert's relation and its pitch *rises* as it
+    collapses, which is why `build_glug` sweeps upward — a falling sweep reads
+    as a drain, not as a boot leaving mud. This is the half of the splash that
+    makes 침수 unmistakable: a slap and a spray alone could be a bucket of
+    gravel thrown at a wall, and only the release says the water closed again
+    behind the foot."""
 
     sub_scale: float = 1.0
     """How much of the monster's sub-thump this surface transmits.
@@ -409,6 +480,150 @@ SURFACES: Tuple[Surface, ...] = (
         pitch_follow=0.30,
         level_db=-2.0,
     ),
+    # 침수 — 첨벙. §04 clarity 1.00: the loudest floor in the building, and the
+    # only one that cannot be crossed quietly at any speed. Three gestures in one
+    # clip — slap, spray, suck — because a splash that is only a burst of noise
+    # reads as a surface, and water has to read as a *depth*.
+    Surface(
+        key="water",
+        zone="침수 · 첨벙 (§04 1.00)",
+        # Used only by the monster's tick: the grains path supplies the body. Kept
+        # bright and near-dead so a claw entering water still sounds like water.
+        modes=(
+            Mode(2400.0, 0.006, 1.00),
+            Mode(4000.0, 0.004, 0.70),
+            Mode(6200.0, 0.003, 0.42),
+        ),
+        # The longest player-walk clip in the set bar metal. Water is the only
+        # surface still making sound once the foot has stopped moving, and the
+        # length has to cover the sheet's decay — at 0.52 s the tail was still
+        # -33.1 dB at the buffer's end against a -32 dB limit, i.e. one reseed away
+        # from a splash that ends by being switched off.
+        seconds=0.56,
+        noise_amount=0.95,
+        noise_tau=0.020,
+        band=(520.0, 13500.0),
+        tilt_hz=3600.0,
+        tilt_q=1.5,
+        tilt_gain=0.22,
+        # A sheet of water coming apart. Far more grains than gravel and more than
+        # twice the spread: stones stop where they land, spray keeps travelling.
+        grains=26,
+        grain_band=(2000.0, 10000.0),
+        grain_spread=0.17,
+        grain_thud=0.10,
+        # Tuned against the matrix, not by ear: at the first setting the spray ran
+        # to 13 kHz and 침수 measured 5130 Hz, which is 1.21x from 자갈 — two
+        # broadband bright surfaces the Listener would have had to tell apart by
+        # level alone. Bringing the spray and the sheet down puts water at 4064,
+        # a 1.57x walk from tile and a 1.53x walk from gravel.
+        sheet=1.3,
+        sheet_band=(1100.0, 6800.0),
+        # 0.17 rather than 0.20: at the longer decay the sheet was still audible
+        # when the buffer ended (-33.3 dB against a -32 limit) and 침수 was the
+        # tightest truncation in the set. Shortening it costs 0.4 dB of RMS and
+        # buys 4 dB of margin, and water is still the loudest floor by 1.6 dB.
+        sheet_tau=0.17,
+        # A boot in 10-15 cm of water displaces a fair volume, and Minnaert puts a
+        # big bubble low: dropping the band from 260-900 to 150-600 is both the
+        # more physical figure and the one that moves 침수's *occluded* centroid
+        # away from 타일's, which is the pair a wall brings closest together.
+        glug=0.55,
+        glug_count=5,
+        glug_band=(150.0, 600.0),
+        glug_at=(0.32, 0.60),
+        sub_scale=0.30,
+        # Water's register is droplet size, and a heavier foot does not make bigger
+        # droplets — it makes more of them, thrown further. Following the monster's
+        # -6.5 semitones would drop 침수 onto 타일 for exactly the actor the
+        # Listener cares about most; the same trap gravel documents below.
+        pitch_follow=0.25,
+        drag_reach=0.86,
+        drag_scale=1.25,
+        strike_spread=0.030,
+        level_db=2.0,
+    ),
+    # 파헤쳐진 흙 — 퍽. §04 clarity 0.40, under concrete. The only surface in the
+    # set built from a body *and* a scatter: see Surface.grit.
+    Surface(
+        key="earth",
+        zone="파헤쳐진 흙 · 퍽 (§04 0.40)",
+        modes=(
+            Mode(68.0, 0.018, 1.00),
+            Mode(107.0, 0.014, 0.70),
+            Mode(172.0, 0.009, 0.40),
+            Mode(263.0, 0.006, 0.20),
+        ),
+        # Shorter than concrete, and the shortest in the set. Dug soil has nowhere
+        # to put the energy: no slab to ring, no cavity to resonate.
+        seconds=0.17,
+        noise_amount=0.55,
+        noise_tau=0.009,
+        band=(44.0, 1500.0),
+        tilt_hz=240.0,
+        tilt_q=2.2,
+        tilt_gain=0.24,
+        grit=0.30,
+        grit_count=11,
+        grit_band=(850.0, 4200.0),
+        grit_spread=0.045,
+        sub_scale=0.62,
+        pitch_follow=0.85,
+        drag_reach=0.72,
+        drag_scale=0.85,
+        strike_spread=0.070,
+        level_db=-4.0,
+    ),
+    # 카펫 — §04 clarity 0.22, below even an unassigned floor. The quietest and
+    # darkest surface in the game, and deliberately so: §04's blind spot has to be
+    # a real hole in the channel, not a slightly softer version of one.
+    Surface(
+        key="carpet",
+        zone="카펫 · 무음에 가까움 (§04 0.22)",
+        # The shortest decays in the set. Pile does not store energy — it turns the
+        # impact into heat, which is exactly why the room goes quiet when you step
+        # onto it. Anything longer here reads as a rug over a hollow floor.
+        modes=(
+            Mode(46.0, 0.015, 1.00),
+            Mode(74.0, 0.011, 0.62),
+            Mode(117.0, 0.007, 0.30),
+            Mode(178.0, 0.004, 0.13),
+        ),
+        # Long enough to contain the monster's drag. At 0.11 s the scrape was still
+        # running when the buffer ended and 카펫's own monster clip was the worst
+        # truncation in the set at -23.9 dB — a surface defined by having no tail,
+        # ending on a hard edge.
+        seconds=0.17,
+        # Almost no contact noise at all. Pile is the one floor covering that mutes
+        # the scrape rather than colouring it, and that missing hiss is most of why
+        # a carpeted corridor reads as empty.
+        noise_amount=0.14,
+        noise_tau=0.006,
+        # The narrowest band in the set, and the point of the surface: 15 mm of
+        # wool over the same slab zone D is made of, so what reaches the room is
+        # concrete's thud with everything above it taken away.
+        band=(30.0, 250.0),
+        tilt_hz=85.0,
+        tilt_q=2.0,
+        tilt_gain=0.22,
+        # The slab under the pile still takes the weight — carpet muffles a
+        # footstep, it does not levitate one. Held to half of concrete's share so
+        # the clip does not trail a long, near-silent sub tail; that tail is
+        # signal at roughly one bit, which is where dither lives.
+        sub_scale=0.50,
+        pitch_follow=1.00,
+        drag_reach=0.70,
+        drag_scale=0.45,
+        # Tightest in the set. Pile is uniform in a way a slab or a board is not —
+        # there is no joist to step over — and the narrow spread is also what keeps
+        # 카펫's brightest variant clear of 콘크리트's darkest at clip level.
+        strike_spread=0.030,
+        # 10 dB under the next quietest floor. This is the number §04's blind spot
+        # is actually made of: 카펫 measures -36.0 dBFS RMS against 자갈's -33.0
+        # and 콘크리트's -26.5, so the Listener's channel does not merely get worse
+        # here, it runs out.
+        level_db=-12.0,
+    ),
 )
 
 BY_KEY: Dict[str, Surface] = {s.key: s for s in SURFACES}
@@ -559,17 +774,24 @@ def build_grains(
     spread: float,
     at: float,
     front_load: float = 1.7,
+    band: Optional[Tuple[float, float]] = None,
 ) -> np.ndarray:
     """§12's 부스럭 — a scatter of tiny stone impacts, not one struck object.
 
     Each grain is its own `modal_impact` with a handful of inharmonic high
     modes and a ~2 ms decay, so gravel has no pitch to speak of. Grain times
     are front-loaded: the foot lands, then the bed settles.
+
+    `band` overrides the surface's own `grain_band`, which is what lets earth
+    borrow the scatter for its grit without dragging the whole clip up into
+    gravel's register — the particles on a dug floor are a layer on top of a
+    body, not the body itself.
     """
     g = synth.rng(seed)
     canvas = synth.silence(seconds)
     grain_len = max(0.020, 0.030 * a.dur)
-    lo, hi = s.grain_band[0] * s.pitch(a), s.grain_band[1] * s.pitch(a)
+    src = band if band is not None else s.grain_band
+    lo, hi = src[0] * s.pitch(a), src[1] * s.pitch(a)
     for k in range(count):
         f = float(np.exp(g.uniform(np.log(lo), np.log(hi))))
         tau = float(g.uniform(0.0012, 0.0048)) * a.tau
@@ -584,6 +806,57 @@ def build_grains(
         when = at + spread * float(g.uniform(0.0, 1.0)) ** front_load
         gain = float(g.uniform(0.30, 1.0)) * (1.0 - 0.45 * (when - at) / max(spread, 1e-4))
         synth.place(canvas, grain, when, gain=gain)
+    return canvas
+
+
+def build_sheet(s: Surface, a: Actor, seed: int, seconds: float) -> np.ndarray:
+    """The body of water closing back over the foot.
+
+    A slow-attack, slow-decay band of noise rather than another transient: the
+    displaced mass takes time to return, and that sustain is what puts 침수's
+    RMS above every hard floor even though its peak is only a couple of dB up.
+    Loudness here is carried by duration, not by level, which is also the only
+    way to be the loudest surface without eating the mix's headroom.
+    """
+    g = synth.rng(seed)
+    body = synth.white(seconds, seed + 1301)
+    lo = s.sheet_band[0] * s.pitch(a)
+    hi = s.sheet_band[1] * s.pitch(a) * float(g.uniform(0.88, 1.15))
+    body = band_shape(body, lo, hi)
+    # Churn: the surface is not a steady hiss, it is water breaking up.
+    body = synth.tremolo(body, rate=float(g.uniform(9.0, 16.0)), depth=0.42)
+    t = synth.t_axis(len(body) / float(synth.SAMPLE_RATE))
+    env = (1.0 - np.exp(-t / 0.012)) * np.exp(-t / (s.sheet_tau * a.dur))
+    return synth.normalize((body * env.astype(np.float32)).astype(np.float32), 0.0)
+
+
+def build_glug(s: Surface, a: Actor, seed: int, seconds: float) -> np.ndarray:
+    """§04's 침수 — the suck as the foot leaves standing water.
+
+    Each bubble is a short sine whose pitch *rises* into its own collapse. That
+    is not a stylisation: a gas bubble's resonance goes as the inverse of its
+    radius (Minnaert), so a shrinking bubble goes up, and a sweep the other way
+    reads as a plughole instead of a boot. A handful of them, scattered late in
+    the clip and low in the surface's band, is the difference between a splash
+    and a bucket of stones.
+
+    Placed in the back half of the step on purpose — the slap and the spray are
+    the foot going *in*, and this is it coming out, so the ordering carries the
+    gesture even though the whole thing lasts a third of a second.
+    """
+    g = synth.rng(seed)
+    canvas = synth.silence(seconds)
+    lo, hi = s.glug_band[0] * s.pitch(a), s.glug_band[1] * s.pitch(a)
+    for k in range(max(1, s.glug_count)):
+        dur = float(g.uniform(0.020, 0.055)) * a.dur
+        f0 = float(np.exp(g.uniform(np.log(lo), np.log(hi))))
+        # A bubble climbs roughly a fifth to an octave as it collapses.
+        body = synth.sweep(f0, f0 * float(g.uniform(1.5, 2.1)), dur, log=True)
+        body = body * synth.exp_decay(dur, dur * float(g.uniform(0.22, 0.38)))
+        # A trace of the surrounding water tearing, not a clean tone.
+        body = blend(body, synth.white(dur, seed + k * 7717) * synth.exp_decay(dur, 0.004), 0.22)
+        when = float(g.uniform(*s.glug_at)) * seconds
+        synth.place(canvas, synth.normalize(body, 0.0), when, gain=float(g.uniform(0.45, 1.0)))
     return canvas
 
 
@@ -673,6 +946,17 @@ def build_step(s: Surface, a: Actor, variant: int) -> Tuple[np.ndarray, float]:
             noise_tau=s.noise_tau * float(g.uniform(0.85, 1.20)),
         )
 
+        # Loose particles riding on a body that answers as one mass. Earth only:
+        # see Surface.grit for why this is a layer and not the gravel path.
+        if s.grit > 0.0 and s.grit_count > 0:
+            grit = build_grains(
+                s, a, seed_for("grit", *tag), seconds,
+                count=s.grit_count + int(g.integers(-2, 3)),
+                spread=s.grit_spread * a.dur, at=0.0, front_load=1.4,
+                band=s.grit_band,
+            )
+            acc = blend(acc, grit, s.grit * float(g.uniform(0.82, 1.22)))
+
     # ── second contact: the heel-toe roll of a walk, or the monster's tick ───
     if a.heel_toe is not None:
         delay, gain = a.heel_toe
@@ -721,6 +1005,16 @@ def build_step(s: Surface, a: Actor, variant: int) -> Tuple[np.ndarray, float]:
     if s.creak > 0.0:
         amount = s.creak * float(g.uniform(0.55, 1.35)) * (1.25 if a.drag > 0 else 1.0)
         acc = blend(acc, build_creak(s, a, seed_for("creak", *tag), seconds), amount)
+
+    if s.sheet > 0.0:
+        acc = blend(acc, build_sheet(s, a, seed_for("sheet", *tag), seconds),
+                    s.sheet * float(g.uniform(0.85, 1.18)))
+
+    if s.glug > 0.0 and s.glug_count > 0:
+        # Heavier feet pull more water back in behind them, so the release grows
+        # with the actor rather than staying a fixed garnish on top of a splash.
+        amount = s.glug * float(g.uniform(0.70, 1.30)) * (1.35 if a.drag > 0 else 1.0)
+        acc = blend(acc, build_glug(s, a, seed_for("glug", *tag), seconds), amount)
 
     # ── material shaping ────────────────────────────────────────────────────
     if s.comb_hz > 0.0:
@@ -805,6 +1099,50 @@ def tail_db(path: str) -> float:
     return float(env[-1]) if len(env) else -120.0
 
 
+SIGNAL_FLOOR_DB = -60.0
+"""Bins this far below the loudest bin are the file's noise floor, not its content.
+
+Needed because `synth.analyse`'s centroid is magnitude-weighted across the whole
+0-24 kHz spectrum, and 16-bit rounding noise is *white*: it puts a little energy
+in every one of ~12000 bins, and multiplying each of those by a frequency up to
+24 kHz is enough to dominate the sum for a clip whose real content is a 90 Hz
+thud. The effect is inaudible — the floor sits near -100 dBFS — but it is not
+small in the metric, and the metric is what §12's gate is built on.
+
+This is not a new problem introduced by the quiet surfaces. Measured against the
+same clips before quantisation, the *shipped* set was already reading high:
+
+    concrete 154 Hz true -> 228 Hz raw (1.48x)    wood  541 -> 579 (1.07x)
+    metal   1168        -> 1290       (1.10x)     tile 2652 -> 2708 (1.02x)
+    gravel  6231        -> 6236       (1.00x)
+
+so the darkest floor on the map was already being credited with 74 Hz of dither.
+Bright clips are unaffected because their content swamps the floor. At -60 dB the
+threshold sits far above the rounding noise and far below anything designed, and
+it reproduces the pre-quantisation centroid of all eight surfaces to within 3%
+— including carpet, which reads 357 Hz raw against 94 Hz of actual signal.
+"""
+
+
+def signal_centroid(path: str, floor_db: float = SIGNAL_FLOOR_DB) -> float:
+    """Spectral centroid of the clip's *content*, ignoring its noise floor.
+
+    The number §12's separation matrix is built from. See SIGNAL_FLOOR_DB for why
+    the raw full-band centroid cannot be used for the quietest surfaces.
+    """
+    data, sr = synth.read_wav(path)
+    if len(data) <= 8:
+        return 0.0
+    mag = np.abs(np.fft.rfft(data.astype(np.float64) * np.hanning(len(data))))
+    freqs = np.fft.rfftfreq(len(data), 1.0 / sr)
+    peak_bin = float(np.max(mag)) if len(mag) else 0.0
+    if peak_bin <= 0.0:
+        return 0.0
+    keep = mag >= peak_bin * (10.0 ** (floor_db / 20.0))
+    total = float(np.sum(mag[keep]))
+    return float(np.sum(freqs[keep] * mag[keep]) / total) if total > 0.0 else 0.0
+
+
 def inband_flatness(path: str, low: float, high: float) -> float:
     """Spectral flatness *inside the surface's own band*: 1.0 = noise, 0 = a tone.
 
@@ -859,14 +1197,28 @@ def print_matrix(title: str, keys: Sequence[str], centroids: Dict[str, float], n
     return worst
 
 
-def main() -> int:
+def main(only: Optional[Sequence[str]] = None) -> int:
+    """Writes the clip set and verifies §12's separation across all eight floors.
+
+    `only` restricts which surfaces are *written*; everything is still measured,
+    by reading whatever is already on disk for the rest. Regenerating one
+    material must not rewrite the other seven — the seeds make that a no-op in
+    principle, but "in principle" is not what you want standing between a
+    one-surface change and 84 files somebody else is working against.
+    """
     os.makedirs(OUT_DIR, exist_ok=True)
+    write_keys = {s.key for s in SURFACES} if not only else set(only)
+    unknown = write_keys - {s.key for s in SURFACES}
+    if unknown:
+        raise SystemExit(f"unknown surface(s): {', '.join(sorted(unknown))}")
 
     reports: List[synth.ClipReport] = []
     by_surface: Dict[str, List[float]] = {s.key: [] for s in SURFACES}
     by_pair: Dict[Tuple[str, str], List[float]] = {}
     rings: Dict[str, List[float]] = {s.key: [] for s in SURFACES}
     flats: Dict[str, List[float]] = {s.key: [] for s in SURFACES}
+    rmss: Dict[str, List[float]] = {s.key: [] for s in SURFACES}
+    peaks: Dict[str, List[float]] = {s.key: [] for s in SURFACES}
     tails: List[Tuple[str, float]] = []
 
     for s in SURFACES:
@@ -874,8 +1226,15 @@ def main() -> int:
             for v in range(1, VARIANTS + 1):
                 name = f"step_{s.key}_{a.key}_{v:02d}.wav"
                 path = os.path.join(OUT_DIR, name)
-                buf, level = build_step(s, a, v)
-                synth.write_wav(path, buf, headroom_db=level, stereo=False)
+                if s.key in write_keys:
+                    buf, level = build_step(s, a, v)
+                    synth.write_wav(path, buf, headroom_db=level, stereo=False)
+                elif not os.path.exists(path):
+                    raise SystemExit(
+                        f"{name} is not on disk and was not selected for writing. The "
+                        f"separation matrix needs all eight surfaces to mean anything; "
+                        f"run without --only to build the whole set."
+                    )
                 r = synth.assert_usable(path, min_seconds=0.05, max_seconds=2.0)
                 if r.channels != 1:
                     raise AssertionError(
@@ -883,27 +1242,36 @@ def main() -> int:
                         f"and Unity will not spatialise a stereo clip."
                     )
                 reports.append(r)
-                by_surface[s.key].append(r.spectral_centroid)
-                by_pair.setdefault((s.key, a.key), []).append(r.spectral_centroid)
+                # signal_centroid, not r.spectral_centroid: see SIGNAL_FLOOR_DB.
+                # The raw figure credits the darkest floors with their own dither.
+                centroid = signal_centroid(path)
+                by_surface[s.key].append(centroid)
+                by_pair.setdefault((s.key, a.key), []).append(centroid)
                 rings[s.key].append(ring_ms(path))
+                rmss[s.key].append(r.rms)
+                peaks[s.key].append(r.peak)
                 flats[s.key].append(
                     inband_flatness(path, s.band[0] * s.pitch(a), s.band[1] * s.pitch(a))
                 )
                 tails.append((name, tail_db(path)))
 
-    print(f"{len(reports)} clips written to {OUT_DIR}")
+    written = len(write_keys) * len(ACTORS) * VARIANTS
+    print(f"{written} clips written to {OUT_DIR} "
+          f"({', '.join(sorted(write_keys))}); {len(reports)} measured")
     print(f"all mono, {synth.SAMPLE_RATE} Hz, 16-bit PCM; every clip passed synth.assert_usable()")
     print()
     print(synth.report_table(reports))
 
     print()
     print("=" * 82)
-    print("§12 SEPARATION — can the Listener tell the five floors apart?")
+    print("§12/§04 SEPARATION — can the Listener tell the eight floors apart?")
     print("=" * 82)
+    print(f"  centroids below are signal_centroid (bins within {SIGNAL_FLOOR_DB:.0f} dB of the")
+    print("  loudest), not the raw full-band figure in the table above — see SIGNAL_FLOOR_DB.")
 
     overall = {k: geo_mean(v) for k, v in by_surface.items()}
     worst_overall = print_matrix(
-        "[1] All 60 clips, per surface (the required five-centroid matrix)",
+        f"[1] All {len(reports)} clips, per surface (the required centroid matrix)",
         list(overall), overall,
         note="geometric mean of the 12 clips per surface",
     )
@@ -953,6 +1321,22 @@ def main() -> int:
     print("  flatness: 1.0 = pure noise, 0 = pure tone, measured inside each")
     print("  surface's own band so it reports tonality and not bandwidth")
 
+    # The fourth axis, and the one §04's three new floors are actually built on.
+    # 침수/흙/카펫 are not three more timbres — they are a loudness ladder, and
+    # ListenerClarity* in GameConstants promises the player it exists. A carpet
+    # that measured like concrete would make §04's blind spot a lie told in the
+    # HUD, which is worse than not having the surface at all.
+    rms = {k: geo_mean(v) for k, v in rmss.items()}
+    peak_of = {k: geo_mean(v) for k, v in peaks.items()}
+    print()
+    print("[6] Fourth axis: loudness. §04's clarity ladder, as shipped level")
+    print()
+    print(f"  {'surface':<10}{'rms dBFS':>10}{'peak dBFS':>11}{'§04 clarity':>13}")
+    print("  " + "-" * 46)
+    for key in sorted(rms, key=lambda k: rms[k], reverse=True):
+        print(f"  {key:<10}{synth.gain_to_db(rms[key]):>10.1f}"
+              f"{synth.gain_to_db(peak_of[key]):>11.1f}{CLARITY.get(key, float('nan')):>13.2f}")
+
     worst_tail = max(tails, key=lambda t: t[1])
     print()
     print(f"[5] Worst truncation: {worst_tail[0]} ends at {worst_tail[1]:.1f} dB below its "
@@ -985,12 +1369,26 @@ def main() -> int:
         f"surfaces. Got {ring}."
     )
     flat = {k: geo_mean(v) for k, v in flats.items()}
-    others = sorted((v for k, v in flat.items() if k != "gravel"), reverse=True)
-    assert flat["gravel"] >= others[0] * SEPARATION_MIN, (
+    # Gravel must still be the most noise-like floor of all eight...
+    assert flat["gravel"] == max(flat.values()), (
         f"§12 says 자갈 = 부스럭 — broadband, almost no pitch — so gravel must be the "
-        f"most noise-like surface by a clear margin, not merely the highest. Got "
-        f"{flat['gravel']:.3f} against {others[0]:.3f}. Check that the grain scatter "
-        f"has not collapsed into one pitched burst."
+        f"most noise-like surface on the map. Got {flat}. Check that the grain "
+        f"scatter has not collapsed into one pitched burst."
+    )
+    # ...but the 1.4x *margin* is only asserted against the surfaces it was
+    # calibrated on. inband_flatness measures inside each surface's own band, and
+    # a narrow band is flat almost by construction: fewer bins, less room for the
+    # geometric and arithmetic means to diverge. 카펫 occupies 34-300 Hz — under
+    # thirty bins — and reads 0.55 against 자갈's 0.64 while being, in fact, a
+    # single damped thud. Comparing tonality across a 9x bandwidth difference
+    # measures the bandwidth. The five §12 floors all span at least 570 Hz, so
+    # among them the comparison still means what it says.
+    ORIGINAL_FIVE = ("wood", "tile", "gravel", "concrete", "metal")
+    others = sorted((flat[k] for k in ORIGINAL_FIVE if k != "gravel"), reverse=True)
+    assert flat["gravel"] >= others[0] * SEPARATION_MIN, (
+        f"§12 says 자갈 = 부스럭, so gravel must out-measure the other §12 floors by a "
+        f"clear margin, not merely lead them. Got {flat['gravel']:.3f} against "
+        f"{others[0]:.3f}."
     )
     tonal = sorted((v for k, v in flat.items() if k != "metal"))
     assert flat["metal"] * SEPARATION_MIN <= tonal[0], (
@@ -1003,12 +1401,54 @@ def main() -> int:
         f"shorten the Mode taus."
     )
 
-    print(f"PASS  five surfaces separable: worst overall pair {worst_overall:.2f}x, "
+    # §04's loudness ladder. Each of these is a promise GameConstants makes to the
+    # player in a number they can read, so a clip set that inverts one is a HUD
+    # that lies rather than audio that is merely off.
+    assert rms["water"] == max(rms.values()), (
+        f"§04 gives 침수 clarity 1.00 and calls it the loudest thing to stand on — "
+        f"'you cannot cross it unheard'. Water measures "
+        f"{synth.gain_to_db(rms['water']):.1f} dBFS against a loudest of "
+        f"{synth.gain_to_db(max(rms.values())):.1f}."
+    )
+    assert rms["water"] > rms["tile"], (
+        f"침수 must sit above 타일, the loudest of §12's hard floors. Got "
+        f"{synth.gain_to_db(rms['water']):.1f} vs {synth.gain_to_db(rms['tile']):.1f} dBFS."
+    )
+    assert rms["carpet"] == min(rms.values()), (
+        f"§04 makes 카펫 the quietest surface, below even an unassigned floor — the "
+        f"whole reason the long way round is worth walking. Carpet measures "
+        f"{synth.gain_to_db(rms['carpet']):.1f} dBFS against a quietest of "
+        f"{synth.gain_to_db(min(rms.values())):.1f}."
+    )
+    assert rms["carpet"] < rms["concrete"], (
+        f"카펫 must be quieter than 콘크리트. Got {synth.gain_to_db(rms['carpet']):.1f} "
+        f"vs {synth.gain_to_db(rms['concrete']):.1f} dBFS."
+    )
+    assert rms["gravel"] < rms["earth"] < rms["concrete"], (
+        f"§04 puts 흙 under 콘크리트 (clarity 0.40 against 0.50) and above 자갈, which "
+        f"absorbs more. Got gravel {synth.gain_to_db(rms['gravel']):.1f}, earth "
+        f"{synth.gain_to_db(rms['earth']):.1f}, concrete "
+        f"{synth.gain_to_db(rms['concrete']):.1f} dBFS."
+    )
+    # A splash is the loudest thing in the building, not the loudest thing the
+    # mixer can take. synth's house rule is that positional clips leave with at
+    # least 3 dB of headroom so several can overlap without clipping.
+    loudest_peak = max(peak_of.values())
+    assert loudest_peak <= synth.db_to_gain(-3.0), (
+        f"a footstep peaks at {synth.gain_to_db(loudest_peak):.1f} dBFS, above the "
+        f"-3.0 dB headroom synth.write_wav reserves for positional audio."
+    )
+
+    print(f"PASS  eight surfaces separable: worst overall pair {worst_overall:.2f}x, "
           f"worst within-actor pair {min(per_actor_worst.values()):.2f}x, "
           f"worst clip-level {clip_worst:.2f}x, floor {SEPARATION_MIN:.2f}x")
     print(f"PASS  metal rings longest ({ring['metal']:.0f} ms) and is most tonal "
           f"({flat['metal']:.3f}); gravel is most noise-like ({flat['gravel']:.3f}); "
           f"concrete dies fastest of the hard floors ({ring['concrete']:.0f} ms)")
+    ladder = " > ".join(
+        f"{k} {synth.gain_to_db(rms[k]):.1f}"
+        for k in sorted(rms, key=lambda k: rms[k], reverse=True))
+    print(f"PASS  §04 loudness ladder (dBFS RMS): {ladder}")
     print(f"PASS  no clip truncated above {TAIL_HEADROOM_DB:.0f} dB "
           f"(worst {worst_tail[1]:.1f} dB)")
     print("=" * 82)
@@ -1016,4 +1456,13 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    import argparse
+
+    parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    parser.add_argument(
+        "--only", nargs="+", metavar="SURFACE", choices=sorted(BY_KEY),
+        help="write only these surfaces; the rest are read from disk and still "
+             "measured. Use when adding or retuning one material so a rebuild "
+             "cannot touch the other seven.",
+    )
+    raise SystemExit(main(parser.parse_args().only))

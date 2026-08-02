@@ -1,3 +1,4 @@
+using HorrorGame.Core;
 using HorrorGame.Core.Map;
 using HorrorGame.Core.Session;
 
@@ -162,6 +163,57 @@ namespace HorrorGame.EditorTools.SceneGen
             }
         }
 
+        /// <summary>
+        /// Which of a storey's concentric rings a cell sits on.
+        /// <para>
+        /// Chebyshev distance from the middle, because that is the metric
+        /// <see cref="RadialStorey"/> lays its bands out in — a "ring" there is a square, so
+        /// Euclidean distance would call the middle of a side and its corner different rings
+        /// and put two 후보 지점 on the same band.
+        /// </para>
+        /// <para>
+        /// Measured from the floor's own centre rather than from <see cref="Centre"/>, so the
+        /// answer stays right if a storey is ever built off the tower's axis.
+        /// </para>
+        /// </summary>
+        private static int RingOf(RadialStoreyResult floor, MapCell cell) =>
+            System.Math.Max(
+                System.Math.Abs(cell.X - floor.CentreX),
+                System.Math.Abs(cell.Z - floor.CentreZ));
+
+        /// <summary>
+        /// The cell this storey's one 문 hangs in, or null if it has none.
+        /// <para>
+        /// <see cref="RadialStoreyResult.Gates"/> runs innermost first — 안쪽 · 중간 · 외곽 —
+        /// and <see cref="RadialStorey"/> hangs the storey's single door on the FIRST gate of
+        /// the 중간 band, for reasons it writes out at length: at the rim a door is one of
+        /// four parallel ways in and costs nobody a detour, and on the single 안쪽 gate it
+        /// does not charge a detour either, it deletes the middle. So there is exactly one
+        /// door per floor and it is <c>Gates[1][0]</c>.
+        /// </para>
+        /// </summary>
+        private static MapCell? DoorGate(RadialStoreyResult floor) =>
+            floor.Gates.Count > 1 && floor.Gates[1].Count > 0
+                ? floor.Gates[1][0]
+                : (MapCell?)null;
+
+        /// <summary>
+        /// True when a gate mouth is the cell one step outside the storey's 문 leaf.
+        /// <para>
+        /// A gate runs from its mouth inward one cell per step, so the mouth of the gate the
+        /// door hangs in is its orthogonal neighbour and nothing else on the floor is.
+        /// Measured, seed 20260802: this matches exactly one mouth on each of the eight
+        /// storeys — (6,11) against the 문 at (7,11) on B1·B4·B6, (12,6) against (12,7) on
+        /// B2·B5, (10,6) against (10,7) on B3·B7·B8.
+        /// </para>
+        /// </summary>
+        private static bool IsDoorMouth(RadialStoreyResult floor, MapCell mouth)
+        {
+            var gate = DoorGate(floor);
+            return gate.HasValue
+                && System.Math.Abs(mouth.X - gate.Value.X) + System.Math.Abs(mouth.Z - gate.Value.Z) == 1;
+        }
+
         /// <summary>The rim cell furthest along Z in the given direction.</summary>
         private static MapCell Pick(System.Collections.Generic.List<MapCell> rim, int sign)
         {
@@ -183,6 +235,26 @@ namespace HorrorGame.EditorTools.SceneGen
         /// §03's clue chain is gone, so a 후보 지점 is no longer a place the objective might
         /// be — it is a junction worth naming, and the validator still wants three per zone
         /// with two exits each, which on a ring floor is a useful shape to guarantee.
+        /// </para>
+        /// <para>
+        /// <b>These marks are also the only evidence the map has that a storey is whole, and
+        /// that is now the job they are chosen for.</b> <c>NavMeshConnectivity</c> collects
+        /// markers whose names contain PlayerSpawn, MonsterSpawn, Site, Candidate, Loot,
+        /// Exit, Objective or Clue. Nothing else on a storey matches: the 관측 지점, the
+        /// 배전반, the 은신처 and B8's own 도착점 are named in Korean and are invisible to it,
+        /// and a 투하구 is not collected either. So a floor's reachability is proved by its
+        /// three 후보 지점 and by the 전리품 that land on its 막힌 길 — and by nothing else.
+        /// </para>
+        /// <para>
+        /// <b>Which is why the 전리품 markers stay, even though §08 does not.</b> A race has
+        /// no economy, and it would have been one line to stop placing them. Measured on seed
+        /// 20260802, that line would have turned a 10-island FAIL into an 8-island PASS —
+        /// the per-storey floor — with two eight-cell pockets of B2 and B5 still walled out
+        /// of their own floors, because those four 전리품 are the only markers anywhere near
+        /// them. §12's 막힌 길 are 20~25% of a floor by design; a marker on each of them is
+        /// the only probe this map has on the fifth of itself that leads nowhere, and the
+        /// runner test (<c>PlayerTraversal</c>) counts them as reachability too. What is
+        /// deleted with §08 is the ECONOMY — the value, the van, the shop — not the probe.
         /// </para>
         /// </summary>
         private static void MarkPlaces(MapSketch sketch, RadialStoreyResult[] floors)
@@ -207,16 +279,129 @@ namespace HorrorGame.EditorTools.SceneGen
                 // themselves cannot carry a mark: they are deliberately mid-passage so a door
                 // can hang on them, and MapSketch refuses a mark on a passage rather than
                 // letting the §12 count come up short without anything failing.
-                var sites = 0;
-                foreach (var mouth in floor.GateMouths)
+                //
+                // ONE PER RING, not the first three. RadialStorey appends its gate mouths
+                // outermost band first — four 외곽, then two 중간, then one 안쪽 — so taking
+                // the first three took three mouths off the 외곽 고리 and nothing else.
+                // Measured, seed 20260802, all eight storeys: the three sites sat at
+                // Chebyshev radius 9, 9, 9. Every storey's audited evidence was therefore
+                // three points on the ring the runners start on, and the 중간 고리, the
+                // 안쪽 고리 and the 중심 had no marker the audit collects — a floor whose
+                // inner half was sealed off would have passed with the rim intact.
+                //
+                // One per ring is the same count §12 asks for and the same kind of place,
+                // but it now spans the storey: r9, r6, r3 on every floor, so the audit's
+                // pairs cross both walls and what they prove is 외곽 → 중간 → 안쪽 rather
+                // than 외곽 → 외곽. Each is still a T-junction with three ways out, over
+                // §12's two — measured on all eight storeys.
+                //
+                // NOT THE 문's OWN MOUTH. Taking the first mouth of each ring took, on the
+                // 중간 ring, the mouth of the gate RadialStorey hangs the storey's one 문 in
+                // — the door goes on that band's first gate and the mouths are appended in
+                // the same order, so "first on the ring" and "beside the door" were the same
+                // cell on all eight floors. That was written down as a feature. It is not.
+                //
+                // Measured on seed 20260802, comparing /tmp/gen_after.log:1009 with
+                // /tmp/i_gen.log:511 — same seed, same geometry (both runs report the same
+                // 2833 meshes / 3889024 triangles), only these three marks moved:
+                //   worst snap 0.22 m → 3.90 m, and 3.90 m is 3.75 + 0.15 exactly — one
+                //   storey pitch plus the height the baked surface sits above a floor
+                //   (measured off NavMesh_Map_FirstSketch.asset: every navmesh vertex in the
+                //   building is at one of y = 0.15, −3.60 … −26.10). A vertical metre-perfect
+                //   storey, not a near miss.
+                //   Seven of the eight 중간 marks — one per floor, B1…B7 — were reported in
+                //   another storey's island. Every one of them was this cell. B8's was the
+                //   only survivor, and only because it is the deepest floor: the snap prefers
+                //   the floor BELOW (3.60 m) over the floor above (3.90 m), and B8 has none.
+                //
+                // The cause is not the mark's Y, which is right. It is that the mark stands
+                // over a hole: NavMeshConnectivity samples with a 4 m radius and a storey is
+                // 3.75 m, so a marker whose own floor is missing under it is caught by the
+                // next floor down — and on a tower where all eight storeys are the same
+                // square, that is the SAME cell one level away. The hole is the 문:
+                // MapSceneBuilder.BuildDoor drops a whole 2.5 m walled Doorway_Frame with its
+                // pivot on the cell centre instead of AlignMinCorner'd, at yaw 0 whichever
+                // way the passage runs, and hangs a carving NavMeshObstacle beside it.
+                //
+                // <b>And fixing that door does not make this cell safe.</b> The obstacle
+                // carves CorridorClearWidth × 0.14 m grown by the agent radius — measured off
+                // the scene (Markers/Door_(7,11@L0) at x 18.75, its Hinge child at 17.65, so
+                // CorridorClearWidth is 2.2 m) that is 3.2 × 1.14 m of surface removed every
+                // time somebody shuts the door, reaching 1.6 m along a passage whose navmesh
+                // is only about 1.2 m wide. A 후보 지점 one cell from the leaf is a probe
+                // whose answer depends on whether a door is open. §12's whole reason for
+                // refusing a mark on a 병목 passage applies here at one cell's remove.
+                //
+                // So: one per ring still, but on the 중간 ring take the mouth of the OTHER
+                // gate. Measured, seed 20260802, that is (18,12) on B1·B4·B6 — a
+                // JunctionCross4Way, four ways out against §12's two — and (13,18) on B2·B5
+                // and (18,14) on B3·B7·B8, both JunctionT. All eight are real junction
+                // geometry in the scene and all eight sit on baked surface.
+                //
+                // This does not hide the 문. The audit already catches it without a marker
+                // on top of it: with the 문 present the report is 10 islands / 104 partial
+                // pairs, and the two extra islands are four 전리품 sealed into pockets on B2
+                // and B5 — the two floors whose door cell is (12,7). Hidden and re-baked it
+                // is 8 islands / 0 partial (RadialStorey records the measurement). Both of
+                // those numbers were taken with the 후보 지점 nowhere near a door.
+                var rings = new System.Collections.Generic.List<int>();
+                var sites = new System.Collections.Generic.List<MapCell>();
+
+                while (sites.Count < GameConstants.CandidateSitesPerZone)
                 {
-                    if (sites >= 3)
+                    // Outermost ring first, so 관문1 is the one a runner meets first.
+                    var pick = -1;
+                    var picked = -1;
+                    for (var i = 0; i < floor.GateMouths.Count; i++)
+                    {
+                        if (IsDoorMouth(floor, floor.GateMouths[i]))
+                        {
+                            continue;
+                        }
+
+                        var ring = RingOf(floor, floor.GateMouths[i]);
+                        if (ring <= picked || rings.Contains(ring))
+                        {
+                            continue;
+                        }
+
+                        picked = ring;
+                        pick = i;
+                    }
+
+                    if (pick < 0)
                     {
                         break;
                     }
 
-                    sketch.Mark(mouth, MapNodeKind.CandidateSite, label + "_관문" + (sites + 1));
-                    sites++;
+                    rings.Add(picked);
+                    sites.Add(floor.GateMouths[pick]);
+                }
+
+                // A storey with fewer rings than §12 wants sites still has to carry three:
+                // MapValidator compares the count exactly, and one short zone fails the whole
+                // building. Topping up from the mouths that are left keeps that a question
+                // about the layout rather than a map that will not build.
+                //
+                // The 문's own mouth is allowed here and only here, as the last cell on the
+                // list. Reaching it means the floor has run out of junctions, which is a
+                // layout to go and look at rather than a map to refuse — and it will not go
+                // unnoticed, because a mark on that cell is exactly what the audit reports as
+                // a one-storey snap. Seed 20260802 never reaches this loop: every storey
+                // offers mouths on all three rings.
+                for (var i = 0;
+                     i < floor.GateMouths.Count && sites.Count < GameConstants.CandidateSitesPerZone;
+                     i++)
+                {
+                    if (!sites.Contains(floor.GateMouths[i]))
+                    {
+                        sites.Add(floor.GateMouths[i]);
+                    }
+                }
+
+                for (var i = 0; i < sites.Count; i++)
+                {
+                    sketch.Mark(sites[i], MapNodeKind.CandidateSite, label + "_관문" + (i + 1));
                 }
 
                 // One 관측 지점 and one 배전반 per zone, both on alcoves — the only places on

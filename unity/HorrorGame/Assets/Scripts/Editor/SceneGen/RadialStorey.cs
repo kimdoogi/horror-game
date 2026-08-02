@@ -124,17 +124,21 @@ namespace HorrorGame.EditorTools.SceneGen
             // A 3 × 3 room. Not a corridor: it is the one place on the floor where several
             // players can see each other arrive, and §01 needs the chutes to be a visible
             // choice rather than a cell you stumble into.
-            // A filled 3 x 3, and the plus that replaced it for one measurement is worth
-            // recording as a wrong turn. The block tiles into nine 2.5 m corridor pieces
-            // that wall each other, and the audit found it as a sealed island — one marker
-            // on its own, `[1] MonsterSpawn`. A plus reads unambiguously to the tiler, so
-            // it should have been better. It was worse: 11 islands became 18 and the
-            // completion rate fell 98.1% to 91.2%, because each of the four arms is a blind
-            // cell that takes a DeadEndCap, and four caps ringing the middle seal it more
-            // thoroughly than the block did.
             //
-            // The middle needs a piece of its own — a room, not a pattern of corridor —
-            // and that is the next change rather than another arrangement of cells.
+            // The plus that replaced the filled block for one measurement is worth keeping
+            // as a wrong turn: 11 islands became 18 and completion fell 98.1% to 91.2%,
+            // because each of its four arms is a blind cell, each blind cell takes a
+            // DeadEndCap, and four caps ringing the middle seal it harder than the block.
+            //
+            // **`[1] MonsterSpawn` was never this block's fault, and reading it that way
+            // cost three days.** The audit collects markers whose names contain PlayerSpawn,
+            // MonsterSpawn, Site, Candidate, Loot, Exit, Objective or Clue — so of the eight
+            // middles, exactly ONE carries a marker: the 괴물 on B5. (B8's 도착점 is Korean
+            // and matches nothing in that list, and a 투하구 is not collected either.) Every
+            // arrangement of the middle could therefore only ever move the island count by
+            // one, which is why four regenerations with genuinely different geometry
+            // produced a byte-identical audit. What actually sealed the middle was the 문 on
+            // the gate outside it — see the door decision below.
             for (var dx = -1; dx <= 1; dx++)
             {
                 for (var dz = -1; dz <= 1; dz++)
@@ -146,18 +150,23 @@ namespace HorrorGame.EditorTools.SceneGen
             // And ONE piece over the top of them. B-010.
             //
             // The cells stay — they are what the graph is built from, so the middle is nine
-            // places §12 can count, the inner gate has a passage to hang its door on, and
-            // §02's finish has somewhere to be marked. What changes is the GEOMETRY: the
-            // corridor tiler skips any cell inside a room, so instead of nine 2.5 m passages
-            // walling each other off it lays Chamber_Open_3x3, which is open at the middle of
-            // all four edges and nothing else.
+            // places §12 can count, the inner gate has a passage to arrive along, and §02's
+            // finish has somewhere to be marked. What changes is the GEOMETRY: the corridor
+            // tiler skips any cell inside a room, so instead of nine 2.5 m passages walling
+            // each other off it lays Chamber_Open_3x3, which is open at the middle of all
+            // four edges and nothing else.
             //
-            // That split is the whole answer. Room() alone produced geometry with no graph —
-            // four dock cells with one neighbour each, §12 refusing to hang a door on a dead
-            // end and refusing to mark a finish inside a room, both correctly. Corridor cells
-            // alone produced a graph with sealed geometry — the audit found it as one marker
-            // on its own, `[1] MonsterSpawn`, which is why §06's creature reached nothing.
-            // Cells for the graph, a piece for the world.
+            // That split is still right, and it is right for its own reasons rather than for
+            // the island count. Room() alone produced geometry with no graph — four dock
+            // cells with one neighbour each, §12 refusing to hang a door on a dead end and
+            // refusing to mark a finish inside a room, both correctly. Corridor cells alone
+            // produced nine walled passages where §01 wants one room. Cells for the graph, a
+            // piece for the world.
+            //
+            // Measured, seed 20260802, all eight storeys: the chamber's doorway and the dock
+            // cell outside it join. Sampling out from the middle in 0.10 m steps there is no
+            // stretch of floor without navmesh on it anywhere along the gate bearing, and
+            // middle→band is PathComplete on every floor. The piece was never the defect.
             s.Room(MapKitPiece.ChamberOpen3x3, centreX - 1, centreZ - 1, 3, 3, 0f);
 
             result.Centre = new MapCell(centreX, centreZ, level);
@@ -216,17 +225,39 @@ namespace HorrorGame.EditorTools.SceneGen
                         s, level, centreX, centreZ, band, random, allGates,
                         result.Bands[bands.Length - 1 - i], occupied));
 
-                // Doors go on the two innermost bands only, and never on the four outer
-                // gates. Measured: a door on one of four parallel ways in is not a 병목 at
-                // all — the graph says shutting it forces a detour of almost nothing, because
-                // three other gates are right there. That is not a validator technicality, it
-                // is the truth about the race. A door is worth carrying to the place where it
-                // costs everybody behind you something, and at the rim it costs them a shrug.
+                // One door a storey, on one of the two 중간 gates. Never on the four outer
+                // gates and — B-010 — never on the single inner one.
                 //
-                // §12 caps a zone at 1~2 doors and a floor is one zone, so: the single inner
-                // gate always, and one of the two middle gates. Twenty players share that
-                // inner cell, and whoever gets there first decides what it costs the rest.
-                if (i <= 1)
+                // The rim is easy: a door on one of four parallel ways in is not a 병목 at
+                // all, because the graph says shutting it forces a detour of almost nothing
+                // with three other gates right there. A door is worth carrying to the place
+                // where it costs everybody behind you something, and at the rim it costs
+                // them a shrug.
+                //
+                // The inner gate is the opposite mistake and it cost three days. §12 asks
+                // for a 문 at a 병목 and glosses the point as "잠그면 순환이 끊김 (전략적
+                // 선택)" — locking it breaks a CIRCULATION, which presumes there is one to
+                // break. There is none through the inner gate. It is the only edge into the
+                // 중심, so locking it does not charge the field a detour, it deletes the
+                // middle from the floor: no 투하구, and on B8 no §02 finish. That is not a
+                // strategic choice in a 20-player race, it is a switch that ends the match.
+                //
+                // And it is why B-010 read as a geometry bug for three days. Anything at all
+                // wrong with a door's geometry costs a DETOUR at the 중간 gate and a
+                // COMPONENT at the inner one, so the same defect was invisible at one and an
+                // island at the other. Measured on this map, seed 20260802: with the 문
+                // geometry present the audit is 6863/6993 pairs, 11 islands, monster reach
+                // 0/3; with it hidden and the surface re-baked, 6993/6993, 8 islands (the
+                // per-storey floor), monster reach 3/3 — every storey's middle→band path
+                // PathPartial → PathComplete. The 문 was the whole of it, and the half that
+                // is not mine to fix is written up in the report beside this change:
+                // MapSceneBuilder.BuildDoor places Doorway_Frame — a whole 2.5 m walled cell
+                // — with its pivot on the cell CENTRE instead of AlignMinCorner'd to the
+                // cell, at yaw 0 whichever way the passage runs.
+                //
+                // §12 caps a zone at 1~2 doors and a floor is one zone, so one is legal and
+                // one is what a floor gets.
+                if (i == 1)
                 {
                     s.Door(gates[0].X, gates[0].Z);
                 }
