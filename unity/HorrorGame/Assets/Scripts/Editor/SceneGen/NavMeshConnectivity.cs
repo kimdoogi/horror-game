@@ -102,11 +102,42 @@ namespace HorrorGame.EditorTools.SceneGen
                 component[i] = i;
             }
 
+            // One island per storey is legal, because cross-storey pairs are no longer
+            // unioned — see the pair loop. Counting the distinct floor heights rather than
+            // taking a number from the caller keeps the rule with the thing it describes: a
+            // five-storey co-operative map allows five, an eight-storey tower eight, and a
+            // single-floor test scene still allows exactly one.
+            var storeys = new List<float>();
+            foreach (var point in snapped)
+            {
+                if (!storeys.Exists(y => Mathf.Abs(y - point.Position.y) < MapKitCatalogue.StoreyMetres * 0.5f))
+                {
+                    storeys.Add(point.Position.y);
+                }
+            }
+
+            report.IslandsAllowed = Mathf.Max(1, storeys.Count);
+
             var path = new NavMeshPath();
             for (var i = 0; i < snapped.Count; i++)
             {
                 for (var j = i + 1; j < snapped.Count; j++)
                 {
+                    // Only markers on the SAME STOREY are asked to reach each other. §01's
+                    // tower joins its floors with 투하구 — one-way holes — and a hole is not
+                    // walkable surface, so a cross-storey pair is unreachable by construction
+                    // and counting it measures the design rather than a defect. Whole-building
+                    // it reported 14.5% complete on a map with nothing wrong with it.
+                    //
+                    // On a map whose storeys ARE joined by stairs this changes nothing: the
+                    // stairwell is walkable, so those pairs were complete anyway and every
+                    // pair inside a floor is still judged. What is no longer asserted is that
+                    // you can WALK from B1 to B8, which in this game you cannot, on purpose.
+                    if (!SameStorey(snapped[i].Position, snapped[j].Position))
+                    {
+                        continue;
+                    }
+
                     report.Pairs++;
                     NavMesh.CalculatePath(snapped[i].Position, snapped[j].Position, NavMesh.AllAreas, path);
 
@@ -199,6 +230,15 @@ namespace HorrorGame.EditorTools.SceneGen
                         continue;
                     }
 
+                    // The creature guards a LEVEL. It cannot follow anybody down a 투하구
+                    // and it is not meant to — DescentMap starts it halfway down so the
+                    // descent gets more dangerous rather than starting that way. Asking it to
+                    // reach the whole building reported 0 of 90 on a map that works.
+                    if (!SameStorey(snapped[origin].Position, snapped[i].Position))
+                    {
+                        continue;
+                    }
+
                     report.MonsterTargets++;
                     NavMesh.CalculatePath(
                         snapped[origin].Position, snapped[i].Position, NavMesh.AllAreas, path);
@@ -244,6 +284,17 @@ namespace HorrorGame.EditorTools.SceneGen
 
             return x;
         }
+
+        /// <summary>
+        /// True when two points are on the same storey.
+        /// <para>
+        /// Half a storey of separation, so a ramp, a kerb or a sunken bay stays on its own
+        /// floor and only a real level change reads as one. <c>MapKitCatalogue.StoreyMetres</c>
+        /// is 3.75 m.
+        /// </para>
+        /// </summary>
+        private static bool SameStorey(Vector3 a, Vector3 b) =>
+            Mathf.Abs(a.y - b.y) < MapKitCatalogue.StoreyMetres * 0.5f;
 
         private static void Union(int[] component, int a, int b)
         {
