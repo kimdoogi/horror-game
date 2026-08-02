@@ -26,9 +26,9 @@ WHAT THIS CHECKS AND WHY
     판별이 가능(§12)". §12 §직업별 맵 요구조건 is blunter: "구역별로 바닥 재질이
     달라야 청음사가 위치를 판별할 수 있다. 아트 결정이 아니라 시스템 결정이다."
 
-    So the five surfaces are a five-symbol alphabet the player has to decode
+    So the eight surfaces are an eight-symbol alphabet the player has to decode
     under stress, in the dark, through wall occlusion, one step at a time. This
-    builds the full 5x5 spectral-centroid ratio matrix at four levels of
+    builds the full 8x8 spectral-centroid ratio matrix at four levels of
     strictness:
       (a) per surface across all clips — the headline matrix
       (b) within one actor (walk / run / monster step) — what a player actually
@@ -104,7 +104,7 @@ AUDIO = os.path.join(REPO, "unity", "HorrorGame", "Assets", "Audio")
 
 #: §12's requirement, expressed as a ratio between two surfaces' spectral
 #: centroids. Below this the two floors are the same symbol to a player and the
-#: Listener's five-way readout collapses.
+#: Listener's eight-way readout collapses.
 SEPARATION_MIN = 1.4
 
 #: A seam step louder than this, relative to full scale, is audible as a click
@@ -138,8 +138,19 @@ MAX_DC = 0.02
 CLIP_PEAK = 0.999
 SILENT_RMS = 1e-4
 
-SURFACES = ("wood", "tile", "gravel", "concrete", "metal")
+SURFACES = ("wood", "tile", "gravel", "concrete", "metal", "water", "earth", "carpet")
+"""§12's five floors plus §04's three.
+
+The last three are not more of the same: 침수/흙/카펫 are a loudness ladder
+(ListenerClarity 1.00 / 0.40 / 0.22) laid across the spectral alphabet, so they
+have to clear the same separation bar *and* land in the right order on level.
+Both are checked below."""
+
 ACTORS = ("player_walk", "player_run", "monster_step")
+
+#: Bins this far under the loudest one are the file's dither, not its content.
+#: Same threshold and same reason as gen_footsteps.SIGNAL_FLOOR_DB.
+SIGNAL_FLOOR_DB = -60.0
 
 # ── Family / policy configuration ───────────────────────────────────────────
 
@@ -190,7 +201,7 @@ POSITIONAL = (
 #: NON-DIEGETIC — plays in the player's head or as a fixed 2D layer. Stereo on
 #: purpose; mono here means a wasted image, not a broken system.
 NON_DIEGETIC = (
-    r"^amb_zone_[a-d]_",
+    r"^amb_zone_[a-g]_",
     r"^amb_stairwell_metal_loop\.wav$",
     r"^amb_surface_vehicle_loop\.wav$",
     r"^amb_tension_t\d_",
@@ -735,13 +746,19 @@ def check_material_matrix(audit: Audit, quiet: bool) -> dict:
                     missing.append(n)
                     continue
                 r = synth.analyse(path)
+                # signal_centroid for the matrix, raw for the record: see its
+                # docstring. The raw figure is kept in the JSON so the two stay
+                # comparable with anything published before this file grew a
+                # noise floor to worry about.
+                centroid = signal_centroid(path)
                 per_clip[n] = dict(surface=s, actor=a, variant=v,
-                                   centroid_hz=round(r.spectral_centroid, 1),
+                                   centroid_hz=round(centroid, 1),
+                                   centroid_raw_hz=round(r.spectral_centroid, 1),
                                    rms_db=round(synth.gain_to_db(max(r.rms, 1e-12)), 2),
                                    peak_db=round(r.peak_db, 2),
                                    seconds=round(r.seconds, 4))
-                by_surface[s].append(r.spectral_centroid)
-                by_pair.setdefault((s, a), []).append(r.spectral_centroid)
+                by_surface[s].append(centroid)
+                by_pair.setdefault((s, a), []).append(centroid)
                 rms_by_surface[s].append(r.rms)
                 dur_by_surface[s].append(r.seconds)
                 rings[s].append(ring_ms(path))
@@ -750,7 +767,7 @@ def check_material_matrix(audit: Audit, quiet: bool) -> dict:
                 flats[s].append(inband_flatness(path, 120.0, 9000.0))
 
     for n in missing:
-        audit.add(BLOCKING, "§12", n, "footstep clip missing — the 5x5 matrix has a hole in it")
+        audit.add(BLOCKING, "§12", n, "footstep clip missing — the 8x8 matrix has a hole in it")
 
     if not quiet:
         print()
@@ -768,7 +785,7 @@ def check_material_matrix(audit: Audit, quiet: bool) -> dict:
             _, worst_overall, worst_pair = ratio_matrix(overall)
         else:
             worst_overall, worst_pair = print_matrix(
-                "[2a] Headline 5x5 — all 60 clips, geometric mean per surface",
+                "[2a] Headline 8x8 — all 96 clips, geometric mean per surface",
                 overall,
                 note="12 clips per surface (3 actors x 4 variants)",
             )
@@ -875,6 +892,36 @@ def check_material_matrix(audit: Audit, quiet: bool) -> dict:
                 clip_level_worst_pair=clip_worst_label,
                 secondary_axes=secondary,
                 missing=missing)
+
+
+def signal_centroid(path: str, floor_db: float = SIGNAL_FLOOR_DB) -> float:
+    """Magnitude-weighted centroid over the clip's *content* only.
+
+    The third of the three centroids `welch_power_centroid` warns about, and the
+    one the §12 matrix needs. It keeps `synth.analyse`'s magnitude weighting — so
+    the numbers stay comparable with the house report and with every previously
+    published figure for the five §12 floors — but drops the bins sitting at the
+    16-bit rounding floor, which is the failure mode that docstring describes:
+    tens of thousands of near-empty HF bins outvoting the signal.
+
+    It matters here because §04's quiet floors are exactly where that bites. 카펫
+    is a 94 Hz thud that the raw metric reads at 357 Hz, almost all of it dither,
+    which would put it on top of 콘크리트 and report a hole in the alphabet that
+    is not there. The shipped 콘크리트 clips were already reading 228 Hz against
+    154 Hz of real content for the same reason. At -60 dB this reproduces the
+    pre-quantisation centroid of all eight surfaces to within 3%.
+    """
+    data, sr = synth.read_wav(path)
+    if len(data) <= 8:
+        return 0.0
+    mag = np.abs(np.fft.rfft(data.astype(np.float64) * np.hanning(len(data))))
+    freqs = np.fft.rfftfreq(len(data), 1.0 / sr)
+    peak_bin = float(np.max(mag)) if len(mag) else 0.0
+    if peak_bin <= 0.0:
+        return 0.0
+    keep = mag >= peak_bin * (10.0 ** (floor_db / 20.0))
+    total = float(np.sum(mag[keep]))
+    return float(np.sum(freqs[keep] * mag[keep]) / total) if total > 0.0 else 0.0
 
 
 def welch_power_centroid(path: str) -> float:
@@ -1047,7 +1094,7 @@ def check_clarity_vs_audio(audit: Audit, quiet: bool) -> dict:
     folder = os.path.join(AUDIO, "Footsteps")
     if not clarity or len(clarity) != len(SURFACES):
         audit.add(WARN, "consistency", "GameConstants.cs",
-                  "could not read all five ListenerClarity constants — the audio cannot be "
+                  "could not read every ListenerClarity constant — the audio cannot be "
                   "checked against the number the HUD will show")
         return {}
 

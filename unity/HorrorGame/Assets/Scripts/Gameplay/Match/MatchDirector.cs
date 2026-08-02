@@ -2,7 +2,10 @@
 
 using System;
 using System.Collections.Generic;
+using HorrorGame.Audio;
 using HorrorGame.Core;
+using HorrorGame.Core.Abilities;
+using HorrorGame.Core.Map;
 using HorrorGame.Core.Monster;
 using HorrorGame.Core.Clues;
 using HorrorGame.Core.Economy;
@@ -122,6 +125,14 @@ namespace HorrorGame.Gameplay.Match
 
         /// <summary>Throttle for the proximity report. See CheckGrab.</summary>
         private float _lastGrabReport;
+
+        /// <summary>Ground covered since the last footstep was reported to §06. See ReportFootsteps.</summary>
+        private float _strideTravelled;
+
+        private Vector3 _lastFootstepPosition;
+
+        /// <summary>How loud the local player is. Optional — a rig without one still makes noise by speed.</summary>
+        private NoiseMeter? _noise;
         private int _activeSeed;
         private bool _endScreenHeldForGhost;
 
@@ -239,6 +250,18 @@ namespace HorrorGame.Gameplay.Match
         public bool LocalPlayerIsGhost
         {
             get { return _state != null && _state.PlayerAt(LocalPlayerIndex).IsGhost; }
+        }
+
+        /// <summary>
+        /// Where §06's lunge is in its cycle. Read-only, and here for one reason: when
+        /// the owner reported standing in front of the creature and not dying, there
+        /// were four things that could have been true and no way to tell them apart from
+        /// outside. <c>MonsterKillTests</c> reads this so a failure says which link was
+        /// open instead of only that the player survived.
+        /// </summary>
+        public LungeState LungePhase
+        {
+            get { return _lunge.State; }
         }
 
         /// <summary>
@@ -390,6 +413,13 @@ namespace HorrorGame.Gameplay.Match
             _onSurface = true;
             _grabDistance = MeasureGrabDistance();
             AttachDoors();
+
+            // §06's ears. Optional on purpose: a rig assembled by a test has no audio on
+            // it, and a monster that went deaf whenever the sound layer was absent would
+            // hide the very bug this wiring exists to fix. See ReportFootsteps.
+            _noise = _playerRoot != null ? _playerRoot.GetComponentInChildren<NoiseMeter>(true) : null;
+            _lastFootstepPosition = _playerRoot != null ? _playerRoot.position : Vector3.zero;
+            _strideTravelled = 0f;
 
             BindHud();
 
@@ -764,9 +794,84 @@ namespace HorrorGame.Gameplay.Match
                 // The true position, every tick. §06's perception rules are in Core and
                 // decide what the monster can actually see.
                 monster.ReportTarget(LocalPlayerIndex, _playerRoot.position);
+                ReportFootsteps(monster);
             }
 
             monster.Simulate(GameConstants.FixedStep);
+        }
+
+        /// <summary>
+        /// The player's feet, told to §06.
+        /// <para>
+        /// <b>This is the door out of 순찰, and it was nailed shut.</b> §06's table gives
+        /// 순찰 exactly one transition — 소리 감지 → 경계 — and no sight edge, which is
+        /// deliberate: the creature is not meant to acquire you across a room just by
+        /// facing you. But nothing in the shipping game ever raised a sound cue. The
+        /// only caller of <c>ReportSound</c> in the project was an editor screenshot
+        /// tool, so the monster's one way out of patrol led nowhere and it could never
+        /// chase, catch or kill anybody. The owner walked up to it and stood there and
+        /// nothing happened, which is precisely correct behaviour for a machine with no
+        /// input. <c>MonsterKillTests</c> holds the reproduction.
+        /// </para>
+        /// <para>
+        /// <b>Distance, not frames.</b> A step is
+        /// <see cref="AudioTuning.FootstepStrideMetres"/> of ground covered, which is
+        /// the same rule <c>FootstepAudio</c> plays a clip on — so what the monster
+        /// hears and what the room hears are the same event, at the same instant,
+        /// without either one depending on the other. Sound must not be a per-frame
+        /// spray: <c>MonsterBrain</c> takes the loudest cue in a tick, and a continuous
+        /// stream would make a walking player as loud as a running one.
+        /// </para>
+        /// <para>
+        /// <b>Crouching is silent and that is the point.</b> The range is
+        /// <see cref="GameConstants.MonsterFootstepHearingRange"/> scaled by the
+        /// surface's own §12 clarity and by how hard the player is working, which is the
+        /// same 0~1 <c>NoiseMeter</c> uses to blind the 청음사. One quantity, so §10's
+        /// "hear it or be heard" stays one decision.
+        /// </para>
+        /// </summary>
+        private void ReportFootsteps(MonsterAgent monster)
+        {
+            var root = _playerRoot;
+            if (root == null)
+            {
+                return;
+            }
+
+            var here = root.position;
+            var moved = here - _lastFootstepPosition;
+            moved.y = 0f;
+
+            _strideTravelled += moved.magnitude;
+            _lastFootstepPosition = here;
+
+            if (_strideTravelled < AudioTuning.FootstepStrideMetres)
+            {
+                return;
+            }
+
+            _strideTravelled = 0f;
+
+            // How hard they are working. Without a meter — a rig assembled by a test, or
+            // a headless host — fall back on speed over the same ladder the meter uses,
+            // so the monster still hunts rather than silently going deaf.
+            var effort = _noise != null
+                ? _noise.Noise01
+                : Mathf.Clamp01(moved.magnitude / (GameConstants.RunSpeed * Time.deltaTime + 0.0001f));
+
+            if (effort <= 0.01f)
+            {
+                return;
+            }
+
+            var clarity = ListenerAbility.ClarityOf(FloorSurfaces.Sample(here));
+            var range = GameConstants.MonsterFootstepHearingRange * clarity * effort;
+            if (range <= 0.1f)
+            {
+                return;
+            }
+
+            monster.ReportSound(here, range, effort);
         }
 
         private void StepClueRead()
@@ -965,8 +1070,15 @@ namespace HorrorGame.Gameplay.Match
                           + (LocalPlayerIsGhost ? "  ← 이미 유령" : string.Empty), this);
             }
 
+            // FixedStep, not Time.deltaTime. CheckGrab runs inside StepFixed, which
+            // StepMatch may call several times in one frame to burn down its
+            // accumulator — so a frame delta here advanced the strike by a whole frame
+            // per fixed step, and a 0.55 s commit resolved in a different number of
+            // steps depending on frame rate. §06's lunge is the one window where the
+            // player's survival is decided by tenths of a second, and it was being
+            // measured on the wrong clock.
             var previous = _lunge.State;
-            var outcome = _lunge.Tick(Time.deltaTime, chasing, distance);
+            var outcome = _lunge.Tick(GameConstants.FixedStep, chasing, distance);
 
             if (previous != _lunge.State || outcome != LungeEvent.None)
             {

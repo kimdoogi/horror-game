@@ -391,6 +391,75 @@ namespace HorrorGame.Core
         public const float MonsterSightHalfAngle = 90f;
 
         /// <summary>
+        /// How far a footstep carries to the monster at full effort on a perfectly
+        /// telling surface, metres. Scaled down by the surface's
+        /// <c>ListenerClarity*</c> and by how hard the player is working, so this is a
+        /// ceiling rather than a range.
+        /// <para>
+        /// <b>Nothing raised a sound cue before this existed.</b> §06's table gives 순찰
+        /// exactly one transition — 소리 감지 → 경계 — and no sight edge at all, which
+        /// is deliberate and correct: the monster is not supposed to acquire you across
+        /// a room just by facing you. But the game never reported a single sound to it.
+        /// The only caller of <c>MonsterAgent.ReportSound</c> in the whole project was
+        /// an editor screenshot tool. So the one door out of 순찰 was nailed shut, and
+        /// the creature patrolled forever — it could not chase, could not catch, could
+        /// not kill, and §09's ghost could never be entered by anything but a fall. A
+        /// player could stand 43 cm in front of it and be walked past. That is exactly
+        /// what the owner reported, and <c>MonsterKillTests</c> now measures it.
+        /// </para>
+        /// <para>
+        /// <b>Why 35 m.</b> It is bounded on both sides by rules that already exist.
+        /// Below <see cref="ListenerHearingRange"/> (40 m), because §04 gives the
+        /// 청음사 one job and a monster that heard as far as they do would take it.
+        /// Above <see cref="MonsterSightRange"/> (20 m), because §03 makes darkness the
+        /// game's central information problem — a creature that saw further than it
+        /// heard would be a creature the dark protects you from, and the dark is
+        /// supposed to blind you, not it. Between those, 35 m is a zone
+        /// diagonal (§12's band is 30~40 m): a player sprinting on 금속 grating is heard
+        /// from anywhere in the zone they are in, and from nowhere outside it.
+        /// </para>
+        /// <para>
+        /// The two multipliers do the rest, and they are the same numbers §04 hears
+        /// with rather than a second set: 카펫 at 0.22 clarity carries a walk about 2 m
+        /// and a sprint about 8, which is what makes 병동 the floor you can run on;
+        /// 금속 at 1.00 carries a walk 10 m, which is what makes a stairwell the place
+        /// you cannot. One quantity for "the noise that blinds you" and "the noise that
+        /// draws it" is what keeps §10's dilemma a single dilemma.
+        /// </para>
+        /// </summary>
+        public const float MonsterFootstepHearingRange = 35f;
+
+        /// <summary>
+        /// How close a player has to be before a monster that is not hunting notices
+        /// them by sight alone, metres.
+        /// <para>
+        /// <b>§06's table gives 순찰 no sight edge and that is right at range.</b> A
+        /// creature that acquired you across a lit room the instant it faced you would
+        /// erase §12's cover, §04's 관측자, and the whole reason to move quietly. So
+        /// the rule stands: a patrol does not hunt what it merely sees.
+        /// </para>
+        /// <para>
+        /// <b>It is wrong at contact.</b> Under the literal table a player can stand
+        /// 43 cm from the creature's face, in the open, and be walked past — measured,
+        /// not imagined, in <c>MonsterKillTests</c>. Nothing about that reads as a
+        /// designed rule from inside the game; it reads as a broken monster, and a
+        /// player who discovers it stops being afraid of the thing the entire design
+        /// is built to make them afraid of.
+        /// </para>
+        /// <para>
+        /// <b>Why 4 m.</b> <see cref="MonsterAttackRange"/> (1.8 m) plus one second of
+        /// a walking player (<see cref="WalkSpeed"/>, 2.0 m/s): if you are close enough
+        /// that a second of walking puts you inside its reach, you have walked into it.
+        /// That keeps noticing and striking two separate events — the creature turns
+        /// before it commits — and it is a fifth of <see cref="MonsterSightRange"/>, so
+        /// every acquisition beyond arm's length still has to be earned with noise.
+        /// <c>MonsterTests.Patrol_DoesNotChaseOnSight_AsSection06LiterallyWrites</c>
+        /// holds that line at 5 m and still passes.
+        /// </para>
+        /// </summary>
+        public const float MonsterPatrolNoticeRange = 4.0f;
+
+        /// <summary>
         /// How close the monster must come to a path point to count as having
         /// reached it, metres. §06 — not a balance value; it exists so that path
         /// following terminates. It must stay below one <see cref="FixedStep"/> of
@@ -1554,6 +1623,32 @@ namespace HorrorGame.Core
             Require(MonsterAttackRecoverySeconds > MonsterAttackContactSeconds * 0.5f,
                 "§06: a miss has to cost something. Recovery shorter than half the strike "
                 + "would let it re-commit before the player has covered any ground.");
+
+            Require(MonsterFootstepHearingRange > MonsterSightRange,
+                "§03: 어둠이 정보를 가린다. Hearing shorter than sight would make the dark a "
+                + "thing that protects the player from the monster, when the whole design "
+                + "is that it blinds the player and not the creature.");
+            Require(MonsterFootstepHearingRange < ListenerHearingRange,
+                "§04 청음사: 「소리로 위치를 파악한다」 is the whole role. A monster that heard "
+                + "as far as the Listener does would leave them with nothing to add.");
+            // The two ends of §12's surface table, stated as the thing a player would
+            // actually notice: which sense the creature finds you with.
+            Require(MonsterFootstepHearingRange * ListenerClarityCarpet < MonsterSightRange,
+                "§12 병동: on carpet even a sprint has to carry less far than the creature "
+                + "can see, or the maze storey is a maze it can follow you through and the "
+                + "quietest surface in the game buys nothing.");
+            Require(MonsterFootstepHearingRange * ListenerClarityMetal > MonsterSightRange,
+                "§12 계단: on grating the creature has to hear you before it could ever see "
+                + "you. That contrast with 병동 is the whole reason the building has more "
+                + "than one surface.");
+
+            Require(MonsterPatrolNoticeRange > MonsterAttackRange,
+                "§06: the creature has to notice before it strikes, or the two are one "
+                + "event and there is nothing on screen between being unseen and being dead.");
+            Require(MonsterPatrolNoticeRange < MonsterSightRange * 0.25f,
+                "§06 gives 순찰 no sight edge on purpose, and this is a contact exception "
+                + "rather than a repeal. Anything approaching a quarter of the sight range "
+                + "would let a patrol acquire across a room, which erases §12's cover.");
 
             Require(RunSpeed < MonsterBaseSpeed,
                 "§06: the monster must out-run a running player, or ordinary roles could simply flee.");

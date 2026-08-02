@@ -225,6 +225,85 @@ namespace HorrorGame.Core.Tests
         }
 
         /// <summary>
+        /// The other half of the same rule, and the one the owner found by playing:
+        /// something standing in the creature's face is noticed.
+        /// <para>
+        /// §06's table is right that a patrol should not acquire across a room, and the
+        /// test above holds that line at 5 m. It is wrong at contact. Under the literal
+        /// table a player could stand 43 cm from the creature, in the open, in its own
+        /// facing, and be walked past — measured in <c>MonsterKillTests</c>, reported by
+        /// the owner as 괴물앞에있어도 안죽는데. From inside the game that does not read as
+        /// restraint, it reads as a broken monster, and a player who finds it stops
+        /// being afraid of the thing the whole design exists to make them afraid of.
+        /// </para>
+        /// </summary>
+        [Test]
+        public void Patrol_ChasesSomethingStandingInItsFace()
+        {
+            var world = new OpenRoom();
+            var brain = NewBrain(world);
+
+            var contact = brain.Position
+                          + (brain.Facing * (GameConstants.MonsterPatrolNoticeRange * 0.5f));
+
+            brain.Tick(GameConstants.FixedStep, Input(0f).WithTargets(Targets(contact)));
+
+            Assert.That(brain.State, Is.EqualTo(MonsterStateId.Chase),
+                "the creature was handed a silent player two metres in front of its own "
+                + "face, in the open, and kept patrolling.");
+            Assert.That(brain.ChaseTargetId, Is.Not.EqualTo(MonsterBrain.NoTarget));
+        }
+
+        /// <summary>
+        /// The contact exception is an exception. It must not quietly become the sight
+        /// edge §06 declined to give 순찰 — that would erase §12's cover on every map.
+        /// </summary>
+        [Test]
+        public void Patrol_DoesNotNoticeJustPastContactRange()
+        {
+            var world = new OpenRoom();
+            var brain = NewBrain(world);
+
+            var justOutside = brain.Position
+                              + (brain.Facing * (GameConstants.MonsterPatrolNoticeRange * 1.2f));
+
+            var ticks = SubSteps(GameConstants.AlertGiveUpSeconds);
+            for (var i = 0; i < ticks; i++)
+            {
+                brain.Tick(GameConstants.FixedStep, Input(0f).WithTargets(Targets(justOutside)));
+            }
+
+            Assert.That(brain.State, Is.EqualTo(MonsterStateId.Patrol),
+                "4.8 m is not arm's length. If the creature takes this it is acquiring on "
+                + "sight from patrol, which §06 does not give it and §12's cover assumes "
+                + "it does not have.");
+        }
+
+        /// <summary>
+        /// Concealment still beats it. §12 puts 은폐 지점 on every storey so that being
+        /// close is survivable, and a contact exception that ignored that would make
+        /// every hiding place a coffin.
+        /// </summary>
+        [Test]
+        public void Patrol_DoesNotNoticeAConcealedPlayerAtContactRange()
+        {
+            var world = new OpenRoom();
+            var brain = NewBrain(world);
+
+            var contact = brain.Position
+                          + (brain.Facing * (GameConstants.MonsterPatrolNoticeRange * 0.5f));
+            var hidden = new[] { new MonsterTarget(TargetId, contact, true) };
+
+            var ticks = SubSteps(GameConstants.AlertGiveUpSeconds);
+            for (var i = 0; i < ticks; i++)
+            {
+                brain.Tick(GameConstants.FixedStep, Input(0f).WithTargets(hidden));
+            }
+
+            Assert.That(brain.State, Is.EqualTo(MonsterStateId.Patrol));
+        }
+
+        /// <summary>
         /// F-002, the sharper half. §06 gives 수색 one exit, 15초 무소득 → 순찰, and no way
         /// back into 추격 — so a searching monster walks past a player in plain sight
         /// for the full fifteen seconds. "무소득" implies the opposite, which is exactly

@@ -33,10 +33,19 @@ namespace HorrorGame.EditorTools.SceneGen
     /// <code>
     ///   북 회랑  z29  x21~29   20.0 m — the sprint, and the loudest 20 m in the game
     ///   남 회랑  z22  x21~29   20.0 m — the other sprint, one loop away
-    ///   서 수직로 x21  z22~29  17.5 m ┐ these two are the S자 통로's first leg and the
-    ///   중앙 수직로 x25 z21~29  20.0 m ┘ rung's far knee (see 양수기실 below)
+    ///   서 수직로 x21  z22~29  17.5 m — 양수기실 sits on it, four cells up from 집수정
+    ///   중앙 수직로 x25 z21~29  20.0 m — the bar across the ring
+    ///   가로 연결 z26  x21~25  10.0 m — the rung, and the middle of the S자 통로
     ///   동 수직로 x29  z22~29  17.5 m — the outer ring's neck; the 문 hangs mid-run
     /// </code>
+    /// <para>
+    /// <b>The S자 통로 is the west knee</b>, and it is built out of the ring rather than
+    /// bolted on beside it: 집수정 (21,22) → 양수기실 (21,26) is 10 m of 서 수직로, the
+    /// rung 양수기실 → 수문조작대 (25,26) is 10 m across, and 수문조작대 → 침전조
+    /// (25,22) is 10 m back down the 중앙 수직로. Two 10 m legs, a 90° bend at each end
+    /// of the connector, 30 m walked to cross 10 m of ground — §12's 기본 단위, and on
+    /// this floor the only place where the thing chasing you has to guess.
+    /// </para>
     /// <para>
     /// <b>Why the two easternmost columns of the brief are solid.</b> The floor was
     /// assigned x 20..32 × z 20..30, which is 13 × 11 cells — 32.5 × 27.5 m, a

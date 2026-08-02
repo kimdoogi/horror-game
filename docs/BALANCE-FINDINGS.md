@@ -1561,3 +1561,97 @@ anyone rebuilds a storey.
 Nothing yet. It should be: a test asserting that the 개방 공간 share of `FirstMapSketch`
 is inside whatever band the designer picks would fail the moment a storey is re-authored
 past it.
+
+---
+
+## F-012 · The monster could never chase anybody, because nothing ever made a sound
+
+**Sections:** §06 (괴물) × §04 (청음사) × §10 (그늘) · **Priority:** 🔴 was blocking —
+the game had no antagonist · **Status:** fixed 2026-08-02 ·
+**Source:** the owner playing the solo build — *괴물앞에있어도 안죽는데?* — then
+`MonsterKillTests.Standing_in_front_of_the_creature_kills_you`
+
+### What was wrong
+
+§06's state table gives 순찰 exactly one transition:
+
+| 상태 | 전이 조건 |
+|---|---|
+| **순찰** | 소리 감지 → 경계 |
+
+No sight edge. That is deliberate and `MonsterTests` pinned it. It is also the *only*
+way out of patrol.
+
+**Nothing in the shipping game ever raised a sound cue.** The only caller of
+`MonsterAgent.ReportSound` in the entire project was `GhostSeatShot.cs` — an editor
+screenshot tool. `NoiseMeter` computed how loud the player was, fed it to the audio duck
+and to §04's Listener, and its own class comment said the number "also feeds whatever
+raises §06's `MonsterSoundCue`". That *whatever* did not exist.
+
+So the monster's one door out of 순찰 opened onto nothing. Measured, on the shipped solo
+scene, with the real director:
+
+```
+  0.0s  §06 Patrol   1.45 m        ← a player standing 43 cm from its face
+  2.6s  §06 Patrol   8.70 m
+  9.8s  §06 Patrol  22.87 m        ← it walked away and kept walking
+```
+
+It could not chase, could not catch, could not kill. §09's ghost, §06's lunge, the
+whole grab path, §04's 섬광수, §10's 그늘 — none of it could ever fire in play. The
+game had no antagonist and the test suite was green, because `MonsterChaseTests` calls
+`ReportSound` itself.
+
+### Two further defects the same test found
+
+1. **The lunge was ticked on the wrong clock.** `MatchDirector.CheckGrab` runs inside
+   `StepFixed`, which `StepMatch` may call several times in one frame — and it advanced
+   `MonsterLunge` by `Time.deltaTime`. A 0.55 s commit therefore resolved in a different
+   number of steps at 30 fps than at 144, on the one window where survival is decided by
+   tenths of a second. Now `GameConstants.FixedStep`.
+2. **§06's table is wrong at contact range.** Even with sound wired, a player who stands
+   perfectly still makes none, so the creature would still walk through them. From inside
+   the game that does not read as restraint; it reads as a broken monster. Patrol now has
+   a sight edge inside `MonsterPatrolNoticeRange` — 4 m,
+   `MonsterAttackRange` + one second of walking — and nowhere beyond it.
+   `Patrol_DoesNotChaseOnSight_AsSection06LiterallyWrites` holds the design line at 5 m
+   and still passes; concealment still beats it.
+
+### The fix, and the constant it turns on
+
+`MatchDirector.ReportFootsteps` raises one cue per
+`AudioTuning.FootstepStrideMetres` of ground covered — the same rule `FootstepAudio`
+plays a clip on, so what the monster hears and what the room hears are one event.
+Range is `MonsterFootstepHearingRange` (35 m) scaled by the surface's own
+`ListenerClarity*` and by `NoiseMeter.Noise01`:
+
+| surface | clarity | walk ≈ | sprint ≈ | what it means |
+|---|:--:|:--:|:--:|---|
+| 금속 계단 | 1.00 | 10 m | 35 m | heard long before it could be seen |
+| 타일 | 0.85 | 9 m | 30 m | |
+| 자갈 | 0.70 | 7 m | 25 m | |
+| 콘크리트 | 0.50 | 5 m | 18 m | |
+| 흙 (B8) | 0.40 | 4 m | 14 m | |
+| **카펫 (B6 병동)** | **0.22** | **2 m** | **8 m** | the one floor you can run on |
+
+35 m is bounded on both sides by rules that already existed: under
+`ListenerHearingRange` (40 m) so §04 keeps its job, over `MonsterSightRange` (20 m) so
+§03's darkness blinds the player rather than the creature. `GameConstants.Validate`
+asserts both, plus the two ends of the surface table.
+
+### Why nobody noticed
+
+Every test that needed a chase built one. `MonsterChaseTests` calls `ReportSound`
+directly; `MonsterTests` hands the brain a cue array. Both are correct unit tests of the
+brain and both are blind to whether anything in the game ever calls them. The gap was
+between two green suites, which is where this class of defect always is — and it took a
+person playing the build to find it.
+
+### Pinned by
+
+`MonsterKillTests.Standing_in_front_of_the_creature_kills_you` — walks a body at the
+creature on the shipped solo scene, holds it there, and asserts §09's ghost. On failure
+it names which link of the chain was open rather than only that the player survived.
+`MonsterTests.Patrol_ChasesSomethingStandingInItsFace`,
+`Patrol_DoesNotNoticeJustPastContactRange` and
+`Patrol_DoesNotNoticeAConcealedPlayerAtContactRange` hold the contact exception's edges.

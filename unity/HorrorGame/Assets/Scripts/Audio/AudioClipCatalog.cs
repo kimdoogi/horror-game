@@ -56,6 +56,15 @@ namespace HorrorGame.Audio
             // §12 gives stairs their own material because moving between floors is a
             // designed act, and the stairwell belongs to no zone — hence its own bed.
             (FloorMaterial.Metal, "metal", "amb_stairwell_metal_loop"),
+
+            // The three deep storeys. Without these rows TokenOf returns empty, which
+            // makes FootstepStem return empty, which makes every clip on three whole
+            // floors silently fail to load — the player walks B6, B7 and B8 in silence
+            // and nothing anywhere reports a problem. That is the failure mode this
+            // table has: it is a lookup that degrades to nothing instead of to an error.
+            (FloorMaterial.Carpet, "carpet", "amb_zone_e_carpet_loop"),
+            (FloorMaterial.Water, "water", "amb_zone_f_water_loop"),
+            (FloorMaterial.Earth, "earth", "amb_zone_g_earth_loop"),
         };
 
         /// <summary>§07's five rows, as bed filenames in escalation order.</summary>

@@ -182,8 +182,16 @@ namespace HorrorGame.Audio
         /// <code>
         ///   wood      +1.0 dB      concrete   +0.3 dB
         ///   metal     −1.6 dB      tile      −10.7 dB
-        ///   gravel   −25.8 dB
+        ///   gravel   −25.8 dB      water     −19.4 dB
+        ///   earth     −0.5 dB      carpet     −0.1 dB
         /// </code>
+        /// <para>
+        /// Sorted, that column is a spectral centroid ranking and nothing else — gravel
+        /// 6225 Hz, water 4146, tile 2582 at the muffled end; carpet 85, earth 315,
+        /// concrete 151, wood 537 at the untouched end. Level in the open predicts none
+        /// of it. 수몰층's splash is the loudest surface in the game and a wall takes
+        /// 19 dB of it; 병동's carpet is the quietest and a wall takes a tenth of one.
+        /// </para>
         /// <para>
         /// F-002's inversion in one column. 자갈's 부스럭 (§12) is broadband high
         /// frequency and a wall takes essentially all of it; 콘크리트's 둔탁 is a low
@@ -217,16 +225,31 @@ namespace HorrorGame.Audio
                     return 0.3f;
                 case FloorMaterial.Metal:
                     return -1.6f;
-                // Water rings brighter than tile — nothing about a splash is muffled.
+                // The three below were written from reasoning before any clip existed,
+                // and all three had the WRONG SIGN. Measuring the shipped WAVs the same
+                // way as the five above gave water −19.4, earth −0.5, carpet −0.1
+                // against predictions of +2.4, −28.4 and −34.0. The mistake is worth
+                // keeping written down because it is the same one twice: the guesses
+                // ranked these surfaces by how LOUD they are in the open, and a wall
+                // does not care about level. It is a low-pass. What passes through it is
+                // whatever is already low.
+                //
+                // 수몰층's splash is the brightest thing in the game — 4146 Hz centroid,
+                // above even gravel's rattle in the band that matters — so a wall takes
+                // nearly 20 dB of it. Water is the surface that betrays you in the open
+                // and hides you through a wall.
                 case FloorMaterial.Water:
-                    return 2.4f;
-                // Dug earth eats the low end the way gravel does, and more of it.
+                    return -19.4f;
+                // 굴착층 is 315 Hz. It is quiet, but almost all of what there is, is
+                // low, and a wall passes low. It arrives essentially intact.
                 case FloorMaterial.Earth:
-                    return -28.4f;
-                // Carpet swallows everything. §04's blind spot is audible as well as
-                // measurable, which is what makes the route worth knowing about.
+                    return -0.5f;
+                // 병동's carpet at 85 Hz is the lowest surface in the game and the one a
+                // wall touches least of all eight. It is barely audible either side —
+                // which is not the same as safe, and is the more interesting version of
+                // §04's blind spot: closing a door does not make carpet any quieter.
                 case FloorMaterial.Carpet:
-                    return -34.0f;
+                    return -0.1f;
                 default:
                     return 0f;
             }

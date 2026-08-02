@@ -18,10 +18,19 @@ namespace HorrorGame.Core.Monster
     /// escapes through, on every map, silently.
     /// </para>
     /// <para>
-    /// The transitions are the §06 table and nothing more. Where the table gives a
-    /// state no edge — Patrol has no sight edge, Search has no way back into Chase —
-    /// this class has none either, and <c>MonsterTests</c> pins the consequence.
-    /// See docs/BALANCE-FINDINGS.md F-002 before "fixing" that.
+    /// The transitions are the §06 table and nothing more, with one exception that is
+    /// written down rather than smuggled in. Where the table gives a state no edge —
+    /// Search has no way back into Chase — this class has none either, and
+    /// <c>MonsterTests</c> pins the consequence.
+    /// </para>
+    /// <para>
+    /// The exception is 순찰's missing sight edge, which now exists inside
+    /// <see cref="GameConstants.MonsterPatrolNoticeRange"/> — four metres — and nowhere
+    /// beyond it. The table is right that a patrol must not acquire across a room; it
+    /// simply did not consider a player standing in the creature's face, and under the
+    /// literal reading one could, indefinitely, and be walked past. That was found by
+    /// playing the game, not by reading it. Everything else about 순찰 is unchanged:
+    /// beyond arm's length, aggro is still bought with noise.
     /// </para>
     /// </summary>
     public sealed class MonsterBrain
@@ -304,6 +313,18 @@ namespace HorrorGame.Core.Monster
         // 순찰 | 경로 이동 | 발소리 | 소리 감지 → 경계   (§06)
         private void StepPatrol(float dt, in MonsterTickInput input, float budget)
         {
+            // §06's table gives 순찰 no sight edge, and at range that is right — see
+            // MonsterPatrolNoticeRange. This is the contact exception: something that
+            // walks into the creature's face gets noticed, because the alternative is
+            // measured absurdity rather than designed restraint. Sound still wins ties;
+            // it is evaluated first below only because a cue is cheaper to test.
+            var underfoot = FindVisibleTarget(input.Targets, GameConstants.MonsterPatrolNoticeRange);
+            if (underfoot.HasValue)
+            {
+                EnterChase(underfoot.Value);
+                return;
+            }
+
             var heard = FindLoudestAudibleSound(input.Sounds);
             if (heard.HasValue)
             {
@@ -681,7 +702,10 @@ namespace HorrorGame.Core.Monster
             return !float.IsNaN(d) && d < float.PositiveInfinity;
         }
 
-        private bool CanSee(MonsterTarget target)
+        private bool CanSee(MonsterTarget target) =>
+            CanSee(target, GameConstants.MonsterSightRange);
+
+        private bool CanSee(MonsterTarget target, float rangeMetres)
         {
             if (target.IsConcealed)
             {
@@ -689,7 +713,7 @@ namespace HorrorGame.Core.Monster
             }
 
             var to = (target.Position - _position).Flat;
-            if (to.MagnitudeFlat > GameConstants.MonsterSightRange)
+            if (to.MagnitudeFlat > rangeMetres)
             {
                 return false;
             }
@@ -703,7 +727,10 @@ namespace HorrorGame.Core.Monster
             return _probe.HasLineOfSight(_position, target.Position);
         }
 
-        private MonsterTarget? FindVisibleTarget(IReadOnlyList<MonsterTarget>? targets)
+        private MonsterTarget? FindVisibleTarget(IReadOnlyList<MonsterTarget>? targets) =>
+            FindVisibleTarget(targets, GameConstants.MonsterSightRange);
+
+        private MonsterTarget? FindVisibleTarget(IReadOnlyList<MonsterTarget>? targets, float rangeMetres)
         {
             if (targets == null)
             {
@@ -716,7 +743,7 @@ namespace HorrorGame.Core.Monster
             for (var i = 0; i < targets.Count; i++)
             {
                 var candidate = targets[i];
-                if (!CanSee(candidate))
+                if (!CanSee(candidate, rangeMetres))
                 {
                     continue;
                 }
