@@ -40,6 +40,16 @@ namespace HorrorGame.EditorTools.SceneGen
         /// </summary>
         LockableDoor,
 
+        /// <summary>
+        /// §01's 투하구 — the hole in the middle of a storey. Carries the landing position on
+        /// the storey below in <see cref="MapMarkerPlacement.Name"/>'s companion marker, so
+        /// the runtime can drop a player without knowing the graph.
+        /// </summary>
+        Chute,
+
+        /// <summary>Where a 투하구 puts you down: the rim of the storey below.</summary>
+        ChuteLanding,
+
         /// <summary>A light the Engineer's 구역 조명 switches (§04). Starts off — §03 "어둠 = 목표의 잠금장치".</summary>
         ZoneLight,
 
@@ -1760,6 +1770,27 @@ namespace HorrorGame.EditorTools.SceneGen
                         MapMarkerKind.PlayerSpawn, graph.Nodes[node].Position, graph.Nodes[node].ZoneId, node,
                         "PlayerSpawn_" + i));
                 }
+            }
+
+            for (var i = 0; i < _chutes.Count; i++)
+            {
+                var chute = _chutes[i];
+                if (!nodeIdOf.TryGetValue(chute.Mouth, out var mouth)
+                    || !nodeIdOf.TryGetValue(chute.Landing, out var landing))
+                {
+                    continue;
+                }
+
+                // Two markers rather than one with a payload: MapMarkerPlacement carries a
+                // position and a name and nothing else, and widening it for one consumer
+                // would put a §01 concept into the shape every marker has. The runtime pairs
+                // them by name, which is the same thing the door geometry already does.
+                markers.Add(new MapMarkerPlacement(
+                    MapMarkerKind.Chute, graph.Nodes[mouth].Position,
+                    graph.Nodes[mouth].ZoneId, mouth, chute.Name));
+                markers.Add(new MapMarkerPlacement(
+                    MapMarkerKind.ChuteLanding, graph.Nodes[landing].Position,
+                    graph.Nodes[landing].ZoneId, landing, chute.Name + " 착지"));
             }
 
             var farthest = entrance;

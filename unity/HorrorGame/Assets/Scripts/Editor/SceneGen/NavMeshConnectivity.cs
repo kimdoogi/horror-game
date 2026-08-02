@@ -305,9 +305,38 @@ namespace HorrorGame.EditorTools.SceneGen
             /// <summary>Fraction of pairs fully connected.</summary>
             public float CompletionRate => Pairs > 0 ? Complete / (float)Pairs : 0f;
 
-            /// <summary>True when the surface is whole enough to ship.</summary>
+            /// <summary>
+            /// True when the surface is whole enough to ship.
+            /// <para>
+            /// <b>One island was the right test for a building joined by stairs. It is the
+            /// wrong test for §01's tower.</b> The storeys are joined by 투하구 — one-way
+            /// holes — and a hole is not walkable surface. Eight floors with nothing to walk
+            /// between them are eight islands BY CONSTRUCTION, and demanding one would mean
+            /// putting stairs back into a game whose whole shape is that you cannot climb.
+            /// </para>
+            /// <para>
+            /// So the requirement is per storey: every floor whole, and the creature able to
+            /// reach everything on ITS OWN floor. That is also the honest reading of §06 in a
+            /// race — the creature guards a level and you escape it by falling past it, which
+            /// is why <c>DescentMap</c> starts it halfway down rather than at the finish.
+            /// </para>
+            /// <para>
+            /// <see cref="IslandsAllowed"/> is set by the caller from the storey count. A map
+            /// that leaves it at 1 gets the old test, so nothing about the co-operative map
+            /// changed.
+            /// </para>
+            /// </summary>
             public bool Passed =>
-                Pairs > 0 && CompletionRate >= RequiredCompletionRate && Islands == 1 && OffSurface.Count == 0;
+                Pairs > 0
+                && CompletionRate >= RequiredCompletionRate
+                && Islands <= IslandsAllowed
+                && OffSurface.Count == 0;
+
+            /// <summary>
+            /// How many disconnected pieces of surface are legal. One unless the map joins
+            /// its storeys with something that is not walkable — see <see cref="Passed"/>.
+            /// </summary>
+            public int IslandsAllowed { get; set; } = 1;
 
             /// <summary>Records a broken pair, keeping only the first few for the report.</summary>
             public void RecordBreak(string from, string to, string kind)
