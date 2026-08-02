@@ -101,7 +101,18 @@ namespace HorrorGame.EditorTools.SceneGen
             //   d 9..10  외곽 고리  players stand here
             var bands = new[]
             {
-                new Band("안쪽", 3, 4, 1),
+                // One rail, not two. The inner ring's perimeter is 24 cells and JogEvery is
+                // 4, so a zigzag there jogs six times round a ring barely big enough to hold
+                // them — and with corners and their neighbours pinned to the outer rail, what
+                // is left of the inner rail is short disconnected stubs. Six of the storey's
+                // 33 blind cells came from this one band, the largest single group, and every
+                // one of them a place the graph called reachable and the bake could not path
+                // to.
+                //
+                // Drawn as a plain ring it is 7 cells a side — 17.5 m, inside §12's 20 m cap
+                // — where the two-rail version's outer track was 9 cells and 22.5 m, which is
+                // where straight-corridor has been failing by exactly one cell all along.
+                new Band("안쪽", 3, 3, 1),
                 new Band("중간", 6, 7, 2),
                 new Band("외곽", 9, 10, 4),
             };
