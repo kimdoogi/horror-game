@@ -905,7 +905,51 @@ namespace HorrorGame.EditorTools.SceneGen
             surface.voxelSize = agent.agentRadius / 5f;
 
             WarnIfAgentDoesNotFit(agent, surface.agentTypeID);
+
+            // Clear the GLOBAL NavMesh before baking, and this is B-009.
+            //
+            // NavMeshSurface.BuildNavMesh writes into this surface's own navMeshData.
+            // NavMesh.CalculatePath and NavMesh.SamplePosition — which is all NavMeshAudit
+            // and NavMeshConnectivity use — read the GLOBAL mesh, which is the union of
+            // every NavMeshData anyone has added this session. A surface left over from a
+            // previously opened scene is still in it, and the audit happily walks it.
+            //
+            // Measured: three regenerations with genuinely different geometry — 29 caps,
+            // then caps spaced three cells apart, then NO CAPS AT ALL — produced
+            // byte-identical audits. 8717 pairs complete, 93.5%, 17 islands, the creature
+            // reaching 0 of 3, every time. The markers were fresh, so the marker names in
+            // the island dump were from the new map; the surface underneath them was not.
+            //
+            // This matters well beyond one map. NavMeshAudit is the gate that decides
+            // whether a level ships, and until now it could pass or fail on a surface that
+            // was not the one just built.
+            var before = NavMesh.CalculateTriangulation().vertices.Length;
+            NavMesh.RemoveAllNavMeshData();
+
             surface.BuildNavMesh();
+
+            // BuildNavMesh registers this surface's data, but say so out loud rather than
+            // trusting it: the whole defect above was an assumption about what was
+            // registered.
+            var after = NavMesh.CalculateTriangulation().vertices.Length;
+            if (after == 0)
+            {
+                Debug.LogError(
+                    "[SceneGen] The global NavMesh is empty after baking, so every audit that "
+                    + "follows would measure nothing and report it as a pass. B-009.");
+            }
+            else if (before == after && before > 0)
+            {
+                Debug.LogError(
+                    "[SceneGen] The global NavMesh has the same " + after + " vertices it had "
+                    + "BEFORE this bake. It is stale — the audits about to run are measuring "
+                    + "someone else's surface. B-009.");
+            }
+            else
+            {
+                Debug.Log("[SceneGen] NavMesh baked: " + after + " vertices (was " + before
+                          + " before the clear). §06 paths on this and nothing else.");
+            }
 
             if (surface.navMeshData == null)
             {
