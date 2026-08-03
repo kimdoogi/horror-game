@@ -128,6 +128,12 @@ namespace HorrorGame.Sim
             Console.WriteLine("§03's chain converges on the objective in all " + ChainSampleSeeds
                 + " sampled layouts.");
 
+            // Printed, never enforced. A storey with no §03 property is a legal storey
+            // (SiteCatalog exempts None) but not one the objective can be on, and a
+            // reader who does not know that will read these match lengths as the whole
+            // building's. That is F-006 verbatim, so it goes in the output.
+            Console.Write(map.DescribeObjectiveReach());
+
             // Reported rather than enforced: it is a property of the building and of
             // MapGraph.NearestNode, and the simulator's job is to say what it measured.
             var ambiguous = map.CrossStoreyAmbiguities(GameConstants.MonsterWaypointTolerance);
@@ -194,6 +200,7 @@ namespace HorrorGame.Sim
                 .Append(" from the door\n");
             text.Append("  built by FirstMapSketch.Build — the same call MapSceneGenerator makes before it lays\n");
             text.Append("  a single FBX, compiled into this binary rather than exported to it (F-006).\n");
+            text.Append(map.DescribeObjectiveReach());
             return text.ToString();
         }
 

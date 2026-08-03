@@ -61,13 +61,20 @@ namespace HorrorGame.Sim
         // 혼동쌍 are only load-bearing if a misread lands on a floor that exists, so
         // 1↔7 (손글씨) and 6↔9 (뒤집힌 각도) are both signed onto real storeys: a team
         // that misreads the mapping walks confidently onto the wrong 층 rather than
-        // being told it was wrong. The fifth storey takes the unpaired 3 — nothing
-        // misreads onto it and a misread of it lands nowhere, which is the same free
+        // being told it was wrong. The unpaired digits take the storeys below — nothing
+        // misreads onto them and a misread of one lands nowhere, which is the same free
         // warning 좌↔우 gives on the site labels.
         //
-        // These four are the signs the four-zone predecessor used, in the same order,
-        // so that the before/after in F-006 differs by the building and by nothing
-        // else.
+        // The first four are the signs the four-zone predecessor used, in the same
+        // order, so that the before/after in F-006 differs by the building and by
+        // nothing else.
+        //
+        // 3·2·4·8 were appended on 2026-08-03 for B5~B8. The building grew to eight
+        // storeys at 0ad8a30 and this table stayed at five, which threw on every
+        // command and left the simulator dead for a day — CI builds HorrorGame.Sim and
+        // never runs it, so nothing said so. ClueGlyphs.Digits stops at 9, so this
+        // table is also the hard ceiling on storeys: a ninth needs an alphabet, not
+        // another line here. SiteCatalog enforces the distinctness this relies on.
         private static readonly ClueGlyph[] FloorSigns =
         {
             ClueGlyph.Digit1,
@@ -75,6 +82,9 @@ namespace HorrorGame.Sim
             ClueGlyph.Digit6,
             ClueGlyph.Digit9,
             ClueGlyph.Digit3,
+            ClueGlyph.Digit2,
+            ClueGlyph.Digit4,
+            ClueGlyph.Digit8,
         };
 
         // How many of the 막힌 길 hold a 금고 rather than a loose piece.
@@ -146,6 +156,55 @@ namespace HorrorGame.Sim
 
         /// <summary>The building, for §03's narrowing chain.</summary>
         public SiteCatalog Catalog { get; }
+
+        /// <summary>Storeys in the building.</summary>
+        public int StoreyCount => Catalog.Floors.Count;
+
+        /// <summary>
+        /// Storeys the objective can actually be placed on — those with a
+        /// <see cref="FloorFeature"/>. <see cref="ObjectiveResolver"/> draws only from
+        /// these, so when this is below <see cref="StoreyCount"/> every match measured
+        /// here is a shallower descent than the building affords.
+        /// <para>
+        /// Public and printed because F-006 was a measurement taken against a building
+        /// the game did not have, and nothing in the output said so. See
+        /// <see cref="FeatureOf"/> for why the gap exists.
+        /// </para>
+        /// </summary>
+        public int ObjectiveEligibleStoreys
+        {
+            get
+            {
+                var eligible = 0;
+                for (var i = 0; i < Catalog.Floors.Count; i++)
+                {
+                    if (Catalog.Floors[i].Feature != FloorFeature.None)
+                    {
+                        eligible++;
+                    }
+                }
+
+                return eligible;
+            }
+        }
+
+        /// <summary>
+        /// The storey-reach line every command prints, or empty when the objective can
+        /// reach every storey and there is nothing to warn about.
+        /// </summary>
+        public string DescribeObjectiveReach()
+        {
+            var eligible = ObjectiveEligibleStoreys;
+            if (eligible == StoreyCount)
+            {
+                return string.Empty;
+            }
+
+            return "  objective-eligible storeys: " + eligible + " of " + StoreyCount
+                + " — the deepest " + (StoreyCount - eligible) + " have no §03 floor property, so the objective\n"
+                + "  never lands there and every match here is a shallower descent than the building affords.\n"
+                + "  §03 was deleted (game-design.md v1.0 · DESCENT-PIVOT §3); see SimMap.FeatureOf.\n";
+        }
 
         /// <summary>The node just inside the door. §03's 왕복 turns around here.</summary>
         public int EntranceNode { get; }
@@ -318,13 +377,18 @@ namespace HorrorGame.Sim
         /// <para>
         /// The property is derived from the floor surface rather than declared per
         /// storey, because §12 already guarantees the surfaces are distinct per zone —
-        /// <c>MapValidator</c>'s floor-materials rule — which makes the mapping a
-        /// bijection for free and keeps <see cref="SiteCatalog"/>'s "두 층이 같은
-        /// 속성이면 단서가 아니다" satisfied by construction rather than by care. Each
-        /// pairing is the building's own: 타일 is the 저수조's wet floor (§03's "물이
-        /// 있는 층"), 금속 the grating over the boilers, 자갈 the coal store with the
-        /// 냉장고 in it, 나무 the one floor that can give way, 콘크리트 the loading bay
-        /// and its ironwork.
+        /// <c>MapValidator</c>'s floor-materials rule — which keeps
+        /// <see cref="SiteCatalog"/>'s "두 층이 같은 속성이면 단서가 아니다" satisfied by
+        /// construction rather than by care. Each pairing is the building's own: 타일 is
+        /// the 저수조's wet floor (§03's "물이 있는 층"), 금속 the grating over the
+        /// boilers, 자갈 the coal store with the 냉장고 in it, 나무 the one floor that can
+        /// give way, 콘크리트 the loading bay and its ironwork.
+        /// </para>
+        /// <para>
+        /// It is an <em>injection</em>, not the bijection this comment used to claim:
+        /// §12's three deep surfaces map to <see cref="FloorFeature.None"/> because §03
+        /// was deleted before they were authored. <see cref="FeatureOf"/> carries the
+        /// reasoning and the bias that follows.
         /// </para>
         /// </summary>
         /// <param name="sketch">The generated map.</param>
@@ -357,6 +421,38 @@ namespace HorrorGame.Sim
             return floorOfZone;
         }
 
+        /// <summary>
+        /// The §03 property a storey's floor surface gives it, or
+        /// <see cref="FloorFeature.None"/> for the three surfaces added after §03 was
+        /// deleted.
+        /// <para>
+        /// <b>Why B6~B8 are None rather than three new enum values.</b> This mapping
+        /// existed to make §03's first clue discriminate ("그것은 물이 있는 층에 있다").
+        /// §03 no longer says that. game-design.md v1.0 rewrote §03 into 「어둠과 시야」
+        /// and DESCENT-PIVOT.md §3 lists 「§03 단서 3층위 (층→구역→지점)」 under 버린다:
+        /// the destination in a race is known from the first second — it is <em>down</em>
+        /// — so there is nothing left to narrow. Extending <c>FloorFeature</c> would be
+        /// adding vocabulary to a mechanism the shipped game no longer reaches, and the
+        /// enum lives in SiteLabel.cs, which the clean-up pass (DESCENT-PIVOT §7,
+        /// 「단서 제거」) is going to delete outright.
+        /// </para>
+        /// <para>
+        /// <see cref="SiteCatalog"/> permits this deliberately — its uniqueness rule
+        /// exempts <c>None</c>, because a floor with no property is a legal floor that
+        /// simply cannot host the objective. So the bijection the old doc comment
+        /// promised is now an injection over the five storeys that still have one.
+        /// </para>
+        /// <para>
+        /// <b>It costs a real bias, and the cost is printed rather than hidden.</b>
+        /// <see cref="ObjectiveResolver"/> only places the objective on a storey with a
+        /// property, so with three Nones the objective never lands on B6~B8 and every
+        /// match measured here is a shallower descent than the building affords. That
+        /// is F-006's exact pathology — measuring a building you do not have — so
+        /// <c>horrorsim validate</c> and <c>horrorsim map</c> both state the eligible
+        /// storey count out loud. Do not read a match length off this tool without
+        /// reading that line.
+        /// </para>
+        /// </summary>
         private static FloorFeature FeatureOf(MapZoneRect zone)
         {
             switch (zone.Floor)
@@ -371,11 +467,21 @@ namespace HorrorGame.Sim
                     return FloorFeature.Collapse;
                 case FloorMaterial.Concrete:
                     return FloorFeature.Rust;
+
+                // §12's three deep surfaces (F 병동 카펫, G 수몰층 침수, H 굴착층 흙).
+                // Each has an obvious perceptible property — carpet is silence
+                // underfoot, 침수 is water you cannot cross unheard, 흙 is dug earth —
+                // and if §03 comes back those are the three to write. It has not.
+                case FloorMaterial.Carpet:
+                case FloorMaterial.Water:
+                case FloorMaterial.Earth:
+                    return FloorFeature.None;
+
                 default:
                     throw new InvalidOperationException(
-                        "Zone " + zone.Name + " is floored in " + zone.Floor + ", which no §03 floor property "
-                        + "is written for. §03's first clue names a property of the objective's storey, so a "
-                        + "storey without one is a storey the objective can never be on.");
+                        "Zone " + zone.Name + " is floored in " + zone.Floor + ", which this table has no case "
+                        + "for. Add one: a surface that reaches here is a surface FirstMapSketch added after "
+                        + "this file last read §12's table.");
             }
         }
 

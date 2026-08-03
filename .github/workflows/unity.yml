@@ -30,6 +30,14 @@
 # It skips rather than fails on purpose: a fork or a contributor without access to
 # the secrets should see a clear "not configured" note, not a red X they cannot fix.
 #
+# AND THAT SKIP LOOKS EXACTLY LIKE SUCCESS. A job that skips cannot fail; preflight
+# itself runs and passes; so this workflow's conclusion is `success` and GitHub draws
+# a GREEN TICK beside every commit for a Windows player that was never built and 21
+# PlayMode test files that never ran. Nobody can tell that tick from ci.yml's, which
+# is why preflight now also emits a ::warning:: saying so, and why NO job in this file
+# may ever be made a required status check — a required check that skips is not a
+# verification. docs/CI.md §0.4 and §6.
+#
 # NOTHING HERE HAS EVER BEEN EXECUTED. The .NET, audio and Blender jobs in ci.yml
 # were each run locally before being committed; these steps could not be, because
 # the editor is not installed and no licence exists. Treat the Unity Hub and editor
@@ -106,6 +114,20 @@ jobs:
           echo "enabled=${enabled}" >> "$GITHUB_OUTPUT"
           echo "route=${route}" >> "$GITHUB_OUTPUT"
 
+          # An annotation, not just a step summary. When every other job in this
+          # workflow skips, this job is the only one that ran, it succeeds, and the
+          # workflow shows a GREEN TICK next to the commit — over an engine build and
+          # two test suites that were never executed. Step summaries live one click
+          # inside the run and nobody opens them. `::warning::` surfaces on the run
+          # page and on the PR checks list, right beside the tick it qualifies.
+          if [ "${enabled}" != "true" ]; then
+            echo "::warning title=Unity CI is OFF::This workflow verified nothing." \
+                 "The Windows IL2CPP player and the EditMode/PlayMode suites were" \
+                 "SKIPPED for a missing licence, and a skipped job cannot fail. A" \
+                 "green tick on the 'Unity' workflow is not evidence that the game" \
+                 "builds or that a single Unity test passed — see docs/CI.md §0.4."
+          fi
+
           {
             echo "### Unity CI"
             echo
@@ -113,6 +135,10 @@ jobs:
               echo "Licence configured — building the Windows IL2CPP player."
             else
               echo "**Skipped.** The Unity jobs need a licence."
+              echo
+              echo "This run therefore verified **nothing about the engine**: no player was"
+              echo "built and neither Unity test suite ran. A skipped job cannot fail, so the"
+              echo "green tick on this workflow means only that the preflight check ran."
               echo
               [ -n "${missing}" ] && echo "- missing secrets:\`${missing}\`"
               [ "${OPT_IN}" = "true" ] || echo "- repository variable \`UNITY_CI_ENABLED\` is not \`true\`"
@@ -241,11 +267,16 @@ jobs:
         shell: bash
         run: tools/ci/build.sh bootstrap
 
-      # EditMode and PlayMode, covering what dotnet test cannot reach. Note that
-      # --require-tests is *not* passed: Assets/Tests/EditMode and .../PlayMode are
-      # still empty, so this currently passes by running nothing. Add --require-tests
-      # in the same commit as the first suite, so "the tests silently stopped being
-      # discovered" becomes a failure.
+      # EditMode and PlayMode, covering what dotnet test cannot reach.
+      #
+      # --require-tests IS passed now. The instruction that used to sit here said to
+      # add it "in the same commit as the first suite" because Assets/Tests/EditMode
+      # and .../PlayMode were empty and `build.sh test` passed by running nothing.
+      # They are not empty any more — 23 test files at a3e268e, 2 EditMode and 21
+      # PlayMode — so the condition was met and the flag was simply never added. The
+      # flag makes build.sh exit 9 when no test ran, which turns "the suites silently
+      # stopped being discovered" from a green tick into a failure. That is the same
+      # hole the TRX floor check closes on the dotnet side in ci.yml.
       #
       # -nographics is left off deliberately (build.sh's decision, and the right one):
       # PlayMode tests instantiate the real player loop. If the editor cannot create a
@@ -253,7 +284,7 @@ jobs:
       # changing the script.
       - name: Unity test suites
         shell: bash
-        run: tools/ci/build.sh test
+        run: tools/ci/build.sh test --require-tests
 
       # --require-il2cpp turns a Mono fallback into a hard failure. Without it this job
       # could quietly produce exactly the build it exists to avoid, and the artifact
@@ -268,13 +299,19 @@ jobs:
         shell: bash
         run: tools/ci/build.sh windows release --require-il2cpp
 
+      # `error`, not `warn`, and only when the build step succeeded. The player is this
+      # job's entire product: a build.sh that exits 0 while writing to some other path
+      # would otherwise leave a green job with no artifact and a yellow line in a log
+      # nobody reads — "asserted and not checked", which is the class of defect
+      # docs/CI.md §0 is about. Guarded on success() so a genuinely failed build still
+      # reaches the log upload below instead of being masked by a second failure.
       - name: Upload the player
-        if: always()
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: HorrorGame-Windows-IL2CPP
           path: dist/windows-x64
-          if-no-files-found: warn
+          if-no-files-found: error
 
       # The editor log is the only complete record of a failed build, and build.sh
       # writes one per invocation under dist/logs. BuildPipelineTestRunner writes

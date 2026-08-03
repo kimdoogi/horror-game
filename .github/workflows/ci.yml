@@ -17,10 +17,15 @@ on:
   pull_request:
   workflow_dispatch:
 
-# A second push to the same branch makes the first run's answer irrelevant.
+# A second push to the same branch makes the first run's answer irrelevant — on a
+# feature branch. On `main` it does not: cancelling leaves a commit that is already
+# published and that CI never finished judging, and a cancelled run is grey, not red,
+# so nobody goes looking. That is the same hole as a red push nobody noticed, which is
+# the defect this file was last edited to close (a89cf64..43cf488, see docs/CI.md §0).
+# Every commit on main therefore gets its own concurrency group and runs to the end.
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.ref }}${{ github.ref == 'refs/heads/main' && format('-{0}', github.sha) || '' }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: read
@@ -39,7 +44,14 @@ jobs:
   # docs/ARCHITECTURE.md §1 puts the core sources inside the Unity project and
   # compiles them a second time through core/HorrorGame.Core.csproj, so this job
   # tests the exact files Unity ships. §5 says these are the tests that must always
-  # be green; make this the required status check on main (docs/CI.md explains how).
+  # be green.
+  #
+  # THIS JOB IS NOT ENFORCED BY ANYTHING. Nothing in a workflow file can stop a red
+  # commit reaching main — that is repository configuration, and only the owner can
+  # apply it. docs/CI.md §6 has the exact clicks, and the important caveat: a required
+  # status check gates a *pull request*, and main's history is 100% direct pushes, so
+  # the check must be paired with "require a pull request before merging" or it
+  # protects nothing.
   # ───────────────────────────────────────────────────────────────────────────────
   core-tests:
     name: core tests (dotnet)
@@ -63,16 +75,165 @@ jobs:
           key: nuget-${{ runner.os }}-${{ hashFiles('core/**/*.csproj', 'core/Directory.Build.props') }}
           restore-keys: nuget-${{ runner.os }}-
 
-      # The command from docs/ARCHITECTURE.md §5, verbatim, so a red run is
-      # reproducible by copy-paste.
+      # The command from docs/ARCHITECTURE.md §5, plus a TRX so the next step can read
+      # how many tests actually ran. Without the logger the only record of the run is
+      # console text whose wording depends on DOTNET_CLI_UI_LANGUAGE; the TRX counters
+      # are machine-readable and locale-independent.
       - name: dotnet test
-        run: dotnet test core/HorrorGame.Core.Tests/HorrorGame.Core.Tests.csproj
+        run: >
+          dotnet test core/HorrorGame.Core.Tests/HorrorGame.Core.Tests.csproj
+          --logger "trx;LogFileName=core-tests.trx"
+          --results-directory artifacts/test-results
+
+      # MEASURED 2026-08-03 on this repo: `dotnet test` with a filter that matches
+      # nothing prints "No test matches the given testcase filter" and EXITS 0. So a
+      # suite that stops being discovered — a renamed namespace, an adapter that no
+      # longer loads, an asmdef change — is reported by this job as a green tick over
+      # zero tests. The exit code cannot tell "512 passed" from "none ran".
+      #
+      # The floor is 512, the count measured at a3e268e by the command above. It is a
+      # floor and not an equality on purpose: adding tests must never turn the build
+      # red, and *losing* several hundred is the failure this exists to catch. Deleting
+      # tests deliberately means lowering this number in the same commit — which is the
+      # conversation the repo wants (docs/BALANCE-FINDINGS.md's rule that a fix has to
+      # fail the build once, so the write-up moves with the change).
+      - name: Assert the suite actually ran
+        run: |
+          floor=512
+          trx=artifacts/test-results/core-tests.trx
+          if [ ! -f "${trx}" ]; then
+            echo "::error::dotnet test wrote no TRX at ${trx}. The run cannot be audited, so it does not count as green."
+            exit 1
+          fi
+          counters=$(grep -o '<Counters [^/]*/>' "${trx}" | head -1)
+          passed=$(printf '%s' "${counters}" | sed -n 's/.*[^a-zA-Z]passed="\([0-9]*\)".*/\1/p')
+          total=$(printf '%s' "${counters}" | sed -n 's/.*[^a-zA-Z]total="\([0-9]*\)".*/\1/p')
+          echo "TRX counters: ${counters}"
+          if [ -z "${passed}" ]; then
+            echo "::error::Could not read a passed= count out of ${trx}. Not calling an unreadable result green."
+            exit 1
+          fi
+          if [ "${passed}" -lt "${floor}" ]; then
+            echo "::error::${passed} tests passed (total ${total}); the floor is ${floor}. Tests were lost, not fixed — check discovery before you lower this number."
+            exit 1
+          fi
+          echo "${passed} passed, floor ${floor}."
 
       # The test project does not reference HorrorGame.Sim, so the balance simulator
       # (§16-2's loot-value question) can stop compiling without a single test
       # failing. Building the solution costs a couple of seconds and closes that gap.
+      #
+      # This is the step that was red on a89cf64, af2563d and 43cf488 — three commits
+      # pushed to origin/main, one of them titled "the suite is green". ChamberDockProbe.cs
+      # landed in Editor/SceneGen doing `using UnityEditor`, HorrorGame.Sim.csproj globs
+      # that folder, and the Sim project stopped compiling. Note that `dotnet test` above
+      # stayed green throughout, so the failing check was named "core tests (dotnet)"
+      # while the tests were fine. docs/CI.md §0 has the whole account.
       - name: dotnet build (whole solution, Release)
         run: dotnet build core/HorrorGame.sln --configuration Release
+
+      # Building the simulator does not prove it runs.
+      #
+      # THE DAY IT WAS DEAD: on 2026-08-03, at a3e268e, `dotnet build core/HorrorGame.sln
+      # --configuration Release` reported "경고 0개 / 오류 0개" and this command aborted
+      # with exit 134 on its first line of real work —
+      #   System.InvalidOperationException: The map has 8 storeys and only 5 signs are
+      #   written here (SimMap.SignTheStoreys)
+      # — because the descent pivot grew the tower to eight storeys and SimMap's sign
+      # table stayed at five. The simulator is the only tool that answers §16-2 and
+      # docs/BALANCE-FINDINGS.md F-006, and CI had been calling it verified for a day
+      # by compiling it. Exactly the B-006 lesson one layer out: B-006 was "the tool
+      # does not build and the tests do not notice"; this is "the tool builds and
+      # nothing runs it".
+      #
+      # `validate` is the right smoke command rather than a match run: it is seconds,
+      # it is deterministic, and it exits non-zero — 5 map-does-not-build, 6 §12
+      # rejects the map, 4 §03's clue chain does not converge — instead of printing a
+      # verdict and returning 0. It also drags MapValidator over the shipped building
+      # on every push, which is the first time §12's checklist has been enforced
+      # anywhere outside the Unity editor.
+      #
+      # THE ONE EXIT CODE THAT IS NOT A FAILURE, AND WHY IT IS HANDLED HERE RATHER
+      # THAN IGNORED. Exit 6 means MapValidator rejects the shipped map, and this
+      # project *knowingly* ships a map that does — docs/BLOCKERS.md B-007, waived,
+      # with the fix filed as docs/BALANCE-FINDINGS.md F-007. Gating hard on 6 would
+      # put this check red on the day it is added and keep it red until a level
+      # decision lands, which docs/CI.md §2.2 already argues at length is not a gate
+      # at all: people learn to ignore it and the next real regression ships behind
+      # the same red X. Ignoring the exit code outright is the other bad answer, and
+      # docs/ARCHITECTURE.md §6 forbids it — a finding gets encoded and pinned, never
+      # quietly dropped.
+      #
+      # So this is the audio gate's arrangement (tools/ci/check_audio_baseline.py)
+      # applied to the map: the waiver is by RULE ID, not by exit code. A failure
+      # confined to the waived rules is KNOWN and passes; a rule outside the list is
+      # the regression this exists to catch and fails; and when nothing fails at all,
+      # the step says so and asks for the waiver to be deleted. Every other non-zero
+      # exit — a crash, 4, 5 — is the simulator being dead, which is the whole reason
+      # the step exists, and fails hard.
+      - name: Run the simulator (not just build it)
+        run: |
+          # §12 rules this repository knowingly ships red. Each entry must name the
+          # blocker or finding that owns it, exactly as audio_baseline.json requires;
+          # an unexplained id here would make this a mute button.
+          #   sight-break-spacing — B-007 / F-007, open
+          waived="sight-break-spacing"
+
+          mkdir -p artifacts
+          log=artifacts/sim-validate.log
+          set +e
+          dotnet run --project core/HorrorGame.Sim -c Release -- validate 2>&1 | tee "${log}"
+          status=${PIPESTATUS[0]}
+          set -e
+
+          if [ "${status}" -eq 0 ]; then
+            if [ -n "${waived}" ]; then
+              echo "::warning title=§12 waiver is stale::MapValidator now passes every rule, so the waiver in .github/workflows/ci.yml (\`${waived}\`) no longer describes anything. Delete it in the same commit that closes docs/BLOCKERS.md B-007."
+            fi
+            echo "horrorsim validate: OK."
+            exit 0
+          fi
+
+          if [ "${status}" -ne 6 ]; then
+            echo "::error::horrorsim validate exited ${status}. The balance simulator does not run. Building it is not evidence — that is the defect this step was added for; see docs/CI.md §0."
+            exit "${status}"
+          fi
+
+          # Exit 6. Which rules?
+          failed=$(sed -n 's/.*map validation: failed \[\(.*\)\].*/\1/p' "${log}" | head -1)
+          if [ -z "${failed}" ]; then
+            echo "::error::validate exited 6 but printed no rule list, so the failure cannot be matched against the waiver. Not calling an unreadable result known."
+            exit 6
+          fi
+
+          unwaived=""
+          for rule in $(printf '%s' "${failed}" | tr ',' ' '); do
+            case " ${waived} " in
+              *" ${rule} "*) echo "  KNOWN     §12 ${rule} → B-007 / F-007, still reproducing" ;;
+              *) unwaived="${unwaived} ${rule}" ;;
+            esac
+          done
+
+          if [ -n "${unwaived}" ]; then
+            echo "::error::§12 rejects the shipped map on${unwaived}, which is not waived. This is a map regression, not B-007. Fix the map, or add the rule here with the finding id that owns it."
+            exit 6
+          fi
+
+          echo "horrorsim validate: §12 fails only on waived rules. RESULT: PASS."
+
+      # Under always() because the run that most needs reading is the failed one, and
+      # the console tail of a 512-test failure is not enough to work from. The
+      # simulator's own transcript rides along: `validate` prints the §12 rule ids and
+      # the 후보 지점 census that say *which* map was judged.
+      - name: Upload the test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-test-results
+          path: |
+            artifacts/test-results
+            artifacts/sim-validate.log
+          if-no-files-found: warn
 
   # ───────────────────────────────────────────────────────────────────────────────
   # §12's five-material alphabet. See tools/ci/check_audio_baseline.py for why a

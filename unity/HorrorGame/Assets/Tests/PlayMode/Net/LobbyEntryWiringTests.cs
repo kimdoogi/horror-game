@@ -68,10 +68,30 @@ namespace HorrorGame.Tests.PlayMode.Net
         /// <para>
         /// A hand-made <c>NetworkConnectionToClient</c> and not a second socket, because
         /// Mirror allows exactly one <c>NetworkClient</c> per process and host mode has
-        /// already taken it — a genuinely remote peer needs a second process, which
-        /// <c>NetSocketTests</c> gets as close to as one process can. What is needed here
-        /// is only that §11's floor of two is met so the host may press 출발;
+        /// already taken it — a genuinely remote peer needs a second process.
+        /// <c>NetSocketTests</c> gets as close to that as one process can, and the price
+        /// it pays is the one thing this fixture cannot pay: it gives up host mode
+        /// (<c>NetworkServer.Listen</c> + <c>NetworkClient.Connect</c>, and it asserts
+        /// <c>activeHost</c> is false), while the entire claim here is about the path a
+        /// human walks — 시작 → 호스트 → 출발 — which is host mode by definition.
         /// <c>NetTests</c> builds its connections the same way.
+        /// </para>
+        /// <para>
+        /// <b>The seat is given a real body, and that is the difference between this
+        /// fixture and a green number.</b> This used to be a bare <c>AddConnection</c>
+        /// whose only job was to clear §11's floor of two so 출발 would light up. That
+        /// seat never sent a <c>ReadyMessage</c> and therefore never got a runner, so
+        /// after the descent loaded <c>RaceRunners.ReportStartLine</c> logged
+        /// "§01 출발선이 완성되지 않았다 — 2석 중 1명에게 몸이 없다" and the test failed on
+        /// it. The error was correct and the production code was correct: the test had
+        /// manufactured the state it then tripped over. Silencing it with
+        /// <c>LogAssert.Expect</c> would have left a future reader unable to tell that
+        /// expectation from a genuine regression, which is this repo's one recurring
+        /// defect wearing a test's clothes. So the state is not manufactured any more —
+        /// see <see cref="SeatASecondRunnerWithABody"/> — and the assertions get stronger
+        /// for it: what the <c>LoadSceneMode.Single</c> load is now measured against is a
+        /// party of TWO bodies, which is far closer to the thing that actually broke (a
+        /// whole party arriving in the building with nobody in it).
         /// </para>
         /// </summary>
         private const int SecondRunnerConnectionId = 42;
@@ -201,8 +221,21 @@ namespace HorrorGame.Tests.PlayMode.Net
 
         /// <summary>
         /// The whole path a human walks: 시작 → a lobby with a 호스트 button on it → a
-        /// real Mirror session at §11's ceiling → 출발 → the maze, with the runner's body
-        /// still in existence and standing on the rim of B1.
+        /// real Mirror session at §11's ceiling → a second runner → 출발 → the maze, with
+        /// <em>both</em> bodies still in existence and standing on two different markers
+        /// on the rim of B1.
+        /// <para>
+        /// <b>Both, and not just this machine's.</b> §11's floor is two, so the field has
+        /// to reach two before 출발 can be pressed at all — and the cheap way to reach it
+        /// is a connection with nobody in it, which is what this test used to do and what
+        /// made it fail on an error the game was right to log. The second seat now gets a
+        /// runner from the same <c>HorrorGameNetworkManager.OnServerReady</c> that gives
+        /// every real one its body (see <see cref="SeatASecondRunnerWithABody"/>), which
+        /// costs one call and buys the assertion the bug deserved: the host's own body
+        /// surviving a load its own machine performed is the case most likely to survive
+        /// by accident, and the failure being guarded against is a whole party arriving in
+        /// one building with nobody in it.
+        /// </para>
         /// <para>
         /// <b>The last two assertions are the ones that were failing silently.</b> The
         /// descent is entered through <c>SceneManager.LoadSceneAsync(..., Single)</c>,
@@ -296,8 +329,27 @@ namespace HorrorGame.Tests.PlayMode.Net
             Assert.That(runnerNetId, Is.Not.EqualTo(0u), "The host's runner was never spawned.");
 
             // §11 refuses to start below two — "one runner is not a race" — so the field
-            // has to reach the floor before 출발 means anything.
-            NetworkServer.AddConnection(new NetworkConnectionToClient(SecondRunnerConnectionId));
+            // has to reach the floor before 출발 means anything. The second seat arrives,
+            // authenticates and reports ready, and the build's own OnServerReady gives it
+            // a runner: a seat with no body would be a start line this fixture had broken
+            // itself, and it would be measuring its own damage rather than the game's.
+            var second = SeatASecondRunnerWithABody();
+
+            var secondIdentity = second.identity;
+            Assert.That(secondIdentity, Is.Not.Null,
+                "The second seat reported ready and came away with no body. §01's race has no spectators, so "
+                + "HorrorGameNetworkManager.OnServerReady builds one from NetRunner.Build and hands it to "
+                + "NetworkServer.AddPlayerForConnection — see TryAddRunner, which is also where a refused spawn "
+                + "destroys the object again. A bodiless seat is exactly what makes RaceRunners.ReportStartLine "
+                + "say 출발선이 완성되지 않았다.");
+
+            var secondNetId = secondIdentity!.netId;
+            Assert.That(secondNetId, Is.Not.EqualTo(0u),
+                "The second runner exists but was never spawned, so no client would ever be told about it.");
+
+            Assert.That(secondNetId, Is.Not.EqualTo(runnerNetId),
+                "Both seats are pointing at one object. 'Two bodies survived the load' would then be one body "
+                + "counted twice, which is the kind of green number this fixture exists to refuse.");
 
             deadline = Time.realtimeSinceStartup + SessionSecondsBudget;
             while (!start!.interactable && Time.realtimeSinceStartup < deadline)
@@ -364,6 +416,119 @@ namespace HorrorGame.Tests.PlayMode.Net
                 + nearest!.name + "'). NetRaceStartPoints.PlaceSpawnedRunners teleports each connection's runner onto "
                 + "one of the ring's markers once the building exists; 3 m is one map cell plus the character's own "
                 + "radius.");
+
+            // ── And the rest of the party, which is the claim that matters ─────────
+            // One body surviving is the host's own, and the host is the machine that ran
+            // the load — it is the case most likely to survive by accident. The bug this
+            // fixture was written for is a PARTY arriving in one building with nobody in
+            // it, and only a second body can say that did not happen.
+            Assert.That(NetworkServer.connections.TryGetValue(SecondRunnerConnectionId, out var secondSeat), Is.True,
+                "The second runner's connection is gone from the server's roster after the scene load, so §11's "
+                + "field is down to one and RaceParty's seat list points at nobody.");
+
+            var secondSurvivor = secondSeat != null ? secondSeat.identity : null;
+            Assert.That(secondSurvivor, Is.Not.Null,
+                "The second runner's body did not survive the descent's scene load, and the host's did. That is the "
+                + "whole failure in one line: RaceLobby.KeepBodiesAcrossTheLoad has to carry EVERY spawned runner "
+                + "into DontDestroyOnLoad, not just the one this machine owns — a client sends ReadyMessage once, at "
+                + "connect, so nothing will ever spawn the others again.");
+
+            Assert.That(secondSurvivor!.netId, Is.EqualTo(secondNetId),
+                "The second runner in the maze is a different object from the one in the lobby — netId "
+                + secondSurvivor.netId + " where the lobby had " + secondNetId + ".");
+
+            Assert.That(NetworkServer.spawned.ContainsKey(secondNetId), Is.True,
+                "The server no longer has the second runner in NetworkServer.spawned, so it is invisible to every "
+                + "observer rebuild from here on.");
+
+            Assert.That(secondSurvivor.gameObject.scene.name, Is.EqualTo("DontDestroyOnLoad"),
+                "The second runner is sitting in a normal scene, which means it survived this load by luck and will "
+                + "not survive the next one.");
+
+            Assert.That(secondSurvivor.transform.position, Is.Not.EqualTo(Vector3.zero),
+                "The second runner is still at the world origin, where NetRunner.Build created it. §01 starts the "
+                + "field on the rim of B1; nobody moved it there.");
+
+            var secondNearest = NearestPlayerSpawn(secondSurvivor.transform.position, out var secondDistance);
+            Assert.That(secondDistance, Is.LessThan(3f),
+                "The second runner is " + secondDistance.ToString("0.0") + " m from the nearest PlayerSpawn marker. "
+                + "PlaceSpawnedRunners walks NetworkServer.connections and skips any whose identity is null, so a "
+                + "party that placed only the host places one runner and says so in a log nobody reads.");
+
+            // Not a distance: the markers' own spacing is NetRaceStartPoints' measurement,
+            // not this fixture's, and re-deriving a threshold from it here would be a
+            // second opinion that goes stale the day the map is redrawn. "Two runners
+            // resolved to two different markers" is the whole of §11's requirement —
+            // twenty runners, twenty places — and it is also what catches the case where
+            // neither of them moved at all, since two bodies at one point resolve to one
+            // marker.
+            Assert.That(secondNearest, Is.Not.SameAs(nearest),
+                "Both runners are standing on the same PlayerSpawn marker ('" + nearest!.name + "'). "
+                + "HorrorGameNetworkManager.Awake sets PlayerSpawnMethod.RoundRobin precisely so that cannot "
+                + "happen — Random would put two of twenty on one marker with probability 0.9999, which is why the "
+                + "field used to appear inside itself.");
+        }
+
+        /// <summary>
+        /// Adds a second runner to the host's session and gives it a body — through the
+        /// build's own spawn path, not this fixture's idea of one.
+        /// <para>
+        /// <b>Every line is what Mirror does for a real client, in the order it does
+        /// it.</b> <c>NetworkServer.AddConnection</c> is what <c>NetworkServer.OnConnected</c>
+        /// calls the moment the transport reports an accepted socket.
+        /// <c>isAuthenticated</c> is what <c>NetworkManager.OnServerAuthenticated</c> sets
+        /// a moment later, and it is load-bearing rather than decorative:
+        /// <c>HorrorInterestManagement.OnRebuildObservers</c> skips a connection that has
+        /// not authenticated, so a seat without it would be a runner nobody is ever made
+        /// an observer of — a body that exists and is sent to no one. And
+        /// <c>OnServerReady</c> is the entire body of Mirror's <c>ReadyMessage</c>
+        /// handler: <c>NetworkManager.OnServerReadyMessageInternal</c> is one line, and
+        /// that line is this call.
+        /// </para>
+        /// <para>
+        /// <b>What it deliberately does not do is build the body itself.</b>
+        /// <c>NetRunner.Build</c> plus <c>NetworkServer.AddPlayerForConnection</c> is
+        /// three lines and copying them here would be easy — and would prove only that
+        /// the fixture can assemble a runner. Going through
+        /// <c>HorrorGameNetworkManager.OnServerReady</c> means the second seat's body is
+        /// built by the same override that builds every real one, so if that override
+        /// ever stops handing out bodies this test says so.
+        /// </para>
+        /// <para>
+        /// <b>The one thing that is not real is the socket, and it was measured before it
+        /// was relied on.</b> Mirror now batches messages for a <c>connectionId</c> the
+        /// transport never accepted — a spawn, the observer set, a time snapshot per tick.
+        /// In the vendored kcp2k (<c>kcp2k/highlevel/KcpServer.cs</c>) <c>Send</c> is
+        /// <c>if (connections.TryGetValue(connectionId, out var c)) c.SendData(...)</c>
+        /// with no <c>else</c> branch: an unknown id is dropped in silence — not an
+        /// exception, and not even a warning. The artefact says the same thing: this seat
+        /// has always been sent a <c>RaceLobbyRosterMessage</c> by
+        /// <c>RaceLobby.RebuildRoster</c> and a <c>RaceLobbyBeginMessage</c> by
+        /// <c>RequestStart</c>, and the only unexpected log this test has ever produced is
+        /// the §01 출발선 error that giving it a body removes.
+        /// </para>
+        /// </summary>
+        private static NetworkConnectionToClient SeatASecondRunnerWithABody()
+        {
+            var manager = NetworkManager.singleton as HorrorGameNetworkManager;
+            Assert.That(manager, Is.Not.Null,
+                "호스트 produced a NetworkManager that is not the project's own, so OnServerReady is Mirror's "
+                + "default rather than the override that gives §01's runners their bodies. RaceLobby.EnsureManager "
+                + "is what adds HorrorGameNetworkManager at runtime.");
+
+            var conn = new NetworkConnectionToClient(SecondRunnerConnectionId) { isAuthenticated = true };
+
+            Assert.That(NetworkServer.AddConnection(conn), Is.True,
+                "The server refused a second connection on id " + SecondRunnerConnectionId + ". Mirror returns "
+                + "false only when that id is already on the roster, which would mean the previous test's session "
+                + "was never torn down.");
+
+            // Mirror's ReadyMessage handler, called by hand because this seat has no
+            // socket to send one over. Everything it reaches — TryAddRunner,
+            // NetRunner.Build, NetworkServer.AddPlayerForConnection — is the shipped path.
+            manager!.OnServerReady(conn);
+
+            return conn;
         }
 
         /// <summary>The runner this machine owns, or null. Host mode included.</summary>

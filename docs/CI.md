@@ -5,14 +5,155 @@
 
 Two workflows:
 
-| File | Needs a licence? | Runs today |
-|---|:--:|:--:|
-| [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) | no | ✅ every push |
-| [`.github/workflows/unity.yml`](../.github/workflows/unity.yml) | **yes** | ❌ skips with a note |
+| File | Needs a licence? | Runs today | Green means |
+|---|:--:|:--:|---|
+| [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) | no | ✅ every push | the rules, the numbers, §12's map checklist, the simulator and the assets are all good |
+| [`.github/workflows/unity.yml`](../.github/workflows/unity.yml) | **yes** | ❌ every job skips | **nothing.** No player was built and no Unity test ran — see [§0.4](#04-the-second-green-tick-means-nothing) |
 
 Everything in `ci.yml` was executed locally before it was committed, and the exact
 output is quoted below. Nothing in `unity.yml` has ever run — see
 [§5](#5-what-cannot-run-yet).
+
+**If you read one section, read [§6](#6-the-one-thing-the-owner-has-to-click).**
+
+---
+
+## 0. Why this file changed on 2026-08-03 — an integrity problem
+
+CI was red on `main` for three consecutive commits and nobody noticed, and two of
+those three commit messages assert that the suite is green. Everything below in this
+section is measured on the artefact, not recalled.
+
+### 0.1 The three red commits
+
+`a89cf64` added `unity/HorrorGame/Assets/Scripts/Editor/SceneGen/ChamberDockProbe.cs`,
+which declares `using UnityEditor`. `core/HorrorGame.Sim/HorrorGame.Sim.csproj` compiles
+that folder with a **glob and a denylist**, and the new file was on neither list, so it
+was compiled into an engine-free project. Verified from the objects themselves:
+
+```
+commit    ChamberDockProbe uses UnityEditor    excluded in Sim.csproj
+a89cf64                 yes (2 usings)                 no
+af2563d                 yes (2 usings)                 no
+43cf488                 yes (2 usings)                 no
+a3e268e                 yes (2 usings)                 YES  ← the fix
+```
+
+With the file globbed in, `HorrorGame.Sim` cannot compile, so
+`dotnet build core/HorrorGame.sln --configuration Release` cannot succeed, so the
+`core tests (dotnet)` job was **red on all three commits**.
+
+Two details that made it easy to walk past:
+
+* **The tests were fine.** At those three commits `HorrorGame.Core.Tests.csproj` did
+  not compile `Editor/SceneGen` at all — it gained that glob only at `a3e268e`, in the
+  same commit as the fix. So `dotnet test` passed and the *solution build* step failed.
+  The check that went red is called **`core tests (dotnet)`**, and the tests were not
+  the problem. A reader glancing at the name learns the wrong thing.
+* **The error text points at the wrong file.** 28 × `CS0246`, reading
+  `'GameObject' 형식을 찾을 수 없습니다`. That looks like a broken source file, so the
+  reader opens `ChamberDockProbe.cs` — which is correct Unity code — instead of the
+  exclusion list in two `.csproj` files.
+
+Both csprojs now carry a `VerifySceneGenExclusions` MSBuild target that fails with one
+sentence naming the file and the fix, in **both** directions. That closes the diagnosis
+problem. It does not close the enforcement problem, which is [§6](#6-the-one-thing-the-owner-has-to-click).
+
+### 0.2 The simulator was built and never run
+
+`ci.yml` built `HorrorGame.Sim` and never executed it. Measured at `a3e268e`:
+
+```sh
+$ dotnet build core/HorrorGame.sln --configuration Release
+빌드했습니다.  경고 0개  오류 0개                        # ← what CI checked
+
+$ dotnet run --project core/HorrorGame.Sim -c Release -- validate
+Balance constants are internally consistent.
+BalanceOverrides reproduces CarryLoad exactly at the shipped values.
+Unhandled exception. System.InvalidOperationException: The map has 8 storeys and
+  only 5 signs are written here. §03's second clue names a floor by its sign, so
+  every storey needs one and no two may share.
+   at HorrorGame.Sim.SimMap.SignTheStoreys(...) SimMap.cs:line 342
+$ echo $?
+134                                                     # ← what was true
+```
+
+The descent pivot grew the tower to eight storeys; `SimMap`'s sign table stayed at
+five. The simulator is the only tool that answers §16-2 and
+[F-006](BALANCE-FINDINGS.md#f-006), it aborted on its first command for a day, and CI
+stayed green on it the whole time because compiling is not running.
+
+This is [B-006](BLOCKERS.md#b-006) one layer out. B-006 was *"the tool does not build
+and the tests do not notice"*, and the answer was to build the solution. This was *"the
+tool builds and nothing runs it"*, and the answer is [§2.1](#21-core-tests-dotnet--the-one-that-must-always-be-green)'s
+new step.
+
+### 0.3 `dotnet test` exits 0 when it runs no tests
+
+Measured here on 2026-08-03, .NET SDK 9.0.316:
+
+```
+$ dotnet test core/HorrorGame.Core.Tests/... --filter "FullyQualifiedName~ZZZNoSuchTestZZZ"
+No test matches the given testcase filter `FullyQualifiedName~ZZZNoSuchTestZZZ` in
+  .../HorrorGame.Core.Tests.dll
+$ echo $?
+0
+```
+
+So a suite that stops being *discovered* — a renamed namespace, an adapter that no
+longer loads, an `asmdef` change — is reported by CI as a green tick over zero tests,
+and the exit code cannot tell "512 passed" from "none ran". Closed by the TRX floor in
+[§2.1](#21-core-tests-dotnet--the-one-that-must-always-be-green). The Unity side had
+the identical hole and it is closed the same way — see [§4.2](#42-what-the-job-does).
+
+### 0.4 The second green tick means nothing
+
+`unity.yml`'s jobs are gated `if: needs.preflight.outputs.enabled == 'true'`, which is
+false without a licence. **A job that skips cannot fail.** `preflight` itself runs and
+succeeds, so the run has one successful job and no failed ones, and GitHub puts a
+**green tick on the `Unity` workflow next to every commit** — over a Windows IL2CPP
+player that was never built and two Unity test suites that never ran.
+
+Stated plainly, because a reader has no way to tell the two ticks apart:
+
+> Today CI proves that the engine-free rules, the tuned numbers, §12's map checklist,
+> the balance simulator and the committed assets are sound. **It proves nothing at all
+> about whether the game builds, launches, or plays.** Every check that touches the
+> engine is switched off, and it is switched off in a way that looks like success.
+
+Two consequences:
+
+1. `preflight` now emits a `::warning::` when the Unity half is off, so the caveat
+   appears on the run page beside the tick instead of one click inside a step summary.
+2. **Never make a Unity job a required status check.** A skipped required check either
+   auto-passes or blocks forever depending on how GitHub scores it; both outcomes are
+   wrong, and neither is a verification. [§6](#6-the-one-thing-the-owner-has-to-click)
+   lists exactly which checks to require.
+
+### 0.5 What CI would have caught in this session, and what it would not
+
+The descent pivot ran as a series of rounds. Going through them one at a time — this
+table is the entire argument for [§6](#6-the-one-thing-the-owner-has-to-click):
+
+| Round | The defect | Would CI have caught it? |
+|---|---|---|
+| `a89cf64`–`43cf488` | `ChamberDockProbe.cs` takes `HorrorGame.Sim` down; the whole solution stops building | **Yes — and it did.** Red on three pushes. Nothing and nobody acted on it. Not a coverage gap: an *enforcement* gap |
+| ongoing, ~1 day | `SimMap` signs 5 storeys of 8; `horrorsim validate` aborts with exit 134 | **No** — built, never run. Caught from now on ([§2.1](#21-core-tests-dotnet--the-one-that-must-always-be-green)) |
+| `43cf488` | §12's `open-adjacent-to-maze` was passing on a node pair joined only by a one-way 투하구 — a dishonest pass | **Not then. Yes now**: `validate` runs `MapValidator` over the shipped building headlessly, so a §12 rule changing verdict is a CI event for the first time |
+| `3fa35b3` | The shipped scene had five storeys, not eight; `ThirdPersonCamera` was in no scene; `Runner.fbx` was referenced by nothing | **No, and still no.** Nothing asserts the contents of the scene the player loads — not even with a licence. See [§5](#5-what-cannot-run-yet) |
+| `a89cf64` | The race could not be won — `MatchDirector` wrote descents into a `RaceState` nothing read | **No.** PlayMode only, licence-gated |
+| `a89cf64` | The player had no animation in the scene it ships in (importer `animationType: 0`) | **No.** Unity importer, licence-gated |
+| `af2563d` | `PlayerTraversal` flooded from the 출입구 *upward* through one-way chutes — a co-op instrument pointed at a race | **No.** Unity editor tool, licence-gated |
+| `43cf488` | One leaked scene contaminated four PlayMode fixtures; a "dark" assertion read 0.166 instead of 0 | **No.** PlayMode only, licence-gated |
+| `a3e268e` | 호스트 started a session on a `NetworkManager` Mirror had never configured | **No.** PlayMode only, licence-gated |
+| [B-009](BLOCKERS.md#b-009) | The NavMesh being audited was not the one just built | **No.** Unity only |
+
+Two conclusions, and they point in opposite directions:
+
+* **The engine-free half is worth protecting and is not protected.** It caught the one
+  defect it could catch, said so three times, and was overruled by silence.
+* **The engine half is most of the game and CI covers none of it.** That is not fixed
+  by a setting; it is fixed by a licence ([§4.1](#41-secrets-and-where-each-one-comes-from)).
 
 ---
 
@@ -49,25 +190,50 @@ gate. A filter would hide exactly that.
 
 ### 2.1 `core tests (dotnet)` — the one that must always be green
 
+Four steps, in this order. Each one exists because the step above it can be green while
+the thing below it is broken.
+
+| # | Step | Catches |
+|:-:|---|---|
+| 1 | `dotnet test …` (writes a TRX) | a rule or a tuned number that changed meaning |
+| 2 | **Assert the suite actually ran** | the suite silently not being *discovered* ([§0.3](#03-dotnet-test-exits-0-when-it-runs-no-tests)) |
+| 3 | `dotnet build core/HorrorGame.sln -c Release` | the simulator no longer compiling ([B-006](BLOCKERS.md#b-006), and [§0.1](#01-the-three-red-commits)) |
+| 4 | **Run the simulator** | the simulator compiling and not running ([§0.2](#02-the-simulator-was-built-and-never-run)) |
+
 ```sh
 export DOTNET_ROOT="$HOME/.dotnet"; export PATH="$HOME/.dotnet:$PATH"
 dotnet test core/HorrorGame.Core.Tests/HorrorGame.Core.Tests.csproj
 ```
 
-Run here on 2026-07-30 with .NET SDK 9.0.316 on macOS arm64:
+Run here on 2026-08-03 with .NET SDK 9.0.316 on macOS arm64:
 
 ```
-Test run for .../HorrorGame.Core.Tests/bin/Debug/net9.0/HorrorGame.Core.Tests.dll (.NETCoreApp,Version=v9.0)
-VSTest version 17.14.1 (arm64)
-
-Starting test execution, please wait...
-A total of 1 test files matched the specified pattern.
-
-Passed!  - Failed:     0, Passed:   387, Skipped:     0, Total:   387, Duration: 275 ms
+Passed!  - Failed:     0, Passed:   512, Skipped:     0, Total:   512, Duration: 3 s - HorrorGame.Core.Tests.dll (net9.0)
 ```
 
-387 tests, 275 ms, no Unity, no licence, no GPU. The whole job — checkout, SDK
-install, restore, build, test — is a couple of minutes.
+512 tests, seconds, no Unity, no licence, no GPU. The whole job — checkout, SDK
+install, restore, build, test, simulate — is a couple of minutes.
+
+**Step 2, the floor.** CI adds `--logger "trx;LogFileName=core-tests.trx"` and then
+reads the counters out of the TRX, because [§0.3](#03-dotnet-test-exits-0-when-it-runs-no-tests)
+measured that a zero-test run exits 0. The TRX is used rather than the console text
+because the console wording follows `DOTNET_CLI_UI_LANGUAGE` and the XML does not:
+
+```
+TRX counters: <Counters total="512" executed="512" passed="512" failed="0" … />
+512 passed, floor 512.
+```
+
+The floor is `512`, the count measured at `a3e268e`, and it is a floor rather than an
+equality on purpose: **adding** tests must never turn the build red, and losing several
+hundred is the failure it exists to catch. Deliberately deleting tests means lowering
+the number in `.github/workflows/ci.yml` in the same commit — which is the conversation
+this repo wants, for the same reason `BALANCE-FINDINGS.md` makes a *fix* fail the build
+once.
+
+Both directions were exercised before the step was committed: the real TRX passes at
+512, and a hand-written TRX with `passed="0"` fails with
+`::error::0 tests passed (total 0); the floor is 512`.
 
 **What it protects.** `docs/ARCHITECTURE.md` §1 keeps the core sources inside the
 Unity project and compiles them a second time through
@@ -82,7 +248,7 @@ It also catches the one failure mode the layering invites:
 `Assets/Scripts/Core/` compiles perfectly in the editor and breaks the entire .NET
 build. Whoever adds it will not notice; this job notices in under three minutes.
 
-A second step builds the whole solution in Release:
+**Step 3, the solution build.**
 
 ```sh
 dotnet build core/HorrorGame.sln --configuration Release
@@ -90,12 +256,58 @@ dotnet build core/HorrorGame.sln --configuration Release
 
 The test project does not reference `HorrorGame.Sim`, so the balance simulator — the
 tool §16-2's loot-value question depends on — can stop compiling without a single
-test failing. Two extra seconds closes that gap.
+test failing. Two extra seconds closes that gap. This is the step that was red on
+`a89cf64`, `af2563d` and `43cf488`; [§0.1](#01-the-three-red-commits) is the account.
 
-> **Make this the required status check** on `main`: Settings → Branches → branch
-> protection rule for `main` → *Require status checks to pass* → add
-> **`core tests (dotnet)`**. Nothing else in CI should be required — see §2.2 and
-> §2.3 for why.
+**Step 4, running the simulator.**
+
+```sh
+dotnet run --project core/HorrorGame.Sim -c Release -- validate
+```
+
+Building it does not prove it runs, and [§0.2](#02-the-simulator-was-built-and-never-run)
+is the day that cost. `validate` is the right smoke command rather than a match run:
+it takes seconds, it is deterministic, and it *exits* rather than printing a verdict
+and returning 0 — `5` the map does not build, `6` §12 rejects the map, `4` §03's clue
+chain does not converge on the objective.
+
+It also does something CI has never done before: `validate` calls
+`MapValidator.Validate` on the building `FirstMapSketch` produces, so **§12's checklist
+is now enforced on every push, headlessly, with no Unity licence.** A §12 rule changing
+its verdict is a CI event from now on.
+
+*One exit code is waived, by rule id, and it is worth understanding.* Exit `6` means
+`MapValidator` rejects the shipped map — and this project knowingly ships a map that
+does: [B-007](BLOCKERS.md#b-007), whose fix is filed as
+[F-007](BALANCE-FINDINGS.md#f-007). Gating hard on `6` would make this check red on the
+day it was added and keep it red until a level decision lands, which is exactly the
+thing [§2.2](#22-asset-audit-12-audio--and-the-f-002-decision) argues at length is not
+a gate at all. Ignoring the exit code is the other bad answer and
+`ARCHITECTURE.md` §6 forbids it. So the workflow uses the audio gate's arrangement,
+pointed at the map — a waiver **by rule id, each naming the finding that owns it**:
+
+| Situation | Result |
+|---|---|
+| `validate` exits 0 | **pass**, plus a `::warning::` asking for the waiver to be deleted |
+| §12 fails only on waived rules | **pass** — each printed as `KNOWN … → B-007 / F-007` |
+| §12 fails on a rule that is not waived | **fail** — the map regression this exists to catch |
+| exit 6 with no readable rule list | **fail** — an unreadable result is not a known one |
+| any other non-zero exit (a crash, 4, 5) | **fail** — the simulator is dead, which is the whole point |
+
+The waiver lives in `.github/workflows/ci.yml` and currently holds one id,
+`sight-break-spacing` — the single rule `validate` reported failing when this step was
+written on 2026-08-03. All five rows above were exercised, the pass row against the
+real command and the rest against stubs.
+
+**If this check comes back red on a rule you did not expect, that is the check
+working.** §12's failing set moves as the map is authored; the rule to add an id here
+is the same one `audio_baseline.json` enforces — it must name the blocker or finding
+that owns it, and if you cannot name one, the map is the thing to fix, not this list.
+
+> **Where the "make this required" instruction went.** It is now
+> [§6](#6-the-one-thing-the-owner-has-to-click), with the caveat that turns out to
+> matter more than the setting: a required status check gates a *pull request*, and
+> `main`'s history is 100 % direct pushes.
 
 ### 2.2 `asset audit (§12 audio)` — and the F-002 decision
 
@@ -232,10 +444,21 @@ The real signal — a changed vertex count, triangle count or bounding box — i
 `ASSET_REPORT` lines the job prints, where a reviewer can diff it by eye. The job
 prints how many files differ, as information only.
 
-**Also not covered:** the *audio* generators are not re-run. The audit in §2.2 checks
-their committed output but never invokes `gen_footsteps.py` and friends, so those five
-scripts can rot the same way the Blender ones can. They are fast and pure-Python;
-adding them is a small job for whoever owns `tools/audio/`.
+**Also not covered, and this one is live:** the *audio* generators are not re-run. The
+audit in §2.2 checks their committed output but never invokes `gen_footsteps.py` and
+friends, so those five scripts can rot exactly the way the Blender ones can — the
+committed `.wav` keeps working while the only way to *change* it quietly stops
+existing. This is not hypothetical any more: `tools/audio/gen_ambience.py` and
+`tools/audio/gen_footsteps.py` were both edited during the descent pivot, and new
+`amb_zone_*` and `step_carpet_*` clips landed with them. Nothing in CI has ever run
+either script.
+
+It is the same shape as [§0.2](#02-the-simulator-was-built-and-never-run) — a tool
+whose output is checked and whose execution is not — and the fix is the same shape as
+`blender-generators`: a job that runs them headlessly and fails on a traceback or on
+"wrote nothing". They are fast and pure-Python. **It has not been added here because
+it was not measured here**; whoever owns `tools/audio/` should add it and quote the
+run, rather than have this file grow a job nobody has watched work.
 
 ---
 
@@ -246,6 +469,7 @@ export DOTNET_ROOT="$HOME/.dotnet"; export PATH="$HOME/.dotnet:$PATH"
 
 dotnet test core/HorrorGame.Core.Tests/HorrorGame.Core.Tests.csproj
 dotnet build core/HorrorGame.sln --configuration Release
+dotnet run --project core/HorrorGame.Sim -c Release -- validate   # ← and RUN it
 tools/ci/verify_audio.sh
 tools/ci/run_blender_generators.sh
 ```
@@ -253,6 +477,11 @@ tools/ci/run_blender_generators.sh
 That is the entire green tick, reproducible on a laptop in well under a minute of
 work. The workflow calls the same two scripts, so a red run is a copy-paste away from
 a local repro rather than an archaeology exercise in YAML.
+
+The third line is the one that is easy to skip and is the point of
+[§0.2](#02-the-simulator-was-built-and-never-run): the line above it succeeded for a
+day while this one aborted with exit 134. Check the exit code, not the wall of text —
+`validate` prints several cheerful lines before it gets to the part that fails.
 
 | File | What it is |
 |---|---|
@@ -277,6 +506,17 @@ runs. `windows-player` runs on `windows-2022` and does everything else.
 The gate is deliberately a **skip, not a failure**: a fork or a contributor without
 access to the secrets should see a clear "not configured" note in the run summary,
 not a red X they have no way to fix.
+
+**Say the consequence out loud, because a skip looks like a pass.** Every job in this
+file is gated `if: needs.preflight.outputs.enabled == 'true'`. Without a licence that
+is false, those jobs skip, and *a job that skips cannot fail*. `preflight` runs and
+succeeds, so the workflow's own conclusion is **success** and GitHub draws a green tick
+beside the commit. Nothing was built and no Unity test ran. A reader looking at two
+green ticks has no way to tell that one of them is a real verification and the other is
+an empty room — so `preflight` now also emits a `::warning::` saying so on the run page.
+[§0.4](#04-the-second-green-tick-means-nothing) is the full statement, and it is the
+reason the Unity jobs must **never** be made required status checks
+([§6](#6-the-one-thing-the-owner-has-to-click)).
 
 The gate needs **both**:
 
@@ -348,9 +588,9 @@ developer are *the same build*.
 | Install the editor | `--version 6000.3.21f1 --module windows-il2cpp --childModules`. The IL2CPP module is the entire reason for the Windows runner |
 | Activate | serial or `.ulf`, per §4.1. The only raw `Unity.exe` calls in the workflow, because `build.sh` deliberately does not handle credentials |
 | Packages | `tools/ci/build.sh bootstrap` → `PackageBootstrap.InstallRequiredBatch` |
-| Tests | `tools/ci/build.sh test` → EditMode + PlayMode, results under `dist/test-results` |
+| Tests | `tools/ci/build.sh test --require-tests` → EditMode + PlayMode, results under `dist/test-results` |
 | Build | `tools/ci/build.sh windows release --require-il2cpp` → `dist/windows-x64` |
-| Upload | the player, plus `dist/logs` and `dist/test-results`, all under `always()` |
+| Upload | `dist/logs` and `dist/test-results` under `always()`; **the player under `success()` with `if-no-files-found: error`** |
 | Return the licence | `-returnlicense`, under `always()`, serial route only |
 
 Two flags worth explaining:
@@ -358,10 +598,23 @@ Two flags worth explaining:
 * **`--require-il2cpp`.** Without it the pipeline is allowed to fall back to Mono, and
   this job would quietly produce exactly the build it exists to prevent — with an
   artifact that looks right. `build.sh` exits 5 instead.
-* **`--require-tests` is deliberately *not* passed.** `Assets/Tests/EditMode/` and
-  `Assets/Tests/PlayMode/` are still empty, so `build.sh test` passes today by running
-  nothing. Add `--require-tests` in the same commit as the first suite, so that "the
-  tests silently stopped being discovered" becomes a failure rather than a green tick.
+* **`--require-tests` IS now passed.** This entry used to read "deliberately not
+  passed — `Assets/Tests/EditMode/` and `Assets/Tests/PlayMode/` are still empty; add
+  it in the same commit as the first suite". They are not empty: at `a3e268e` there are
+  **23 test files, 2 EditMode and 21 PlayMode**, and the whole descent pivot was
+  verified through them. The stated condition was met rounds ago and the flag was
+  simply never added — which is its own small instance of the theme of this document.
+  `build.sh` exits **9** when no test ran, so "the suites silently stopped being
+  discovered" is a failure rather than a green tick. It is the Unity-side twin of
+  [§0.3](#03-dotnet-test-exits-0-when-it-runs-no-tests)'s TRX floor.
+
+And one upload rule worth explaining, because it is the same class of defect one
+notch smaller: the player artifact is uploaded with **`if-no-files-found: error`**, not
+`warn`, and only on `success()`. The player is this job's entire product. A `build.sh`
+that exits 0 while writing somewhere unexpected would otherwise leave a green job, no
+artifact, and a yellow line in a log nobody reads. Logs and test results keep `always()`
+and a soft setting, because a genuinely failed run legitimately may not have written
+them.
 
 `build.sh` also decides not to pass `-nographics` to the test run, and that is the
 right call: PlayMode tests instantiate the real player loop, and a false green from a
@@ -385,11 +638,23 @@ Plainly:
   from this repository: `ProjectSettings/ProjectVersion.txt` records
   `m_EditorVersionWithRevision: 6000.3.21f1` with no revision hash. The install step
   prints this instruction when it cannot find the editor afterwards.
-* **`Assets/Tests/EditMode/` and `Assets/Tests/PlayMode/` are empty.** `build.sh test`
-  runs and passes without executing a single test. Until suites appear, the Unity half
-  of `docs/ARCHITECTURE.md` §5's table is unenforced — adapters, prefab wiring,
-  generated scenes, movement feel, chases and networking are uncovered by any
-  automated check.
+* **The Unity suites exist and no automated system has ever run them.** This bullet
+  used to say the test folders were empty. They are not: **23 test files at `a3e268e`,
+  2 EditMode and 21 PlayMode** (counted here; the number of *tests* is whatever the
+  last hand-run reported, see `docs/TESTING.md`), covering adapters, prefab wiring,
+  generated scenes, movement feel, chases and networking — the whole Unity half of
+  `docs/ARCHITECTURE.md` §5's table.
+  Every one of them has only ever been run by a person, by hand, on this Mac. They are
+  written, they are good, and **CI has executed none of them, not once**, because the
+  job that would is skipped for a missing licence. That is now the single largest gap
+  between "green" and "verified" in this project.
+* **Nothing asserts the contents of the scene the game actually loads.** `3fa35b3` is
+  the case: the shipped solo scene had five storeys instead of eight, `ThirdPersonCamera`
+  was attached in no scene at all, and `Runner.fbx` was referenced by nothing — while
+  the code, the commit messages and every test were green. A licence would not catch
+  this either; it needs an EditMode test that opens `Map_FirstSketch_Solo.unity` and
+  asserts what is in it. Filed here rather than fixed here because
+  `Assets/Tests/**` is not this document's to write.
 * **`tools/ci/build.sh` has not been exercised by CI.** It and the
   `Assets/Scripts/Editor/BuildPipeline*.cs` classes behind it are the
   build-pipeline area's, and the workflow calls them exactly as their own
@@ -410,3 +675,106 @@ What this means in practice: **the rules and the numbers are covered, the assets
 covered, and the engine integration is not covered at all.** That split is worth
 keeping in mind when reading a green tick — it is a strong statement about §05–§08
 and §12, and it says nothing whatsoever about whether the game runs.
+
+---
+
+## 6. The one thing the owner has to click
+
+Everything above is code, and code cannot enforce itself. **Nothing in a workflow file
+can stop a red commit reaching `main`.** That is repository configuration, and only the
+owner's GitHub account can set it. This section is the exact click path.
+
+### 6.1 The recommendation, in one line
+
+> **Make `core tests (dotnet)` a required status check on `main`, and pair it with
+> "Require a pull request before merging".** Without the second half the first half
+> does nothing here.
+
+### 6.2 Why the second half is not optional
+
+A required status check gates **merging a pull request**. This repository does not use
+pull requests: every commit in recent history is a direct push, and `main` is a
+straight line —
+
+```
+$ git log --merges -5     # (nothing)
+$ git log -6 --pretty='%h parents:%p'
+a3e268e parents:43cf488
+43cf488 parents:af2563d
+af2563d parents:a89cf64
+a89cf64 parents:3fa35b3
+3fa35b3 parents:560051b
+560051b parents:96dea8c
+```
+
+— `a89cf64`..`43cf488` were **pushed, not merged**, so a rule that only gates merges
+never saw them.
+
+**One honest uncertainty.** GitHub's classic branch protection is generally understood
+to *also* reject a direct `git push` whose head commit has no passing required check,
+which would make the PR requirement unnecessary. That behaviour could not be tested
+from here — it needs the owner's account and a live repository, and this document does
+not report numbers nobody measured. So the recommendation pairs the two settings, which
+is unambiguous either way, and [§6.5](#65-then-verify-it-because-that-is-the-whole-point-of-this-document)
+is a two-minute experiment that settles it on the real repo. If step 3 there shows the
+direct push already being rejected, the PR requirement can be dropped again.
+
+**The cost, stated up front:** requiring a PR changes how work lands here. Agents and
+the owner both push to `main` today; afterwards they will have to open a branch and a
+pull request, and the PR cannot merge until `core tests (dotnet)` is green. That is the
+price of the tick meaning something, and it is the right trade — but it is a workflow
+change, not a checkbox that is free.
+
+### 6.3 The clicks (rulesets — the current UI)
+
+1. **Settings → Rules → Rulesets → New ruleset → New branch ruleset**
+2. Name it something like `main must be green`.
+3. **Enforcement status: Active.** (If your plan offers **Evaluate**, run it there for
+   a day first — it records what *would* have been blocked without blocking anything,
+   which is the cheapest possible way to find out whether this setting bites.)
+4. **Target branches → Include → Include default branch** (that is `main`).
+5. Under **Rules**, tick:
+   * **Require a pull request before merging.** Set *Required approvals* to **0** — a
+     solo owner cannot approve their own PR, and 0 still forces the PR, which is all
+     that is needed here.
+   * **Require status checks to pass.** Then **Add checks** and type
+     **`core tests (dotnet)`**. The picker only offers checks it has seen recently, so
+     if it is not listed, push any commit first and come back.
+   * **Block force pushes.**
+6. **Bypass list: leave it empty.** An entry for "Repository admin" hands the owner —
+   and anything pushing with the owner's token, which includes every agent in this
+   repo — a silent exemption, and a rule everyone is exempt from is the state this
+   document exists to describe.
+7. **Create.**
+
+Classic UI instead, if you prefer it: **Settings → Branches → Add branch protection
+rule** → pattern `main` → *Require a pull request before merging* + *Require status
+checks to pass before merging* → add **`core tests (dotnet)`** → and tick **Do not
+allow bypassing the above settings**.
+
+### 6.4 Which checks to require, and which never to
+
+The name GitHub shows is the job's `name:`, not the job id.
+
+| Check | Require it? | Why |
+|---|:--:|---|
+| **`core tests (dotnet)`** | **YES** | 512 tests, the solution build, and the simulator actually running. Two to three minutes. This is the gate |
+| `asset audit (§12 audio)` | reasonable second | Fast, and its gate is already two-sided (§2.2). Add it once you are comfortable with the first |
+| `blender generators` | no | Downloads and installs Blender, up to 30 minutes, and [§5](#5-what-cannot-run-yet) notes the Linux path has never actually been run. Blocking every merge on that is blocking on infrastructure, not on the game |
+| `licence preflight` | **never** | It passes unconditionally. Requiring it requires nothing |
+| `windows IL2CPP player + unity tests` | **never, until a licence exists** | It **skips** ([§0.4](#04-the-second-green-tick-means-nothing)). A skipped required check either auto-passes or blocks forever depending on how GitHub scores it, and neither is a verification. Revisit the day `UNITY_CI_ENABLED` is `true` and the job has actually run green once |
+
+### 6.5 Then verify it, because that is the whole point of this document
+
+Do not trust the settings page. The repo's own rule is that a green number you did not
+verify is worse than a red one, and that applies to the protection rule too:
+
+1. Branch off `main`, deliberately break one test (change a number in
+   `GameConstants.cs`), push the branch and open a PR.
+2. Confirm the PR shows `core tests (dotnet)` **red** and that the merge button is
+   **blocked**, not merely discouraged.
+3. Try `git push origin main` with that same commit and confirm it is **rejected**.
+4. Revert. Write the date it was verified next to this line.
+
+**Verified on: _(not yet — this is repository configuration and no agent can apply or
+test it)_.**
