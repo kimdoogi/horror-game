@@ -3,7 +3,6 @@
 using System.Collections;
 using HorrorGame.Core;
 using HorrorGame.Core.Movement;
-using HorrorGame.Core.Roles;
 using HorrorGame.Gameplay.Player;
 using NUnit.Framework;
 using UnityEngine;
@@ -508,10 +507,14 @@ namespace HorrorGame.Tests.PlayMode.PlayerRig
             var look = _body.AddComponent<PlayerLook>();
             look.PitchPivot = pivot;
 
-            _body.AddComponent<PlayerLoadout>();
 
             var motor = _body.AddComponent<PlayerMotor>();
-            motor.Role = RoleId.Runner;
+
+            // No role is assigned, and that IS the assignment. DESCENT-PIVOT §7 step 7 ran
+            // on 2026-08-03 and §04 has no 직업 left: 20 runners start with the same body,
+            // and 질주 belongs to all of them (§04, 「질주는 남는다 — 전원에게, 체력으로」).
+            // The line that used to stand here read `motor.Role = RoleId.Runner` and was
+            // the difference between a rig that could sprint and one that could not.
 
             // Nothing is feeding input, so Update must not step either of them; every test
             // drives both with an explicit delta, which is also how §13's host will.

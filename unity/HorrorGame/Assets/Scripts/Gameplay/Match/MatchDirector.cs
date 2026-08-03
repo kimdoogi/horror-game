@@ -5,16 +5,13 @@ using System.Collections.Generic;
 using HorrorGame.Audio;
 using HorrorGame.Core;
 using HorrorGame.Core.Abilities;
-using HorrorGame.Core.Map;
-using HorrorGame.Core.Monster;
-using HorrorGame.Core.Race;
-using HorrorGame.Core.Voice;
-using HorrorGame.Core.Clues;
-using HorrorGame.Core.Economy;
 using HorrorGame.Core.Ghost;
+using HorrorGame.Core.Map;
 using HorrorGame.Core.Match;
+using HorrorGame.Core.Monster;
 using HorrorGame.Core.Roles;
 using HorrorGame.Core.Session;
+using HorrorGame.Core.Voice;
 using HorrorGame.Gameplay.Ghost;
 using HorrorGame.Gameplay.Interaction;
 using HorrorGame.Gameplay.Monster;
@@ -27,42 +24,51 @@ using MonsterStateId = HorrorGame.Core.Monster.MonsterStateId;
 namespace HorrorGame.Gameplay.Match
 {
     /// <summary>
-    /// One match, from the first descent to §02's verdict. §01 · §02 · §03 · §07 · §08.
+    /// One descent, from the start line on B1's rim to §02's verdict. §01 · §02 · §06 · §07 · §09.
     /// <para>
-    /// <b>This is the host.</b> ARCHITECTURE §3 says stateful core systems expose
-    /// <c>Tick(float)</c> and never read a clock; something has to drive them at
-    /// <see cref="GameConstants.FixedStep"/>, in a defined order, and that is the whole
-    /// job of this class. It owns <c>MatchClock</c>, <c>MatchState</c>, the team
-    /// <c>Wallet</c> and <c>Shop</c>, the <c>ObjectiveResolver</c> that knows this
-    /// match's answer, one <c>ClueReader</c> per player, and — since 하강 — one §06
-    /// creature per storey. It steps them, applies the results to transforms and screens,
-    /// and decides nothing itself.
+    /// <b>This is the host, and there is only one game in it.</b> Up to twenty runners
+    /// start on the outer ring of B1, cut inward through §12's narrowing gates, drop
+    /// through a 투하구 onto the RIM of the storey below, and do it eight times. First to
+    /// the middle of B8 wins. A §06 creature patrols each floor as a HAZARD: being caught
+    /// is 탈락 — out, unranked, and the race carries on without you. That is the whole
+    /// game.
+    /// </para>
+    /// <para>
+    /// <b>What used to be here.</b> This class carried two games separated by an
+    /// <c>if (_raceMode)</c> branch, and the co-operative recovery match on the other side
+    /// of it was not merely dead — it ran. A <c>Shop</c> was lazily constructed on the
+    /// first race tick by the <c>_shop ??= new Shop(_wallet)</c> getter, loot state was
+    /// synced into <c>PlayerState</c> every fixed step, <c>DropEverything</c> fired on
+    /// death, and <c>UpdatePhase</c> tested §01's 지상 apron on a building that has none.
+    /// DESCENT-PIVOT §7 step 7 「상점/전리품/단서 제거」 is this change and it deletes rather
+    /// than gates: §03's clue chain and objective, §08's shop · wallet · credits · 전리품 ·
+    /// 궤짝, the 차량 and its 지상 apron, §01's 왕복 and 귀환, and the flag itself. A
+    /// <c>bool</c> with one legal value is a lie about what the game is, so <c>_raceMode</c>
+    /// went with the branch it guarded.
+    /// </para>
+    /// <para>
+    /// <b>Two things that were never wired, found while deleting, and fixed here.</b>
+    /// (1) Nothing ever called <c>RaceDirector.ReportCaught</c>, so a runner killed by §06
+    /// stayed <c>RacerStatus.Running</c> in the standings for ever — §02 could not close and
+    /// the RaceHud's verdict line was unreachable. <see cref="CheckGrab"/> reports it now.
+    /// (2) <see cref="AttachRace"/> sized the field from <c>GameConstants.PlayersPerMatch</c>
+    /// — the co-op party of four — and never withdrew the seats nobody was sitting in, so
+    /// three phantom runners kept the race open for ever. Both are the same failure this
+    /// project keeps finding: a system that reports and a system that plays, disagreeing.
     /// </para>
     /// <para>
     /// <b>§12-B③ is a count, and this class is where it becomes true.</b> 「괴물이 안쪽을
     /// 순찰한다」 is written about every floor and a 투하구 is a fall, not a path, so a
     /// creature that starts on B5 patrols B5 and nowhere else. The map declares one start
-    /// per storey; <c>PrepareCreatures</c> stands one agent on each of them and
-    /// <c>VerifyCreatureCount</c> refuses the match if the two numbers ever differ — which
-    /// is the one thing standing between a §06 audit that reads "8 of 8 storeys" and a
-    /// game that still runs a single monster.
+    /// per storey; <see cref="PrepareCreatures"/> stands one agent on each of them and
+    /// <see cref="VerifyCreatureCount"/> refuses the match if the two numbers ever differ —
+    /// which is the one thing standing between a §06 audit that reads "8 of 8 storeys" and
+    /// a game that still runs a single monster.
     /// </para>
     /// <para>
-    /// <b>§07's partial reset is the subtlest thing here.</b> Surfacing clears the
-    /// monster's chase state, its position and its aggro; it does not clear the clock,
-    /// and the clock keeps running while the team argues at the van — "나가는 것은 숨
-    /// 돌리기이지 리셋이 아니다". <c>MatchClock</c> already refuses to be paused, so the
-    /// only thing that can get this wrong is the monster half: it goes through
-    /// <c>ConsumeMonsterReset</c>, which fires exactly once per surfacing, and
-    /// <c>MonsterAgent.Respawn</c>, which keeps the seeded stream running rather than
-    /// restarting it.
-    /// </para>
-    /// <para>
-    /// <b>Host authority (§13) is preserved by omission.</b> The
-    /// <see cref="ObjectiveResolver"/> lives here and nowhere else, no property on this
-    /// class returns the objective's site, and the only way a mark reaches a screen is
-    /// as a <c>ClueReport</c> produced from one finished read. When Mirror arrives this
-    /// class becomes the host-side behaviour unchanged; the client gets the screens.
+    /// <b>Host authority (§13) is preserved by omission.</b> Nothing on this class hands
+    /// out a position anybody has not earned by looking at it. When Mirror arrives this
+    /// class is the host-side behaviour unchanged; clients get the screens.
     /// </para>
     /// </summary>
     [DisallowMultipleComponent]
@@ -77,17 +83,38 @@ namespace HorrorGame.Gameplay.Match
         /// </summary>
         private const int MaxStepsPerFrame = 8;
 
-        [Header("Match")]
+        /// <summary>
+        /// The seat the person at this keyboard is in. One local runner per machine; §11's
+        /// other nineteen are other machines, and §13's host owns the standings.
+        /// </summary>
+        private const int LocalSeat = 0;
+
+        /// <summary>
+        /// Colliders one creature's door search may return.
+        /// <para>
+        /// A 1.4 m sphere in §12's 2.2 m corridors touches a floor tile, a wall or two, a
+        /// ceiling cap and whatever prop is underfoot; 32 is several times that. If it ever
+        /// did fill, the cost is one creature failing to notice one door on one tick and
+        /// finding it on the next — which is why this is a fixed buffer rather than a
+        /// growing one. The allocating overload is what it replaced, and it was allocating
+        /// once per creature per fixed step.
+        /// </para>
+        /// </summary>
+        private const int DoorSearchBuffer = 32;
+
+        /// <summary>
+        /// How far the creature reaches to lean on a door, metres. Its own agent radius
+        /// (0.417) plus an arm — geometry rather than a tuned value.
+        /// </summary>
+        private const float DoorReachMetres = 1.4f;
+
+        [Header("§01 하강")]
         [SerializeField]
-        [Tooltip("§13: a match replays from its seed. Changing it changes the whole layout.")]
+        [Tooltip("§13: a descent replays from its seed. Changing it changes the whole tower.")]
         private int _seed = 20260731;
 
         [SerializeField]
-        [Tooltip("Which of §04's five the local player is. §08's 금고 asks; §04's 질주 asks.")]
-        private RoleId _localRole = RoleId.Runner;
-
-        [SerializeField]
-        [Tooltip("Begin the match on Start. Off when a test drives BeginMatch itself.")]
+        [Tooltip("Begin the descent on Start. Off when a test or §11's lobby drives BeginMatch itself.")]
         private bool _autoStart = true;
 
         [Header("Wiring")]
@@ -96,61 +123,64 @@ namespace HorrorGame.Gameplay.Match
         private MonsterAgent? _monster;
 
         [SerializeField]
-        [Tooltip("The local player's rig root. Left empty, the first PlayerMotor in the scene is used.")]
+        [Tooltip("The local runner's rig root. Left empty, the first PlayerMotor in the scene is used.")]
         private Transform? _playerRoot;
 
-        private readonly Wallet _wallet = new Wallet();
-        private readonly ClueReader _clueReader = new ClueReader();
-        private readonly DroppedLootField _droppedLoot = new DroppedLootField();
         private readonly List<Light> _areaLights = new List<Light>();
 
-        private MatchClock _clock = new MatchClock();
-        private Shop? _shop;
-        private LocalShopRequests? _shopRequests;
+        /// <summary>
+        /// Every creature this match is running, one per <see cref="MatchMap.MonsterSpawns"/>
+        /// entry. See <see cref="PrepareCreatures"/> for what guarantees that count.
+        /// </summary>
+        private readonly List<Creature> _creatures = new List<Creature>();
+
+        /// <summary>Every 투하구 in the scene, wired at match start. §01.</summary>
+        private readonly List<Chute> _chutes = new List<Chute>();
+
+        /// <summary>
+        /// §01's safety net: the runtime half of "you cannot leave the building". The
+        /// physical shell is the primary fix and this is what catches what it misses. See
+        /// <see cref="OutOfBounds"/> and <see cref="CheckBounds"/>.
+        /// </summary>
+        private readonly OutOfBounds _bounds = new OutOfBounds();
+
+        private readonly Collider[] _doorSearch = new Collider[DoorSearchBuffer];
+
+        private MatchClock _clock = new MatchClock(startOnSurface: false);
         private MatchState? _state;
         private MatchMap? _map;
-        private ObjectiveResolver? _resolver;
         private DeterministicRandom? _rng;
-        private NavMeshWorldProbe? _probe;
 
-        private MatchHud? _hud;
         private GhostSession? _ghosts;
         private PlayerInteractor? _interactor;
         private PlayerMotor? _motor;
-        private PlayerLoadout? _loadout;
         private PlayerFlashlight? _flashlight;
         private PlayerInputRouter? _input;
         private PlayerLook? _look;
 
         private GameObject? _worldRoot;
-        private ObjectivePropInteractable? _objectiveProp;
-        private SurfaceApron? _apron;
 
-        private ClueReadContext _clueContext;
-        private int _revealedClueId = -1;
+        /// <summary>§02's standings in the scene. Null until <see cref="AttachRace"/> has run.</summary>
+        private RaceDirector? _raceDirector;
+
         private double _accumulator;
         private bool _running;
-        private bool _onSurface = true;
+        private int _activeSeed;
+        private bool _verdictHeldForGhost;
 
-        [Header("§01 하강")]
-        [SerializeField]
-        [Tooltip("§01's race. Off runs the co-operative recovery match this grew out of.")]
-        private bool _raceMode = true;
+        /// <summary>Throttle for the proximity report. See <see cref="CheckGrab"/>.</summary>
+        private float _lastGrabReport;
 
-        /// <summary>
-        /// True when this is §01's race rather than the co-operative recovery match.
-        /// <para>
-        /// The two share a map, a creature, a set of doors and a darkness, and share
-        /// nothing else: the race has no 지상, no shop, no objective and no way out but
-        /// down. Switching here rather than deleting keeps the old path readable while the
-        /// new one is being proven. See BeginMatch.
-        /// </para>
-        /// </summary>
-        public bool RaceMode
-        {
-            get { return _raceMode; }
-        }
-        private float _grabDistance;
+        /// <summary>Ground covered since the last footstep was raised for §06. See <see cref="TakeFootstepCue"/>.</summary>
+        private float _strideTravelled;
+
+        private Vector3 _lastFootstepPosition;
+
+        /// <summary>How loud the local runner is. Optional — a rig without one still makes noise by speed.</summary>
+        private NoiseMeter? _noise;
+
+        /// <summary>What the local runner's microphone is doing this tick. See <see cref="TakeVoiceCue"/>.</summary>
+        private VoiceEffort _voiceEffort;
 
         /// <summary>
         /// One creature: the agent, where it started, and its own §06 catch.
@@ -175,7 +205,7 @@ namespace HorrorGame.Gameplay.Match
             /// <summary>The agent in the scene.</summary>
             internal MonsterAgent Agent { get; }
 
-            /// <summary>The §07 start marker it belongs to, for §03's partial reset. Null on a scene with none.</summary>
+            /// <summary>The §07 start marker it belongs to. Null on a scene with none.</summary>
             internal Transform? Spawn { get; }
 
             /// <summary>Whether this director cloned it, and therefore owns destroying it.</summary>
@@ -186,40 +216,19 @@ namespace HorrorGame.Gameplay.Match
         }
 
         /// <summary>
-        /// Every creature this match is running, one per <see cref="MatchMap.MonsterSpawns"/>
-        /// entry. See PrepareCreatures for what guarantees that count.
+        /// Raised on the step §01's safety net puts the local runner back: where they were,
+        /// and where they were returned to.
+        /// <para>
+        /// <b>This is the half a player sees, and it is deliberately an event rather than a
+        /// screen.</b> The recovery itself is legible on its own — position is written and
+        /// rotation is not, so the camera keeps the heading the player was holding and the
+        /// world snaps back around them rather than the player being re-spawned facing
+        /// somewhere new. What that does not do is NAME what happened, and the name belongs
+        /// on <c>RaceHud</c>, which is §02's screen and not this class's. The event and
+        /// <see cref="SecondsOutsideTheMap"/> are the whole of what the HUD needs.
+        /// </para>
         /// </summary>
-        private readonly List<Creature> _creatures = new List<Creature>();
-
-        /// <summary>Throttle for the proximity report. See CheckGrab.</summary>
-        private float _lastGrabReport;
-
-        /// <summary>Ground covered since the last footstep was raised for §06. See TakeFootstepCue.</summary>
-        private float _strideTravelled;
-
-        private Vector3 _lastFootstepPosition;
-
-        /// <summary>How loud the local player is. Optional — a rig without one still makes noise by speed.</summary>
-        private NoiseMeter? _noise;
-
-        /// <summary>What the local player's microphone is doing this tick. See TakeVoiceCue.</summary>
-        private VoiceEffort _voiceEffort;
-
-        /// <summary>Every 투하구 in the scene, wired at match start. §01.</summary>
-        private readonly List<Chute> _chutes = new List<Chute>();
-
-        /// <summary>
-        /// §01's safety net: the runtime half of "you cannot leave the building". The
-        /// physical shell is the primary fix and this is what catches what it misses. See
-        /// <see cref="OutOfBounds"/> and <see cref="CheckBounds"/>.
-        /// </summary>
-        private readonly OutOfBounds _bounds = new OutOfBounds();
-
-        /// <summary>§02's standings in the scene. Null outside race mode.</summary>
-        private RaceDirector? _raceDirector;
-
-        private int _activeSeed;
-        private bool _endScreenHeldForGhost;
+        public event Action<Vector3, Vector3>? RunnerPutBack;
 
         /// <summary>§07's clock. Never paused — that is the section.</summary>
         public MatchClock Clock
@@ -227,91 +236,56 @@ namespace HorrorGame.Gameplay.Match
             get { return _clock; }
         }
 
-        /// <summary>The party, the objective and §09's ghosts. Null before <see cref="BeginMatch"/>.</summary>
+        /// <summary>
+        /// The seats, and §09's ghosts. Null before <see cref="BeginMatch"/>.
+        /// <para>
+        /// <b>The last co-operative object still standing, and it is here for one reason:
+        /// §09's ghost has to live somewhere.</b> <c>MatchState.TryKill</c> is what builds
+        /// the <see cref="GhostState"/> a caught runner spectates from, and
+        /// <c>MonsterKillTests</c> reads <c>State.PlayerAt(0).Ghost</c> as its evidence that
+        /// the creature can actually catch somebody — the reproduction for
+        /// 「괴물앞에있어도 안죽는데」. Nothing else on it is read from this file any more:
+        /// the objective, the loot flags, the injury and §01's surface standing all lost
+        /// their callers with the co-op path.
+        /// </para>
+        /// <para>
+        /// It does not fit a race yet and should not be left like this. Its constructor
+        /// still demands §11's four DISTINCT §04 roles (<c>RoleSelection.IsComplete</c>),
+        /// which a field of twenty identical runners cannot satisfy — see
+        /// <see cref="BuildLineup"/> for the scaffold that gets past it. Rewriting
+        /// <c>MatchState</c> for 2~20 identical seats is the next deletion, not this one.
+        /// </para>
+        /// </summary>
         public MatchState? State
         {
             get { return _state; }
         }
 
-        /// <summary>§08's one shared wallet and the stock bought out of it.</summary>
-        public Shop Shop
-        {
-            get { return _shop ??= new Shop(_wallet); }
-        }
-
-        /// <summary>The building §03's chain narrows over. Null before <see cref="BeginMatch"/>.</summary>
+        /// <summary>The building the race is run in. Null before <see cref="BeginMatch"/>.</summary>
         public MatchMap? Map
         {
             get { return _map; }
         }
 
-        /// <summary>This player's §03 read attempt. Holds no clue content.</summary>
-        public ClueReader ClueReader
-        {
-            get { return _clueReader; }
-        }
-
-        /// <summary>§08's 사망자의 전리품 — what fell where.</summary>
-        public DroppedLootField DroppedLoot
-        {
-            get { return _droppedLoot; }
-        }
-
-        /// <summary>Clues this match has, §03's three plus any decoys. Zero before the match starts.</summary>
-        public int ClueCount
-        {
-            get { return _resolver != null ? _resolver.ClueCount : 0; }
-        }
-
-        /// <summary>Round trips this layout was built to cost, inside §03's 2–5. A difficulty, not a location.</summary>
-        public int PlannedRoundTrips
-        {
-            get { return _resolver != null ? _resolver.PlannedRoundTrips : 0; }
-        }
-
-        /// <summary>The objective in the world, or null once it has left the building.</summary>
-        public ObjectivePropInteractable? ObjectiveProp
-        {
-            get { return _objectiveProp; }
-        }
-
         /// <summary>
-        /// §01's 지상, as painted geometry. Null before <see cref="BeginMatch"/> and on a
-        /// scene the apron could find no floor in.
+        /// §02's standings — who is where, who is out, who won. Null before
+        /// <see cref="BeginMatch"/> and on a scene §11 refused to size a field for.
         /// </summary>
-        public SurfaceApron? Apron
+        public RaceDirector? Race
         {
-            get { return _apron; }
+            get { return _raceDirector; }
         }
 
         /// <summary>The seat the person at the keyboard is in.</summary>
         public int LocalPlayerIndex
         {
-            get { return 0; }
-        }
-
-        /// <summary>Which of §04's five the local player took.</summary>
-        public RoleId LocalRole
-        {
-            get { return _localRole; }
+            get { return LocalSeat; }
         }
 
         /// <summary>Whether the match is being stepped.</summary>
         public bool IsRunning
         {
             get { return _running; }
-        }
-
-        /// <summary>Whether the local player is standing in §01's 지상 apron.</summary>
-        public bool LocalPlayerOnSurface
-        {
-            get { return _onSurface; }
-        }
-
-        /// <summary>Whether §08's shop panel is up.</summary>
-        public bool ShopOpen
-        {
-            get { return _hud != null && _hud.ShopOpen; }
         }
 
         /// <summary>
@@ -343,24 +317,8 @@ namespace HorrorGame.Gameplay.Match
         }
 
         /// <summary>
-        /// Raised on the step §01's safety net puts the local runner back: where they were,
-        /// and where they were returned to.
-        /// <para>
-        /// <b>This is the half a player sees, and it is deliberately an event rather than a
-        /// screen.</b> The recovery itself is legible on its own — position is written and
-        /// rotation is not, so the camera keeps the heading the player was holding and the
-        /// world snaps back around them rather than the player being re-spawned facing
-        /// somewhere new. What that does not do is NAME what happened, and the name belongs
-        /// on <c>RaceHud</c>, which is §02's screen and not this class's. The event and
-        /// <see cref="SecondsOutsideTheMap"/> are the whole of what the HUD needs; the two
-        /// lines that consume them are in this change's report.
-        /// </para>
-        /// </summary>
-        public event Action<Vector3, Vector3>? RunnerPutBack;
-
-        /// <summary>
-        /// §09's seat for the dead. Null until <see cref="ResolveWiring"/> has run; the
-        /// session itself is inert while nobody has died.
+        /// §09's seat for the eliminated. Null until <see cref="ResolveWiring"/> has run;
+        /// the session itself is inert while nobody has been caught.
         /// </summary>
         public GhostSession? Ghosts
         {
@@ -368,21 +326,20 @@ namespace HorrorGame.Gameplay.Match
         }
 
         /// <summary>
-        /// Whether the local player is dead and still playing. §09.
+        /// Whether the local runner is 탈락 and watching. §09.
         /// <para>
-        /// Not the same question as "did the match end". A death is a change of seat, not
-        /// the end of anything: §09 keeps the player in the building — "탈출: 불가능" —
-        /// and §02 only finishes when every seat has resolved, which with four players is
-        /// three deaths later.
+        /// Not the same question as "is the race over". Being caught takes you out of the
+        /// standings unranked and leaves everybody else running — §02 closes when nobody is
+        /// still descending, which with a full field is nineteen more people later.
         /// </para>
         /// </summary>
         public bool LocalPlayerIsGhost
         {
-            get { return _state != null && _state.PlayerAt(LocalPlayerIndex).IsGhost; }
+            get { return _state != null && _state.PlayerAt(LocalSeat).IsGhost; }
         }
 
         /// <summary>
-        /// How hard the local player is speaking right now. The voice transport sets this
+        /// How hard the local runner is speaking right now. The voice transport sets this
         /// every tick; §06 hears the result. Silent when nobody is holding the key.
         /// </summary>
         public VoiceEffort VoiceEffort
@@ -434,7 +391,7 @@ namespace HorrorGame.Gameplay.Match
         /// their floor.
         /// <para>
         /// <b>Everything that can only follow one creature should follow this one.</b> §06's
-        /// audio bed, §09's ghost camera and §14's guidance all took
+        /// audio bed, §09's spectator camera and §14's guidance all took
         /// <c>FindFirstObjectByType&lt;MonsterAgent&gt;()</c> when there was exactly one to
         /// find. With one per storey that call returns an arbitrary floor's creature, so a
         /// runner on B1 could be given the 추격 bed of the creature seven floors below —
@@ -451,74 +408,20 @@ namespace HorrorGame.Gameplay.Match
         }
 
         /// <summary>
-        /// Whether §02 has decided and the end screen is waiting on §09's ghost to ask
-        /// for it. See <see cref="CheckOutcome"/>.
+        /// Whether §02 has closed and the match is waiting on §09's spectator to say when
+        /// to stop. See <see cref="RaceClosed"/>.
         /// </summary>
-        public bool EndScreenHeldForGhost
+        public bool RaceVerdictHeldForGhost
         {
-            get { return _endScreenHeldForGhost; }
+            get { return _verdictHeldForGhost; }
         }
 
         /// <summary>
-        /// §02's reading of the match right now, over the seats that are actually being
-        /// played.
-        /// <para>
-        /// A solo playtest seats one person in a party §11 sizes at four, and
-        /// <c>MatchState</c> will not build a lineup with an empty slot. Feeding the
-        /// three empty seats to §02 would make a death read as 생존 — three phantom
-        /// escapees — which is precisely the asymmetry §02 exists to price. So the tally
-        /// counts occupied seats only and hands them to Core's evaluator unchanged.
-        /// <c>OutcomeEvaluator</c> already reads 완전 승리 as "nobody was lost" rather
-        /// than "four escaped" so that a short-handed party is judged by the same rule.
-        /// </para>
-        /// </summary>
-        public MatchResolution Resolution
-        {
-            get
-            {
-                var state = _state;
-                if (state == null)
-                {
-                    return OutcomeEvaluator.Evaluate(0, 0, 0, false);
-                }
-
-                var escaped = 0;
-                var lost = 0;
-                var inPlay = 0;
-
-                for (var i = 0; i < OccupiedSeats; i++)
-                {
-                    var player = state.PlayerAt(i);
-                    if (player.HasEscaped)
-                    {
-                        escaped++;
-                    }
-                    else if (player.IsGhost)
-                    {
-                        lost++;
-                    }
-                    else
-                    {
-                        inPlay++;
-                    }
-                }
-
-                return OutcomeEvaluator.Evaluate(escaped, lost, inPlay, state.ObjectiveRecovered);
-            }
-        }
-
-        /// <summary>§02's verdict, or <see cref="MatchOutcome.InProgress"/>.</summary>
-        public MatchOutcome Outcome
-        {
-            get { return Resolution.Outcome; }
-        }
-
-        /// <summary>
-        /// Lays out and starts a match. Idempotent in the sense that it tears down
+        /// Lays out and starts a descent. Idempotent in the sense that it tears down
         /// whatever the previous one left in the world first.
         /// </summary>
-        /// <param name="seed">§13: the whole layout replays from this.</param>
-        /// <returns>False when the scene could not carry a match; the reason is logged.</returns>
+        /// <param name="seed">§13: the whole tower replays from this.</param>
+        /// <returns>False when the scene could not carry a race; the reason is logged.</returns>
         public bool BeginMatch(int seed)
         {
             ClearWorld();
@@ -536,16 +439,14 @@ namespace HorrorGame.Gameplay.Match
             _worldRoot = new GameObject("MatchWorld");
 
             CollectAreaLights();
-            var probe = PrepareCreatures();
-            if (probe == null)
+
+            if (PrepareCreatures() == null)
             {
                 Debug.LogError(
-                    "[Match] No NavMesh probe. §06's monster and §03's placement both walk through "
-                    + "NavMesh queries; regenerate the map so the surface is baked.", this);
+                    "[Match] No NavMesh probe. §06's creatures walk through NavMesh queries and §01's "
+                    + "out-of-bounds net samples the same surface; regenerate the map so it is baked.", this);
                 return false;
             }
-
-            _probe = probe;
 
             // ── §12-B③ 층마다 하나, checked rather than assumed ────────────────────
             //
@@ -557,11 +458,6 @@ namespace HorrorGame.Gameplay.Match
             // match at all. A build that ships one creature and an eight-storey audit
             // cannot get past here, and the log below prints both numbers side by side so
             // a reader never has to take either on trust.
-            //
-            // Refusing rather than warning, for the same reason ObjectiveResolver refuses a
-            // chain that does not converge: a match played against the wrong number of
-            // creatures is not a degraded match, it is a different game, and it would be
-            // measured as if it were this one.
             if (!VerifyCreatureCount(map))
             {
                 return false;
@@ -573,176 +469,52 @@ namespace HorrorGame.Gameplay.Match
             // seed lays out a different tower on the same 57.5 m square.
             _bounds.Reset();
 
-            // ── §01's race, or the co-operative recovery match it grew out of ──────
-            //
-            // Everything between here and MovePlayerToSpawn is the old game: §03's clue
-            // chain, the objective, the loot, the van, the shop, and the 지상 apron that
-            // makes the surface a safe zone. The race has none of it. There is no way out
-            // of the building — the 출입구 marker is now §02's FINISH at the middle of B8 —
-            // so a surface phase is not a phase, it is a contradiction.
-            //
-            // GATED rather than deleted, and that is a decision worth defending. This file
-            // is 2,139 lines and the co-op systems reach into most of them; cutting them out
-            // on the same night five other things are being wired is how a night ends with
-            // nothing that compiles. Gated, the race path is short and readable and the old
-            // path is provably unreachable, and deleting it afterwards is a mechanical
-            // change nobody has to be brave about. docs/DESCENT-PIVOT.md §3.
-            if (_raceMode)
-            {
-                // §08 is NOT laid out here, and its absence is the change. DESCENT-PIVOT §3
-                // lists 「§08 전리품 · 크레딧 · 판매」 under 버린다 with the reason 「통화가
-                // 없다」, and §7 step 7 is 「상점/전리품/단서 제거」 — a step that had never
-                // run. PlaceLoot stood at exactly this line, ABOVE MovePlayerToSpawn, while
-                // PlaceClues, PlaceObjective and PlaceVehicle all sat below on the
-                // co-operative path; that one misplaced call was the whole of §08 still
-                // shipping in a race. It put one piece on every one of the 152 LootSpawn
-                // markers of Map_FirstSketch_Solo — §12 puts one at every 막힌 길, 19 per
-                // storey — and the first draw is always §01's 궤짝: a 1.276 × 0.694 m chest
-                // held 1.05 m in front of the eyes, weighing GameConstants.LootWeightLargePiece
-                // (5, "equals WeightFreeMax, which is why one piece ends the free band"), for
-                // credits that no longer exist to spend anywhere. In a race about speed the
-                // reward for taking it is that you cannot see the gate you are running at.
-                //
-                // The carry MECHANIC is deliberately left standing: PlayerInteractor, the
-                // crosshair, the key and DropPlacement are all still wired, because F-006
-                // §5c puts battery cells on the floor for runners to find and that is the
-                // same path with a different thing on the end of it. What goes is §08's
-                // table, not the hands.
-                _state = new MatchState(BuildLineup(_localRole), startOnSurface: false);
-                _clock = new MatchClock(startOnSurface: false);
-                _clueContext = default(ClueReadContext);
-                _clueReader.Cancel();
-                _revealedClueId = -1;
-                _accumulator = 0d;
-
-                MovePlayerToSpawn();
-
-                // Never true again for the rest of the match. §01's 지상 is where a
-                // co-operative team regroups and shops; a runner starts on the rim of B1
-                // with the maze in front of them and nothing behind.
-                _onSurface = false;
-
-                _grabDistance = MeasureGrabDistance();
-                AttachDoors();
-                AttachChutes();
-
-                _noise = _playerRoot != null ? _playerRoot.GetComponentInChildren<NoiseMeter>(true) : null;
-                _lastFootstepPosition = _playerRoot != null ? _playerRoot.position : Vector3.zero;
-                _strideTravelled = 0f;
-
-                BindHud();
-                _hud?.CloseShop();
-                AttachRace();
-
-                _running = true;
-                _seed = seed;
-
-                Debug.Log("[Match] §01 하강 시작 — B1 외곽. 여덟 층 아래가 도착점이다.", this);
-                return true;
-            }
-
-            try
-            {
-                _resolver = new ObjectiveResolver(map.Catalog, probe, map.TeamEntryPoint.ToVec3(), _rng);
-            }
-            catch (ArgumentException error)
-            {
-                Debug.LogError("[Match] §03's chain cannot be laid out on this map: " + error.Message, this);
-                return false;
-            }
-
-            if (!_resolver.VerifyChainConverges())
-            {
-                // ObjectiveResolver's own argument: a layout that does not converge is
-                // unwinnable, and a match is far better off refusing to start than
-                // sending players down for something that is not there.
-                Debug.LogError(
-                    "[Match] §03's clue chain does not converge on one site for seed " + seed
-                    + ". Refusing to start.", this);
-                return false;
-            }
-
-            if (_resolver.UsedUnreachableFallback)
-            {
-                Debug.LogWarning(
-                    "[Match] No candidate site was reachable from the 출입구; the layout fell back to the "
-                    + "level's declared positions. The NavMesh and the map data disagree.", this);
-            }
-
-            PlaceClues();
-            PlaceObjective();
-            PlaceLoot();
-            PlaceVehicle();
-
-            _shop = new Shop(_wallet);
-            _shopRequests = new LocalShopRequests(_shop, _loadout != null ? _loadout.Inventory : null);
-
-            _state = new MatchState(BuildLineup(_localRole), startOnSurface: true);
-            _clock = new MatchClock(startOnSurface: true);
-            _clueContext = default(ClueReadContext);
-            _clueReader.Cancel();
-            _revealedClueId = -1;
+            // startOnSurface: false on both, and it is not a default being restated. §01's
+            // 지상 is where a co-operative team regrouped, shopped and re-supplied; a runner
+            // starts on the rim of B1 with the maze in front of them and nothing behind. The
+            // clock therefore counts basement seconds from tick one, and §07's 「시각은
+            // 지상에서만 알 수 있다」 means nobody in this building can read it — which is the
+            // rule, not a gap. RaceHud shows race time, which is a different number.
+            _state = new MatchState(BuildLineup(), startOnSurface: false);
+            _clock = new MatchClock(startOnSurface: false);
             _accumulator = 0d;
 
-            if (_motor != null)
-            {
-                _motor.Role = _localRole;
-            }
-
             MovePlayerToSpawn();
-            _onSurface = true;
-            _grabDistance = MeasureGrabDistance();
+
             AttachDoors();
             AttachChutes();
 
-            // §06's ears. Optional on purpose: a rig assembled by a test has no audio on
-            // it, and a monster that went deaf whenever the sound layer was absent would
-            // hide the very bug this wiring exists to fix. See TakeFootstepCue.
             _noise = _playerRoot != null ? _playerRoot.GetComponentInChildren<NoiseMeter>(true) : null;
             _lastFootstepPosition = _playerRoot != null ? _playerRoot.position : Vector3.zero;
             _strideTravelled = 0f;
 
-            BindHud();
-
-            // Closed to start with, and closed on every 귀환 after it. §08: "1차 잠입 전
-            // 구매력 0 — 맨몸으로 들어간다", so there is nothing to decide yet, and a panel
-            // over the screen would take the camera away from a player whose first job is
-            // to walk out of the door. The 차량's key is the only thing that opens it —
-            // see the remarks on Surfaced.
-            CloseShopAtVehicle();
+            AttachRace();
 
             _running = true;
+            _seed = seed;
 
             Debug.Log(
-                "[Match] seed " + seed
-                + " · " + _resolver.ClueCount + " clues (§03 needs " + GameConstants.CluesRequiredToLocate + ")"
-                + " · planned round trips " + _resolver.PlannedRoundTrips
-                + " · " + map.ZoneCount + " zones"
-                + " · local role " + _localRole, this);
-
+                "[Match] §01 하강 시작 — seed " + seed + " · B1 외곽 " + map.PlayerSpawns.Count
+                + "개 출발점 · 여덟 층 아래가 도착점이다.", this);
             return true;
         }
 
-        /// <summary>Stops stepping and unbinds the HUD. The world is left standing.</summary>
+        /// <summary>Stops stepping. The world is left standing, so the standings stay readable.</summary>
         public void EndMatch()
         {
             _running = false;
-            _endScreenHeldForGhost = false;
+            _verdictHeldForGhost = false;
 
-            // §09 ends with the match and never outlives it: the ghost's cooldown is
+            // §09 ends with the match and never outlives it: the spectator's cooldown is
             // ticked from the step this call stops, so a ghost left flying afterwards
             // would be one whose 45 s never comes round again.
             _ghosts?.End();
-
-            _hud?.UnbindHud();
-            _hud?.CloseShop();
-            _hud?.DismissClue();
         }
 
         /// <summary>
         /// Advances the match in whole <see cref="GameConstants.FixedStep"/> steps.
         /// <para>
-        /// Public and delta-taking so a headless test can drive a whole match without a
+        /// Public and delta-taking so a headless test can drive a whole descent without a
         /// frame ever being rendered — the same reason <c>PlayerMotor.Step</c> and
         /// <c>MonsterAgent.Simulate</c> are shaped this way (ARCHITECTURE §3).
         /// </para>
@@ -775,17 +547,15 @@ namespace HorrorGame.Gameplay.Match
         }
 
         /// <summary>
-        /// Takes this frame's measurement of §03's reading conditions from the player's
-        /// eyes. A context with <c>ClueId &lt; 0</c> is what tells <c>ClueReader</c> the
-        /// player looked away, so it is pushed every frame and not only when a mark is
-        /// in view.
+        /// Whether a point is under a zone light. §06 asks it: a runner standing in a lit
+        /// place is easier to see, and <c>NavMeshWorldProbe.LitQuery</c> is how the rule
+        /// reaches Core without Core learning what a <c>Light</c> is.
+        /// <para>
+        /// The reader it was built for — §03's "you cannot read a mark in the dark" — is
+        /// gone with the clue chain. §06's perception is the caller that remains, and it is
+        /// the reason the darkness of the inner rings costs the leader something.
+        /// </para>
         /// </summary>
-        public void SetClueContext(ClueReadContext context)
-        {
-            _clueContext = context;
-        }
-
-        /// <summary>Whether a point is under a zone light or the burning 출입구 light. §03.</summary>
         public bool IsAreaLit(Vector3 point)
         {
             for (var i = 0; i < _areaLights.Count; i++)
@@ -803,165 +573,6 @@ namespace HorrorGame.Gameplay.Match
             }
 
             return false;
-        }
-
-        /// <summary>
-        /// Puts §03's objective in the local player's hands.
-        /// <para>
-        /// Two core objects have to move together: <c>Inventory</c> refuses while there
-        /// is 전리품 in the pockets ("전리품 동시 소지 불가") and <c>MatchState</c> refuses
-        /// a second carrier and records who has it. Taking one without the other would
-        /// leave the match and the player's hands disagreeing about §03.
-        /// </para>
-        /// </summary>
-        public bool TryTakeObjective(out string refusal)
-        {
-            var state = _state;
-            var loadout = _loadout;
-            if (state == null || loadout == null)
-            {
-                refusal = "이 판에는 목표물을 들 손이 없다.";
-                return false;
-            }
-
-            SyncLootState();
-
-            if (!loadout.SetCarryingObjective(true))
-            {
-                refusal = "§03 전리품 동시 소지 불가 — 들고 있는 전리품을 먼저 처리해야 한다.";
-                return false;
-            }
-
-            if (!state.TryTakeObjective(LocalPlayerIndex))
-            {
-                loadout.SetCarryingObjective(false);
-                refusal = "§03 지금은 목표물을 들 수 없다.";
-                return false;
-            }
-
-            SyncLootState();
-            refusal = string.Empty;
-            return true;
-        }
-
-        /// <summary>Puts §03's objective down where the carrier is standing.</summary>
-        public bool TryDropObjective(Vector3 where, out string refusal)
-        {
-            var state = _state;
-            if (state == null || !state.TryDropObjective(where.ToVec3()))
-            {
-                refusal = "아무도 들고 있지 않다.";
-                return false;
-            }
-
-            _loadout?.SetCarryingObjective(false);
-            SyncLootState();
-            refusal = string.Empty;
-            return true;
-        }
-
-        /// <summary>
-        /// §02 목표물 회수 — it left the building with somebody, so it leaves the world.
-        /// <para>
-        /// Taking the prop out of the world is only half of it: §03's carry is a flag on
-        /// <c>Inventory</c>, put there by <see cref="TryTakeObjective"/>, and deactivating
-        /// a <c>GameObject</c> cannot reach it. Left set, it keeps charging
-        /// <see cref="GameConstants.ObjectiveWeight"/> against the load and keeps
-        /// <c>MovementContext.CarryingObjective</c> true for a pair of hands that is
-        /// demonstrably empty — the match is over and the thing is on the van.
-        /// </para>
-        /// <para>
-        /// The interactor's fallback focus goes with it. <c>SetCarriedFocus</c> is what
-        /// keeps the key bound to something whose collider is off while it is held; the
-        /// prop this points at is about to be inactive, and after the next
-        /// <see cref="BeginMatch"/> despawns the world it is destroyed.
-        /// </para>
-        /// </summary>
-        private void RecoverObjective()
-        {
-            var prop = _objectiveProp;
-            if (prop == null)
-            {
-                return;
-            }
-
-            _interactor?.ClearCarriedFocus(prop);
-            prop.Recovered();
-            _loadout?.SetCarryingObjective(false);
-        }
-
-        /// <summary>
-        /// Opens §08's shop, if the team is at the vehicle. The one screen operated with
-        /// a mouse, so the cursor comes back — but nothing is paused: §07 charges "상점
-        /// 에서 고민 ~30초" and §10 lists shopping as a dilemma against the clock.
-        /// </summary>
-        public void OpenShopScreen()
-        {
-            if (_onSurface)
-            {
-                OpenShopAtVehicle();
-            }
-        }
-
-        /// <summary>Closes §08's shop and gives the mouse back to §05's camera.</summary>
-        public void CloseShopScreen()
-        {
-            CloseShopAtVehicle();
-        }
-
-        /// <summary>
-        /// §02's decision: leave for good. Everything the team learned survives, and the
-        /// match is over for this player.
-        /// <para>
-        /// No key is bound to this yet. §02's 생존 row is a team negotiation — "한 명
-        /// 이라도 탈출하면 그 판에서 알아낸 정보가 보존된다" — and binding it to a single
-        /// press at the van would let one mistimed keystroke end four people's match.
-        /// The host calls it; §13's lobby layer is where the vote to leave belongs.
-        /// Carrying the objective into the apron ends the match on its own (see
-        /// <see cref="Surfaced"/>), which is §02's other terminal row.
-        /// </para>
-        /// </summary>
-        public bool TryLeaveForGood(out string refusal)
-        {
-            var state = _state;
-            if (state == null)
-            {
-                refusal = "판이 시작되지 않았다.";
-                return false;
-            }
-
-            if (!_onSurface)
-            {
-                refusal = "§08 차량은 지상에 있다.";
-                return false;
-            }
-
-            if (!state.TryExtract(LocalPlayerIndex))
-            {
-                refusal = "이미 나갔다.";
-                return false;
-            }
-
-            if (state.ObjectiveRecovered)
-            {
-                RecoverObjective();
-            }
-
-            refusal = string.Empty;
-            CheckOutcome();
-            return true;
-        }
-
-        /// <summary>
-        /// Keeps <c>PlayerState</c>'s view of the hands in step with the economy's.
-        /// Called by an interactable the instant it changes anything, because §03's
-        /// "no 전리품 while carrying" is checked in both objects and a one-frame
-        /// disagreement is a rule that fires at the wrong time.
-        /// </summary>
-        public void NoteLootTaken()
-        {
-            SyncLootState();
-            _hud?.RefreshShop();
         }
 
         private void Awake()
@@ -998,37 +609,15 @@ namespace HorrorGame.Gameplay.Match
             _clock.Tick(GameConstants.FixedStep);
             state.Tick(GameConstants.FixedStep);
 
-            UpdatePhase();
-            SyncLootState();
-
-            var tier = _clock.Tier;
             if (_flashlight != null)
             {
                 // §07's 심야 row: 손전등 반경 −30%. Pushed in as a float so the player
                 // rig never imports the threat system (ARCHITECTURE §3).
-                _flashlight.TierRangeMultiplier = tier.FlashlightRangeMultiplier;
-            }
-
-            // §07: "시각은 지상에서만 알 수 있다" — unless §08's 회중시계 was bought.
-            _clock.SetPocketWatchOwned(Shop.StockOf(ShopItemId.PocketWatch) > 0);
-
-            if (_clock.ConsumeMonsterReset())
-            {
-                ResetMonster();
-            }
-
-            if (LocalPlayerIsGhost)
-            {
-                // §03's read belongs to a pair of eyes that is now flying somewhere else.
-                // PlayerInteractor is switched off while §09 has the camera, so nothing is
-                // pushing a fresh context — and a reader ticked against the last live one
-                // would finish a mark the player was halfway through when they died.
-                _clueContext = default(ClueReadContext);
+                _flashlight.TierRangeMultiplier = _clock.Tier.FlashlightRangeMultiplier;
             }
 
             StepCreatures();
             PushDoors();
-            StepClueRead();
             CheckGrab();
             CheckChutes();
 
@@ -1054,10 +643,8 @@ namespace HorrorGame.Gameplay.Match
             while (_clock.TryDequeueTierAdvance(out var crossed))
             {
                 Debug.Log("[Match] §07 " + crossed.Phase + " — 괴물 " + crossed.MonsterSpeed + " m/s"
-                    + (crossed.MonsterKnowsExit ? ", 출입구를 안다" : string.Empty), this);
+                    + (crossed.MonsterKnowsExit ? ", 도착점을 안다" : string.Empty), this);
             }
-
-            CheckOutcome();
         }
 
         /// <summary>
@@ -1085,9 +672,9 @@ namespace HorrorGame.Gameplay.Match
         /// joined, a creature CAN follow a runner down, and this filter becomes a lie.
         /// </para>
         /// <para>
-        /// Storey is asked with <see cref="MapGraph.StoreyChangeMetres"/>, the same
-        /// constant <c>MatchMap.IsOnSurface</c> uses, because 지상, 층 and §06 must not
-        /// answer "is this the same floor" three different ways.
+        /// Storey is asked with <see cref="MapGraph.StoreyChangeMetres"/> throughout this
+        /// file, because §12's 층 and §06's reach must not answer "is this the same floor"
+        /// two different ways.
         /// </para>
         /// </summary>
         private void StepCreatures()
@@ -1097,12 +684,10 @@ namespace HorrorGame.Gameplay.Match
                 return;
             }
 
-            var hunted = _onSurface || _playerRoot == null || LocalPlayerIsGhost
-                ? null
-                : LocalStoreyCreature();
+            var hunted = _playerRoot == null || LocalPlayerIsGhost ? null : LocalStoreyCreature();
 
             // Taken once for the whole match, not once per creature. The stride is a
-            // property of the player's legs — ReportFootsteps used to advance an
+            // property of the runner's legs — ReportFootsteps used to advance an
             // accumulator as a side effect of reporting, so a loop over eight creatures
             // would have given the first one the step and the other seven silence.
             //
@@ -1114,6 +699,12 @@ namespace HorrorGame.Gameplay.Match
             var footstep = TakeFootstepCue();
             var voice = hunted != null ? TakeVoiceCue() : null;
 
+            // §07's 순찰 column is written in zones and on this tower a zone is a storey —
+            // DescentMap calls AddZone once per level. It used to be read off §03's
+            // candidate-site catalog, which is deleted; MonsterStoreyCount asks the same
+            // question of the markers the creatures are standing on. See MatchMap.
+            var zones = _map != null ? _map.MonsterStoreyCount : 0;
+
             for (var i = 0; i < _creatures.Count; i++)
             {
                 var creature = _creatures[i];
@@ -1123,39 +714,32 @@ namespace HorrorGame.Gameplay.Match
                     continue;
                 }
 
-                // §07 is the only thing that sets the monster's speed and patrol scope, and
+                // §07 is the only thing that sets the creature's speed and patrol scope, and
                 // MonsterAgent reads both off the tier for the elapsed time the host gives
                 // it. Handing it the clock rather than a speed keeps one authority. Per
                 // creature because §07 is per match: every one of them is at the same hour.
                 monster.SetMatchElapsedSeconds(_clock.ElapsedSeconds);
-                if (_map != null)
-                {
-                    monster.SetMapZoneCount(_map.ZoneCount);
-                }
+                monster.SetMapZoneCount(zones);
 
                 if (!ReferenceEquals(creature, hunted))
                 {
-                    // §01 · §08 make the surface a 안전 지대, and §03's partial reset leaves
-                    // the monster in the building when the team walks out. Reporting a
-                    // target that is standing at the van would have it hunt the safe zone.
-                    //
-                    // A ghost is dropped for a different reason and it matters more than it
-                    // looks: the rig stays where it fell, so without this the monster would
-                    // stand over the corpse re-acquiring it every tick and §06's machine would
-                    // never leave 추격 again. §09 takes the player out of the world; the seat
-                    // has to leave §06's target list with them.
+                    // A runner who has been caught is dropped for a reason that matters more
+                    // than it looks: the rig stays where it fell, so without this the
+                    // creature would stand over the body re-acquiring it every tick and
+                    // §06's machine would never leave 추격 again. §09 takes the player out of
+                    // the world; the seat has to leave §06's target list with them.
                     //
                     // And a creature on another storey is forgotten every tick, so that a
                     // runner who drops through a 투하구 leaves nothing behind them: the floor
                     // they left goes back to 순찰 rather than holding a reading of somebody
                     // who is now three metres underneath it.
-                    monster.ForgetTarget(LocalPlayerIndex);
+                    monster.ForgetTarget(LocalSeat);
                 }
                 else
                 {
                     // The true position, every tick. §06's perception rules are in Core and
-                    // decide what the monster can actually see.
-                    monster.ReportTarget(LocalPlayerIndex, _playerRoot!.position);
+                    // decide what the creature can actually see.
+                    monster.ReportTarget(LocalSeat, _playerRoot!.position);
 
                     if (footstep.HasValue)
                     {
@@ -1221,8 +805,8 @@ namespace HorrorGame.Gameplay.Match
         /// <see cref="MapGraph.StoreyChangeMetres"/> — 1.8 m, "the vertical separation above
         /// which two places are on different storeys and nothing sees between them", half
         /// the kit's 3.75 m floor pitch. Not a number invented here, and the same one
-        /// <c>MatchMap.IsOnSurface</c> and <c>MapGraph</c> ask, so §01's 지상, §12's 층 and
-        /// §06's reach cannot disagree about what a floor is.
+        /// <c>MatchMap.MonsterStoreyCount</c> and <c>MapGraph</c> ask, so §12's 층 and §06's
+        /// reach cannot disagree about what a floor is.
         /// </para>
         /// </summary>
         private static bool OnSameStorey(Vector3 a, Vector3 b)
@@ -1231,7 +815,7 @@ namespace HorrorGame.Gameplay.Match
         }
 
         /// <summary>
-        /// The player's feet, raised as a noise for §06. Delivered by
+        /// The runner's feet, raised as a noise for §06. Delivered by
         /// <see cref="StepCreatures"/> to the creature on the runner's own floor.
         /// <para>
         /// <b>This is the door out of 순찰, and it was nailed shut.</b> §06's table gives
@@ -1239,15 +823,15 @@ namespace HorrorGame.Gameplay.Match
         /// deliberate: the creature is not meant to acquire you across a room just by
         /// facing you. But nothing in the shipping game ever raised a sound cue. The
         /// only caller of <c>ReportSound</c> in the project was an editor screenshot
-        /// tool, so the monster's one way out of patrol led nowhere and it could never
-        /// chase, catch or kill anybody. The owner walked up to it and stood there and
+        /// tool, so the creature's one way out of patrol led nowhere and it could never
+        /// chase, catch or eliminate anybody. The owner walked up to it and stood there and
         /// nothing happened, which is precisely correct behaviour for a machine with no
         /// input. <c>MonsterKillTests</c> holds the reproduction.
         /// </para>
         /// <para>
         /// <b>Distance, not frames.</b> A step is
         /// <see cref="AudioTuning.FootstepStrideMetres"/> of ground covered, which is
-        /// the same rule <c>FootstepAudio</c> plays a clip on — so what the monster
+        /// the same rule <c>FootstepAudio</c> plays a clip on — so what the creature
         /// hears and what the room hears are the same event, at the same instant,
         /// without either one depending on the other. Sound must not be a per-frame
         /// spray: <c>MonsterBrain</c> takes the loudest cue in a tick, and a continuous
@@ -1256,9 +840,9 @@ namespace HorrorGame.Gameplay.Match
         /// <para>
         /// <b>Crouching is silent and that is the point.</b> The range is
         /// <see cref="GameConstants.MonsterFootstepHearingRange"/> scaled by the
-        /// surface's own §12 clarity and by how hard the player is working, which is the
-        /// same 0~1 <c>NoiseMeter</c> uses to blind the 청음사. One quantity, so §10's
-        /// "hear it or be heard" stays one decision.
+        /// surface's own §12 clarity and by how hard the runner is working, which is the
+        /// same 0~1 <c>NoiseMeter</c> uses. One quantity, so 「소리로 남의 위치를 안다」 and
+        /// 「소리로 들킨다」 stay one decision.
         /// </para>
         /// </summary>
         private NoiseCue? TakeFootstepCue()
@@ -1285,7 +869,7 @@ namespace HorrorGame.Gameplay.Match
 
             // How hard they are working. Without a meter — a rig assembled by a test, or
             // a headless host — fall back on speed over the same ladder the meter uses,
-            // so the monster still hunts rather than silently going deaf.
+            // so the creature still hunts rather than silently going deaf.
             var effort = _noise != null
                 ? _noise.Noise01
                 : Mathf.Clamp01(moved.magnitude / (GameConstants.RunSpeed * Time.deltaTime + 0.0001f));
@@ -1295,6 +879,11 @@ namespace HorrorGame.Gameplay.Match
                 return null;
             }
 
+            // ListenerAbility is §04's 청음사 class and §04 is deleted, but the table it
+            // holds is a property of the FLOOR — how clearly 콘크리트, 물, 흙 carry a step —
+            // and §12 gives every storey its own surface. The clarity table has to live
+            // somewhere; that it currently lives in a role's file is a tidying job for
+            // whoever deletes §04's abilities, not a reason to copy the numbers here.
             var clarity = ListenerAbility.ClarityOf(FloorSurfaces.Sample(here));
             var range = GameConstants.MonsterFootstepHearingRange * clarity * effort;
             if (range <= 0.1f)
@@ -1306,20 +895,21 @@ namespace HorrorGame.Gameplay.Match
         }
 
         /// <summary>
-        /// The player's voice, raised as a noise for §06. Delivered by
+        /// The runner's voice, raised as a noise for §06. Delivered by
         /// <see cref="StepCreatures"/> to the creature on the runner's own floor.
         /// <para>
-        /// §12-A's maze is meant to be argued through — two players who meet at a gate should
-        /// be able to say which way they came. But §06 leaves 순찰 on 소리 감지 and nothing
-        /// else, so a voice has to be a sound or the whole coordination layer is free. It is
-        /// not free: a whisper is inaudible to the creature by construction, ordinary speech
-        /// carries as far as the surface underfoot allows, and a shout reaches it from further
-        /// than it reaches the person you are shouting at.
+        /// §12-A's maze is meant to be argued through — two runners who meet at a gate should
+        /// be able to say which way they came, and proximity voice is what makes a corridor
+        /// full of identical people frightening. But §06 leaves 순찰 on 소리 감지 and nothing
+        /// else, so a voice has to be a sound or talking is free. It is not free: a whisper is
+        /// inaudible to the creature by construction, ordinary speech carries as far as the
+        /// surface underfoot allows, and a shout reaches it from further than it reaches the
+        /// person you are shouting at.
         /// </para>
         /// <para>
         /// The loudness handed over is <see cref="VoiceRules.SelfNoise"/> rather than a fresh
         /// scale, because <c>MonsterBrain</c> takes the LOUDEST cue in a tick and a voice has
-        /// to be able to beat a footstep. Somebody who shouts while walking should be found by
+        /// to be able to beat a footstep. Somebody who shouts while running should be found by
         /// the shout.
         /// </para>
         /// </summary>
@@ -1349,7 +939,7 @@ namespace HorrorGame.Gameplay.Match
         /// of telling one creature, which is exactly correct while there is one creature and
         /// silently wrong the moment there are eight: the first agent in the loop would take
         /// the step and reset the metre count, and the other seven would be handed a match
-        /// in which the player never walked. Separating "a step happened" from "who heard
+        /// in which the runner never walked. Separating "a step happened" from "who heard
         /// it" is what makes the per-storey rule above expressible at all.
         /// </para>
         /// </summary>
@@ -1365,7 +955,7 @@ namespace HorrorGame.Gameplay.Match
             /// <summary>Where the noise was made.</summary>
             internal Vector3 At { get; }
 
-            /// <summary>How far it carries, §12's surface and §04's effort already applied.</summary>
+            /// <summary>How far it carries, §12's surface and the runner's effort already applied.</summary>
             internal float RangeMetres { get; }
 
             /// <summary>0~1. <c>MonsterBrain</c> takes the loudest cue in a tick.</summary>
@@ -1387,7 +977,7 @@ namespace HorrorGame.Gameplay.Match
             var landings = new Dictionary<string, Transform>();
             foreach (var t in FindObjectsByType<Transform>(FindObjectsInactive.Include, FindObjectsSortMode.None))
             {
-                if (t.name.EndsWith(" 착지", System.StringComparison.Ordinal))
+                if (t.name.EndsWith(" 착지", StringComparison.Ordinal))
                 {
                     landings[t.name.Substring(0, t.name.Length - 3)] = t;
                 }
@@ -1395,8 +985,8 @@ namespace HorrorGame.Gameplay.Match
 
             foreach (var t in FindObjectsByType<Transform>(FindObjectsInactive.Include, FindObjectsSortMode.None))
             {
-                if (!t.name.StartsWith("투하구 ", System.StringComparison.Ordinal)
-                    || t.name.EndsWith(" 착지", System.StringComparison.Ordinal)
+                if (!t.name.StartsWith("투하구 ", StringComparison.Ordinal)
+                    || t.name.EndsWith(" 착지", StringComparison.Ordinal)
                     || !landings.TryGetValue(t.name, out var landing))
                 {
                     continue;
@@ -1411,7 +1001,7 @@ namespace HorrorGame.Gameplay.Match
                 // The storey is read off the landing's height rather than parsed out of the
                 // name: MapKitCatalogue.StoreyMetres is the authority for where a floor is,
                 // and a name is a label.
-                var storey = Mathf.RoundToInt(-landing.position.y / 3.75f);
+                var storey = Mathf.RoundToInt(-landing.position.y / OutOfBounds.StoreyPitchMetres);
                 chute.Bind(landing.position, storey);
                 _chutes.Add(chute);
             }
@@ -1468,7 +1058,7 @@ namespace HorrorGame.Gameplay.Match
                 // unwinnable and nothing failed.
                 if (_raceDirector != null)
                 {
-                    _raceDirector.ReportDescent(LocalPlayerIndex, _chutes[i].StoreyBelow, _clock.ElapsedSeconds);
+                    _raceDirector.ReportDescent(LocalSeat, _chutes[i].StoreyBelow, _clock.ElapsedSeconds);
                 }
 
                 // The one thing that can tell §01's own falling from falling out of the
@@ -1499,23 +1089,19 @@ namespace HorrorGame.Gameplay.Match
         /// <see cref="OutOfBounds"/>; this method is the wiring.
         /// </para>
         /// <para>
-        /// <b>Race only, and that is a decision rather than a shortcut.</b> The co-operative
-        /// recovery match this file grew out of has §01's 지상 — and <c>SurfaceApron</c>
-        /// builds that ground at RUNTIME, under <c>_worldRoot</c>, long after the NavMesh
-        /// asset was baked. A NavMesh-shaped guard asked about the apron would be measuring a
-        /// world that is not in the bake and would put a player standing at the van back
-        /// inside the building, every match, correctly by its own rule. The race has no
-        /// surface at all (<c>MatchMap.HasSurface</c> is false on the tower, so
-        /// <c>IsOnSurface</c> is false everywhere and <c>_onSurface</c> never flips), which
-        /// is exactly the condition under which the NavMesh IS the world. The
-        /// <c>_onSurface</c> test is kept anyway, as the thing that would hold if a later
-        /// race map ever declared a 지상.
+        /// <b>The NavMesh IS the world here, which is what makes a NavMesh-shaped guard
+        /// legal.</b> It used to be gated behind race mode, because the co-operative match
+        /// had §01's 지상 and <c>SurfaceApron</c> built that ground at RUNTIME, long after
+        /// the NavMesh asset was baked — so the guard would have put a player standing at the
+        /// van back inside the building every match, correctly by its own rule. There is no
+        /// apron and no van any more, so there is nothing in the world that is not in the
+        /// bake, and the gate went with the mode.
         /// </para>
         /// <para>
-        /// A ghost is skipped for the reason <see cref="CheckGrab"/> skips one: §09 takes the
-        /// player out of the world and leaves the body where it fell. A corpse is not a
-        /// runner, and §08's pile lies where the corpse does — moving it would move the
-        /// evidence the ghost is made to watch.
+        /// A runner who has been caught is skipped for the reason <see cref="CheckGrab"/>
+        /// skips one: §09 takes the player out of the world and leaves the body where it
+        /// fell. A body is not a runner, and moving it would move the thing the spectator is
+        /// looking at.
         /// </para>
         /// <para>
         /// The controller is switched off across the write for the same reason
@@ -1530,7 +1116,7 @@ namespace HorrorGame.Gameplay.Match
         private void CheckBounds()
         {
             var root = _playerRoot;
-            if (!_raceMode || _onSurface || root == null || LocalPlayerIsGhost)
+            if (root == null || LocalPlayerIsGhost)
             {
                 _bounds.Idle();
                 return;
@@ -1580,6 +1166,11 @@ namespace HorrorGame.Gameplay.Match
             }
         }
 
+        // ------------------------------------------------------------------
+        // §02. The race is the only game in the building, so it is also the
+        // only thing that can end a match.
+        // ------------------------------------------------------------------
+
         /// <summary>
         /// Stands §02 up: the director that owns the standings, and the HUD that shows
         /// them.
@@ -1591,28 +1182,58 @@ namespace HorrorGame.Gameplay.Match
         /// scene the generator produces with nothing to remember.
         /// </para>
         /// <para>
-        /// Solo for now: one runner, because §11's field arrives with the lobby. RaceState
-        /// refuses fewer than two — one runner is not a race and nothing in §12's geometry
-        /// means anything without somebody to be ahead of — so a solo playtest is begun as
-        /// a field of two with the second seat empty. That is a scaffold and it is marked
-        /// as one; the lobby replaces it.
+        /// <b>The empty seats are withdrawn, and until now they were not.</b> §11 sizes a
+        /// field at 2~20 and <c>RaceState.Over</c> means "nobody is still Running"; a seat
+        /// that no machine ever fills stays Running for the whole match, so a field sized
+        /// larger than the people in it can never close and §02's verdict can never be
+        /// reached. This used to begin a field of <c>GameConstants.PlayersPerMatch</c> — the
+        /// CO-OP party of four — with one runner tracked and three phantoms, which is
+        /// exactly that: the race was structurally unfinishable and nothing failed. Solo is
+        /// begun at <see cref="GameConstants.RaceRunnersMin"/>, the smallest field §11
+        /// accepts, and the seat nobody is in is withdrawn on the spot.
+        /// </para>
+        /// <para>
+        /// This is a scaffold and it is marked as one. §11's lobby knows how many people
+        /// actually turned up (<c>RaceParty</c>), and when <c>RaceLobby</c> drives
+        /// <see cref="BeginMatch"/> for a real field it is the lobby that should size it and
+        /// fill the seats. What must not come back is a field size taken from a constant
+        /// that describes a different game.
         /// </para>
         /// </summary>
         private void AttachRace()
         {
             _raceDirector = GetComponent<RaceDirector>() ?? gameObject.AddComponent<RaceDirector>();
 
-            var runners = Mathf.Max(GameConstants.RaceRunnersMin, PlayersInMatch);
-            if (!_raceDirector.Begin(runners))
+            // Rebound rather than added to. AttachRace runs once per BeginMatch on a
+            // component that outlives the match, so += alone would leave the previous
+            // match's handlers subscribed and log every finish twice on the second race.
+            _raceDirector.Finished -= OnRunnerFinished;
+            _raceDirector.Retired -= OnRunnerRetired;
+            _raceDirector.Closed -= RaceClosed;
+
+            var seats = GameConstants.RaceRunnersMin;
+            if (!_raceDirector.Begin(seats))
             {
-                Debug.LogError("[Match] §02 refused to start with " + runners + " runners.", this);
+                Debug.LogError("[Match] §02 refused to start with " + seats + " runners.", this);
                 _raceDirector = null;
                 return;
             }
 
+            _raceDirector.Finished += OnRunnerFinished;
+            _raceDirector.Retired += OnRunnerRetired;
+            _raceDirector.Closed += RaceClosed;
+
             if (_playerRoot != null)
             {
-                _raceDirector.Track(LocalPlayerIndex, _playerRoot);
+                _raceDirector.Track(LocalSeat, _playerRoot);
+            }
+
+            for (var seat = 0; seat < seats; seat++)
+            {
+                if (seat != LocalSeat)
+                {
+                    _raceDirector.Withdraw(seat, 0f);
+                }
             }
 
             var hud = FindFirstObjectByType<RaceHud>();
@@ -1624,73 +1245,117 @@ namespace HorrorGame.Gameplay.Match
             }
 
             hud.Bind(_raceDirector);
-
-            _raceDirector.Finished += (id, place) =>
-                Debug.Log("[Match] §02 " + (place == 1 ? "우승" : place + "위") + " — 좌석 " + id, this);
-            _raceDirector.Closed += winner =>
-                Debug.Log("[Match] §02 경주 종료. 우승 좌석 " + winner, this);
         }
 
-        /// <summary>How many seats this match has. One until §11's lobby fills them.</summary>
-        private int PlayersInMatch
+        private void OnRunnerFinished(int seat, int place)
         {
-            get { return GameConstants.PlayersPerMatch; }
-        }
-
-        private void StepClueRead()
-        {
-            // A finished read that the player has looked away from is thrown away. §03
-            // keeps no record: "그 자리에서 보고, 기억해서, 말로 전달해야 한다."
-            if (_clueReader.State == ClueReadState.Complete && _clueContext.ClueId != _clueReader.ClueId)
-            {
-                _clueReader.Cancel();
-                _revealedClueId = -1;
-                _hud?.DismissClue();
-            }
-
-            _clueReader.Tick(GameConstants.FixedStep, _clueContext);
-
-            switch (_clueReader.State)
-            {
-                case ClueReadState.Complete:
-                    if (_revealedClueId != _clueReader.ClueId)
-                    {
-                        _revealedClueId = _clueReader.ClueId;
-                        _hud?.ShowClueRevealed(ResolveRead(_clueReader.ClueId));
-                    }
-
-                    break;
-
-                case ClueReadState.Reading:
-                case ClueReadState.Interrupted:
-                    _revealedClueId = -1;
-                    _hud?.ShowClueProgress(_clueReader);
-                    break;
-
-                default:
-                    _revealedClueId = -1;
-                    _hud?.DismissClue();
-                    break;
-            }
+            Debug.Log("[Match] §02 " + (place == 1 ? "우승" : place + "위") + " — 좌석 " + seat
+                      + ", " + _clock.ElapsedSeconds.ToString("0") + "초", this);
         }
 
         /// <summary>
-        /// The one channel clue content takes out of the host: what this reader, in
-        /// these conditions, believes this mark says. §03's misread model has already
-        /// had its say by the time this returns.
+        /// A runner stopped racing without a place. §02 탈락 — out, and unranked.
+        /// <para>
+        /// Logged and nothing else. The elimination itself already happened wherever the
+        /// cause was: <see cref="CheckGrab"/> reports the catch, <c>RaceDirector.Tick</c>
+        /// reports §07's timeout, and the standings are the single record of both.
+        /// </para>
         /// </summary>
-        private ClueReport ResolveRead(int clueId)
+        private void OnRunnerRetired(int seat, RaceExit why)
         {
-            var resolver = _resolver;
-            var rng = _rng;
-            if (resolver == null || rng == null)
+            if (why == RaceExit.Withdrawn)
             {
-                return ClueReport.Illegible(clueId, ClueLayer.None);
+                // Not an elimination. §11's minimum field is two and a solo playtest fills
+                // one of them, so the other is emptied on the spot — see AttachRace.
+                Debug.Log("[Match] §02 빈 자리 — 좌석 " + seat + "에는 아무도 없다. §11 최소 인원을 채운 자리.", this);
+                return;
             }
 
-            resolver.TryRead(clueId, _clueReader.Observation, rng, out var report);
-            return report;
+            Debug.Log("[Match] §02 탈락 — 좌석 " + seat + " · " + why + " · "
+                      + _clock.ElapsedSeconds.ToString("0") + "초. 순위 없음, 경주는 계속된다.", this);
         }
+
+        /// <summary>
+        /// §02 has decided: nobody is still descending.
+        /// <para>
+        /// <b>The only thing that ends a match.</b> The co-operative verdict this replaced —
+        /// <c>OutcomeEvaluator</c> over 탈출 · 손실 · 목표물 회수, drawn on <c>MatchHud</c>'s
+        /// end screen — is deleted with the game it scored. §02 is now one question with one
+        /// answer: who reached the middle of B8 first. <c>RaceHud</c> already draws it, and
+        /// draws it brightly, because by the time it appears the reader has either finished
+        /// or been eliminated and their night vision is no longer a resource anybody is
+        /// charging for.
+        /// </para>
+        /// <para>
+        /// <b>Held for §09, exactly as the co-op verdict was.</b> A spectator thrown to a
+        /// results panel the instant the race closes is precisely what 「죽으면 지루하다 →
+        /// 볼 게 있고 할 게 있다」 rules out, so when the local seat is watching, the match
+        /// keeps stepping and the ghost decides when to stop — <c>GhostSession.EndMatchKey</c>
+        /// held down. Nothing about the standings changes while it waits; they are already
+        /// final.
+        /// </para>
+        /// <para>
+        /// <b>It does not lay out the next race.</b> The old path restarted itself on
+        /// <c>seed + 1</c> from the end screen's continue button. §11's lobby is what agrees
+        /// a seed with nineteen other machines (<c>RaceLobby.AgreedSeed</c>), and a director
+        /// that quietly rebuilt the tower under a field that had not agreed to it would be
+        /// twenty people in twenty different buildings.
+        /// </para>
+        /// </summary>
+        private void RaceClosed(int winner)
+        {
+            Debug.Log(
+                "[Match] §02 경주 종료 — " + (winner >= 0 ? "우승 좌석 " + winner : "완주자 없음 (§07 시간 초과)")
+                + " · " + _clock.ElapsedSeconds.ToString("0") + "초 · seed " + _activeSeed, this);
+
+            var ghosts = _ghosts;
+            if (ghosts != null && ghosts.IsActive)
+            {
+                if (!_verdictHeldForGhost)
+                {
+                    _verdictHeldForGhost = true;
+                    ghosts.MatchEndRequested = StopRacing;
+                    ghosts.NoteVerdictReached(true);
+
+                    Debug.Log(
+                        "[Match] §09 탈락자가 아직 건물 안에 있다. ["
+                        + GhostSession.EndMatchKey + "]를 누르고 있으면 경주를 떠난다.", this);
+                }
+
+                // §07's clock is still running and §06 is still hunting, on purpose: a
+                // free camera over a live building is the only instrument this project has
+                // for §14 Q1, and stopping the match would take it away.
+                return;
+            }
+
+            StopRacing();
+        }
+
+        /// <summary>Stops stepping and gives the cursor back. The standings stay on screen.</summary>
+        private void StopRacing()
+        {
+            if (!_running)
+            {
+                return;
+            }
+
+            EndMatch();
+
+            if (_input != null)
+            {
+                _input.InputSuppressed = true;
+                _input.LockCursor = false;
+            }
+
+            if (_look != null)
+            {
+                _look.LookLocked = true;
+            }
+        }
+
+        // ------------------------------------------------------------------
+        // §12's doors — the race's core interaction.
+        // ------------------------------------------------------------------
 
         /// <summary>
         /// Puts <see cref="DoorInteractable"/> on every door the generator laid down.
@@ -1702,13 +1367,19 @@ namespace HorrorGame.Gameplay.Match
         /// <c>GhostSession</c> uses, and it has the same benefit: a door works in any
         /// scene the generator writes, with nothing to remember to author.
         /// </para>
+        /// <para>
+        /// DESCENT-PIVOT §2② is why this matters more than it used to. In the co-operative
+        /// game a shut door was a wall against the CREATURE; in a race it is a wall against
+        /// the person behind you — 1.1 s to close, 4.5 s to break, and a broken one never
+        /// closes again, so the leader's door is a thing the field does not have.
+        /// </para>
         /// </summary>
         private void AttachDoors()
         {
             var built = 0;
             foreach (var group in FindObjectsByType<Transform>(FindObjectsInactive.Include, FindObjectsSortMode.None))
             {
-                if (!group.name.StartsWith("Door_", System.StringComparison.Ordinal)
+                if (!group.name.StartsWith("Door_", StringComparison.Ordinal)
                     || group.GetComponent<DoorInteractable>() != null)
                 {
                     continue;
@@ -1755,7 +1426,7 @@ namespace HorrorGame.Gameplay.Match
         /// Per creature because a door is a place, not a match state: a runner who shuts a
         /// door on B2 has done nothing about the door the creature on B6 is already working
         /// on. Each one gets its own <see cref="DoorReachMetres"/> sphere and pushes the
-        /// first blocking door in it, which is the same rule the single creature had.
+        /// first blocking door in it.
         /// </para>
         /// <para>
         /// The sphere is 3D and 1.4 m across, so it cannot reach through the kit's 3.75 m
@@ -1763,9 +1434,9 @@ namespace HorrorGame.Gameplay.Match
         /// and saying so is cheaper than adding one that would never fire.
         /// </para>
         /// <para>
-        /// <c>Physics.OverlapSphereNonAlloc</c> into one shared buffer: this now runs
-        /// once per creature per fixed step — eight times at 50 Hz — and the allocating
-        /// overload would have made §12's doors 400 garbage arrays a second.
+        /// <c>Physics.OverlapSphereNonAlloc</c> into one shared buffer: this runs once per
+        /// creature per fixed step — eight times at 50 Hz — and the allocating overload
+        /// would have made §12's doors 400 garbage arrays a second.
         /// <see cref="DoorSearchBuffer"/> says what happens if it fills.
         /// </para>
         /// </summary>
@@ -1806,53 +1477,44 @@ namespace HorrorGame.Gameplay.Match
             }
         }
 
-        /// <summary>
-        /// Colliders one creature's door search may return.
-        /// <para>
-        /// A 1.4 m sphere in §12's 2.2 m corridors touches a floor tile, a wall or two, a
-        /// ceiling cap and whatever prop is underfoot; 32 is several times that. If it ever
-        /// did fill, the cost is one creature failing to notice one door on one tick and
-        /// finding it on the next — which is why this is a fixed buffer rather than a
-        /// growing one. The allocating overload is what it replaced, and it was allocating
-        /// once per creature per fixed step.
-        /// </para>
-        /// </summary>
-        private const int DoorSearchBuffer = 32;
-
-        private readonly Collider[] _doorSearch = new Collider[DoorSearchBuffer];
-
-        /// <summary>
-        /// How far the creature reaches to lean on a door, metres. Its own agent radius
-        /// (0.417) plus an arm — geometry rather than a tuned value.
-        /// </summary>
-        private const float DoorReachMetres = 1.4f;
+        // ------------------------------------------------------------------
+        // §06's catch, and §02's 탈락.
+        // ------------------------------------------------------------------
 
         /// <summary>
         /// §06 gives the state machine five states and a catch is not one of them, so
-        /// whether a player has been caught is the host's rule. The rule itself lives in
+        /// whether a runner has been caught is the host's rule. The rule itself lives in
         /// <see cref="MonsterLunge"/>, engine-free and tested; this is the wiring — it
         /// feeds the struct a distance and a §06 state and does what the struct says.
         /// <para>
-        /// <b>This used to be two capsules touching.</b> The instant the monster's agent
-        /// radius overlapped the player's controller radius, the player died, and the
+        /// <b>This used to be two capsules touching.</b> The instant the creature's agent
+        /// radius overlapped the runner's controller radius, the runner died, and the
         /// 1.37 s <c>Grab</c> clip played over a body that was already dead. Nobody could
         /// see an attack happen because there was not one — there was a proximity test.
         /// Now the creature commits at 1.8 m, travels at 7.0 m/s for 0.55 s, and the
         /// strike either lands or costs it 0.8 s of standing still.
         /// </para>
         /// <para>
+        /// <b>A catch is 탈락, and the standings are where that is recorded.</b> Nothing
+        /// used to tell §02 about it: <c>MatchState.TryKill</c> ran, §09 took the camera,
+        /// and the runner stayed <c>RacerStatus.Running</c> in <c>RaceState</c> for the rest
+        /// of the match — so the race could not close, <c>RaceHud</c>'s verdict line was
+        /// unreachable, and a caught player watched a scoreboard that still had them in it.
+        /// <c>ReportCaught</c> below is the fix, and it is called BEFORE §09 takes the seat
+        /// so that the standings are already correct when the spectator's screen first draws.
+        /// </para>
+        /// <para>
         /// <b>The storey test is not defensive tidying, it is the whole reason a runner can
         /// walk down this building alive.</b> The separation below is FLAT — <c>y</c> is
-        /// zeroed, and it has to be, because a creature's feet and a player's feet are at
+        /// zeroed, and it has to be, because a creature's feet and a runner's feet are at
         /// different heights on the same floor. §01 stacks eight storeys in one column and
         /// <c>DescentMap.SeedCreature</c> posts every creature at its own floor's MIDDLE,
         /// which is the SAME X and Z on all eight. So the moment there is more than one
         /// creature, a runner arriving at the middle of B3 is a flat 0.0 m from the
-        /// creatures on B1, B2, B4 … B8 as well, and an unguarded loop over them would kill
-        /// the runner instantly, from up to 26 m below, with the killer never appearing on
-        /// screen. Each creature is therefore asked only about a runner on its own floor —
-        /// <see cref="OnSameStorey"/>, <see cref="MapGraph.StoreyChangeMetres"/>, the same
-        /// constant §01's 지상 and §12's 층 already use.
+        /// creatures on B1, B2, B4 … B8 as well, and an unguarded loop over them would
+        /// eliminate the runner instantly, from up to 26 m below, with the killer never
+        /// appearing on screen. Each creature is therefore asked only about a runner on its
+        /// own floor — <see cref="OnSameStorey"/>, <see cref="MapGraph.StoreyChangeMetres"/>.
         /// </para>
         /// <para>
         /// Every creature is stepped, not just the near one, because <c>MonsterLunge.Tick</c>
@@ -1866,7 +1528,7 @@ namespace HorrorGame.Gameplay.Match
         private void CheckGrab()
         {
             var state = _state;
-            if (state == null || _playerRoot == null || _onSurface || _creatures.Count == 0)
+            if (state == null || _playerRoot == null || _creatures.Count == 0)
             {
                 return;
             }
@@ -1883,9 +1545,9 @@ namespace HorrorGame.Gameplay.Match
                 }
 
                 // §09 leaves the body where it fell and it stays there for the rest of the
-                // match. A corpse is not catchable — MatchState.TryKill refuses a second kill
-                // anyway, but reaching it would drop an already-empty inventory and play the
-                // grab again over a player who is no longer there.
+                // match. A body is not catchable — MatchState.TryKill refuses a second kill
+                // anyway, but reaching it would play the grab again over a runner who is no
+                // longer there.
                 //
                 // A creature on another floor is never chasing this runner for the purposes
                 // of a catch, however close the flat distance says it is. See the remarks.
@@ -1901,17 +1563,17 @@ namespace HorrorGame.Gameplay.Match
                 var distance = reachable ? separation.magnitude : float.PositiveInfinity;
 
                 // Why nothing is happening, said out loud. The owner stood in front of the
-                // creature and did not die, and there are four different reasons that can be
-                // true at once — it is not in 추격, they are already a ghost, they are on
-                // §01's surface apron, or the lunge is mid-recovery. Guessing between them
-                // from outside cost a rebuild; this says which.
+                // creature and did not die, and there are three different reasons that can
+                // be true at once — it is not in 추격, they are already out, or the lunge is
+                // mid-recovery. Guessing between them from outside cost a rebuild; this says
+                // which.
                 if (reachable && distance < 6f && Time.time - _lastGrabReport > 0.5f)
                 {
                     _lastGrabReport = Time.time;
                     Debug.Log("[Match] 괴물 " + distance.ToString("0.00") + " m · §06 " + monster.State
                               + " · 덮치기 " + creature.Lunge.State
                               + (chasing ? string.Empty : "  ← 추격이 아니라 판정 없음")
-                              + (LocalPlayerIsGhost ? "  ← 이미 유령" : string.Empty), this);
+                              + (LocalPlayerIsGhost ? "  ← 이미 탈락" : string.Empty), this);
                 }
 
                 // FixedStep, not Time.deltaTime. CheckGrab runs inside StepFixed, which
@@ -1919,7 +1581,7 @@ namespace HorrorGame.Gameplay.Match
                 // accumulator — so a frame delta here advanced the strike by a whole frame
                 // per fixed step, and a 0.55 s commit resolved in a different number of
                 // steps depending on frame rate. §06's lunge is the one window where the
-                // player's survival is decided by tenths of a second, and it was being
+                // runner's survival is decided by tenths of a second, and it was being
                 // measured on the wrong clock.
                 var previous = creature.Lunge.State;
                 var outcome = creature.Lunge.Tick(GameConstants.FixedStep, chasing, distance);
@@ -1952,520 +1614,98 @@ namespace HorrorGame.Gameplay.Match
 
                 var where = _playerRoot.position;
 
-                // §08: "사망자의 전리품 — 떨어진다." The pile stays where it fell so the team
-                // has a reason to come back for it, and its value is what §09 then makes the
-                // ghost watch — "자기 물건이 어디 있는지 보이는데 말할 수 없다."
-                var pileValue = DropEverything(where);
-
-                if (state.TryKill(LocalPlayerIndex, where.ToVec3()))
+                if (state.TryKill(LocalSeat, where.ToVec3()))
                 {
-                    Debug.Log("[Match] §09 잡혔다 — " + where, this);
-                    monster.ForgetTarget(LocalPlayerIndex);
-                    EnterGhost(state.PlayerAt(LocalPlayerIndex).Ghost, pileValue);
+                    Debug.Log("[Match] §02 잡혔다 — 탈락, 순위 없음. " + where, this);
+
+                    // §06 forgets a target that is now a body — see StepCreatures — and §09
+                    // takes the seat BEFORE §02 is told.
+                    //
+                    // On a small field this catch can be the last live runner, and RaceClosed
+                    // asks whether a spectator is watching so it can HOLD the verdict for
+                    // them; asked before GhostSession.Begin it would answer no and stop the
+                    // match on the spot, dropping a runner who was caught one metre from the
+                    // finish out of the game with nothing to look at. As it happens
+                    // RaceDirector.Retire only raises Retired — RaceState.Over is tested in
+                    // Tick, which is four lines further down this same fixed step — so the
+                    // spectator would be up in time either way. Ordering it here makes that
+                    // a local guarantee instead of one that depends on the internals of a
+                    // method in another file.
+                    //
+                    // RaceHud redraws at 5 Hz, so the standings are right long before
+                    // anything is drawn from them.
+                    monster.ForgetTarget(LocalSeat);
+                    EnterGhost(state.PlayerAt(LocalSeat).Ghost);
+                    _raceDirector?.ReportCaught(LocalSeat, _clock.ElapsedSeconds);
                 }
 
                 // The seat has resolved, so this tick is over. The other creatures' lunges
                 // resume on the next one, by which time LocalPlayerIsGhost is true and none
-                // of them can commit at a corpse — which is the rule the single-creature
+                // of them can commit at a body — which is the rule the single-creature
                 // version got from `chasing` and this one has to get from the loop ending.
-                CheckOutcome();
                 break;
             }
         }
 
         /// <summary>
-        /// Hands the seat over to §09. The match keeps running; this is a change of what
-        /// the player is doing, not the end of what they are doing it in.
+        /// Hands the seat over to §09. The race keeps running; this is a change of what the
+        /// player is doing, not the end of what they are doing it in.
         /// <para>
-        /// §08's pile is reported to the ghost here rather than inside <c>MatchState</c>
-        /// because the value belongs to the economy — <c>DroppedLootField</c> is what
-        /// priced it — and <c>MatchState.TryKill</c>'s own documentation asks the caller
-        /// to make exactly this call for exactly that reason.
+        /// <b>Why a spectator seat survives a pivot that deleted the rest of the co-op
+        /// game.</b> DESCENT-PIVOT §3 keeps §09 under 살아남는다 with one word of scope —
+        /// 「탈락자 관전」 — and that word is the whole argument. The co-operative ghost was a
+        /// CONSOLATION: it could rattle objects to warn the living, it watched its own
+        /// dropped 전리품 so the team had a reason to come back, and it kept helping a team
+        /// it was no longer on. None of that survives 탈락. A race has no team to help, and a
+        /// dead runner who can still move objects in front of a live one is an eliminated
+        /// player deciding somebody else's place — the standings would be settled by people
+        /// who are not in them. What is left is watching, which is worth keeping on its own:
+        /// a first-past-the-post race is 2~20 minutes long, and being sent to a menu the
+        /// moment you are caught is the most boring thing this design can do to somebody.
+        /// The rattle itself is <c>GhostSession</c>'s to delete.
         /// </para>
         /// <para>
-        /// The torch goes out. §03 charges the battery per second and a dead player cannot
-        /// spend that resource for the team; leaving it burning on a corpse would drain a
-        /// cell the living still have to buy, and light the room for §06 while it did.
+        /// The torch goes out. A body does not hold a light up, and leaving one burning
+        /// would light the floor for §06 while the runner who paid for it is gone.
         /// </para>
         /// </summary>
-        private void EnterGhost(GhostState? ghost, int droppedPileValue)
+        private void EnterGhost(GhostState? ghost)
         {
             if (ghost == null)
             {
                 return;
             }
 
-            ghost.NoteOwnLootDropped(droppedPileValue);
-
             if (_flashlight != null)
             {
                 _flashlight.State.TurnOff();
-                _flashlight.EnforceCarryRules();
                 _flashlight.RefreshPresentation();
             }
-
-            // §01's HUD comes down with the body. Every row on it belongs to a living
-            // player — §03's battery, §04's stamina, §08's load — and a dead one has
-            // none of them; photographed with it still up, §09's own overlay was sharing
-            // a corner with two meters that could never move again.
-            _hud?.UnbindHud();
-            _hud?.CloseShop();
-            _hud?.DismissClue();
-            _clueReader.Cancel();
-            _revealedClueId = -1;
 
             var ghosts = _ghosts;
             if (ghosts == null)
             {
                 Debug.LogWarning(
-                    "[Match] §09 has nowhere to put the dead player — no GhostSession on this director, "
-                    + "so the death is a locked camera instead of a spectator.", this);
+                    "[Match] §09 has nowhere to put the eliminated runner — no GhostSession on this "
+                    + "director, so 탈락 is a locked camera instead of a spectator.", this);
                 return;
             }
 
-            ghosts.MatchEndRequested = ShowHeldEndScreen;
+            ghosts.MatchEndRequested = StopRacing;
 
             // The creature on the floor the body is lying on, not simply "the monster".
             // §09's whole promise is 「죽으면 지루하다 → 볼 게 있고 할 게 있다」, and what
-            // there is to watch is the thing that just killed you still hunting the floor
-            // you died on. Handed the primary instead, a ghost on B2 would spend the match
-            // watching a §06 state machine three storeys away. Falls back to the primary so
-            // that a death on a floor with no creature still has something to show.
+            // there is to watch is the thing that just caught you still hunting the floor
+            // you were caught on. Handed the primary instead, a spectator on B2 would spend
+            // the race watching a §06 state machine three storeys away. Falls back to the
+            // primary so that an elimination on a floor with no creature still has something
+            // to show.
             ghosts.Begin(ghost, _playerRoot, LocalStoreyMonster ?? _monster);
         }
 
-        /// <summary>
-        /// §02's verdict, applied when there is one — unless §09 is still using the
-        /// building.
-        /// <para>
-        /// <b>This is the line that made a solo death end the screen.</b> §02 computes
-        /// over seats, so with one seat occupied a death is 전멸 and 전멸 is final, and
-        /// the end screen went up in the same tick the monster caught the player. §09 says
-        /// the opposite: the dead keep playing — "죽으면 지루하다 → 볼 게 있고 할 게 있다"
-        /// — and being thrown to a results panel is precisely what that row rules out.
-        /// </para>
-        /// <para>
-        /// So the verdict is reached and then <em>held</em>. Nothing about §02 changes: the
-        /// outcome is still computed from the same tally by the same evaluator, the ghost
-        /// cannot alter it, and <c>MatchState</c> will not let a ghost extract. What
-        /// changes is who decides when to look at it.
-        /// </para>
-        /// <para>
-        /// <b>Nothing here asks how many people are playing.</b> With four, one death
-        /// leaves three in play, <c>IsFinal</c> is false and this method returns before the
-        /// hold is even considered — the ghost simply spectates, which is §09 as written.
-        /// The hold only ever appears when §02 has genuinely finished, and then it is
-        /// offered to whichever local seat is a ghost. Solo is that case with the other
-        /// three chairs empty.
-        /// </para>
-        /// </summary>
-        private void CheckOutcome()
-        {
-            if (!_running)
-            {
-                return;
-            }
-
-            var resolution = Resolution;
-            if (!resolution.IsFinal)
-            {
-                _endScreenHeldForGhost = false;
-                _ghosts?.NoteVerdictReached(false);
-                return;
-            }
-
-            var ghosts = _ghosts;
-            if (ghosts != null && ghosts.IsActive)
-            {
-                if (!_endScreenHeldForGhost)
-                {
-                    _endScreenHeldForGhost = true;
-                    ghosts.MatchEndRequested = ShowHeldEndScreen;
-                    ghosts.NoteVerdictReached(true);
-
-                    Debug.Log(
-                        "[Match] §02 " + resolution.Outcome
-                        + " — 결과는 나왔지만 §09의 유령이 아직 건물 안에 있다. "
-                        + "[" + GhostSession.EndMatchKey + "]를 누르고 있으면 결과 화면을 연다.", this);
-                }
-
-                // §07's clock is still running and §06 is still hunting, on purpose: a
-                // free camera over a live match is the only instrument this project has
-                // for §14 Q1, and stopping the match would take it away.
-                return;
-            }
-
-            ShowEndScreen(resolution);
-        }
-
-        /// <summary>The ghost asked. Shows the verdict §02 had already reached, unchanged.</summary>
-        private void ShowHeldEndScreen()
-        {
-            if (!_running || !_endScreenHeldForGhost)
-            {
-                return;
-            }
-
-            _ghosts?.End();
-            ShowEndScreen(Resolution);
-        }
-
-        private void ShowEndScreen(MatchResolution resolution)
-        {
-            _endScreenHeldForGhost = false;
-            EndMatch();
-
-            if (_input != null)
-            {
-                _input.InputSuppressed = true;
-                _input.LockCursor = false;
-            }
-
-            if (_look != null)
-            {
-                _look.LookLocked = true;
-            }
-
-            var nextSeed = _activeSeed + 1;
-            _hud?.ShowEnd(resolution, () =>
-            {
-                _hud?.HideEnd();
-                if (_input != null)
-                {
-                    _input.InputSuppressed = false;
-                    _input.LockCursor = true;
-                }
-
-                if (_look != null)
-                {
-                    _look.LookLocked = false;
-                }
-
-                BeginMatch(nextSeed);
-            });
-
-            Debug.Log("[Match] §02 " + resolution.Outcome
-                + " — 탈출 " + resolution.PlayersEscaped
-                + ", 잃음 " + resolution.PlayersLost
-                + ", 목표물 " + (resolution.ObjectiveRecovered ? "회수" : "미회수")
-                + ", 정보 " + (resolution.InformationKept ? "보존" : "소실")
-                + " · " + _clock.ElapsedSeconds.ToString("0") + "s", this);
-        }
-
         // ------------------------------------------------------------------
-        // §01's round trip.
+        // Layout and wiring.
         // ------------------------------------------------------------------
-
-        private void UpdatePhase()
-        {
-            var map = _map;
-            if (map == null || _playerRoot == null)
-            {
-                return;
-            }
-
-            var onSurface = map.IsOnSurface(_playerRoot.position);
-            if (onSurface == _onSurface)
-            {
-                return;
-            }
-
-            _onSurface = onSurface;
-
-            if (onSurface)
-            {
-                Surfaced();
-            }
-            else
-            {
-                Descended();
-            }
-        }
-
-        /// <summary>
-        /// §01's 귀환. Everything §08 says happens <em>to the loot</em> at the van happens
-        /// here, because §08 describes loading it into the vehicle as the consequence of
-        /// arriving rather than as an errand — "전리품을 차량에 실으면 → 가치만큼 크레딧".
-        /// <para>
-        /// <b>The shop is not one of those things, and this is the line that used to open
-        /// it.</b> Walking into the apron is a movement, not a request: §01 makes coming
-        /// up a deliberate act, and putting a mouse-driven panel over the screen on a
-        /// position test took the camera away from a player who had only walked past the
-        /// van — 갑자기 상점이 열림. §08 puts the shop <em>at the 차량</em>, so the 차량 is
-        /// what opens it, on <c>SurfaceVehicleInteractable</c>'s key. Selling stays here:
-        /// it is the section's own wording, it costs nothing, and it takes nothing away.
-        /// </para>
-        /// </summary>
-        private void Surfaced()
-        {
-            var state = _state;
-            if (state == null)
-            {
-                return;
-            }
-
-            state.PlayerAt(LocalPlayerIndex).TrySurface();
-            _clock.SetTeamOnSurface(true);
-
-            // §01's 숨 돌리기, said by the apron rather than by a line of text. The lamps
-            // over the threshold swell as the player walks under them; the ambience bed
-            // and the 귀환 cue are MatchAudioBridge's half of the same edge.
-            _apron?.SetOnSurface(true);
-
-            SellOversizeCarry();
-
-            var sold = Shop.SellAll(_loadout != null ? _loadout.Inventory : null);
-            if (sold > 0)
-            {
-                Debug.Log("[Match] §08 전리품 " + sold + " 크레딧 — 팀 지갑 " + Shop.Wallet.Credits, this);
-            }
-
-            SyncLootState();
-            Resupply();
-
-            if (state.PlayerAt(LocalPlayerIndex).IsCarryingObjective)
-            {
-                // §02: "목표물 회수 + 탈출." Reaching the way out with it in both hands
-                // is the match; there is nothing left to decide.
-                if (state.TryExtract(LocalPlayerIndex))
-                {
-                    RecoverObjective();
-                }
-            }
-
-            // Said rather than shown, because the shop no longer shows itself. §03 rules
-            // out a HUD marker, so the arrival line and the 차량's own prompt are the two
-            // places a player can learn that the key is what opens it.
-            Debug.Log(
-                "[Match] §01 귀환 — 전리품은 차량에 실렸다. 상점은 차량을 보고 ["
-                + PlayerInteractor.InteractKeyLabel + "] — §07 시계는 계속 간다.", this);
-
-            CheckOutcome();
-        }
-
-        /// <summary>§01's 잠입. The clock does not care, which is §07's whole point.</summary>
-        private void Descended()
-        {
-            _state?.PlayerAt(LocalPlayerIndex).TryDescend();
-            _clock.SetTeamOnSurface(false);
-
-            // The warmth draws back behind the player as they step over the line. §01
-            // calls this the commitment, and until the apron existed it was the one
-            // moment in the loop that changed nothing anybody could see.
-            _apron?.SetOnSurface(false);
-
-            CloseShopAtVehicle();
-        }
-
-        /// <summary>
-        /// §03's 보충 column, at the van. The generator tops the installed cell back up
-        /// for free (that is what makes a trip worth §07's minute even with an empty
-        /// bag); spare cells only ever come from §08's shop, and the two upgrades that
-        /// are worn rather than consumed are put on here.
-        /// </summary>
-        private void Resupply()
-        {
-            var shop = Shop;
-
-            if (_flashlight != null)
-            {
-                var battery = _flashlight.State.Battery;
-
-                while (shop.TryConsume(ShopItemId.Battery))
-                {
-                    battery.AddCells(1);
-                }
-
-                battery.Recharge();
-
-                if (shop.StockOf(ShopItemId.UpgradedFlashlight) > 0 && !_flashlight.State.IsUpgraded)
-                {
-                    // §08's flagship, and its 대가 comes with it: the monster notices it
-                    // from twice as far. FlashlightState applies both halves.
-                    shop.TryConsume(ShopItemId.UpgradedFlashlight);
-                    _flashlight.State.SetUpgraded(true);
-                }
-            }
-
-            if (_loadout != null)
-            {
-                shop.TryEquipBag(_loadout.Inventory);
-            }
-
-            _state?.PlayerAt(LocalPlayerIndex).TryTreatInjury();
-        }
-
-        private void SellOversizeCarry()
-        {
-            var carried = _interactor != null ? _interactor.CarriedFocus as OversizeLootInteractable : null;
-            if (carried == null || carried.Carry == null || _interactor == null)
-            {
-                return;
-            }
-
-            var value = Shop.SellCarried(carried.Carry);
-            _interactor.SetOversizeCarry(carried, carrying: false);
-            Interactable.Despawn(carried.gameObject);
-
-            if (value > 0)
-            {
-                Debug.Log("[Match] §08 대형 전리품 " + value + " 크레딧 — 팀 지갑 " + Shop.Wallet.Credits, this);
-            }
-        }
-
-        private void OpenShopAtVehicle()
-        {
-            var hud = _hud;
-            var requests = _shopRequests;
-            if (hud == null || requests == null || _state == null)
-            {
-                return;
-            }
-
-            hud.OpenShop(Shop, requests, _state.Roles.Slots, _state.MissingRole);
-
-            // §08's shop is the one screen operated with a mouse, so the cursor comes
-            // back — but nothing is paused (§07: "상점에서 고민 ~30초" is a cost) and the
-            // feet stay free. Only aiming is pinned, because a cursor that has left the
-            // window would otherwise fling the view.
-            if (_input != null)
-            {
-                _input.LockCursor = false;
-            }
-
-            if (_look != null)
-            {
-                _look.LookLocked = true;
-            }
-        }
-
-        private void CloseShopAtVehicle()
-        {
-            _hud?.CloseShop();
-
-            if (_input != null)
-            {
-                _input.LockCursor = true;
-            }
-
-            if (_look != null)
-            {
-                _look.LookLocked = false;
-            }
-        }
-
-        // ------------------------------------------------------------------
-        // Layout.
-        // ------------------------------------------------------------------
-
-        private void PlaceClues()
-        {
-            var resolver = _resolver;
-            if (resolver == null || _worldRoot == null)
-            {
-                return;
-            }
-
-            var markers = resolver.Markers;
-            for (var i = 0; i < markers.Count; i++)
-            {
-                CluePropInteractable.Spawn(
-                    markers[i].ClueId, markers[i].Position.ToVector3(), _worldRoot.transform);
-            }
-        }
-
-        private void PlaceObjective()
-        {
-            var resolver = _resolver;
-            var root = _worldRoot;
-            if (resolver == null || root == null)
-            {
-                return;
-            }
-
-            // A push rather than a getter: nothing on this class returns the objective's
-            // position, so there is nothing for a serialiser or an inspector to find.
-            resolver.TryPlaceObjective(position =>
-            {
-                _objectiveProp = ObjectivePropInteractable.Spawn(position.ToVector3(), root.transform);
-            });
-        }
-
-        /// <summary>
-        /// §08's table over §12's 막힌 길 — <b>on the co-operative branch only</b>.
-        /// <para>
-        /// DESCENT-PIVOT §7 step 7 「상점/전리품/단서 제거」 took the race's call to this out
-        /// of <see cref="BeginMatch"/>; the reasoning is written at the line it stood on.
-        /// It is still called for the recovery match this grew out of, where 전리품 has a
-        /// 차량 to be sold at and credits to become, and it will go with that branch.
-        /// </para>
-        /// </summary>
-        private void PlaceLoot()
-        {
-            var map = _map;
-            var rng = _rng;
-            var root = _worldRoot;
-            if (map == null || rng == null || root == null)
-            {
-                return;
-            }
-
-            var placements = MatchPlacement.DrawLoot(map.LootSpawns, rng);
-            for (var i = 0; i < placements.Length; i++)
-            {
-                var placement = placements[i];
-                if (placement.Loot == LootId.None)
-                {
-                    continue;
-                }
-
-                if (placement.InSafe)
-                {
-                    LootSafeInteractable.Spawn(placement.Position, root.transform);
-                    continue;
-                }
-
-                if (LootCatalogue.Of(placement.Loot).AllowsSharedCarry)
-                {
-                    OversizeLootInteractable.Spawn(placement.Loot, placement.Position, root.transform);
-                    continue;
-                }
-
-                LootPropInteractable.Spawn(placement.Loot, placement.Position, root.transform);
-            }
-        }
-
-        /// <summary>
-        /// §08's 차량 and the ground it is parked on.
-        /// <para>
-        /// The two belong in one step because they are one place. §08 calls the vehicle
-        /// "안전 지대 + 상점 + 보급소" and §01 makes the ground around it the half of the
-        /// loop that is safe; <see cref="SurfaceApron"/> is that ground given an edge,
-        /// and it takes the van so it can hang the headlamps and the beacon on it. Both
-        /// go under the match's world root, so <see cref="ClearWorld"/> takes them
-        /// together.
-        /// </para>
-        /// </summary>
-        private void PlaceVehicle()
-        {
-            var map = _map;
-            var root = _worldRoot;
-            if (map == null || root == null)
-            {
-                return;
-            }
-
-            var vehicle = SurfaceVehicleInteractable.Spawn(map.Entrance, root.transform);
-            var body = vehicle != null ? vehicle.gameObject : null;
-
-            // §12 marks the 출입구 on a stairwell cell in a 2.2 m service corridor and the
-            // van is 2.81 m wide, so spawning it there stood it inside the brickwork. It
-            // is moved to the nearest place inside §01's 지상 that its own footprint fits
-            // — see SurfaceApron.Park.
-            SurfaceApron.Park(body, map.Entrance, MatchMap.SurfaceRadius);
-
-            _apron = SurfaceApron.Build(map.Entrance, MatchMap.SurfaceRadius, body, root.transform);
-        }
 
         private void MovePlayerToSpawn()
         {
@@ -2475,6 +1715,10 @@ namespace HorrorGame.Gameplay.Match
                 return;
             }
 
+            // Seat 0's marker. Right for a solo playtest and wrong for twenty machines, all
+            // of which would land in this one cell — RaceRunners.TakeTheStartLine waits for
+            // §13's own answer and moves the rig afterwards. That ordering is written down
+            // in RaceLobby.OnSceneLoaded, which calls BeginMatch and then the coroutine.
             var spawn = map.PlayerSpawns[0];
             var controller = _playerRoot.GetComponent<CharacterController>();
 
@@ -2494,12 +1738,26 @@ namespace HorrorGame.Gameplay.Match
         }
 
         /// <summary>
-        /// §11's lineup. Four distinct roles with the local player's own among them, so
-        /// exactly one of §04's five is missing — "그게 그 판의 성격이 된다."
+        /// A lineup <c>MatchState</c> will accept, for a game that no longer has roles.
+        /// <para>
+        /// <b>This is a scaffold and it should not outlive the next change.</b>
+        /// DESCENT-PIVOT §4 deletes §04 outright — 「5개 직업 → 전부 삭제. 20명이 완전히 같은
+        /// 몸으로 출발한다」 — because a race whose result can be explained by a pick teaches
+        /// the loser nothing. Every runner is 주자: <c>PlayerMotor</c> already defaults to
+        /// <see cref="RoleId.Runner"/> and gates 질주 5.6 m/s on it, which is the one ability
+        /// §01 says must survive, and nothing in this file reads a role for any other reason.
+        /// </para>
+        /// <para>
+        /// The three other slots exist only because <c>MatchState</c>'s constructor throws
+        /// on a <c>RoleSelection</c> that is not four DISTINCT roles, and
+        /// <c>MatchState</c> is still where §09's ghost lives (see <see cref="State"/>).
+        /// Filling them from <c>RoleSelection.AllRoles</c> is deterministic, so §13's replay
+        /// is unaffected, and no seat but <see cref="LocalSeat"/> is ever read.
+        /// </para>
         /// </summary>
-        private static RoleSelection BuildLineup(RoleId localRole)
+        private static RoleSelection BuildLineup()
         {
-            var roles = new List<RoleId> { localRole == RoleId.None ? RoleId.Runner : localRole };
+            var roles = new List<RoleId> { RoleId.Runner };
             var all = RoleSelection.AllRoles;
 
             for (var i = 0; i < all.Count && roles.Count < GameConstants.PlayersPerMatch; i++)
@@ -2512,16 +1770,6 @@ namespace HorrorGame.Gameplay.Match
 
             return RoleSelection.FromRoles(roles.ToArray());
         }
-
-        /// <summary>
-        /// Seats a person is actually sitting in. One, until Mirror arrives — §13 keeps
-        /// host authority and the network layer is a later step (§14).
-        /// </summary>
-        private const int OccupiedSeats = 1;
-
-        // ------------------------------------------------------------------
-        // Wiring.
-        // ------------------------------------------------------------------
 
         private void ResolveWiring()
         {
@@ -2542,11 +1790,6 @@ namespace HorrorGame.Gameplay.Match
 
             if (_playerRoot != null)
             {
-                if (_loadout == null)
-                {
-                    _loadout = _playerRoot.GetComponentInChildren<PlayerLoadout>();
-                }
-
                 if (_flashlight == null)
                 {
                     _flashlight = _playerRoot.GetComponentInChildren<PlayerFlashlight>();
@@ -2571,25 +1814,20 @@ namespace HorrorGame.Gameplay.Match
                     }
                 }
 
-                _interactor.Bind(this, _motor, _loadout, _flashlight);
-            }
-
-            if (_hud == null)
-            {
-                _hud = GetComponentInChildren<MatchHud>();
-                if (_hud == null)
-                {
-                    var child = new GameObject("MatchHud");
-                    child.transform.SetParent(transform, worldPositionStays: false);
-                    _hud = child.AddComponent<MatchHud>();
-                }
+                // One argument, and that is the whole of §08's deletion seen from here. It
+                // used to be Bind(this, motor, loadout, flashlight): the interactor needed
+                // the pockets to refuse a 전리품 while the 목표물 was in both hands, and the
+                // torch to take it out of the hand that was about to be full. There is
+                // nothing to pick up in a race — the only thing the key still opens and
+                // shuts is §12's door.
+                _interactor.Bind(this);
             }
 
             if (_ghosts == null)
             {
-                // Built here rather than authored into the scene for the same reason the
-                // HUD is: §09 is a state every seat can enter and no scene should have to
-                // remember to carry it. It costs nothing until somebody dies.
+                // Built here rather than authored into the scene: §09 is a state every seat
+                // can enter and no scene should have to remember to carry it. It costs
+                // nothing until somebody is caught.
                 _ghosts = GetComponentInChildren<GhostSession>();
                 if (_ghosts == null)
                 {
@@ -2600,20 +1838,9 @@ namespace HorrorGame.Gameplay.Match
             }
         }
 
-        private void BindHud()
-        {
-            _hud?.BindHud(
-                _localRole,
-                _clock,
-                _loadout != null ? _loadout.Inventory : null,
-                _flashlight != null ? _flashlight.State : null,
-                _motor != null ? _motor.Stamina : null);
-        }
-
         /// <summary>
         /// Stands one §06 creature on every declared start and takes the primary's probe,
-        /// which is the same <see cref="IWorldProbe"/> §03's placement reasons through —
-        /// one answer about the world, not two.
+        /// which is what proves the scene's NavMesh is baked.
         /// <para>
         /// <b>One agent per <see cref="MatchMap.MonsterSpawns"/> entry, cloned from the
         /// scene's own rig.</b> §12-B③ writes 「괴물이 안쪽을 순찰한다」 about every floor and
@@ -2764,9 +1991,9 @@ namespace HorrorGame.Gameplay.Match
         /// <para>
         /// It cannot be satisfied by half a change. A map that grows eight starts while the
         /// runtime still stands up one fails here and the match does not begin — every
-        /// PlayMode test that calls <c>BeginMatch</c> goes red, loudly, naming both counts.
-        /// The reverse — this half landing without the map's — is the shipped map's own
-        /// case: one start, one creature, equal, and the audit still says <em>1 of 8
+        /// PlayMode test that calls <see cref="BeginMatch"/> goes red, loudly, naming both
+        /// counts. The reverse — this half landing without the map's — is the shipped map's
+        /// own case: one start, one creature, equal, and the audit still says <em>1 of 8
         /// storeys</em>, which is the truth.
         /// </para>
         /// </summary>
@@ -2794,89 +2021,6 @@ namespace HorrorGame.Gameplay.Match
             return true;
         }
 
-        /// <summary>
-        /// §03's partial reset, monster half. The chase state, the position and the
-        /// aggro go; the clock does not, and nobody here can make it.
-        /// <para>
-        /// Every creature, each back to its OWN start. Sending them all to the primary
-        /// would collapse eight floors' worth of §06 onto one storey on the first 귀환 —
-        /// and since a creature cannot climb, seven of them would never come back.
-        /// </para>
-        /// </summary>
-        private void ResetMonster()
-        {
-            var map = _map;
-            var rng = _rng;
-            if (map == null || rng == null || _creatures.Count == 0)
-            {
-                return;
-            }
-
-            for (var i = 0; i < _creatures.Count; i++)
-            {
-                var creature = _creatures[i];
-                var monster = creature.Agent;
-                if (monster == null)
-                {
-                    continue;
-                }
-
-                monster.ClearTargets();
-
-                // Its own lunge goes with its aggro: §03 calls this a reset of 추격, and a
-                // creature left mid-commit would land a strike begun before the team walked
-                // out of the building.
-                creature.Lunge = default(MonsterLunge);
-
-                var spawn = creature.Spawn != null ? creature.Spawn.position : monster.transform.position;
-                var facing = map.Entrance - spawn;
-                facing.y = 0f;
-
-                monster.Respawn(spawn, facing, rng);
-
-                // Respawn rebuilds the probe, so the light query has to be re-attached or
-                // §03's "is this area lit" quietly starts answering false.
-                var probe = monster.Probe;
-                if (probe != null)
-                {
-                    probe.LitQuery = IsAreaLit;
-                }
-
-                if (ReferenceEquals(monster, _monster))
-                {
-                    _probe = probe;
-                }
-            }
-
-            Debug.Log("[Match] §03 부분 리셋 — 괴물 " + _creatures.Count + "마리의 추격 · 위치 · 어그로 초기화. 시계는 "
-                + _clock.ElapsedSeconds.ToString("0") + "s 그대로.", this);
-        }
-
-        private float MeasureGrabDistance()
-        {
-            var monsterRadius = 0f;
-            if (_monster != null)
-            {
-                var agent = _monster.GetComponent<UnityEngine.AI.NavMeshAgent>();
-                if (agent != null)
-                {
-                    monsterRadius = agent.radius;
-                }
-            }
-
-            var playerRadius = 0f;
-            if (_playerRoot != null)
-            {
-                var controller = _playerRoot.GetComponent<CharacterController>();
-                if (controller != null)
-                {
-                    playerRadius = controller.radius;
-                }
-            }
-
-            return monsterRadius + playerRadius;
-        }
-
         private void CollectAreaLights()
         {
             _areaLights.Clear();
@@ -2884,9 +2028,9 @@ namespace HorrorGame.Gameplay.Match
             var lights = FindObjectsByType<Light>(FindObjectsInactive.Include, FindObjectsSortMode.None);
             for (var i = 0; i < lights.Length; i++)
             {
-                // Point lights only. §03's area sources are the Engineer's 구역 조명, a
-                // 조명탄 and the burning 출입구 light; a player's own beam is a spot and
-                // is already accounted for as the beam.
+                // Point lights only. §12's area sources are the outer ring's 구역 조명 and
+                // the light burning over §02's 도착점; a runner's own beam is a spot and is
+                // already accounted for as the beam.
                 if (lights[i].type == LightType.Point)
                 {
                     _areaLights.Add(lights[i]);
@@ -2894,129 +2038,17 @@ namespace HorrorGame.Gameplay.Match
             }
         }
 
-        private void SyncLootState()
-        {
-            var state = _state;
-            var loadout = _loadout;
-            if (state == null || loadout == null)
-            {
-                return;
-            }
-
-            state.PlayerAt(LocalPlayerIndex).SetLootState(
-                loadout.Inventory.LootCount > 0 || loadout.CarryingOversizePiece,
-                loadout.CarryingOversizePiece);
-        }
-
-        /// <summary>
-        /// Empties the hands where the player fell. §08: "사망자의 전리품 — 떨어진다.
-        /// 회수하려면 시체가 있는 곳으로 돌아가야 한다."
-        /// </summary>
-        /// <returns>
-        /// What the pile is worth in credits, so §09's ghost can be told what it is
-        /// looking at — "자기 물건이 어디 있는지 보이는데 말할 수 없다." Zero for an
-        /// empty-handed death, which makes no pile at all.
-        /// </returns>
-        private int DropEverything(Vector3 where)
-        {
-            var interactor = _interactor;
-
-            if (_objectiveProp != null && _objectiveProp.IsCarried && interactor != null)
-            {
-                _objectiveProp.ForceDrop(interactor, where);
-            }
-
-            if (interactor != null && interactor.CarriedFocus is OversizeLootInteractable oversize)
-            {
-                oversize.ForceRelease(interactor);
-            }
-
-            var value = 0;
-            if (_loadout != null)
-            {
-                // DropFrom hands back the PILE'S INDEX, not its price, and returns −1 for
-                // an empty-handed death. Read as a value it makes the first pile of every
-                // match worth zero — which is exactly what §09's overlay showed the first
-                // time this was photographed: a ghost standing over its own 은수저 being
-                // told it had dropped 0 크레딧.
-                var pile = _droppedLoot.DropFrom(_loadout.Inventory, where.ToVec3());
-                value = pile >= 0 ? _droppedLoot.ValueOf(pile) : 0;
-            }
-
-            SyncLootState();
-            return value;
-        }
-
-        /// <summary>
-        /// Empties the local player's hands between matches.
-        /// <para>
-        /// <b>The pockets are not in the world, so despawning it cannot reach them.</b>
-        /// §08 pays for 전리품 at the vehicle it is carried to — "전리품을 차량에 실으면 →
-        /// 가치만큼 크레딧" — and <see cref="Surfaced"/> sells whatever is in the pockets on
-        /// the first 귀환 without asking which match earned it. Loot that outlived its own
-        /// match is therefore free credits, and §02 already priced what a lost match is
-        /// supposed to cost: 손실 drops the loot. §03's objective and §08's 대형 전리품 come
-        /// off for the same reason — the props are gone, and a flag saying the hands are
-        /// full of one would follow the player into a match that has neither.
-        /// </para>
-        /// <para>
-        /// Both are released through their props rather than by clearing flags, and this
-        /// runs before <see cref="ClearWorld"/>'s despawn so that there is still a prop to
-        /// release: the share of an oversize piece is weight inside <c>SharedLootCarry</c>,
-        /// which is the only thing that may give the hands back, and releasing is also what
-        /// drops <c>PlayerInteractor</c>'s carried focus before it becomes a reference to a
-        /// destroyed object.
-        /// </para>
-        /// </summary>
-        private void ClearHands()
-        {
-            var interactor = _interactor;
-            if (interactor != null)
-            {
-                if (_objectiveProp != null && _objectiveProp.IsCarried)
-                {
-                    _objectiveProp.ForceDrop(interactor, interactor.transform.position);
-                }
-
-                if (interactor.CarriedFocus is OversizeLootInteractable oversize)
-                {
-                    oversize.ForceRelease(interactor);
-                }
-            }
-
-            var loadout = _loadout;
-            if (loadout == null)
-            {
-                return;
-            }
-
-            loadout.SetCarryingObjective(false);
-            loadout.SetCarryingOversizePiece(false);
-            loadout.Inventory.DropAll();
-        }
-
         private void ClearWorld()
         {
             _running = false;
-            _resolver = null;
-            _endScreenHeldForGhost = false;
+            _verdictHeldForGhost = false;
 
             // Before anything else: §09 has the player's camera unparented from the rig
             // and three of the rig's components switched off. A new match laid out around
-            // a rig in that state would spawn a player who cannot move and cannot see.
+            // a rig in that state would spawn a runner who cannot move and cannot see.
             _ghosts?.End();
 
             DespawnClonedCreatures();
-
-            _droppedLoot.Clear();
-            _hud?.HideEnd();
-            _hud?.CloseShop();
-            _hud?.DismissClue();
-
-            // Before the despawn, while the props it releases still exist.
-            ClearHands();
-            _objectiveProp = null;
-            _apron = null;
 
             if (_worldRoot != null)
             {
@@ -3037,8 +2069,8 @@ namespace HorrorGame.Gameplay.Match
         /// </para>
         /// <para>
         /// The authored rig is never destroyed: it belongs to the scene, the inspector
-        /// reference on this component points at it, and a second <c>BeginMatch</c> has to
-        /// find it exactly where the first one did.
+        /// reference on this component points at it, and a second <see cref="BeginMatch"/>
+        /// has to find it exactly where the first one did.
         /// </para>
         /// </summary>
         private void DespawnClonedCreatures()

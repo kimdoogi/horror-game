@@ -31,10 +31,12 @@ namespace HorrorGame.UI.Screens
     /// anything cut at the receiver is not cut at all.
     /// </para>
     /// <para>
-    /// The ghost's own dropped loot is shown, because §08 hands §09 that exact
-    /// cruelty: <em>"유령이 된 본인은 자기 물건이 어디 있는지 보이는데 말할 수
-    /// 없다."</em> Seeing the pile and the credits on it, with no way to point at it
-    /// but a rattle every forty-five seconds, is the design working.
+    /// <b>The 전리품 line is gone.</b> This overlay used to draw the pile the dead
+    /// player had dropped and what it was worth in credits, because §08 handed §09 that
+    /// exact cruelty — <em>"유령이 된 본인은 자기 물건이 어디 있는지 보이는데 말할 수
+    /// 없다."</em> DESCENT-PIVOT §7 step 7 deleted the loot and the credits, so there is
+    /// no pile and no price, and the widget went with them. A race elimination is 탈락
+    /// — you are out and unranked — not a player standing over property they lost.
     /// </para>
     /// <para>
     /// <b>§06's state is on here too, and it is the second half of "볼 게 있고 할 게
@@ -56,7 +58,6 @@ namespace HorrorGame.UI.Screens
         private Text? _rattleText;
         private UiBar? _rattleBar;
         private Text? _failureText;
-        private Text? _lootText;
         private Text? _targetText;
         private Text? _keysText;
         private Text? _monsterTitle;
@@ -210,7 +211,7 @@ namespace HorrorGame.UI.Screens
             EnsureBuilt();
 
             if (_group == null || _title == null || _rattleText == null || _rattleBar == null
-                || _failureText == null || _lootText == null)
+                || _failureText == null)
             {
                 return;
             }
@@ -240,18 +241,6 @@ namespace HorrorGame.UI.Screens
             }
 
             _failureText.text = readout.FailureLabel;
-
-            if (readout.SeesOwnLoot)
-            {
-                _lootText.text = "내 전리품 "
-                    + readout.OwnLootValue.ToString(CultureInfo.InvariantCulture) + " 크레딧 · "
-                    + readout.OwnLootDistance.ToString("0", CultureInfo.InvariantCulture) + "m";
-                _lootText.color = UiStyle.Trade;
-            }
-            else
-            {
-                _lootText.text = string.Empty;
-            }
 
             DrawTarget(readout.CanRattle);
             DrawVerdict();
@@ -343,10 +332,6 @@ namespace HorrorGame.UI.Screens
             _failureText = UiFactory.CreateText("Failure", group, Font, string.Empty, UiStyle.TextSizeSmall, UiStyle.Spent, TextAnchor.LowerCenter);
             UiFactory.Place((RectTransform)_failureText.transform,
                 new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, UiStyle.ScreenMargin + (UiStyle.LineGap * 2f)), new Vector2(640f, 22f));
-
-            _lootText = UiFactory.CreateText("Loot", group, Font, string.Empty, UiStyle.TextSizeSmall, UiStyle.Trade, TextAnchor.LowerLeft);
-            UiFactory.Place((RectTransform)_lootText.transform,
-                Vector2.zero, Vector2.zero, new Vector2(UiStyle.ScreenMargin, UiStyle.ScreenMargin), new Vector2(520f, 22f));
 
             // Directly over the cooldown bar: the object and the wait are one decision —
             // "can I shake this, and may I yet" — and reading them in two corners is how

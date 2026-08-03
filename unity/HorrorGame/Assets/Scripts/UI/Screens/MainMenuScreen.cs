@@ -7,7 +7,18 @@ using UnityEngine.UI;
 namespace HorrorGame.UI.Screens
 {
     /// <summary>
-    /// The first thing anybody sees. Title, 시작, 설정, 종료.
+    /// The first thing anybody sees. Title, 시작, 혼자 내려가기, 설정, 종료.
+    /// <para>
+    /// <b>Two ways down, because 시작 alone could not reach a race.</b> 시작 goes
+    /// through <c>LobbyEntry</c> to §11's lobby, and the lobby refuses to start below
+    /// <c>GameConstants.RaceRunnersMin</c> — <em>"혼자서는 경주가 되지 않는다"</em>,
+    /// which is correct and is also why a player on their own could press the only
+    /// button on this menu and never see the building. 혼자 내려가기 is
+    /// <c>GameShell.StartMatch</c> with no question asked: the same descent, one runner,
+    /// no placings worth arguing about. It is labelled as the practice run it is rather
+    /// than dressed up as a race, because §02's 순위 is the whole point and a solo
+    /// "1위" would be a lie the menu told.
+    /// </para>
     /// <para>
     /// <b>It is drawn over the game, not over a colour.</b> The scene behind this canvas
     /// is a lit corridor with the project's own fog, grade and flashlight on it, drifting
@@ -27,11 +38,14 @@ namespace HorrorGame.UI.Screens
     /// bright frame of the drift, not so they shout.
     /// </para>
     /// <para>
-    /// <b>The headphone line is not decoration.</b> §05 settles the 청음사's direction
-    /// finding with "3D 오디오는 카메라 기준 → 헤드폰 필수", and §13 carries that onto
-    /// the store page. A player who buys this on speakers has bought a game with one of
-    /// §04's five roles switched off, so the requirement is stated before the first
-    /// match rather than in an options tab they may never open.
+    /// <b>The headphone line is not decoration.</b> §05 settles it with "3D 오디오는
+    /// 카메라 기준 → 헤드폰 필수", and §13 carries that onto the store page. It used to
+    /// be argued from §04's 청음사 — a role the pivot deleted — and the argument
+    /// survives the role because the two things a runner navigates by are both
+    /// positional: which corridor the creature is in, and which direction the voice of
+    /// the runner beside them is coming from (§13's 근접 음성). On speakers both
+    /// collapse to "somewhere", so the requirement is stated before the first match
+    /// rather than in an options tab they may never open.
     /// </para>
     /// </summary>
     [DisallowMultipleComponent]
@@ -42,6 +56,7 @@ namespace HorrorGame.UI.Screens
         private const float ButtonGap = 14f;
 
         private Action? _onStart;
+        private Action? _onSolo;
         private Action? _onSettings;
         private Action? _onQuit;
 
@@ -60,13 +75,15 @@ namespace HorrorGame.UI.Screens
             get { return true; }
         }
 
-        /// <summary>Shows the menu and wires its three entries.</summary>
-        /// <param name="onStart">§14 step 1: build a match and go down.</param>
+        /// <summary>Shows the menu and wires its four entries.</summary>
+        /// <param name="onStart">시작 — ask §11's lobby, and race whoever is in it.</param>
+        /// <param name="onSolo">혼자 내려가기 — §14 step 1: build a match and go down alone.</param>
         /// <param name="onSettings">Opens the settings screen over this one.</param>
         /// <param name="onQuit">Leaves the game.</param>
-        public void Open(Action onStart, Action onSettings, Action onQuit)
+        public void Open(Action onStart, Action onSolo, Action onSettings, Action onQuit)
         {
             _onStart = onStart;
+            _onSolo = onSolo;
             _onSettings = onSettings;
             _onQuit = onQuit;
             SetVisible(true);
@@ -94,8 +111,8 @@ namespace HorrorGame.UI.Screens
             var seen = Settings.SettingsService.Current.HeadphoneNoticeSeen;
 
             _headphoneText.text = seen
-                ? "§05 · 헤드폰 권장 — 3D 오디오는 카메라 기준이다. 청음사는 소리만으로 괴물을 찾는다."
-                : "§05 · 헤드폰이 필요하다. 3D 오디오는 카메라 기준이며, 스피커로는 청음사의 방향 판별이 성립하지 않는다.";
+                ? "§05 · 헤드폰 권장 — 3D 오디오는 카메라 기준이다. 괴물도, 옆 주자의 목소리도 방향으로 온다."
+                : "§05 · 헤드폰이 필요하다. 3D 오디오는 카메라 기준이며, 스피커로는 괴물의 방향도 근접 음성의 방향도 성립하지 않는다.";
 
             _headphoneText.color = seen ? UiStyle.InkFaint : UiStyle.Trade;
             _headphoneBand.color = seen ? new Color(0f, 0f, 0f, 0.45f) : new Color(0.16f, 0.10f, 0.03f, 0.72f);
@@ -130,14 +147,15 @@ namespace HorrorGame.UI.Screens
 
             UiFactory.Place(
                 (RectTransform)UiFactory.CreateText(
-                    "Subtitle", column, Font, "4인 비대칭 협동 호러 · 가제", UiStyle.TextSize + 6, UiStyle.InkFaint, TextAnchor.UpperLeft).transform,
+                    "Subtitle", column, Font, "선착순 미로 탈출 · 지하 8층 · 가제", UiStyle.TextSize + 6, UiStyle.InkFaint, TextAnchor.UpperLeft).transform,
                 new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(2f, -100f), new Vector2(560f, 28f));
 
             var rule = UiFactory.CreateImage("Rule", column, UiStyle.InkFaint);
             UiFactory.Place((RectTransform)rule.transform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, -142f), new Vector2(320f, 1f));
 
             var y = -200f;
-            AddEntry(column, "시작", "지하로 내려간다", ref y, delegate { _onStart?.Invoke(); });
+            AddEntry(column, "시작", "로비 — 같이 내려간다", ref y, delegate { _onStart?.Invoke(); });
+            AddEntry(column, "혼자 내려가기", "순위 없음 · 연습", ref y, delegate { _onSolo?.Invoke(); });
             AddEntry(column, "설정", "시야 · 조작 · 소리 · 화면", ref y, delegate { _onSettings?.Invoke(); });
             AddEntry(column, "종료", string.Empty, ref y, delegate { _onQuit?.Invoke(); });
 

@@ -77,9 +77,8 @@ namespace HorrorGame.UI.Screens
         /// Takes over from an explicit eye pose.
         /// <para>
         /// The pose matters and is not <see cref="GhostState.DeathPosition"/>. That
-        /// position is the <em>body's</em> — §08 drops the loot on it and the ghost has to
-        /// be able to see the pile from outside itself — and it is measured at the feet,
-        /// so starting the camera there puts the first frame of §09 inside the floor. The
+        /// position is the <em>body's</em>, and it is measured at the feet, so starting
+        /// the camera there puts the first frame of §09 inside the floor. The
         /// caller passes the eye the player was already looking through, which is also
         /// what preserves the seconds §09 cares most about: the ones right after they saw
         /// what killed them.

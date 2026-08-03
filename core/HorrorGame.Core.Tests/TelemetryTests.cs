@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using HorrorGame.Core;
-using HorrorGame.Core.Economy;
 using HorrorGame.Core.Match;
 using HorrorGame.Core.Roles;
 using HorrorGame.Core.Session;
@@ -386,7 +385,14 @@ namespace HorrorGame.Core.Tests
         }
 
         // ====================================================================
-        // Categorical families: roles (§11) and purchases (§08).
+        // Categorical families: roles (§11).
+        //
+        // §08's 아이템별 구매 카운터 used to live here too, covered by
+        // PurchaseCounters_CoverEverySection08Item. It went with the shop:
+        // DESCENT-PIVOT §3 버린다 drops 전리품 · 크레딧 · 판매 outright ("통화가
+        // 없다"), so ShopItemId — the type that test enumerated — no longer
+        // exists and there is nothing left to count. Do not re-add a purchase
+        // counter without first re-adding a currency, which is a design change.
         // ====================================================================
 
         /// <summary>
@@ -420,36 +426,6 @@ namespace HorrorGame.Core.Tests
             Assert.That(picked, Does.Not.Contain(unassigned),
                 "An unset slot must not be attributed to a role — the invariant that makes the five "
                 + "readable is that they sum to four per match.");
-        }
-
-        /// <summary>
-        /// §13's 아이템별 구매 카운터 — one per §08 item. §08's list is closed
-        /// ("전부 §10 딜레마 원리를 따른다"), so adding an item is a design change and
-        /// this test is what makes it also a telemetry change.
-        /// </summary>
-        [Test]
-        public void PurchaseCounters_CoverEverySection08Item()
-        {
-            var counters = new List<string>();
-            foreach (var item in Enum.GetValues<ShopItemId>())
-            {
-                if (item == ShopItemId.None)
-                {
-                    continue;
-                }
-
-                var counter = TelemetryBuckets.Purchase(item);
-                Assert.That(TelemetryBuckets.PurchaseCounters, Does.Contain(counter),
-                    $"{item} has no provisioned counter, so §08's balance cannot be read for it.");
-                counters.Add(counter);
-            }
-
-            Assert.That(counters.Distinct().Count(), Is.EqualTo(counters.Count),
-                "Two items sharing a counter would hide which trade players actually take.");
-
-            var unknown = TelemetryBuckets.Purchase(ShopItemId.None);
-            Assert.That(TelemetryBuckets.Purchase((ShopItemId)99), Is.EqualTo(unknown));
-            Assert.That(counters, Does.Not.Contain(unknown));
         }
 
         /// <summary>
@@ -743,11 +719,6 @@ namespace HorrorGame.Core.Tests
             Assert.That(summary.CluesRead, Is.EqualTo(GameConstants.CluesRequiredToLocate));
             Assert.That(summary.ClueMisreads, Is.EqualTo(1));
 
-            Assert.That(summary.LootSold, Is.EqualTo(3));
-            Assert.That(summary.CreditsEarned, Is.EqualTo(
-                GameConstants.LootValueTimepiece + GameConstants.LootValueTrinket + GameConstants.LootValueLargePiece));
-            Assert.That(summary.CreditsSpent, Is.EqualTo(
-                (GameConstants.ShopCostBattery * 2) + GameConstants.ShopCostUpgradedFlashlight));
             Assert.That(summary.BatteriesUsed, Is.EqualTo(GameConstants.EconomyReferenceCellsPerDescent));
 
             // Four chases: 4 s, 12 s, an event reported directly at 20 s, and 6 s
@@ -771,10 +742,6 @@ namespace HorrorGame.Core.Tests
             Assert.That(sink.Count("aggro_duration_10_15s"), Is.EqualTo(1));
             Assert.That(sink.Count("aggro_duration_15s_plus"), Is.EqualTo(1));
             Assert.That(sink.TotalIn(TelemetryBuckets.AggroDurationBuckets), Is.EqualTo(summary.AggroEvents));
-
-            Assert.That(sink.Count("purchase_battery"), Is.EqualTo(2));
-            Assert.That(sink.Count("purchase_upgraded_flashlight"), Is.EqualTo(1));
-            Assert.That(sink.Count("purchase_rope"), Is.EqualTo(0), "A zero-quantity purchase is not a purchase.");
 
             Assert.That(sink.Count(TelemetryBuckets.OutcomeClear), Is.EqualTo(1));
             Assert.That(sink.TotalIn(TelemetryBuckets.OutcomeCounters), Is.EqualTo(1),
@@ -810,7 +777,6 @@ namespace HorrorGame.Core.Tests
             var recorder = RunScriptedMatch(out var sink);
 
             Assert.That(sink.Count("aggro_duration_10_15s"), Is.EqualTo(1), "A chase that ended is an event.");
-            Assert.That(sink.Count("purchase_battery"), Is.EqualTo(2), "A purchase is an event.");
 
             Assert.That(sink.TotalIn(TelemetryBuckets.OutcomeCounters), Is.EqualTo(0));
             Assert.That(sink.TotalIn(TelemetryBuckets.RolePickCounters), Is.EqualTo(0),
@@ -1027,8 +993,6 @@ namespace HorrorGame.Core.Tests
             recorder.RecordMovement(10f, true, true);
             recorder.RecordRoundTrip();
             recorder.RecordClueRead(true);
-            recorder.RecordLootSold(GameConstants.LootValueLargePiece);
-            recorder.RecordPurchase(ShopItemId.Bag, GameConstants.ShopCostBag);
             recorder.RecordBatteryUsed();
             recorder.RecordPlayerDied();
             recorder.RecordPlayerEscaped();
@@ -1036,7 +1000,6 @@ namespace HorrorGame.Core.Tests
             recorder.SetRoster(RoleId.Runner, RoleId.Runner, RoleId.Runner, RoleId.Runner);
 
             Assert.That(recorder.Snapshot(), Is.EqualTo(summary));
-            Assert.That(sink.Count("purchase_bag"), Is.EqualTo(0));
             Assert.That(sink.Summaries.Count, Is.EqualTo(1));
         }
 
@@ -1058,11 +1021,15 @@ namespace HorrorGame.Core.Tests
         }
 
         /// <summary>
-        /// Player counts are clamped at §11's four, and a nonsense loot price is
-        /// dropped without dropping the sale — the piece did leave the basement.
+        /// Player counts are clamped at §11's four, and a zero-quantity event is
+        /// ignored entirely.
+        /// <para>
+        /// It also asserted that a nonsense 전리품 price was dropped without dropping the
+        /// sale. That half went with §08 — there is no sale.
+        /// </para>
         /// </summary>
         [Test]
-        public void Recorder_ClampsPlayerCounts_AndIgnoresNonsensePrices()
+        public void Recorder_ClampsPlayerCounts_AndIgnoresNonsenseQuantities()
         {
             var sink = new InMemoryTelemetrySink();
             var recorder = new MatchRecorder(sink, 1);
@@ -1073,20 +1040,13 @@ namespace HorrorGame.Core.Tests
                 recorder.RecordPlayerEscaped();
             }
 
-            recorder.RecordLootSold(-500);
-            recorder.RecordPurchase(ShopItemId.Chalk, -50);
             recorder.RecordBatteryUsed(0);
 
             var summary = recorder.Complete(MatchOutcome.Wiped);
 
             Assert.That(summary.PlayersDied, Is.EqualTo(GameConstants.PlayersPerMatch));
             Assert.That(summary.PlayersEscaped, Is.EqualTo(GameConstants.PlayersPerMatch));
-            Assert.That(summary.LootSold, Is.EqualTo(1), "The piece was sold; only the price was nonsense.");
-            Assert.That(summary.CreditsEarned, Is.EqualTo(0));
-            Assert.That(summary.CreditsSpent, Is.EqualTo(0));
             Assert.That(summary.BatteriesUsed, Is.EqualTo(0));
-            Assert.That(sink.Count("purchase_chalk"), Is.EqualTo(1),
-                "The item was taken even if the price was wrong — §08's question is which trades players accept.");
         }
 
         // ====================================================================
@@ -1226,14 +1186,6 @@ namespace HorrorGame.Core.Tests
             recorder.RecordClueRead(false);
             recorder.RecordClueRead(false);
             recorder.RecordClueRead(true);
-
-            recorder.RecordLootSold(GameConstants.LootValueTimepiece);
-            recorder.RecordLootSold(GameConstants.LootValueTrinket);
-            recorder.RecordLootSold(GameConstants.LootValueLargePiece);
-
-            recorder.RecordPurchase(ShopItemId.Battery, GameConstants.ShopCostBattery * 2, 2);
-            recorder.RecordPurchase(ShopItemId.UpgradedFlashlight, GameConstants.ShopCostUpgradedFlashlight);
-            recorder.RecordPurchase(ShopItemId.Rope, GameConstants.ShopCostRope, 0);
 
             for (var i = 0; i < GameConstants.EconomyReferenceCellsPerDescent; i++)
             {

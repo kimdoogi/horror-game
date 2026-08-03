@@ -39,15 +39,31 @@ namespace HorrorGame.UI.Screens
         /// </summary>
         private const float ActivationHoldPoint = 0.9f;
 
+        /// <summary>
+        /// The lines this screen shows, one per load.
+        /// <para>
+        /// <b>Four of the seven were deleted with the co-op game.</b> DESCENT-PIVOT §7
+        /// step 7: the two 단서 lines described a chain that no longer exists, the §07
+        /// line described a 왕복 to a surface that no longer exists, and the §02 line
+        /// described a team ledger that no longer exists. They are replaced by the race,
+        /// not padded out — a loading screen that recites rules the build does not
+        /// implement is where a player learns to stop reading them.
+        /// </para>
+        /// <para>
+        /// The §06 speed line lost its "주자만" clause with §04's roles: all twenty
+        /// bodies are identical (§11), so it now says what the numbers say and nothing
+        /// about who they belong to.
+        /// </para>
+        /// </summary>
         private static readonly string[] Lines =
         {
             "§05 — 뒷걸음은 전진의 65 %다. 거리를 확인하려고 뒤를 보면 괴물이 좁혀 온다.",
-            "§06 — 괴물은 4.8 m/s, 달리기는 4.5 m/s. 주자만 도망칠 수 있다.",
+            "§06 — 괴물은 4.8 m/s, 달리기는 4.5 m/s. 직선으로는 못 따돌린다.",
             "§06 — 어그로 해제는 거리가 아니라 맵이다. 모퉁이를 돌고, 문을 닫고, 시야를 3초 끊어야 한다.",
-            "§03 — 단서는 가지고 나올 수 없다. 그 자리에서 보고, 기억해서, 말로 전달한다.",
-            "§03 — 배터리가 떨어지면 단서를 읽을 수 없다. 어둠이 잠금장치다.",
-            "§07 — 나가도 시간은 흐른다. 나가는 것은 숨 돌리기이지 리셋이 아니다.",
-            "§02 — 한 명이라도 살아 나가면 그 판의 정보는 남는다. 전멸하면 전부 사라진다.",
+            "§01 — 여덟 층, 같은 미로를 여덟 번 푼다. 가운데의 투하구가 다음 층의 바깥 고리로 떨어뜨린다.",
+            "§02 — 잡히면 탈락이다. 순위도 남지 않는다. 완주 순위는 끝까지 간 사람만 받는다.",
+            "§11 — 안쪽으로 갈수록 문은 4 → 2 → 1로 좁아진다. 문은 닫을 수 있다.",
+            "§13 — 근처 사람에게는 목소리가 들린다. 길을 물어봐도 되고, 거짓말을 해도 된다.",
         };
 
         private UiBar? _bar;

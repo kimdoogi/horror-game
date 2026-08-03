@@ -153,8 +153,11 @@ namespace HorrorGame.Gameplay.PlayerEditor
                 // player points it and therefore what the shot has to show.
                 session.Shoot("00_empty", "empty hands, torch off", torchOn: false, pitch: PlayingPitch);
                 session.Shoot("10_torch", "torch in hand, lit", torchOn: true, pitch: PlayingPitch);
-                session.Shoot("20_loot", "§08 대형 전리품, both hands", torchOn: true, oversize: true, pitch: PlayingPitch);
-                session.Shoot("30_objective", "§03 목표물, both hands, no torch", torchOn: true, objective: true, pitch: PlayingPitch);
+                // DELETED: the 20_loot and 30_objective plates. They photographed §08's
+                // 대형 전리품 in both hands and §03's 목표물 with no hand left for the torch
+                // — the two states this tool was originally built to prove existed. A
+                // runner's hands hold a torch and nothing else, so there is no third
+                // state left to shoot.
 
                 // The same two, dead level. This is the conservative framing — pitching
                 // down lifts the hands up the screen, so a level view is the worst case
@@ -373,29 +376,20 @@ namespace HorrorGame.Gameplay.PlayerEditor
             /// <param name="fileSuffix">File name part.</param>
             /// <param name="label">Human label for the report.</param>
             /// <param name="torchOn">Whether the player has switched the light on.</param>
-            /// <param name="objective">§03: carrying the objective, which takes both hands.</param>
-            /// <param name="oversize">§08: a 대형 전리품 in both hands.</param>
             /// <param name="pitch">Downward view pitch in degrees; 0 is level.</param>
             /// <param name="driveTime">Normalised time into the pose clip, 0–1.</param>
             internal void Shoot(
                 string fileSuffix,
                 string label,
                 bool torchOn,
-                bool objective = false,
-                bool oversize = false,
                 float pitch = 0f,
                 float driveTime = 0f)
             {
                 _rig.GetComponent<PlayerLook>().SetLook(_heading, pitch);
 
-                var loadout = _rig.GetComponent<PlayerLoadout>();
-                loadout.SetCarryingObjective(objective);
-                loadout.SetCarryingOversizePiece(oversize);
-
-                // The player presses F; §03 and §08 decide whether that survives. Setting
-                // the state and letting the component overrule it is the path a player
-                // takes — hard-coding "off while carrying" here would photograph the shot
-                // tool's opinion of the rule instead of the rule.
+                // The player presses F and the light comes on. There is no longer anything
+                // that could overrule that — §03's 「양손을 쓴다」 and §08's two-handed 궤짝
+                // are both deleted, and with them PlayerFlashlight.EnforceCarryRules.
                 var flashlight = _rig.GetComponent<PlayerFlashlight>();
                 if (torchOn)
                 {
@@ -406,20 +400,11 @@ namespace HorrorGame.Gameplay.PlayerEditor
                     flashlight.State.TurnOff();
                 }
 
-                // §03/§08's own rule, run rather than restated.
-                flashlight.EnforceCarryRules();
-
                 // The component's own call, not a re-implementation of it: this is what
                 // decides the beam and whether the torch is in the fist.
                 flashlight.RefreshPresentation();
 
-                // Same again for what is in the other two states' hands. There is no
-                // LateUpdate outside play mode, so a state that puts a crate in both
-                // fists would otherwise photograph as the empty hands ART.md §7.13
-                // measured — a carry pose holding nothing.
-                _rig.GetComponent<PlayerHeldProp>().RefreshPresentation();
-
-                var state = Pose(driveTime, objective, oversize);
+                var state = Pose(driveTime);
                 var pixels = RenderPixels(Camera);
 
                 if (fileSuffix.StartsWith("__", StringComparison.Ordinal))
@@ -441,17 +426,12 @@ namespace HorrorGame.Gameplay.PlayerEditor
             /// <param name="headingOffset">Degrees to add to the standing heading.</param>
             internal void ShootShadowPair(string fileSuffix, string label, float headingOffset)
             {
-                var loadout = _rig.GetComponent<PlayerLoadout>();
-                loadout.SetCarryingObjective(false);
-                loadout.SetCarryingOversizePiece(false);
-
                 var flashlight = _rig.GetComponent<PlayerFlashlight>();
                 flashlight.State.TryTurnOn();
-                flashlight.EnforceCarryRules();
                 flashlight.RefreshPresentation();
 
                 _rig.GetComponent<PlayerLook>().SetLook(_heading + headingOffset, PlayingPitch);
-                Pose(0f, false, false);
+                Pose(0f);
 
                 var withShadow = RenderPixels(Camera);
                 WritePng(Path.Combine(_root, _tag + "_" + fileSuffix + ".png"), withShadow);
@@ -494,14 +474,20 @@ namespace HorrorGame.Gameplay.PlayerEditor
             /// photographed is the game's.
             /// </para>
             /// </summary>
-            private PlayerAnimationState Pose(float normalisedTime, bool objective, bool oversize)
+            private PlayerAnimationState Pose(float normalisedTime)
             {
                 var driver = _rig.GetComponent<PlayerAnimatorDriver>();
-                var loadout = _rig.GetComponent<PlayerLoadout>();
-                var burdened = oversize || loadout.SpeedMultiplier <= GameConstants.WeightMulOverloaded;
 
+                // The two carry flags are false at every call now — see the deleted plates
+                // above. Resolve is still asked rather than the clip picked here, because
+                // the point of this tool is that the state machine being photographed is
+                // the game's own.
                 var state = PlayerAnimatorDriver.Resolve(
-                    Motor.GroundSpeed, objective, burdened, driver.CrouchingNow, driver.Dead);
+                    Motor.GroundSpeed,
+                    carryingObjective: false,
+                    visiblyBurdened: false,
+                    driver.CrouchingNow,
+                    driver.Dead);
 
                 var clip = driver.ClipFor(state);
                 var animator = _rig.GetComponentInChildren<Animator>();

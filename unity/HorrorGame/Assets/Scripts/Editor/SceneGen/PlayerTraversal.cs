@@ -969,9 +969,16 @@ namespace HorrorGame.EditorTools.SceneGen
         // ====================================================================
 
         /// <summary>
-        /// Everywhere §12 and §08 send a player: 후보 지점, 전리품 spawns and the spawns
-        /// they start on. The monster's own markers are deliberately not here — this is
-        /// the other actor.
+        /// Everywhere a runner has to be able to get to: every 도달 지점 probe and every
+        /// spawn they start on. The monster's own markers are deliberately not here — this
+        /// is the other actor.
+        /// <para>
+        /// It matched <c>CandidateSite*</c> and <c>LootSpawn*</c> — §12's 후보 지점 and
+        /// §08's 전리품 — until both were deleted and re-emitted as <c>ReachProbe_*</c> at
+        /// the same cells. The prefix is a contract with <c>MapSketch.ReachProbeAt</c>; a
+        /// generator rename that this does not follow makes PlayerReach measure a building
+        /// with no probes in it.
+        /// </para>
         /// <para>
         /// It also picks up the two things the race needs and the loot sweep does not: the
         /// finish, and every §01 투하구.
@@ -994,10 +1001,23 @@ namespace HorrorGame.EditorTools.SceneGen
                 {
                     var name = transform.name;
 
-                    if (name.StartsWith("EntranceLight", StringComparison.Ordinal))
+                    // childCount == 0 is load-bearing and was not always here. The scene
+                    // builder now parents the finish light under a GROUP transform called
+                    // "EntranceLights" (MapSceneBuilder.BuildFinishLight), and that group's
+                    // name starts with "EntranceLight" too. Without this clause the group —
+                    // a container sitting at the marker root's origin — was matched FIRST,
+                    // because GetComponentsInChildren walks a parent before its children.
+                    //
+                    // Measured, the run that caught it: finish reported at (0.00, -2.80,
+                    // 0.00), which is the origin less the soffit offset, "starts 0/36 reach
+                    // the finish", and the gate correctly refused to write the scene. The
+                    // real finish is 26 m down in the middle of B8. A container is never a
+                    // marker; say so here rather than relying on nobody ever grouping.
+                    if (transform.childCount == 0
+                        && name.StartsWith("EntranceLight", StringComparison.Ordinal))
                     {
                         // The fitting hangs under the soffit; the 출입구 itself is the
-                        // floor below it. BuildLight is the one place that offset is
+                        // floor below it. BuildFinishLight is the one place that offset is
                         // applied, so it is undone here rather than re-derived.
                         //
                         // §02 calls this the way out and §12 marks it 출입구; on §01's
@@ -1040,13 +1060,9 @@ namespace HorrorGame.EditorTools.SceneGen
                     {
                         mouths.Add(new KeyValuePair<string, Vector3>(name, transform.position));
                     }
-                    else if (name.StartsWith("CandidateSite", StringComparison.Ordinal))
+                    else if (name.StartsWith("ReachProbe", StringComparison.Ordinal))
                     {
-                        markers.Add(new Marker(name, transform.position, MarkerKind.CandidateSite));
-                    }
-                    else if (name.StartsWith("LootSpawn", StringComparison.Ordinal))
-                    {
-                        markers.Add(new Marker(name, transform.position, MarkerKind.LootSpawn));
+                        markers.Add(new Marker(name, transform.position, MarkerKind.ReachProbe));
                     }
                     else if (name.StartsWith("PlayerSpawn", StringComparison.Ordinal))
                     {
@@ -1243,11 +1259,12 @@ namespace HorrorGame.EditorTools.SceneGen
         /// <summary>What kind of place a marker is, for counting the report by category.</summary>
         public enum MarkerKind
         {
-            /// <summary>§12 후보 지점.</summary>
-            CandidateSite,
-
-            /// <summary>§08 전리품 spawn.</summary>
-            LootSpawn,
+            /// <summary>
+            /// 도달 지점 — one per graph leaf and one per band rail. Replaces the two kinds
+            /// this enum used to have, <c>CandidateSite</c> (§12's 후보 지점) and
+            /// <c>LootSpawn</c> (§08's 전리품), at exactly the same cells.
+            /// </summary>
+            ReachProbe,
 
             /// <summary>Where a player's body starts the match.</summary>
             PlayerSpawn,
@@ -1767,17 +1784,11 @@ namespace HorrorGame.EditorTools.SceneGen
             /// <summary>Where that was.</summary>
             public Vector3 MinClearanceAt { get; internal set; }
 
-            /// <summary>후보 지점 reached / found.</summary>
-            public int SitesReached { get; private set; }
+            /// <summary>도달 지점 reached.</summary>
+            public int ProbesReached { get; private set; }
 
-            /// <summary>후보 지점 found.</summary>
-            public int Sites { get; private set; }
-
-            /// <summary>전리품 spawns reached / found.</summary>
-            public int LootReached { get; private set; }
-
-            /// <summary>전리품 spawns found.</summary>
-            public int Loot { get; private set; }
+            /// <summary>도달 지점 found.</summary>
+            public int Probes { get; private set; }
 
             /// <summary>Player spawns reached.</summary>
             public int SpawnsReached { get; private set; }
@@ -1855,11 +1866,14 @@ namespace HorrorGame.EditorTools.SceneGen
             /// <item><c>!StartsSynthesised</c> — a scene with no PlayerSpawn was measured
             /// from the 출입구, which is the old question. It may be worth reading; it is
             /// not a pass.</item>
-            /// <item><c>Sites &gt; 0</c> — §12 counts 후보 지점 and a map with none is a map
-            /// whose per-storey evidence does not exist.</item>
-            /// <item><c>Unreachable.Count == 0</c> — every 후보 지점 and 전리품 probe is on
-            /// ground a runner can get into. §12's 막힌 길 are a fifth of each floor and
-            /// these markers are the only probes on them.</item>
+            /// <item><c>Probes &gt; 0</c> — a building with no 도달 지점 has no per-storey
+            /// evidence at all, and this clause is what stops PlayerReach passing an empty
+            /// scan. It is the load-bearing half of the probe rename: if the generator's
+            /// prefix and this file's ever disagree, THIS is the clause that goes red
+            /// instead of the audit reporting a cheerful 100 % over nothing.</item>
+            /// <item><c>Unreachable.Count == 0</c> — every 도달 지점 is on ground a runner
+            /// can get into. §12's 막힌 길 are a fifth of each floor and these markers are
+            /// the only probes on them.</item>
             /// <item><c>RoutesUsable == Routes.Count</c> and no orphans — a 투하구 that drops
             /// a runner into rock is not caught by any clause above, because both its
             /// storeys stay reachable through the other chute of the pair. §01 hangs two
@@ -1882,7 +1896,7 @@ namespace HorrorGame.EditorTools.SceneGen
                 && !StartsSynthesised
                 && StartsThatFinish == Starts
                 && FinishReached
-                && Sites > 0
+                && Probes > 0
                 && Unreachable.Count == 0
                 && RoutesUsable == Routes.Count
                 && OrphanRoutes.Count == 0;
@@ -2014,19 +2028,11 @@ namespace HorrorGame.EditorTools.SceneGen
             {
                 switch (kind)
                 {
-                    case MarkerKind.CandidateSite:
-                        Sites++;
+                    case MarkerKind.ReachProbe:
+                        Probes++;
                         if (reached)
                         {
-                            SitesReached++;
-                        }
-
-                        break;
-                    case MarkerKind.LootSpawn:
-                        Loot++;
-                        if (reached)
-                        {
-                            LootReached++;
+                            ProbesReached++;
                         }
 
                         break;
@@ -2234,8 +2240,7 @@ namespace HorrorGame.EditorTools.SceneGen
                             : string.Empty));
                 }
 
-                sb.AppendLine("  후보 지점         " + SitesReached + "/" + Sites);
-                sb.AppendLine("  전리품 spawns     " + LootReached + "/" + Loot);
+                sb.AppendLine("  도달 지점         " + ProbesReached + "/" + Probes);
 
                 // Not a tautology even though the flood is seeded from these. A start seeded
                 // from a spot the capsule cannot stand in has no pocket, so it contributes
@@ -2456,9 +2461,9 @@ namespace HorrorGame.EditorTools.SceneGen
                     return "a 투하구 is broken at one end";
                 }
 
-                if (Sites == 0)
+                if (Probes == 0)
                 {
-                    return "no 후보 지점, so §12 has no per-storey evidence";
+                    return "no 도달 지점, so there is no per-storey evidence at all";
                 }
 
                 return Unreachable.Count + " markers no runner can reach";

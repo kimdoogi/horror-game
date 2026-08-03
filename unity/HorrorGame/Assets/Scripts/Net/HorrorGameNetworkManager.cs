@@ -275,10 +275,11 @@ namespace HorrorGame.Net
         /// <inheritdoc />
         public override void OnStopServer()
         {
-            // The answers die with the session. §13 keeps them host-side; leaving them
-            // installed across sessions would let a second match start already knowing
-            // the first one's objective, which is the same leak by a slower route.
-            HostSecrets.Clear();
+            // DELETED with §03: HostSecrets.Clear(). §13 kept the clue chain's answers
+            // host-side and this wiped them between sessions so a second match could not
+            // start already knowing the first one's objective. There is no objective and
+            // no answer — a race announces its destination at the start, to everybody, on
+            // purpose.
             _lobby = null;
 
             // The ring belongs to the building this session ran in. Mirror's start

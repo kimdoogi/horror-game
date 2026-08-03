@@ -13,11 +13,10 @@ namespace HorrorGame.UI
     /// <para>
     /// <b>Why an interface and not <c>RaceDirector</c> itself.</b> The director is a
     /// <c>MonoBehaviour</c> in the default assembly, and the default assembly
-    /// references <c>HorrorGame.UI</c> rather than the other way round — the same
-    /// one-way arrangement that lets <c>MatchHud</c> drive <c>HudScreen</c>. Naming
-    /// the concrete type here would either invert that arrow or drag Mirror into a
-    /// layer that <c>UiScreen</c>'s remarks deliberately keep clean of it. The
-    /// director implements this; the screen never learns which class did.
+    /// references <c>HorrorGame.UI</c> rather than the other way round. Naming the
+    /// concrete type here would either invert that arrow or drag Mirror into a layer
+    /// that <c>UiScreen</c>'s remarks deliberately keep clean of it. The director
+    /// implements this; the screen never learns which class did.
     /// </para>
     /// <para>
     /// <b>Every member is a reading, never a request.</b> §02 puts arrival judgement
@@ -57,13 +56,13 @@ namespace HorrorGame.UI
         /// <summary>
         /// Seconds since the twenty of them left the rim of B1.
         /// <para>
-        /// This is the race clock, not §07's 시각. §07 gates the hour behind the
-        /// surface and a 회중시계 so that the team cannot feel the threat tier
-        /// climbing; the pivot deleted both the surface trip and the shop, but it did
-        /// not delete the gate — <c>ClockReadout</c> still owns it and this property
-        /// must never be wired to <c>MatchClock</c>. What a runner is allowed to know
-        /// is how long they personally have been running, which they would know
-        /// anyway from having stood on a starting line.
+        /// This is the race clock and it is now the only clock in the game. §07's 시각
+        /// — the night phase, gated behind the surface and a 회중시계 so the team could
+        /// not feel the threat tier climbing — went with the shop and the 왕복 in
+        /// DESCENT-PIVOT §7 step 7, and <c>ClockReadout</c>, the readout that enforced
+        /// the gate, was deleted with it. Nothing is being hidden here any more: what a
+        /// runner is allowed to know is how long they have been running, which they
+        /// would know anyway from having stood on a starting line.
         /// </para>
         /// </summary>
         float ElapsedSeconds { get; }
@@ -213,8 +212,8 @@ namespace HorrorGame.UI
         }
 
         /// <summary>
-        /// False, for <c>HudScreen</c>'s reason: the player is looking through this at a
-        /// corridor and the mouse belongs to the camera (§05).
+        /// False. The player is looking through this at a corridor and the mouse belongs
+        /// to the camera (§05) — a raycaster here would eat the click that shuts a door.
         /// </summary>
         protected override bool Interactive
         {
@@ -230,10 +229,9 @@ namespace HorrorGame.UI
         /// <summary>
         /// Points the HUD at the race and shows it.
         /// <para>
-        /// Pull rather than push, matching <c>HudScreen.Bind</c>: the host's own screen
-        /// and offline play hand over the director directly, and a remote client is
-        /// given an implementation fed by whatever the host last said. Neither path
-        /// lets this class compute a standing.
+        /// Pull rather than push: the host's own screen and offline play hand over the
+        /// director directly, and a remote client is given an implementation fed by
+        /// whatever the host last said. Neither path lets this class compute a standing.
         /// </para>
         /// </summary>
         /// <param name="race">The race to read. Null is legal and hides the screen.</param>
@@ -451,9 +449,14 @@ namespace HorrorGame.UI
         }
 
         // ------------------------------------------------------------------
-        // The clock and the field count. Top right — HudScreen owns the top
-        // centre for §07 and both bottom corners, and two HUDs sharing a canvas
-        // order must not share a corner.
+        // The clock and the field count. Top right.
+        //
+        // The corner used to be forced: HudScreen held the top centre for §07's
+        // clock and both bottom corners for the battery, the load and the sprint,
+        // and two HUDs sharing a canvas order must not share a corner. HudScreen
+        // was deleted in DESCENT-PIVOT §7 step 7 and this is the only HUD left, so
+        // the corner is now a choice — kept, because the gauge owns the left edge
+        // and the standings hang directly under these two lines.
         // ------------------------------------------------------------------
 
         private void BuildClock(RectTransform root)

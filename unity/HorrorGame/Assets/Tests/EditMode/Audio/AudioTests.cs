@@ -87,13 +87,17 @@ namespace HorrorGame.Tests.EditMode.Audio
         {
             Assert.That(OcclusionProfile.Voice.FloorCutoffHz,
                 Is.GreaterThan(OcclusionProfile.ListenerChannel.FloorCutoffHz),
-                "§03 makes a spoken number the only way a clue leaves the room, so speech "
-                + "must keep its consonant band through a wall even though footsteps need not.");
+                "§13 gives the race proximity voice and §11 puts up to twenty runners in one "
+                + "building, so speech must keep its consonant band through a wall even though "
+                + "footsteps need not. The rule outlived its original reason — §03's 단서 that had "
+                + "to be spoken aloud, deleted 2026-08-03 — because what people now shout at each "
+                + "other through a door (「거기 문 닫혔어」) has to arrive as words.");
 
             Assert.That(OcclusionProfile.World.FloorCutoffHz,
                 Is.LessThan(OcclusionProfile.ListenerChannel.FloorCutoffHz),
-                "§04 makes wall penetration a mechanic for the Listener's channel only. A "
-                + "door hinge carries no information and may be filtered realistically.");
+                "wall penetration is a mechanic on the channel a player listens THROUGH a wall "
+                + "with — footsteps and the creature — and not on ambience. A door hinge carries "
+                + "no information and may be filtered realistically.");
         }
 
         [Test]

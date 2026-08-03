@@ -2,8 +2,6 @@
 
 using System.Collections.Generic;
 using HorrorGame.Audio;
-using HorrorGame.Core.Clues;
-using HorrorGame.Core.Economy;
 using HorrorGame.Core.Monster;
 using HorrorGame.Gameplay.Interaction;
 using HorrorGame.Gameplay.Match;
@@ -18,7 +16,7 @@ namespace HorrorGame.Gameplay.Audio
     /// and fires §03 · §08's one-shots off the edges in its state.
     /// <para>
     /// <b>Why it polls instead of subscribing.</b> Nothing in the match raises events —
-    /// <c>MatchDirector</c>, <c>ClueReader</c> and <c>PlayerFlashlight</c> all expose
+    /// <c>MatchDirector</c> and <c>PlayerFlashlight</c> both expose
     /// state and no notifications. Adding events would mean editing four systems this
     /// change does not own, and each new event would be a second place the same fact is
     /// written down. An edge detector over the state they already publish keeps the
@@ -61,19 +59,13 @@ namespace HorrorGame.Gameplay.Audio
 
         private MonsterStateId _previousMonsterState = MonsterStateId.Patrol;
         private bool _hasMonsterState;
-        private bool _hasPrevious;
         private bool _previousLit;
-        private bool _previousOnSurface;
-        private bool _previousShopOpen;
-        private bool _previousBatteryDead;
-        private bool _previousBatteryLow;
-        private bool _hasBattery;
-        private int _previousSpareCells;
-        private ClueReadState _previousClueState = ClueReadState.Idle;
-        private bool _hasEconomy;
-        private int _previousEarned;
-        private int _previousSpent;
-        private int _previousLootCount;
+        // DELETED: _hasPrevious, _previousOnSurface, _previousShopOpen,
+        // _previousBatteryDead, _previousBatteryLow, _hasBattery, _hasEconomy,
+        // _previousSpareCells, _previousEarned, _previousSpent, _previousLootCount.
+        // Eleven edge-detector fields for eleven cues nothing can raise any more:
+        // 지상, the shop, the battery and the wallet. _previousLit stays — the torch
+        // still has a switch.
         private bool _floorProbeBound;
         private bool _landmarksPlaced;
 
@@ -183,10 +175,20 @@ namespace HorrorGame.Gameplay.Audio
         /// here also means one implementation of "where is a zone" instead of two.
         /// </para>
         /// <para>
-        /// The zone position is the centroid of that zone's §12 candidate sites. Those
-        /// are the markers the generator actually emits and they are by definition
-        /// spread through the zone; a room's true centre would be better and nothing in
-        /// the scene knows where that is.
+        /// <b>The zone position used to be the centroid of that zone's §12 후보 지점</b>,
+        /// which were deleted with §03. On the descent tower a 구역 IS a storey — 
+        /// <c>DescentMap.Build</c> calls <c>AddZone</c> once per level — and the creature
+        /// starts are exactly one per storey, carrying the zone name, so
+        /// <c>MonsterSpawns</c> gives one point per zone by construction.
+        /// </para>
+        /// <para>
+        /// It is a worse centroid and an honest one. A creature start is the place
+        /// furthest by walking from the finish, so it sits out on the rim rather than in
+        /// the middle of the floor. That matters less than it sounds: the hum's job is to
+        /// say WHICH storey you are on, it carries
+        /// <c>AudioTuning.DefaultWorldAudibleRange</c>, and a 57.5 m storey is inside it
+        /// from anywhere. If a floor ever wants a hum at its middle, the finish-style
+        /// marker is the thing to add — not a second opinion computed here.
         /// </para>
         /// </summary>
         private void PlaceLandmarks(MatchAudioRig rig)
@@ -204,10 +206,13 @@ namespace HorrorGame.Gameplay.Audio
 
             _landmarksPlaced = true;
 
-            rig.PlaceLandmark(map.Entrance, generator: true, label: "surface");
+            // DELETED with the light economy: the generator landmark. It played
+            // AmbienceLibrary.GeneratorLoop at map.Entrance — the 지상 발전기 that recharged
+            // §03's cells, which is why it was the loudest thing on the surface and why it
+            // sat at the way out. There is no surface, no generator and no cell.
 
             var byZone = new Dictionary<string, List<Vector3>>();
-            var sites = map.CandidateSites;
+            var sites = map.MonsterSpawns;
 
             for (var i = 0; i < sites.Count; i++)
             {
@@ -317,70 +322,15 @@ namespace HorrorGame.Gameplay.Audio
             rig.ElapsedSeconds = director.Clock.ElapsedSeconds;
             rig.TimeIsReadable = director.Clock.IsTimeReadable;
 
-            var onSurface = director.LocalPlayerOnSurface;
-            rig.OnSurface = onSurface;
-
-            if (!_hasPrevious)
-            {
-                _hasPrevious = true;
-                _previousOnSurface = onSurface;
-                _previousShopOpen = director.ShopOpen;
-                _previousClueState = director.ClueReader.State;
-                return;
-            }
-
-            if (onSurface != _previousOnSurface)
-            {
-                _previousOnSurface = onSurface;
-                rig.Play(onSurface ? AudioCueId.SurfaceReached : AudioCueId.Descend);
-            }
-
-            var shopOpen = director.ShopOpen;
-            if (shopOpen != _previousShopOpen)
-            {
-                _previousShopOpen = shopOpen;
-                rig.Play(shopOpen ? AudioCueId.ShopOpen : AudioCueId.ShopClose);
-            }
-
-            PushClue(rig, director.ClueReader);
-            PushEconomy(rig, director);
+            // DELETED with §01's 지상 and §08's shop: the 표면 edge (surface_reached /
+            // descend), the shop open/close edge, and the two calls below them. There is no
+            // surface to come back up to — the race starts on the rim of B1 and ends in the
+            // middle of B8 — and no shop to open. A cue that no state can raise is dead
+            // audio wearing a green test.
         }
-
-        /// <summary>
-        /// §03's read, as two sounds.
-        /// <para>
-        /// Both edges matter and they are not symmetrical. The success is the only
-        /// confirmation a player gets that the memorising starts now — §03 forbids
-        /// writing it down, so there is no artefact to look at. The failure has to be
-        /// unmistakable for the opposite reason: §03 says the progress is <em>gone</em>,
-        /// not paused, and a player who thinks they are still counting will stand in the
-        /// dark believing they are working.
-        /// </para>
-        /// </summary>
-        private void PushClue(MatchAudioRig rig, ClueReader reader)
-        {
-            var state = reader.State;
-            if (state == _previousClueState)
-            {
-                return;
-            }
-
-            var previous = _previousClueState;
-            _previousClueState = state;
-
-            if (state == ClueReadState.Complete)
-            {
-                rig.Play(AudioCueId.ClueReadSuccess);
-                return;
-            }
-
-            // Only from Reading: dropping out of Idle or out of a completed read is not
-            // a failure, and playing the sting for it would teach the player to ignore it.
-            if (state == ClueReadState.Interrupted && previous == ClueReadState.Reading)
-            {
-                rig.Play(AudioCueId.ClueReadFailed);
-            }
-        }
+        // DELETED with §03: PushClue(MatchAudioRig, ClueReader). It turned the read state
+        // machine into two sounds — clue_read_success on Complete, clue_read_failed when a
+        // read in progress was interrupted. There is nothing to read.
 
         private void PushFlashlight(MatchAudioRig rig)
         {
@@ -399,132 +349,14 @@ namespace HorrorGame.Gameplay.Audio
                 rig.Play(lit ? AudioCueId.FlashlightOn : AudioCueId.FlashlightOff);
             }
 
-            var battery = state.Battery;
-
-            var dead = battery.IsDead;
-            if (dead != _previousBatteryDead)
-            {
-                _previousBatteryDead = dead;
-                if (dead)
-                {
-                    rig.Play(AudioCueId.BatteryDead);
-                }
-            }
-
-            // A spare going away is a cell being fitted, and it is the only edge that
-            // catches every case: swapping a half-used cell never touches IsDead, and
-            // §03's round trip exists precisely so that a player tops up before the dark
-            // arrives rather than after.
-            if (!_hasBattery)
-            {
-                _hasBattery = true;
-                _previousSpareCells = battery.SpareCells;
-            }
-            else if (battery.SpareCells < _previousSpareCells)
-            {
-                _previousSpareCells = battery.SpareCells;
-                rig.Play(AudioCueId.BatteryInsert);
-            }
-            else
-            {
-                _previousSpareCells = battery.SpareCells;
-            }
-
-            var low = !dead && battery.Charge <= AudioTuning.BatteryWarningSeconds;
-            if (low != _previousBatteryLow)
-            {
-                _previousBatteryLow = low;
-                if (low)
-                {
-                    rig.Play(AudioCueId.BatteryLow);
-                }
-            }
-        }
-
-        /// <summary>
-        /// §08's loot and the shared wallet, from the two monotone counters the economy
-        /// already keeps.
-        /// <para>
-        /// <c>TotalEarned</c> and <c>TotalSpent</c> only ever rise, so an edge on them is
-        /// unambiguous in a way a credit balance is not — selling 40 and buying 40 in the
-        /// same frame leaves <c>Credits</c> untouched and both of those counters moved.
-        /// </para>
-        /// <para>
-        /// <b>A refused purchase makes no sound and cannot yet.</b> §08's
-        /// <c>PurchaseOutcome</c> is returned to the caller and never stored, so there is
-        /// no state to detect the edge in. <c>shop_denied.wav</c> is wired into the cue
-        /// table and waiting for whoever owns the shop screen to call
-        /// <see cref="MatchAudioRig.Play"/> with it — a sound with no trigger is a
-        /// smaller problem than a bridge that guesses.
-        /// </para>
-        /// </summary>
-        private void PushEconomy(MatchAudioRig rig, MatchDirector director)
-        {
-            var wallet = director.Shop.Wallet;
-
-            if (!_hasEconomy)
-            {
-                _hasEconomy = true;
-                _previousEarned = wallet.TotalEarned;
-                _previousSpent = wallet.TotalSpent;
-                _previousLootCount = LocalLootCount();
-                return;
-            }
-
-            if (wallet.TotalEarned > _previousEarned)
-            {
-                _previousEarned = wallet.TotalEarned;
-                rig.Play(AudioCueId.LootSell);
-            }
-
-            if (wallet.TotalSpent > _previousSpent)
-            {
-                _previousSpent = wallet.TotalSpent;
-                rig.Play(AudioCueId.ShopPurchase);
-            }
-
-            var pockets = PlayerInteractor.Active != null ? PlayerInteractor.Active.Pockets : null;
-            var count = pockets != null ? pockets.LootCount : 0;
-
-            if (count > _previousLootCount && pockets != null)
-            {
-                // The newest piece is the one that was just added; §08's pieces differ by
-                // material as well as by weight, and a 궤짝 that sounded like a 은수저
-                // would undersell the decision the player just made.
-                rig.Play(CueForLoot(pockets.Loot[count - 1]));
-            }
-
-            _previousLootCount = count;
-        }
-
-        private int LocalLootCount()
-        {
-            var pockets = PlayerInteractor.Active != null ? PlayerInteractor.Active.Pockets : null;
-            return pockets != null ? pockets.LootCount : 0;
-        }
-
-        /// <summary>
-        /// §08's four pieces, by what they are made of.
-        /// <para>
-        /// The mapping is the design's own descriptions, not a guess: 은수저 · 잡동사니
-        /// is metal, 회중시계 · 반지 is the jewel set, 금고 속 문서 is paper, and
-        /// 대형 초상화 · 궤짝 is the heavy wooden one. §08 says the 궤짝 "exists to
-        /// create one scene", and it should sound like the piece that does.
-        /// </para>
-        /// </summary>
-        private static AudioCueId CueForLoot(LootId loot)
-        {
-            switch (loot)
-            {
-                case LootId.Timepiece:
-                    return AudioCueId.LootPickupGlass;
-                case LootId.SafeDocument:
-                    return AudioCueId.LootPickupPaper;
-                case LootId.LargePiece:
-                    return AudioCueId.LootPickupHeavy;
-                default:
-                    return AudioCueId.LootPickupMetal;
-            }
+            // DELETED with the light economy: everything below the on/off edge. Three
+            // cues hung off BatteryState — battery_dead when the charge ran out,
+            // battery_insert on a spare going away (the only edge that caught a half-used
+            // cell being swapped), and battery_low under AudioTuning.BatteryWarningSeconds.
+            //
+            // The torch has no cell, so the switch is the only thing left that can make a
+            // sound, and it is the whole of §03 that survives here: light is free, and
+            // being seen is what it costs.
         }
     }
 }

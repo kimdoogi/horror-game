@@ -44,8 +44,6 @@ namespace HorrorGame.Net
         /// </summary>
         bool FlashlightOn { get; }
 
-        /// <summary>§05's 운반 상태 row.</summary>
-        NetCarryState Carry { get; }
 
         /// <summary>
         /// Sprint stamina, 0–1, exact. §05: "스태미나 (주자) — 본인만 정확히,

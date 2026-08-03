@@ -2,7 +2,6 @@
 
 using HorrorGame.Core;
 using HorrorGame.Core.Movement;
-using HorrorGame.Core.Roles;
 using UnityEngine;
 
 namespace HorrorGame.Gameplay.Player
@@ -40,18 +39,24 @@ namespace HorrorGame.Gameplay.Player
         [SerializeField]
         private PlayerLook? _look;
 
-        [Tooltip("Supplies §08's load multiplier. Left empty, found on this object.")]
-        [SerializeField]
-        private PlayerLoadout? _loadout;
-
         [Tooltip("Owns 웅크리기 and the hop. Optional — a rig without one stands up and never leaves the floor.")]
         [SerializeField]
         private PlayerStance? _stance;
 
-        [Header("Role")]
-        [Tooltip("§04. Only the Runner's Shift buys 질주 5.6; everyone else gets 달리기 4.5.")]
-        [SerializeField]
-        private RoleId _role = RoleId.Runner;
+        // DELETED: _loadout (§08's carry weight) and _role (§04's five 직업).
+        //
+        // Both were gates on 질주. §04 gave Shift's 5.6 m/s to the Runner alone and §08
+        // took it away again at weight ≥ 16, so a rig's top speed depended on a role it
+        // was assigned and a bag it was carrying. Twenty identical runners race down the
+        // same building carrying nothing, so both gates answer the same way for everyone,
+        // every frame — and a gate that never varies is not a gate, it is an opportunity
+        // to be wrong. SprintUnlocked is now unconditional and the load multiplier is
+        // pinned at 1.
+        //
+        // ARCHITECTURE §3's seam is what made this a deletion rather than a rewrite:
+        // MovementContext takes a float and StaminaState takes a bool, so the motor never
+        // imported the economy in the first place. Removing the economy changed the
+        // arguments, not the movement.
 
         private CharacterController? _controller;
         private readonly StaminaState _stamina = new StaminaState();
@@ -72,13 +77,6 @@ namespace HorrorGame.Gameplay.Player
         public StaminaState Stamina
         {
             get { return _stamina; }
-        }
-
-        /// <summary>§04 role. Set by the match layer at spawn; changing it mid-match is a §11 violation, not a feature.</summary>
-        public RoleId Role
-        {
-            get { return _role; }
-            set { _role = value; }
         }
 
         /// <summary>The intent the last step ran on, sanitised. What the Mirror layer sends and what telemetry buckets.</summary>
@@ -201,17 +199,24 @@ namespace HorrorGame.Gameplay.Player
         public bool SteppedExternally { get; set; }
 
         /// <summary>
-        /// Whether Shift can buy 질주 right now: §04 gives it to the Runner alone, §08
-        /// takes it away at weight ≥ 16, and §03 takes it away while the objective is in
-        /// hand.
+        /// Whether Shift can buy 질주 right now. Always true.
+        /// <para>
+        /// It used to be «§04 gives it to the Runner alone, §08 takes it away at weight
+        /// ≥ 16, §03 takes it away while the objective is in hand» — three gates, all of
+        /// whose subjects are deleted. Every one of twenty runners has 질주 and nothing to
+        /// carry, so the only thing still rationing sprint is
+        /// <see cref="StaminaState"/>'s twelve seconds, which is where §06 wanted the
+        /// decision all along.
+        /// </para>
+        /// <para>
+        /// Kept as a property rather than folded into the call sites because it is the
+        /// sentence «can this player sprint», and the next thing that wants to say no —
+        /// exhaustion, a shut door, an injury — should have somewhere to say it.
+        /// </para>
         /// </summary>
         public bool SprintUnlocked
         {
-            get
-            {
-                var load = ResolveLoad();
-                return _role == RoleId.Runner && load.CanSprint && !load.CarryingObjective;
-            }
+            get { return true; }
         }
 
         /// <summary>
@@ -311,12 +316,13 @@ namespace HorrorGame.Gameplay.Player
             }
 
             var context = BuildContext();
-            var sprintUnlocked = _role == RoleId.Runner && !context.CarryingObjective && CanSprintUnderLoad();
+            var sprintUnlocked = SprintUnlocked;
 
-            // The bar is only asked for sprint when a sprint could actually be granted.
-            // StaminaState honours any request it can afford, so letting a non-Runner ask
-            // would drain 12 seconds of a bar that buys them nothing — and §06 sizes that
-            // bar by the distance it covers.
+            // The guard survives even though sprintUnlocked is now constant: the bar is
+            // only asked for a sprint that could actually be granted. It mattered when a
+            // non-Runner asking would drain 12 seconds that bought them nothing; it is
+            // kept so that the next thing to close SprintUnlocked does not have to
+            // rediscover that StaminaState honours any request it can afford.
             _stamina.SprintRequested = sanitized.SprintHeld && !sanitized.IsIdle && sprintUnlocked;
             _stamina.Tick(deltaSeconds);
 
@@ -456,11 +462,6 @@ namespace HorrorGame.Gameplay.Player
                 _look = GetComponentInChildren<PlayerLook>();
             }
 
-            if (_loadout == null)
-            {
-                _loadout = GetComponentInChildren<PlayerLoadout>();
-            }
-
             if (_stance == null)
             {
                 _stance = GetComponent<PlayerStance>();
@@ -483,7 +484,6 @@ namespace HorrorGame.Gameplay.Player
         {
             _input = GetComponentInChildren<PlayerInputRouter>();
             _look = GetComponentInChildren<PlayerLook>();
-            _loadout = GetComponentInChildren<PlayerLoadout>();
             _stance = GetComponent<PlayerStance>();
         }
 
@@ -499,41 +499,30 @@ namespace HorrorGame.Gameplay.Player
 
         private MovementContext BuildContext()
         {
-            var load = ResolveLoad();
-
-            // bagEquipped stays false on purpose. Inventory.SpeedMultiplier is
-            // CarryLoad.Resolve(weight, bag), which has already applied §08's −10% strap
-            // penalty; setting the flag here would apply it a second time and quietly cost
-            // the player another 10% of every speed in §05's table.
+            // The load term is now the stance alone. It used to be
+            // Inventory.SpeedMultiplier × stance, where the inventory term was
+            // CarryLoad.Resolve(weight, bag) — §08's carry-weight bands. With nothing to
+            // carry that factor is 1 at every moment of every race, so the stance is the
+            // whole multiplier and 웅크리기 is the only thing that slows a runner down.
             //
-            // The stance rides in on the same term, and that is the composition rule
-            // rather than a shortcut. §08 states it for every penalty at once —
-            // "§05 배율에 곱연산으로 적용된다" — and SpeedResolver.ContextMultiplier is
-            // exactly that product. Multiplying the crouch into it puts 웅크리기 on the
-            // same rail as the carry weight, the bag and the objective: it composes with
-            // §05's directional curve instead of being a branch that skips it, so a
-            // player crouching backwards still pays 후진's 65 % on top.
+            // The composition rule it rode in on is unchanged and is why the crouch is
+            // still multiplied in here rather than branched around: §08 stated it for
+            // every penalty at once — "§05 배율에 곱연산으로 적용된다" — and
+            // SpeedResolver.ContextMultiplier is exactly that product. A player crouching
+            // backwards still pays 후진's 65 % on top.
+            //
+            // bagEquipped stays false, now trivially: there is no bag.
             return new MovementContext(
                 GameConstants.WalkSpeed,
-                load.SpeedMultiplier * StanceMultiplier(),
-                load.CarryingObjective,
+                StanceMultiplier(),
+                carryingObjective: false,
                 bagEquipped: false);
-        }
-
-        private bool CanSprintUnderLoad()
-        {
-            return ResolveLoad().CanSprint;
         }
 
         /// <summary>§05's stance multiplier, or the identity on a rig with no stance component.</summary>
         private float StanceMultiplier()
         {
             return _stance != null ? _stance.SpeedMultiplier : 1f;
-        }
-
-        private IPlayerLoad ResolveLoad()
-        {
-            return _loadout != null ? (IPlayerLoad)_loadout : UnloadedPlayerLoad.Instance;
         }
 
         private void ApplyGravity(float deltaSeconds)
@@ -555,47 +544,6 @@ namespace HorrorGame.Gameplay.Player
             }
 
             _verticalVelocity += Physics.gravity.y * deltaSeconds;
-        }
-    }
-
-    /// <summary>
-    /// The load of a player carrying nothing. Used when no <see cref="PlayerLoadout"/> is
-    /// wired, so a bare test rig moves at §05's quoted speeds instead of at zero — a
-    /// default-constructed <c>MovementContext</c> has a load multiplier of 0 and does not
-    /// move at all, which is a deliberate trap in the core and a bad first impression in a
-    /// harness.
-    /// </summary>
-    internal sealed class UnloadedPlayerLoad : IPlayerLoad
-    {
-        internal static readonly UnloadedPlayerLoad Instance = new UnloadedPlayerLoad();
-
-        private UnloadedPlayerLoad()
-        {
-        }
-
-        /// <inheritdoc />
-        public float SpeedMultiplier
-        {
-            // 1 is the identity, not a tuned value: empty hands are §05's table unmodified.
-            get { return 1f; }
-        }
-
-        /// <inheritdoc />
-        public bool CanSprint
-        {
-            get { return true; }
-        }
-
-        /// <inheritdoc />
-        public bool CarryingObjective
-        {
-            get { return false; }
-        }
-
-        /// <inheritdoc />
-        public bool CarryingOversizePiece
-        {
-            get { return false; }
         }
     }
 }

@@ -8,12 +8,12 @@ namespace HorrorGame.UI
     /// <summary>
     /// A one-dimensional meter: a bed, a fill, and nothing else.
     /// <para>
-    /// Every quantity the HUD shows is a fraction of something the player is
-    /// spending — a cell of battery (§03), a Runner's twelve seconds (§06), a
-    /// ghost's forty-five (§09). They are drawn by the same widget on purpose: a
-    /// player learns "the bar shrinking is a thing running out" once, and §01's
-    /// promise that the four players share the same senses is easier to keep when
-    /// the interface has one vocabulary rather than five.
+    /// Every quantity a bar shows is a fraction of something the player is waiting
+    /// for or spending — a scene loading, a ghost's forty-five seconds (§09), an
+    /// interaction being held. They are drawn by the same widget on purpose: a player
+    /// learns "the bar moving is a thing running out" once, and §11's promise that all
+    /// twenty runners share one body is easier to keep when the interface has one
+    /// vocabulary rather than five.
     /// </para>
     /// <para>
     /// Not a <c>MonoBehaviour</c>. It is a handle onto two <c>Image</c>s built at
@@ -84,9 +84,9 @@ namespace HorrorGame.UI
         /// <see cref="UiStyle.BarBed"/> is nearly invisible on purpose — on the HUD a
         /// meter's bed would be one more lit thing in a dark corridor, and a bar that
         /// is only its fill still reads because it is shrinking in front of you. On a
-        /// panel that is not true: §08's shop draws §07's night as a single wide bar
-        /// that barely moves while the team argues, and with an invisible bed a
-        /// nearly-full one is indistinguishable from a horizontal rule.
+        /// full-screen panel that is not true: a bar that barely moves while the player
+        /// reads the rest of the screen is, with an invisible bed, indistinguishable
+        /// from a horizontal rule.
         /// </para>
         /// </summary>
         public void SetBedColor(Color color)

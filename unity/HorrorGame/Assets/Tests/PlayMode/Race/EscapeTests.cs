@@ -1087,9 +1087,9 @@ namespace HorrorGame.Tests.PlayMode.Racing
 
             yield return null;
 
-            Assert.That(director.RaceMode, Is.True,
-                "§01's race is gated behind MatchDirector.RaceMode and it is off in this scene. What would be "
-                + "measured below is the co-operative recovery map, which is not the tower this test is about.");
+            // DELETED: the RaceMode guard. The race used to be a flag with the co-op
+            // recovery match on the other side of it; that path is deleted and BeginMatch
+            // has only one thing it can start. The 14336-shove sweep below is untouched.
 
             // ── §06 out of the way, all of it ───────────────────────────────────
             // Same reason DescentPlaythroughTests destroys them and the same plural: §12-B③
@@ -1166,6 +1166,32 @@ namespace HorrorGame.Tests.PlayMode.Racing
             // guard in the sweep is the belt to this braces — if the match stops anyway, the
             // test says so rather than reporting a number.
             race.TimeoutSeconds = MatchTimeAllowanceSeconds;
+
+            // ── §02's finish, moved out of the way for the same reason as its clock ──
+            // NEW on 2026-08-03, and it is here because a real bug was fixed rather than
+            // because a test became inconvenient. Chute.DropHeightMetres was 3.0 m, which
+            // stood a 1.75 m body inside a 3.00 m slab; CharacterController pushed it out
+            // the short way, which at a storey seam is UP, and 0 of 238 swallowed runners
+            // ever ended up on the floor below. The drop is now ½gt² = 1.226 m and they
+            // land — so this sweep, which teleports one body across all 14 투하구 in turn,
+            // now genuinely descends, arrives in the middle of B8 within four crossings,
+            // and FINISHES. §02 then closes the race with one finisher of a field of one,
+            // MatchDirector ends the match, and StepMatch becomes a no-op on its first
+            // line with roughly 440 crossings unmeasured.
+            //
+            // Untrack is §02's own word for "this body is not a competitor" — RaceDirector
+            // calls it itself the moment a runner finishes or is caught, so that §09's
+            // ghost drifting through the middle of B8 is not measured against the finish.
+            // A body being warped to a chute mouth every three seconds is not racing
+            // either. Everything else about the race stays wired: the storey record, the
+            // creature, the doors, the chutes and CheckChutes all still run, which is the
+            // whole subject here.
+            //
+            // What this does NOT do is hide a failure. The IsRunning guard inside the
+            // sweep is untouched and still fails the test if the match stops for any
+            // reason at all; this removes one specific, understood, non-geometric reason
+            // for it to stop.
+            race.Untrack(director.LocalPlayerIndex);
 
             director.enabled = stepTheMatch;
 

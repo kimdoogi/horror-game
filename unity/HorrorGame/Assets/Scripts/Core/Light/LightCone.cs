@@ -6,27 +6,34 @@ namespace HorrorGame.Core.Light
     /// A flashlight beam as a piece of geometry: where it starts, where it points, how
     /// far it reaches and how wide it opens.
     /// <para>
-    /// Separated from <see cref="FlashlightState"/> so that both halves of §03's switch
-    /// read the same beam. The clue system asks "is this mark inside it and how brightly"
-    /// and the perception system asks "how much of the room is this painting" — if those
-    /// were two structs, §03's "목표와 위험이 같은 스위치에 걸린다" would survive as a
-    /// sentence and die as code.
+    /// Separated from <see cref="FlashlightState"/> so that anything asking what the beam
+    /// is touching gets the same answer as anything asking where the beam is pointed.
     /// </para>
     /// <para>
-    /// The beam is a full 3D cone, not a flat one. §05 requires camera pitch on the wire
-    /// — "바닥·천장을 비추는 것도 신호" — so pointing at the floor has to be a different
-    /// beam from pointing down the corridor.
+    /// The beam is a full 3D cone, not a flat one. Camera pitch is on the wire —
+    /// "바닥·천장을 비추는 것도 신호" — so pointing at the floor has to be a different beam
+    /// from pointing down the corridor.
+    /// </para>
+    /// <para>
+    /// <b>It has no consumer at the moment, and that is worth stating rather than
+    /// hiding.</b> Its readers were §03's clue system ("is this mark lit enough to read")
+    /// and a <c>LightRules.Visibility</c> term that fed the creature's perception. The
+    /// clue chain is deleted and the creature has never actually read a light term — its
+    /// <c>CanSee</c> is sight range, half-angle and line-of-sight, nothing more. This
+    /// struct survives because it is the honest description of the torch the runner still
+    /// carries, not because something calls it; if the creature is ever taught to see
+    /// light, this is the shape that answer comes in.
     /// </para>
     /// </summary>
     public readonly struct LightCone
     {
-        /// <summary>The player's light, at eye height.</summary>
+        /// <summary>The runner's light, at eye height.</summary>
         public readonly Vec3 Origin;
 
-        /// <summary>Unit aim direction. §05: 마우스 방향 = 이동 방향, and it also aims the beam.</summary>
+        /// <summary>Unit aim direction. 마우스 방향 = 이동 방향, and it also aims the beam.</summary>
         public readonly Vec3 Forward;
 
-        /// <summary>Reach in metres, after §08's upgrade and §07's 심야 penalty.</summary>
+        /// <summary>Reach in metres, after the time-of-night penalty.</summary>
         public readonly float RangeMetres;
 
         /// <summary>Half-angle in degrees. §03: 빛이 좁다.</summary>
@@ -47,8 +54,10 @@ namespace HorrorGame.Core.Light
         }
 
         /// <summary>
-        /// No beam. §03's 목표물 운반 rule — "양손을 쓴다 · 손전등을 들 수 없다" — and a
-        /// dead battery both resolve to this, and both must produce the same darkness.
+        /// No beam. What a switched-off torch resolves to. It used to also be what a flat
+        /// cell and a pair of hands full of 목표물 resolved to; both of those states are
+        /// gone with the battery and the carry system, so the switch is the only way here
+        /// now.
         /// </summary>
         public static LightCone None
         {
@@ -61,36 +70,12 @@ namespace HorrorGame.Core.Light
             get { return RangeMetres > 0f && HalfAngleDegrees > 0f && Forward.SqrMagnitude > 0f; }
         }
 
-        /// <summary>
-        /// Surface this beam paints, in square metres up to a constant factor: the area
-        /// of the spherical cap it cuts at its own range.
-        /// <para>
-        /// This is the honest measure of "how much light is loose in the room", and it is
-        /// what <see cref="LightRules.BeamConspicuousness"/> turns into §03's "괴물이 잘
-        /// 본다". It grows with reach and with spread, which is why §08 can sell reach as
-        /// a price as well as a reward, and why §07's 심야 penalty makes a player
-        /// slightly less conspicuous as well as slightly blinder.
-        /// </para>
-        /// <para>
-        /// The 2π of the real cap area is dropped: every use is a ratio against
-        /// <see cref="LightRules.ReferenceBeamFootprint"/>, so the constant cancels and
-        /// leaving it out keeps a squared metre count from overflowing into nonsense on a
-        /// misconfigured beam.
-        /// </para>
-        /// </summary>
-        public float LitFootprint
-        {
-            get
-            {
-                if (!IsLit)
-                {
-                    return 0f;
-                }
-
-                var spread = 1f - System.MathF.Cos(HalfAngleDegrees * MathX.Deg2Rad);
-                return RangeMetres * RangeMetres * spread;
-            }
-        }
+        // LitFootprint — the spherical-cap area this beam painted — was deleted with
+        // LightRules. Its only reader was LightRules.BeamConspicuousness, which turned it
+        // into a ratio against a reference footprint to price §08's 강화 손전등: buying
+        // reach also bought being noticed from further away. There is no shop and no
+        // upgrade, so there is no second beam size to compare against and nothing left for
+        // the number to mean.
 
         /// <summary>True when a point falls inside the beam at all.</summary>
         public bool Contains(Vec3 point)
@@ -99,8 +84,7 @@ namespace HorrorGame.Core.Light
         }
 
         /// <summary>
-        /// Light landing on a point, 0–1, for
-        /// <c>ClueReadContext.LightQuality</c>.
+        /// Light landing on a point, 0–1.
         /// <para>
         /// Falls off linearly to zero at the edge of the cone in both directions — with
         /// distance, and with angle off the axis. Both terms are normalised by the beam's
@@ -110,10 +94,10 @@ namespace HorrorGame.Core.Light
         /// cone, and re-tuning either moves the readable envelope with it.
         /// </para>
         /// <para>
-        /// The angular term is what makes §03's "빛이 좁다" a real obstacle. A mark at
-        /// 3 m — §03's <see cref="GameConstants.ClueReadRange"/> — is readable within
-        /// about 17° of the axis on an issued flashlight and unreadable beyond it, so a
-        /// player has to aim rather than stand in the room facing roughly the right way.
+        /// The angular term is what makes "빛이 좁다" a real obstacle: the useful part of
+        /// the beam is a good deal narrower than its nominal half-angle, so a runner has
+        /// to aim the torch at the gate they are running for rather than stand in the
+        /// corridor facing roughly the right way.
         /// </para>
         /// </summary>
         public float QualityAt(Vec3 point)

@@ -232,26 +232,31 @@ namespace HorrorGame.Core.Map
         /// <summary>"순환로가 맵 전체에 3개 이상 있다." (§12's 수치 규칙 adds 구역당 1+.)</summary>
         public const string RuleLoops = "loops";
 
-        /// <summary>"막힌 길 비율이 20~25%이고, 각각 보상이 있다."</summary>
+        /// <summary>"막힌 길 비율이 20~25%."</summary>
         public const string RuleDeadEnds = "dead-ends";
 
         /// <summary>"구역별 바닥 재질이 다르고 경계가 명확하다."</summary>
         public const string RuleFloorMaterials = "floor-materials";
 
-        /// <summary>"관측 지점이 구역당 1개 이상 있다."</summary>
-        public const string RuleObservationPosts = "observation-posts";
-
         /// <summary>"잠글 수 있는 문이 구역당 1~2개, 병목에 있다."</summary>
         public const string RuleLockableDoors = "lockable-doors";
-
-        /// <summary>"단서·목표물 후보가 구역당 3개, 모두 탈출로 2개 이상."</summary>
-        public const string RuleCandidateSites = "candidate-sites";
 
         /// <summary>"구역 간 진입점이 2~3개로 제한돼 있다."</summary>
         public const string RuleZoneEntryPoints = "zone-entry-points";
 
-        /// <summary>"출입구 근처에 은폐 지점이 있다 (§07 새벽 단계 대응)."</summary>
-        public const string RuleConcealmentNearExit = "concealment-near-exit";
+        // DELETED with §04's roles, §03's clue chain and the light economy — three §12
+        // checklist rules that were requirements OF systems that no longer exist:
+        //
+        //   RuleObservationPosts     "관측 지점이 구역당 1개 이상" — §12 관측자's window.
+        //   RuleCandidateSites       "단서·목표물 후보가 구역당 3개, 모두 탈출로 2개 이상",
+        //                            which also carried the 전기 패널 requirement, so the
+        //                            두 went together.
+        //   RuleConcealmentNearExit  "출입구 근처에 은폐 지점" for §07 새벽's ambush. It was
+        //                            ALREADY waived in MapSceneGenerator.KnownFailingRules
+        //                            as obsolete — this deletes the waiver's subject.
+        //
+        // A rule that counts places for a role nobody plays is not a weakened gate; it is
+        // a gate on a door that has been removed from the building.
 
         // ====================================================================
         // §12 수치 규칙 — the sizes the checklist assumes but does not restate.
@@ -295,11 +300,8 @@ namespace HorrorGame.Core.Map
                 CheckLoops(graph),
                 CheckDeadEnds(graph),
                 CheckFloorMaterials(graph),
-                CheckObservationPosts(graph),
                 CheckLockableDoors(graph),
-                CheckCandidateSites(graph),
                 CheckZoneEntryPoints(graph),
-                CheckConcealmentNearExit(graph),
                 CheckZoneCount(graph),
                 CheckZoneDiagonal(graph),
                 CheckMapExtent(graph),
@@ -731,7 +733,15 @@ namespace HorrorGame.Core.Map
         }
 
         // ====================================================================
-        // 5 — 막힌 길 비율이 20~25%이고, 각각 보상이 있다.
+        // 5 — 막힌 길 비율이 20~25%.
+        //
+        // The rule was "…이고, 각각 보상이 있다", and the 보상 half is DELETED with §08.
+        // §12 wanted a 전리품 in every dead end as "위험을 감수할 이유" — a reason to have
+        // risked walking in. A co-op looting game needed that because a wrong turn with
+        // nothing at the end of it was pure loss. A race does not: in 선착순, the cost of a
+        // 막힌 길 is the seconds it took, every other runner is spending theirs somewhere
+        // else at the same moment, and knowing which turns are wrong IS the reward.
+        // The ratio band survives untouched and is doing all the work it ever did.
         // ====================================================================
 
         private static MapValidationResult CheckDeadEnds(MapGraph graph)
@@ -739,13 +749,12 @@ namespace HorrorGame.Core.Map
             if (graph.Nodes.Length == 0)
             {
                 return new MapValidationResult(
-                    RuleDeadEnds, "막힌 길 비율이 20~25%이고, 각각 보상이 있다", false,
+                    RuleDeadEnds, "막힌 길 비율이 20~25%", false,
                     "The map has no places in it, so the 막힌 길 ratio is undefined. §12's band is a "
                     + "statement about a built map; an empty one cannot satisfy it.", true);
             }
 
             var deadEnds = new List<int>();
-            var unrewarded = new List<string>();
             for (var i = 0; i < graph.Nodes.Length; i++)
             {
                 if (!graph.IsDeadEnd(i))
@@ -754,16 +763,12 @@ namespace HorrorGame.Core.Map
                 }
 
                 deadEnds.Add(i);
-                if (graph.Nodes[i].DeadEndRewardValue <= 0)
-                {
-                    unrewarded.Add(graph.Nodes[i].Describe());
-                }
             }
 
             var ratio = deadEnds.Count / (float)graph.Nodes.Length;
             var inBand = ratio >= GameConstants.DeadEndRatioMin - MathX.Epsilon
                          && ratio <= GameConstants.DeadEndRatioMax + MathX.Epsilon;
-            var passed = inBand && unrewarded.Count == 0;
+            var passed = inBand;
 
             var detail = new StringBuilder();
             detail.Append("막힌 길: ").Append(deadEnds.Count).Append(" of ").Append(graph.Nodes.Length)
@@ -784,15 +789,8 @@ namespace HorrorGame.Core.Map
                               + "than a decision.");
             }
 
-            if (unrewarded.Count > 0)
-            {
-                detail.Append(" These 막힌 길 hold no 전리품 · 자재, so there is no reason to have walked "
-                              + "in: ").Append(string.Join(", ", unrewarded))
-                    .Append(". §12 requires a reward on each — \"위험을 감수할 이유\".");
-            }
-
             return new MapValidationResult(
-                RuleDeadEnds, "막힌 길 비율이 20~25%이고, 각각 보상이 있다", passed, detail.ToString(), true);
+                RuleDeadEnds, "막힌 길 비율이 20~25%", passed, detail.ToString(), true);
         }
 
         // ====================================================================
@@ -866,49 +864,6 @@ namespace HorrorGame.Core.Map
             return new MapValidationResult(
                 RuleFloorMaterials, "구역별 바닥 재질이 다르고 경계가 명확하다", passed, detail, true);
         }
-
-        // ====================================================================
-        // 7 — 관측 지점이 구역당 1개 이상 있다.
-        // ====================================================================
-
-        private static MapValidationResult CheckObservationPosts(MapGraph graph)
-        {
-            var missing = new List<string>();
-            var counts = new List<string>();
-            for (var z = 0; z < graph.Zones.Length; z++)
-            {
-                var posts = graph.NodesOfKindInZone(z, MapNodeKind.ObservationPost);
-                counts.Add(graph.Zones[z].Name + "=" + posts.Length);
-                if (posts.Length < GameConstants.ObservationPostsPerZoneMin)
-                {
-                    missing.Add(graph.Zones[z].Name);
-                }
-            }
-
-            var passed = graph.Zones.Length > 0 && missing.Count == 0;
-            string detail;
-            if (graph.Zones.Length == 0)
-            {
-                detail = "The map has no zones, so there is nowhere to require a 관측 지점.";
-            }
-            else if (passed)
-            {
-                detail = "관측 지점 per zone: " + string.Join(", ", counts) + ".";
-            }
-            else
-            {
-                detail = "No 관측 지점 in zone(s) " + string.Join(", ", missing)
-                         + ". §12 관측자: \"없으면 관측자는 죽으러 가야 한다\" — the ability needs the monster "
-                         + "inside " + Metres(GameConstants.ObserverRange) + " (§04) held still for "
-                         + Seconds(GameConstants.ObserverStillSeconds)
-                         + ", and standing that close on the floor is inside the monster's own "
-                         + Metres(GameConstants.MonsterSightRange) + " sight range.";
-            }
-
-            return new MapValidationResult(
-                RuleObservationPosts, "관측 지점이 구역당 1개 이상 있다", passed, detail, true);
-        }
-
         // ====================================================================
         // 8 — 잠글 수 있는 문이 구역당 1~2개, 병목에 있다.
         // ====================================================================
@@ -973,76 +928,6 @@ namespace HorrorGame.Core.Map
             return new MapValidationResult(
                 RuleLockableDoors, "잠글 수 있는 문이 구역당 1~2개, 병목에 있다", passed, detail, true);
         }
-
-        // ====================================================================
-        // 9 — 단서·목표물 후보가 구역당 3개, 모두 탈출로 2개 이상.
-        // ====================================================================
-
-        private static MapValidationResult CheckCandidateSites(MapGraph graph)
-        {
-            var problems = new List<string>();
-            var counts = new List<string>();
-
-            for (var z = 0; z < graph.Zones.Length; z++)
-            {
-                var sites = graph.NodesOfKindInZone(z, MapNodeKind.CandidateSite);
-                counts.Add(graph.Zones[z].Name + "=" + sites.Length);
-
-                if (sites.Length != GameConstants.CandidateSitesPerZone)
-                {
-                    problems.Add("zone " + graph.Zones[z].Name + " has " + sites.Length
-                                 + " candidate sites, not §12's " + GameConstants.CandidateSitesPerZone
-                                 + " — the objective is placed by choosing one per match (§03), so a zone with "
-                                 + "fewer narrows the search for the players and a zone with more dilutes what "
-                                 + "a clue is worth");
-                }
-
-                var panels = graph.NodesOfKindInZone(z, MapNodeKind.ElectricalPanel);
-
-                for (var s = 0; s < sites.Length; s++)
-                {
-                    var site = sites[s];
-                    var exits = graph.Degree(site);
-                    if (exits < GameConstants.CandidateSiteMinExits)
-                    {
-                        problems.Add(graph.Nodes[site].Describe() + " has " + exits
-                                     + " way(s) out, under §12's " + GameConstants.CandidateSiteMinExits
-                                     + " — \"하나 막히면 다른 쪽\". Reading a clue takes "
-                                     + Seconds(GameConstants.ClueReadSeconds)
-                                     + " of held beam (§03); with one exit, a monster arriving during the read "
-                                     + "is not a risk, it is a death");
-                    }
-
-                    if (panels.Length == 0)
-                    {
-                        problems.Add(graph.Nodes[site].Describe()
-                                     + " is in a zone with no 전기 패널, so the Engineer cannot light it and "
-                                     + "§03's \"어둠 = 목표의 잠금장치\" becomes a lock with no key — §12 requires "
-                                     + "\"전기 패널 접근 가능\" at every candidate and \"전기 패널 구역당 1개\"");
-                    }
-                }
-            }
-
-            var passed = graph.Zones.Length > 0 && problems.Count == 0;
-            string detail;
-            if (graph.Zones.Length == 0)
-            {
-                detail = "The map has no zones, so there is nowhere to place candidate sites.";
-            }
-            else if (passed)
-            {
-                detail = "Candidate sites per zone: " + string.Join(", ", counts)
-                         + ", each with " + GameConstants.CandidateSiteMinExits + "+ exits and a 전기 패널 in zone.";
-            }
-            else
-            {
-                detail = "§12: \"모든 후보가 위 조건을 만족해야 한다.\" " + string.Join("; ", problems) + ".";
-            }
-
-            return new MapValidationResult(
-                RuleCandidateSites, "단서·목표물 후보가 구역당 3개, 모두 탈출로 2개 이상", passed, detail, true);
-        }
-
         // ====================================================================
         // 10 — 구역 간 진입점이 2~3개로 제한돼 있다.
         // ====================================================================
@@ -1106,73 +991,6 @@ namespace HorrorGame.Core.Map
         }
 
         // ====================================================================
-        // 11 — 출입구 근처에 은폐 지점이 있다 (§07 새벽 단계 대응).
-        // ====================================================================
-
-        private static MapValidationResult CheckConcealmentNearExit(MapGraph graph)
-        {
-            var entrances = graph.NodesOfKind(MapNodeKind.Entrance);
-            if (entrances.Length == 0)
-            {
-                return new MapValidationResult(
-                    RuleConcealmentNearExit, "출입구 근처에 은폐 지점이 있다", false,
-                    "The map has no 출입구 marked, so there is no way out of it and nothing for the "
-                    + "concealment rule to sit next to. §02 makes leaving the building the win condition.",
-                    true);
-            }
-
-            // "근처" is read as no further than §12 ever allows a player to be from
-            // cover — the widest legal gap between 시야 차단 지점. Any further and the
-            // §07 새벽 monster, which knows the exit, catches the escort in the open
-            // between the hiding place and the door.
-            var reach = GameConstants.LineOfSightBreakSpacingMax;
-            var problems = new List<string>();
-            var listing = new List<string>();
-
-            for (var i = 0; i < entrances.Length; i++)
-            {
-                var entrance = entrances[i];
-                var nearby = graph.NodesWithinWalk(entrance, reach);
-                var best = -1;
-                for (var k = 0; k < nearby.Length; k++)
-                {
-                    if (graph.Nodes[nearby[k]].Has(MapNodeKind.Concealment))
-                    {
-                        best = nearby[k];
-                        break;
-                    }
-                }
-
-                if (best < 0)
-                {
-                    problems.Add("no 은폐 지점 within " + Metres(reach) + " of "
-                                 + graph.Nodes[entrance].Describe());
-                }
-                else
-                {
-                    listing.Add(graph.Nodes[entrance].Describe() + " → " + graph.Nodes[best].Describe()
-                                + " (" + Metres(graph.PathLength(entrance, best)) + ")");
-                }
-            }
-
-            var passed = problems.Count == 0;
-            var detail = passed
-                ? "Concealment within " + Metres(reach) + " of every exit: " + string.Join("; ", listing) + "."
-                : string.Join("; ", problems)
-                  + ". §12's last item exists for §07 새벽, the tier where the monster knows the exit and "
-                  + "patrols every zone with no 정지 at all (standstill chance "
-                  + GameConstants.ThreatStandstillChanceNone.ToString("0.##", CultureInfo.InvariantCulture)
-                  + ") at " + GameConstants.ThreatSpeedPreDawn.ToString("0.#", CultureInfo.InvariantCulture)
-                  + " m/s. With nowhere to wait, the objective escort — "
-                  + GameConstants.ObjectiveEscortMinPlayers + " players moving at "
-                  + GameConstants.ObjectiveCarrySpeedMultiplier.ToString("0.##", CultureInfo.InvariantCulture)
-                  + " speed with no sprint (§03) — has to walk into it.";
-
-            return new MapValidationResult(
-                RuleConcealmentNearExit, "출입구 근처에 은폐 지점이 있다 (§07 새벽 단계 대응)", passed, detail, true);
-        }
-
-        // ====================================================================
         // §12 수치 규칙.
         // ====================================================================
 
@@ -1184,13 +1002,13 @@ namespace HorrorGame.Core.Map
                 ? count + " zones, inside §12's " + GameConstants.ZoneCountMin + "~"
                   + GameConstants.ZoneCountMax + "."
                 : count + " zones, outside §12's " + GameConstants.ZoneCountMin + "~"
-                  + GameConstants.ZoneCountMax + ". The band is sized by what has to fit: "
-                  + GameConstants.CluesRequiredToLocate + " clues narrowing 층 → 구역 → 지점 (§03), "
-                  + GameConstants.CandidateSitesPerZone + " candidate sites in each, and an exit. Fewer "
-                  + "zones and a single clue names the objective outright; more and §07's patrol scope ("
+                  + GameConstants.ZoneCountMax + ". The band used to be sized by §03's clue chain "
+                  + "narrowing 층 → 구역 → 지점 over three candidate sites per zone; the chain is "
+                  + "deleted, and on the descent tower a 구역 IS a storey, so the band now says how "
+                  + "deep the building may be. It is still bounded from above by §07's patrol scope ("
                   + GameConstants.ThreatPatrolZonesEarlyEvening + " zone early, "
-                  + GameConstants.ThreatPatrolZonesNight + " later) stops covering enough of the map to "
-                  + "threaten anybody.";
+                  + GameConstants.ThreatPatrolZonesNight + " later): past that the creature stops "
+                  + "covering enough of the building to threaten anybody on it.";
 
             return new MapValidationResult(RuleZoneCount, "구역 개수 4~6", passed, detail, false);
         }

@@ -5,7 +5,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Text;
 using HorrorGame.Core;
-using HorrorGame.Core.Clues;
 using HorrorGame.Core.Map;
 using HorrorGame.Core.Math;
 using HorrorGame.Core.Roles;
@@ -20,44 +19,34 @@ using UnityEngine.TestTools;
 namespace HorrorGame.Tests.PlayMode.Net
 {
     /// <summary>
-    /// The guard on §13's one hard rule.
+    /// §13's network layer: what survives a real socket, and who is allowed to decide
+    /// what.
     /// <para>
-    /// §13: "단서 내용 · 목표물 위치 — 호스트만 보유. 클라이언트에 보내면 메모리에서
-    /// 읽힌다." ARCHITECTURE §4 spells out why that is not a performance note:
-    /// §03's whole structure — "그 자리에서 보고, 기억해서, 말로 전달해야 한다" —
-    /// stops existing the moment the answer is in a client's memory, and sending it
-    /// "but only showing it when close" is the same as sending it.
+    /// <b>This fixture used to be built around one rule, and that rule is deleted.</b>
+    /// §13 said "단서 내용 · 목표물 위치 — 호스트만 보유. 클라이언트에 보내면 메모리에서
+    /// 읽힌다", and §03's whole structure — 「그 자리에서 보고, 기억해서, 말로 전달해야
+    /// 한다」 — stopped existing the moment the answer was in a client's memory. So the
+    /// objective's location was proved absent twice, structurally through
+    /// <c>NetReplicationAudit</c> (deleted) walking every replicated surface, and byte for byte
+    /// through a real Mirror server whose outgoing packets were searched for three
+    /// floats.
     /// </para>
     /// <para>
-    /// So the objective's location is proved absent twice, on purpose, because the
-    /// two proofs fail in different ways:
+    /// Six tests, the audit itself, the host-secret store and a deliberately leaky
+    /// test double all went with §03's clue chain. <b>A race has no answer to hide</b>:
+    /// it announces its destination — the middle of B8 — to all twenty runners at the
+    /// start, on purpose, because the game is who gets there rather than who knows
+    /// where it is. Hiding nothing is not a weakened guarantee; it is a different game.
     /// </para>
-    /// <list type="number">
-    /// <item><b>Structurally.</b> <see cref="NetReplicationAudit"/> walks every
-    /// replicated surface in the Net assembly and shows that no type reachable from
-    /// one could carry an answer. This catches a leak the day somebody writes it,
-    /// even if no test exercises the code path.</item>
-    /// <item><b>Byte for byte.</b> A real Mirror server runs with a real connection,
-    /// and every byte the transport is asked to send to that client is captured and
-    /// searched for the objective's coordinates. This catches a leak that slips past
-    /// the type system — a position packed into three floats in a message, say.</item>
-    /// </list>
+    /// <para>
+    /// What is left is what a race actually asks of the wire: that a player's view
+    /// survives it (pitch, and stamina only approximately for everybody else), that
+    /// §11's lobby seats people, and that the host leaving ends the session for
+    /// everyone.
+    /// </para>
     /// </summary>
     public sealed class NetTests
     {
-        /// <summary>
-        /// Where the test's objective is put, in metres. Every component is non-zero
-        /// and exactly representable, so its bytes are distinctive enough to search a
-        /// packet stream for without matching padding by accident.
-        /// </summary>
-        private static readonly Vector3 ObjectiveTruth = new Vector3(-73.5f, -12.25f, 41.125f);
-
-        /// <summary>
-        /// Where the player stands: on the surface, further from every secret than any
-        /// light in the game reaches. §03 makes walking there the cost of knowing.
-        /// </summary>
-        private static readonly Vector3 SurfaceSpawn = new Vector3(0f, 0f, 300f);
-
         private readonly List<GameObject> _spawned = new List<GameObject>();
 
         private RecordingTransport? _transport;
@@ -67,7 +56,6 @@ namespace HorrorGame.Tests.PlayMode.Net
         public void SetUp()
         {
             NetSession.ResetForTests();
-            HostSecrets.Clear();
 
             _rig = new GameObject("NetTestRig");
             _transport = _rig.AddComponent<RecordingTransport>();
@@ -109,285 +97,9 @@ namespace HorrorGame.Tests.PlayMode.Net
             }
 
             Transport.active = null;
-            HostSecrets.Clear();
             NetSession.ResetForTests();
             LogAssert.ignoreFailingMessages = false;
         }
-
-        // ------------------------------------------------------------------
-        // §13 — the objective's location never leaves the host
-        // ------------------------------------------------------------------
-
-        /// <summary>
-        /// No replicated surface in the Net assembly can name a type that carries
-        /// §03's answers.
-        /// <para>
-        /// This is the proof that survives refactoring. A behavioural test only
-        /// covers the code it runs; this covers every <c>[SyncVar]</c>,
-        /// <c>[Command]</c>, <c>[ClientRpc]</c>, <c>[TargetRpc]</c> and sync
-        /// collection that exists, including ones written next year by somebody who
-        /// has not read §13.
-        /// </para>
-        /// </summary>
-        [Test]
-        public void NoReplicatedSurfaceCanCarryAnAnswer()
-        {
-            var violations = NetReplicationAudit.Scan();
-
-            Assert.That(
-                violations,
-                Is.Empty,
-                "§13: 단서 내용 · 목표물 위치 — 호스트만 보유. Every entry below is a way the answer could reach a "
-                + "client, and §03's 'remember it and say it out loud' constraint does not survive any of them.\n"
-                + string.Join("\n", violations));
-        }
-
-        /// <summary>
-        /// The audit is not vacuous: a deliberately leaky assembly must fail it.
-        /// <para>
-        /// Without this, <see cref="NoReplicatedSurfaceCanCarryAnAnswer"/> would pass
-        /// just as happily if the scanner were broken and found nothing anywhere,
-        /// which is the failure mode a guard test is most likely to develop.
-        /// </para>
-        /// </summary>
-        [Test]
-        public void TheAuditCatchesALeakWhenThereIsOne()
-        {
-            var violations = NetReplicationAudit.Scan(typeof(LeakyForTesting).Assembly);
-
-            Assert.That(
-                violations,
-                Is.Not.Empty,
-                "The audit found nothing in an assembly that deliberately contains a leak, so a passing audit "
-                + "of HorrorGame.Net would prove nothing.");
-
-            var joined = string.Join("\n", violations);
-            Assert.That(
-                joined,
-                Does.Contain(nameof(SiteLabel)).Or.Contain(nameof(ClueGlyph)).Or.Contain("ClueReport"),
-                "The audit noticed something, but not the clue type that was planted:\n" + joined);
-        }
-
-        /// <summary>
-        /// The bytes themselves. A real server, a real connection, a real spawn — and
-        /// the objective's coordinates appear nowhere in what the client is sent.
-        /// <para>
-        /// The objective is placed at a position only the host ever learns, through
-        /// <c>ObjectiveResolver</c>'s one-shot push. Its prop is then spawned into the
-        /// world at that position, exactly as a real match would, with the player
-        /// standing far away. Everything Mirror hands the transport for that
-        /// connection is captured and searched for the three floats.
-        /// </para>
-        /// <para>
-        /// This is the case ARCHITECTURE §4 warns about specifically: it is not
-        /// enough for the UI to hide the objective until the player is close, because
-        /// the bytes are readable either way. The interest manager's answer is that
-        /// the object is not sent at all until a light could reach it (§03: "어둠 =
-        /// 목표의 잠금장치").
-        /// </para>
-        /// </summary>
-        [UnityTest]
-        public IEnumerator ObjectiveLocationIsAbsentFromEveryByteAClientReceives()
-        {
-            var authority = BuildHostAuthority(out var seed);
-            Assert.That(HostSecrets.Install(authority, isServer: true), Is.True);
-
-            NetworkServer.Listen(GameConstants.PlayersPerMatch);
-
-            var conn = new NetworkConnectionToClient(1);
-            NetworkServer.AddConnection(conn);
-            conn.isAuthenticated = true;
-
-            // The player is on the surface, nowhere near anything — the whole point of
-            // §03's 왕복 is that they have to walk to the answer.
-            var player = SpawnPlayer(conn, SurfaceSpawn);
-            Assert.That(player, Is.Not.Null);
-
-            // The host builds the level: the objective's position leaves the resolver
-            // once, into the spawner, and is never stored anywhere else.
-            var placedAt = Vector3.positiveInfinity;
-            var placed = authority.TryPlaceObjective(where =>
-            {
-                placedAt = where;
-                SpawnSecret("Objective", where);
-            });
-
-            Assert.That(placed, Is.True, "The host must be able to place the objective exactly once.");
-            Assert.That(
-                placedAt,
-                Is.EqualTo(ObjectiveTruth),
-                "The fixture places the objective at a known point so the byte search has something to look for. "
-                + "Seed " + seed + ".");
-
-            // Clue props too: §03 puts the chain in the dangerous places, and their
-            // positions are as much a hint as the objective's.
-            var clueIds = authority.ClueIds();
-            for (var i = 0; i < clueIds.Length; i++)
-            {
-                if (authority.TryGetMarkerPosition(clueIds[i], out var markerPosition))
-                {
-                    SpawnSecret("Clue" + clueIds[i], markerPosition);
-                }
-            }
-
-            // Let Mirror actually broadcast. Mirror's own player-loop hooks run the
-            // server's late update, so yielding frames is what flushes the batcher —
-            // and flushing through the real path is the point, since the test is
-            // about what the transport is handed, not what a helper thinks it would
-            // be handed.
-            for (var frame = 0; frame < 20; frame++)
-            {
-                yield return null;
-            }
-
-            var sent = _transport!.BytesSentTo(conn.connectionId);
-            Assert.That(sent.Count, Is.GreaterThan(0), "The test proves nothing if the server never sent anything.");
-
-            // First, prove the search works. The client's own avatar is spawned to it,
-            // so its position must be findable by exactly the method used below. Without
-            // this, "not found" could just as easily mean "the detector is broken" —
-            // which is how a guard test quietly stops guarding.
-            AssertPresent(sent, SurfaceSpawn, "the client's own spawn position");
-
-            AssertAbsent(sent, ObjectiveTruth, "the objective's position");
-
-            for (var i = 0; i < clueIds.Length; i++)
-            {
-                if (authority.TryGetMarkerPosition(clueIds[i], out var markerPosition))
-                {
-                    AssertAbsent(sent, markerPosition, "clue " + clueIds[i] + "'s position");
-                }
-            }
-        }
-
-        /// <summary>
-        /// The complement: a player standing in the light does receive it.
-        /// <para>
-        /// Without this, the previous test would also pass if interest management
-        /// simply never replicated anything, which would be a broken game rather than
-        /// a secure one. §03 locks the objective behind light — it does not delete it.
-        /// </para>
-        /// </summary>
-        [UnityTest]
-        public IEnumerator ObjectiveIsReplicatedOnceAPlayerIsCloseEnoughToLightIt()
-        {
-            NetworkServer.Listen(GameConstants.PlayersPerMatch);
-
-            var far = new NetworkConnectionToClient(1) { isAuthenticated = true };
-            var near = new NetworkConnectionToClient(2) { isAuthenticated = true };
-            NetworkServer.AddConnection(far);
-            NetworkServer.AddConnection(near);
-
-            SpawnPlayer(far, SurfaceSpawn);
-            SpawnPlayer(near, ObjectiveTruth + Vector3.forward);
-
-            var objective = SpawnSecret("Objective", ObjectiveTruth);
-            yield return null;
-
-            var identity = objective.GetComponent<NetworkIdentity>();
-            NetworkServer.RebuildObservers(identity, false);
-            yield return null;
-
-            Assert.That(
-                identity.observers.ContainsKey(near.connectionId),
-                Is.True,
-                "A player standing next to the objective must be sent it — §03 locks it behind light, it does not "
-                + "remove it from the world.");
-
-            Assert.That(
-                identity.observers.ContainsKey(far.connectionId),
-                Is.False,
-                "A player on the surface is outside every light in the game (§03's 어둠 = 목표의 잠금장치) and must "
-                + "not be sent the objective.");
-
-            Assert.That(
-                NetInterestScope.SecretRange,
-                Is.LessThan(NetInterestScope.PerceptionRange),
-                "§03's lock is tighter than perception, or it is not a lock: a secret must go dark before a "
-                + "teammate does.");
-        }
-
-        /// <summary>
-        /// The host answers a read with a sentence and nothing else.
-        /// <para>
-        /// ARCHITECTURE §4: "the host replies with the rendered glyph for
-        /// <em>that</em> clue only." The reply's type is checked as much as its
-        /// content — a <c>string</c> cannot be recombined with another
-        /// <c>string</c> into a location the way two <c>SiteLabel</c>s could, which is
-        /// the property §03's 왕복 depends on.
-        /// </para>
-        /// </summary>
-        [Test]
-        public void TheHostAnswersAReadWithARenderedLineAndNothingStructured()
-        {
-            var authority = BuildHostAuthority(out _);
-
-            var anyLegible = false;
-            var ids = authority.ClueIds();
-
-            for (var i = 0; i < ids.Length; i++)
-            {
-                // §03's ideal read: held long, well lit, straight on, unworn.
-                var legible = authority.TryRenderRead(
-                    ids[i],
-                    GameConstants.ClueConfidentReadSeconds,
-                    1f,
-                    0f,
-                    0f,
-                    out var line);
-
-                if (!legible)
-                {
-                    continue;
-                }
-
-                anyLegible = true;
-                Assert.That(line, Is.Not.Empty);
-                Assert.That(
-                    line,
-                    Does.Not.Contain(ObjectiveTruth.x.ToString(System.Globalization.CultureInfo.InvariantCulture)),
-                    "A rendered clue line must never contain a coordinate. §03's clues narrow the search; they do "
-                    + "not answer it.");
-            }
-
-            Assert.That(anyLegible, Is.True, "A perfect read of at least one clue must produce a line.");
-
-            var reply = typeof(NetClueTerminal).GetMethod(
-                "TargetLine",
-                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-
-            Assert.That(reply, Is.Not.Null, "NetClueTerminal must still have the reply this test is about.");
-
-            var parameters = reply!.GetParameters();
-            Assert.That(parameters[0].ParameterType, Is.EqualTo(typeof(NetworkConnection)));
-            Assert.That(parameters[1].ParameterType, Is.EqualTo(typeof(int)), "clue id");
-            Assert.That(
-                parameters[2].ParameterType,
-                Is.EqualTo(typeof(string)),
-                "The clue reply must stay a rendered string. A structured type here is the leak §13 forbids.");
-            Assert.That(parameters.Length, Is.EqualTo(3), "Nothing else may ride along with the reply.");
-        }
-
-        /// <summary>
-        /// Installing the answers on a machine that is not the server is refused.
-        /// <para>
-        /// The classic accidental leak is not a SyncVar — it is a client that
-        /// reconstructs the answer locally from a shared seed, which looks like a
-        /// tidy bandwidth optimisation and is a total defeat of §03. This is the
-        /// runtime tripwire for it.
-        /// </para>
-        /// </summary>
-        [Test]
-        public void AClientCannotInstallTheAnswers()
-        {
-            var authority = BuildHostAuthority(out _);
-
-            LogAssert.Expect(LogType.Error, new System.Text.RegularExpressions.Regex("호스트만 보유"));
-
-            Assert.That(HostSecrets.Install(authority, isServer: false), Is.False);
-            Assert.That(HostSecrets.Installed, Is.False);
-        }
-
         // ------------------------------------------------------------------
         // §05 — what the table says to sync, and only that
         // ------------------------------------------------------------------
@@ -473,10 +185,9 @@ namespace HorrorGame.Tests.PlayMode.Net
                 "Four roles claimed leaves §04's fifth on the table, and §11 makes that absence the match's "
                 + "character.");
 
-            Assert.That(
-                lobby.Gap.CanBeCoveredWithCredits,
-                Is.True,
-                "§11 gives 섬광수 a 돈으로 메우기 row (섬광탄), so the lobby must be able to say so.");
+            // DELETED with §08: the 돈으로 메우기 assertion. §11 let a party that was one
+            // role short buy the gap shut — 섬광수's absence covered by a 조명탄 off the
+            // shop shelf. There is no currency and no shelf.
 
             // A fifth arrival has nowhere to sit. §11 fixes the party at four.
             var fifth = new NetworkConnectionToClient(99) { isAuthenticated = true };
@@ -544,68 +255,10 @@ namespace HorrorGame.Tests.PlayMode.Net
 
             Assert.That(reasons, Does.Contain(NetSessionEndReason.HostLeft));
             Assert.That(NetSession.Phase, Is.EqualTo(NetSessionPhase.Offline));
-            Assert.That(
-                HostSecrets.Installed,
-                Is.False,
-                "A client never held the answers, and must not end up holding them on the way out either.");
+            // The HostSecrets assertion that stood here — "a client never held the answers,
+            // and must not end up holding them on the way out either" — is deleted with the
+            // store itself. There are no answers.
         }
-
-        // ------------------------------------------------------------------
-        // fixtures
-        // ------------------------------------------------------------------
-
-        /// <summary>
-        /// Builds a one-floor building whose only candidate site sits at
-        /// <see cref="ObjectiveTruth"/>, so the objective's position is known to the
-        /// test and to nobody on the wire.
-        /// </summary>
-        private static HostClueAuthority BuildHostAuthority(out int seed)
-        {
-            seed = 20260730;
-
-            var floors = new List<FloorDescriptor>
-            {
-                // §03's worked example: "그것은 물이 있는 층에 있다."
-                new FloorDescriptor(0, ClueGlyph.Digit3, FloorFeature.Water),
-                new FloorDescriptor(1, ClueGlyph.Digit2, FloorFeature.Machinery),
-            };
-
-            var sites = new List<CandidateSite>
-            {
-                new CandidateSite(
-                    0,
-                    0,
-                    0,
-                    new Vec3(ObjectiveTruth.x, ObjectiveTruth.y, ObjectiveTruth.z),
-                    new SiteLabel(ClueGlyph.WingMieum, ClueGlyph.Digit6, ClueGlyph.SideLeft)),
-                // Non-zero, exactly representable components for the same reason the
-                // objective has them: these positions are searched for byte by byte.
-                new CandidateSite(
-                    1,
-                    1,
-                    1,
-                    new Vec3(11.375f, 3.5f, 12.625f),
-                    new SiteLabel(ClueGlyph.WingIeung, ClueGlyph.Digit2, ClueGlyph.SideRight)),
-                new CandidateSite(
-                    2,
-                    1,
-                    1,
-                    new Vec3(23.75f, 6.125f, -7.375f),
-                    new SiteLabel(ClueGlyph.WingIeung, ClueGlyph.Digit5, ClueGlyph.SideLeft)),
-            };
-
-            var catalog = new SiteCatalog(floors, sites);
-            var rng = new DeterministicRandom(seed);
-            var resolver = new ObjectiveResolver(catalog, new FlatProbe(), Vec3.Zero, rng);
-
-            Assert.That(
-                resolver.VerifyChainConverges(),
-                Is.True,
-                "The fixture must be a winnable layout, or the test is exercising a match that could not be played.");
-
-            return new HostClueAuthority(resolver, new DeterministicRandom(seed + 1));
-        }
-
         /// <summary>
         /// Builds a networked object the way Mirror needs it built.
         /// <para>
@@ -871,32 +524,5 @@ namespace HorrorGame.Tests.PlayMode.Net
             }
         }
 
-        /// <summary>
-        /// A deliberate leak, so <see cref="TheAuditCatchesALeakWhenThereIsOne"/> can
-        /// prove the audit is not simply returning an empty list.
-        /// <para>
-        /// Deliberately <em>not</em> a <c>NetworkBehaviour</c>. Mirror's weaver would
-        /// try to generate a reader and a writer for <c>SiteLabel</c> the moment this
-        /// became one, and it could not — the type is a readonly struct — so the test
-        /// assembly would fail to build. That failure is worth noticing rather than
-        /// working around: the serialiser cannot be written for §03's answer types by
-        /// accident, which is one more layer of the structural defence §13 asks for.
-        /// The audit reads attributes, so a plain class with the same attributes is
-        /// exactly the input it needs.
-        /// </para>
-        /// </summary>
-        private sealed class LeakyForTesting
-        {
-            /// <summary>A site label on the wire is the objective's address, one misremembered mark aside.</summary>
-            [SyncVar]
-            public SiteLabel Leak;
-
-            /// <summary>And the same leak wearing a remote call's clothes.</summary>
-            [Command]
-            public void CmdLeak(ClueGlyph glyph)
-            {
-                Leak = new SiteLabel(glyph, glyph, glyph);
-            }
-        }
     }
 }

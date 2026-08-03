@@ -4,10 +4,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using HorrorGame.Core.Roles;
-using HorrorGame.Gameplay.Guidance;
 using HorrorGame.Gameplay.Interaction;
 using HorrorGame.Gameplay.Match;
-using HorrorGame.Gameplay.MatchEditor;
 using HorrorGame.Gameplay.Monster;
 using HorrorGame.Gameplay.PlayerEditor;
 using UnityEditor;
@@ -95,13 +93,10 @@ namespace HorrorGame.EditorTools
         /// <summary>Seed for the whole match — layout, clue contents, loot and the monster. §13: a match replays from its seed.</summary>
         public const int PlaytestSeed = 20260731;
 
-        /// <summary>
-        /// Which of §04's five the solo tester plays. §11 has one role missing every
-        /// match; 주자 is the one §14's first two questions are about, so it is the
-        /// default. Change it on the MatchDirector component in the built scene to
-        /// reach §08's 금고, which only 정비공 can open.
-        /// </summary>
-        public const RoleId PlaytestRole = RoleId.Runner;
+        // DELETED with §04's roles: PlaytestRole. The solo tester had to be told which of
+        // the five 직업 they were, because the answer changed their top speed and which
+        // §08 containers they could open. Twenty identical runners: there is nothing to
+        // choose.
 
         /// <summary>
         /// Builds the solo scene and opens it. Press Play afterwards.
@@ -121,13 +116,11 @@ namespace HorrorGame.EditorTools
 
             Debug.Log(
                 "[SoloPlaytest] Built " + SoloScenePath + ".\n"
-                + "  Nobody has to read this. The scene carries PlaytestGuidanceScreen: one line at the bottom "
-                + "says what to do next, F1 reopens the controls card and F2 shows §14's five questions. "
-                + "HorrorGame ▸ Play ▸ ▶ START PLAYTEST does the whole thing in one click.\n"
-                + "  Press Play. WASD to move, mouse to look, Shift to run, F for the flashlight, E to interact.\n"
-                + "  §01 loop — walk out of the 출입구 apron to descend; walk back into it to surface. Arriving "
-                + "sells the 전리품 into the shared wallet, tops the cell up at §03's 지상 발전기 and opens §08's shop. "
-                + "E puts the shop away and gives the mouse back; E on the 차량 brings it back.\n"
+                + "  Press Play. WASD to move, mouse to look, Shift to run, Ctrl to crouch, Space to hop, "
+                + "F for the flashlight, E for a door.\n"
+                + "  §01 — you start on the rim of B1. Work in to the middle of the storey, drop down the "
+                + "투하구, and do it again. Eight times. The middle of B8 is the finish; the creature is a "
+                + "hazard, and being caught is 탈락.\n"
                 + "  §03 clues — stand still, close, and hold the beam on a 표식 for "
                 + Core.GameConstants.ClueReadSeconds + "s. Losing the light restarts it, and nothing is written down.\n"
                 + "  §03 objective — E takes it; both hands, so no flashlight and no loot. Carry it into the apron to win.\n"
@@ -148,23 +141,19 @@ namespace HorrorGame.EditorTools
             EditorApplication.isPlaying = true;
         }
 
-        /// <summary>
-        /// Drives a whole match headlessly and reports whether §01's loop ran. The menu
-        /// twin of <c>SoloMatchLoopTests</c>, so the same check can be made from a
-        /// terminal with <c>-executeMethod HorrorGame.EditorTools.SoloPlaytest.VerifyBatch</c>.
-        /// </summary>
-        [MenuItem("HorrorGame/Play/Verify Solo Match Loop", priority = 22)]
-        public static void Verify()
-        {
-            var report = SoloMatchLoopTests.RunAll();
-            if (report.Passed)
-            {
-                Debug.Log("[SoloPlaytest] " + report.Summary);
-                return;
-            }
-
-            Debug.LogError("[SoloPlaytest] " + report.Summary);
-        }
+        // DELETED with the co-op loop: Verify() and VerifyBatch(), and the
+        // SoloMatchLoopTests they drove. That harness asserted §01's 왕복 ran end to end —
+        // descend, find the 목표물, carry it up, sell the 전리품, buy from §08, go back
+        // down — and every clause in it is about a game that no longer exists.
+        //
+        // Its replacement is not a new headless harness in this file; it is
+        // Tests/PlayMode/Race/DescentPlaythroughTests, which walks a runner from the rim
+        // of B1 to the middle of B8 through all seven 투하구 and prints the table. That is
+        // the same question asked of the race, and it runs in the real test runner rather
+        // than through -executeMethod.
+        //
+        // BuildBatch below is untouched and is still the batch entry point that matters:
+        // it rebuilds the solo scene from the generated map.
 
         /// <summary>
         /// Batch entry point that rebuilds the solo scene and nothing else.
@@ -176,7 +165,7 @@ namespace HorrorGame.EditorTools
         /// co-operative map — because the code was checked and the artefact was not.
         /// </para>
         /// <para>
-        /// <c>VerifyBatch</c> already rebuilds it, but it also runs the whole verification
+        /// <c>VerifyBatch</c> used to rebuild it too, but it also ran the whole verification
         /// pass, which is the wrong tool when all that is wanted is "put the current map
         /// into the scene the player actually loads".
         /// </para>
@@ -217,14 +206,6 @@ namespace HorrorGame.EditorTools
                 Debug.LogError("[SoloPlaytest] " + error);
                 EditorApplication.Exit(1);
             }
-        }
-
-        /// <summary>Batch entry point. Exits non-zero when §01's loop did not run end to end.</summary>
-        public static void VerifyBatch()
-        {
-            var report = SoloMatchLoopTests.RunAll();
-            Debug.Log("[SoloPlaytest] " + report.Summary);
-            EditorApplication.Exit(report.Passed ? 0 : 1);
         }
 
         /// <summary>
@@ -810,32 +791,25 @@ namespace HorrorGame.EditorTools
         }
 
         /// <summary>
-        /// Drops in the thing that turns a walkable map into a match: §07's clock,
-        /// §03's chain, §08's economy and §02's verdict, plus the screens.
+        /// Drops in the thing that turns a walkable map into a race: §07's clock, §06's
+        /// creature, §02's standings and §09's spectator seat.
+        /// <para>
+        /// It used to add two screens here and both are deleted. <c>MatchHud</c> hosted
+        /// §08's shop, §03's clue overlay and §02's four-outcome end screen;
+        /// <c>PlaytestGuidanceScreen</c> told a first-time tester the next step of the
+        /// 왕복 loop. <c>MatchDirector</c> builds <c>RaceHud</c> itself, which is the
+        /// race's own screen and needs no help from a playtest tool.
+        /// </para>
         /// </summary>
         private static void SpawnMatch(GameObject player, GameObject monster)
         {
             var host = new GameObject("[Match]");
             var director = host.AddComponent<MatchDirector>();
 
-            var hud = new GameObject("MatchHud");
-            hud.transform.SetParent(host.transform, worldPositionStays: false);
-            hud.AddComponent<MatchHud>();
-
-            // §14's tester has not read anything. MatchHud draws the game's own screens
-            // and deliberately adds no widgets; this draws the things a first-time player
-            // needs and a player who has read §01 does not — the next step of the loop,
-            // the live bindings, §14's five questions and the run's numbers. It is built
-            // here rather than by the bootstrap because it belongs to a playtest.
-            var guide = new GameObject("PlaytestGuidance");
-            guide.transform.SetParent(host.transform, worldPositionStays: false);
-            guide.AddComponent<PlaytestGuidanceScreen>();
-
             var serialized = new SerializedObject(director);
             SetObject(serialized, "_monster", monster.GetComponent<MonsterAgent>());
             SetObject(serialized, "_playerRoot", player.transform);
             SetInt(serialized, "_seed", PlaytestSeed);
-            SetInt(serialized, "_localRole", (int)PlaytestRole);
             SetBool(serialized, "_autoStart", true);
             serialized.ApplyModifiedPropertiesWithoutUndo();
         }

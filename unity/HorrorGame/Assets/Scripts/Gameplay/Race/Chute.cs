@@ -32,10 +32,45 @@ namespace HorrorGame.Gameplay.Race
     public sealed class Chute : MonoBehaviour
     {
         /// <summary>
-        /// Metres above the landing a runner appears. Enough to be a fall and not enough to
-        /// hurt: §05 has no fall damage, and a longer drop would just be dead time in a race.
+        /// How long the fall lasts, seconds — §01's own sentence: 「the last half second of
+        /// every storey is falling in the dark towards a floor you have not seen yet」. It is
+        /// the only free number in the drop; everything else about it is derived.
         /// </summary>
-        public const float DropHeightMetres = 3.0f;
+        public const float FallSeconds = 0.5f;
+
+        /// <summary>
+        /// Metres above the landing a runner appears — DERIVED, and it was a typed-in 3.0 m.
+        /// <para>
+        /// The kit's corridor is 3.00 m clear (<c>MapKitCatalogue.CorridorClearHeight</c>)
+        /// and a runner is 1.75 m tall, so feet at 착지 + 3.0 put the whole body inside the
+        /// ceiling slab with the head above the soffit. <see cref="CharacterController"/>
+        /// pushes a body out of a collider the SHORT way, and at a storey seam the short way
+        /// is UP — back onto the floor the runner just left. The measured symptom was a
+        /// playthrough log reading 「착지 위 천장까지 0.13 m (투하 높이 3.0 m)」: 13 cm of room
+        /// for a 175 cm body.
+        /// </para>
+        /// <para>
+        /// Two facts bound the number. <b>Headroom:</b> the body must fit under the soffit,
+        /// so the feet can be at most 3.00 − 1.75 = 1.250 m up. <b>The fall:</b> ½gt² with
+        /// <see cref="GameConstants.JumpGravity"/> 9.81 m/s² and <see cref="FallSeconds"/> is
+        /// 1.226 m. <b>The fall binds</b> — 1.226 &lt; 1.250 — so the fiction sets the number
+        /// and the ceiling merely permits it, with 24 mm to spare over a standing body. Had
+        /// the ceiling been the binding one the honest fix would have been the ceiling: a
+        /// fall shortened to fit a room is a room deciding the fiction.
+        /// </para>
+        /// <para>
+        /// Still a fall and not a step: 1.23 m at 9.81 m/s² arrives at 4.9 m/s, above §05's
+        /// 달리기, and §05 has no fall damage, so it costs only the half second it is for.
+        /// <c>MapSceneBuilder.VerifyChutesDropIntoOpenAir</c> re-derives this in the editor
+        /// assembly (which cannot reference this one) and measures it against the kit on
+        /// every generation — the two MUST agree, and the run that caught this had the
+        /// generator reporting 1.226 while the runtime still dropped 3.0.
+        /// <c>OutOfBounds.ChuteGraceSeconds</c> follows this constant and becomes
+        /// 2 × 0.5 = 1.000 s.
+        /// </para>
+        /// </summary>
+        public const float DropHeightMetres =
+            0.5f * GameConstants.JumpGravity * FallSeconds * FallSeconds;
 
         /// <summary>Radius the mouth swallows a runner within, metres. A cell is 2.5 m.</summary>
         public const float MouthRadiusMetres = 1.4f;

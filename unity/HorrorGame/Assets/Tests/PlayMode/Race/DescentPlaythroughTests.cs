@@ -178,8 +178,6 @@ namespace HorrorGame.Tests.PlayMode.Racing
             public Vector3 MiddlePathEnded;
             public bool Warped;
             public bool MatchRunning;
-            public bool SurfaceAtTheMiddle;
-            public bool MapSaysTheMiddleIsSurface;
             public bool HadChute;
             public bool Carried;
             public bool LandedWhereTheChuteSaid;
@@ -269,9 +267,9 @@ namespace HorrorGame.Tests.PlayMode.Racing
 
             yield return null;
 
-            Assert.That(director.RaceMode, Is.True,
-                "§01's race is gated behind MatchDirector.RaceMode and it is off in this scene. What would be "
-                + "measured below is the co-operative recovery match, which has no 투하구 and no finish.");
+            // DELETED: the RaceMode guard. §01's race used to be gated behind a flag, with
+            // the co-operative recovery match on the other side of it; the co-op path is
+            // deleted, so BeginMatch has only one thing left it can start.
 
             // ── §06 is not what is being tested, and it is standing on the target ──
             // DescentMap puts the creature in the middle of a storey halfway down — "괴물은
@@ -369,9 +367,9 @@ namespace HorrorGame.Tests.PlayMode.Racing
             var spawnStorey = StoreyOf(spawn.y);
             var spawnRim = Chebyshev(spawn.x - middleX, spawn.z - middleZ);
 
-            Assert.That(director.LocalPlayerOnSurface, Is.False,
-                "§01's race has no 지상: a runner starts on the rim of B1 with the maze in front of them and "
-                + "nothing behind. A match that begins on the surface is running the co-operative flow.");
+            // DELETED: the LocalPlayerOnSurface guard. It asked whether a match had begun
+            // on §01's 지상, which was how you told the co-operative flow from the race.
+            // There is no surface left to be on — see link six below, also deleted.
             Assert.That(spawnStorey, Is.Zero,
                 "the runner did not spawn on B1. They are on B" + (spawnStorey + 1) + ", y = "
                 + spawn.y.ToString("0.00") + " m. §01: 20명이 B1 외곽 고리에서 출발한다.");
@@ -468,21 +466,7 @@ namespace HorrorGame.Tests.PlayMode.Racing
                     yield return Approach(director, player, target);
                 }
 
-                // Read at the middle, which is the only place these two can be wrong. §01's
-                // 지상 apron is a circle in plan around MatchMap.Entrance, and on the descent
-                // map that marker IS the middle of the tower — so the question "am I on the
-                // surface" is asked of a point every storey sits directly under.
                 leg.MatchRunning = director.IsRunning;
-                leg.SurfaceAtTheMiddle = director.LocalPlayerOnSurface;
-
-                // The same question asked of the geometry rather than of a flag. The flag is
-                // recomputed inside StepFixed, which MatchDirector also runs from its own
-                // FixedUpdate, so which side of the line it happens to be on when a coroutine
-                // looks depends on frame timing. MatchMap.IsOnSurface does not: it is the rule
-                // itself, and if it calls a storey's middle 지상 then it does so every tick a
-                // runner spends there.
-                var map = director.Map;
-                leg.MapSaysTheMiddleIsSurface = map != null && map.IsOnSurface(middle);
 
                 if (chute == null)
                 {
@@ -830,35 +814,47 @@ namespace HorrorGame.Tests.PlayMode.Racing
                 broken.Add("§02 · the runner's race was closed as " + race.ExitOf(seat) + ", not Finished.");
             }
 
-            // ── Link six: the middle of a storey is not §01's 지상 ────────────────
-            // BeginMatch says of the race path that the surface flag is "never true again for the
-            // rest of the match". The apron is a MatchMap.SurfaceRadius circle around
-            // MatchMap.Entrance, MatchMap.IsOnSurface zeroes the y before measuring, and on this
-            // map the 출입구 marker is the middle of B8 — which every other storey's middle sits
-            // directly above. Last in the list because it breaks the race rather than the chain:
-            // a runner still reaches the bottom, they just do the last stretch of every floor in
-            // a 안전 지대 where §06 has to forget them and §01's 귀환 fires once per storey.
+            // ── Link six: every storey kept stepping ─────────────────────────────
+            // This link used to be two questions, and the second one is DELETED. It asked
+            // whether MatchMap.IsOnSurface called the middle of a storey 지상 — because the
+            // apron was a SurfaceRadius circle in plan around the 출입구 marker, the height
+            // was thrown away, and on this map that marker is the middle of B8, which every
+            // other storey sits directly above. A runner therefore finished each floor
+            // inside a 안전 지대 where §06 had to forget them and §01's 귀환 fired: 숨 돌리기,
+            // sell, resupply, once per storey, six cells short of the 투하구.
+            //
+            // There is no apron, no 지상 and no MatchMap.IsOnSurface any more, so the bug
+            // it describes cannot be reintroduced by tuning a radius — it would take
+            // re-adding the surface. What survives is the first question, which is about
+            // the descent rather than about the co-op flow.
+            // The last storey is exempt, and it is exempt because the runner WON.
+            //
+            // Reaching the middle of B8 is §02's finish. The field here is one seat, so that
+            // arrival is also the last one: RaceDirector closes, MatchDirector stops
+            // stepping, and IsRunning reads false at exactly the moment the test was hoping
+            // to see. That is the race working. Asserting it here would demand that the game
+            // keep running after somebody has won, which is the opposite of §02.
+            //
+            // It is exempt by INDEX rather than by "the last leg we happened to record", so
+            // a run that stops on B7 and never reaches B8 still has its B7 leg checked and
+            // still fails. And the exemption is not silent — the win is asserted, twice, by
+            // clauses that were already here: the descent count against Drops, and
+            // `race.ExitOf(seat) != RaceExit.Finished`, which is what actually distinguishes
+            // "stopped because somebody won" from "stopped". The table above also prints
+            // 경기 정지됨 on any storey it happened on.
             for (var i = 0; i < _legs.Count; i++)
             {
+                if (_legs[i].Storey == RaceState.Storeys - 1)
+                {
+                    continue;
+                }
+
                 if (!_legs[i].MatchRunning)
                 {
                     broken.Add(
                         "§01 · the match stopped stepping while the runner was in the middle of B"
                         + (_legs[i].Storey + 1) + ". MatchDirector.StepMatch is a no-op once EndMatch has run, so "
                         + "everything measured below this storey is a frozen world.");
-                }
-
-                if (_legs[i].MapSaysTheMiddleIsSurface)
-                {
-                    broken.Add(
-                        "§01 · MatchMap.IsOnSurface calls the middle of B" + (_legs[i].Storey + 1) + " 지상"
-                        + (_legs[i].SurfaceAtTheMiddle ? ", and the runner standing there was flagged as being on "
-                            + "the surface" : string.Empty)
-                        + ". The race has no surface — the whole building is 위험 구역 — but the rule measures a "
-                        + MatchMap.SurfaceRadius.ToString("0") + " m circle in plan around the 출입구 marker with "
-                        + "the height thrown away, and on this map that marker is the middle of the tower which "
-                        + "every storey sits directly above. §06 has to forget a runner inside it and §01's 귀환 "
-                        + "fires there: 숨 돌리기, sell, resupply — once per storey, six cells short of the 투하구.");
                 }
             }
 
@@ -1224,8 +1220,7 @@ namespace HorrorGame.Tests.PlayMode.Racing
 
                 var recorded = leg.RecordedStorey >= 0 ? "B" + (leg.RecordedStorey + 1) : "—";
                 var here = (leg.MatchRunning ? string.Empty : " 경기 정지됨")
-                           + (leg.MapSaysTheMiddleIsSurface ? " 중심이 §01 지상" : string.Empty)
-                           + (leg.SurfaceAtTheMiddle ? " (주자도 지상 판정)" : string.Empty);
+                           ;
 
                 sb.AppendLine(
                     ("B" + (leg.Storey + 1)).PadRight(5) + reach.PadRight(33) + drop.PadRight(30)

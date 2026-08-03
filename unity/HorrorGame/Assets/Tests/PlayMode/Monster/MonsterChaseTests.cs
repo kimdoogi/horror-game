@@ -1564,10 +1564,25 @@ namespace HorrorGame.Tests.PlayMode.Monster
             return found;
         }
 
-        /// <summary>The same set of names <c>NavMeshConnectivity</c> audits, and for the same reason.</summary>
+        /// <summary>
+        /// The same set of names <c>NavMeshConnectivity</c> audits, and for the same reason.
+        /// <para>
+        /// It read { PlayerSpawn, MonsterSpawn, Candidate, Site, Loot, Exit, Objective,
+        /// Clue } until the 상점/전리품/단서 제거 round, when §12's 후보 지점 and §08's
+        /// 전리품 were deleted and re-emitted as <c>ReachProbe_*</c> at the same cells. Five
+        /// of those eight names now match nothing in the scene.
+        /// </para>
+        /// <para>
+        /// This mattered immediately and loudly, which is the good outcome: with the stale
+        /// list the sweep considered <b>44</b> markers instead of 220 — every PlayerSpawn on
+        /// B1 and every MonsterSpawn, and nothing else — so the creature on B5 could not
+        /// reach one of them and the test reported B-001, "the creature's spawn is on its
+        /// own island". The island was the marker list.
+        /// </para>
+        /// </summary>
         private static bool IsGameplayMarker(string name)
         {
-            string[] kinds = { "PlayerSpawn", "MonsterSpawn", "Candidate", "Site", "Loot", "Exit", "Objective", "Clue" };
+            string[] kinds = { "PlayerSpawn", "MonsterSpawn", "ReachProbe" };
             for (var i = 0; i < kinds.Length; i++)
             {
                 if (name.IndexOf(kinds[i], System.StringComparison.OrdinalIgnoreCase) >= 0)

@@ -1,5 +1,4 @@
 using System;
-using HorrorGame.Core.Economy;
 using HorrorGame.Core.Match;
 using HorrorGame.Core.Roles;
 
@@ -65,9 +64,6 @@ namespace HorrorGame.Core.Telemetry
         private int _playersDied;
         private int _cluesRead;
         private int _clueMisreads;
-        private int _creditsEarned;
-        private int _creditsSpent;
-        private int _lootSold;
         private int _batteriesUsed;
 
         private bool _aggroActive;
@@ -307,55 +303,16 @@ namespace HorrorGame.Core.Telemetry
             }
         }
 
-        /// <summary>
-        /// Records one piece of 전리품 sold at the vehicle for
-        /// <paramref name="credits"/>. §08. Together with
-        /// <see cref="RecordPurchase"/> this is the raw material for §16-2, the
-        /// document's own top open question.
-        /// <para>
-        /// A negative price is ignored: a sale cannot take credits away, and §08's
-        /// growth curve is read from the earned total.
-        /// </para>
-        /// </summary>
-        public void RecordLootSold(int credits)
-        {
-            if (_completed)
-            {
-                return;
-            }
-
-            _lootSold = AddClamped(_lootSold, 1);
-
-            if (credits > 0)
-            {
-                _creditsEarned = AddClamped(_creditsEarned, credits);
-            }
-        }
-
-        /// <summary>
-        /// Records a purchase and files it into §13's 아이템별 구매 카운터.
-        /// <para>
-        /// Emitted immediately, because a purchase is a completed event and §08's
-        /// question — which of the §10 trades do players actually accept — is
-        /// answered even by a match that ends badly. <paramref name="quantity"/> at
-        /// or below zero is not a purchase and is ignored entirely, credits
-        /// included.
-        /// </para>
-        /// </summary>
-        public void RecordPurchase(ShopItemId item, int creditsSpent, int quantity = 1)
-        {
-            if (_completed || quantity <= 0)
-            {
-                return;
-            }
-
-            if (creditsSpent > 0)
-            {
-                _creditsSpent = AddClamped(_creditsSpent, creditsSpent);
-            }
-
-            _sink.Increment(TelemetryBuckets.Purchase(item), quantity);
-        }
+        // DELETED in the 상점/전리품/단서 제거 round: RecordLootSold(int) and
+        // RecordPurchase(ShopItemId, int, int), with the _creditsEarned /
+        // _creditsSpent / _lootSold accumulators behind them. §13's job was to
+        // answer §16-2 — "is §08's growth curve real" — by counting which trades
+        // players accept. There is no currency in a race, nothing to sell and
+        // nothing to buy, so the counters had no event that could ever raise them.
+        // A telemetry field that no code path can increment is a zero that reads
+        // like a measurement; that is the trap this deletion closes. Do not
+        // re-add these without re-adding a shop, which is the thing the pivot
+        // deleted.
 
         /// <summary>
         /// Records battery cells consumed. §16-5 calls this the value that sets the
@@ -541,9 +498,6 @@ namespace HorrorGame.Core.Telemetry
                 Role1 = _role1,
                 Role2 = _role2,
                 Role3 = _role3,
-                CreditsEarned = _creditsEarned,
-                CreditsSpent = _creditsSpent,
-                LootSold = _lootSold,
                 CluesRead = _cluesRead,
                 ClueMisreads = _clueMisreads,
                 AggroEvents = _aggroEvents,

@@ -52,14 +52,9 @@ namespace HorrorGame.Core.Telemetry
         /// <summary>See <see cref="Role0"/>.</summary>
         public RoleId Role3;
 
-        /// <summary>Credits earned across the match. §16-2 — the top-priority open question.</summary>
-        public int CreditsEarned;
-
-        /// <summary>Credits spent. Together with <see cref="CreditsEarned"/> this shows whether §08's growth curve is real.</summary>
-        public int CreditsSpent;
-
-        /// <summary>Loot pieces sold. §08.</summary>
-        public int LootSold;
+        // DELETED with §08: CreditsEarned, CreditsSpent, LootSold. They were the
+        // shop's ledger, and a race has no currency to earn, spend or sell into.
+        // MatchRecorder no longer has a method that could set them.
 
         /// <summary>Clues read. §03 — if this is far below <see cref="GameConstants.CluesRequiredToLocate"/>, clue reading is too dangerous.</summary>
         public int CluesRead;

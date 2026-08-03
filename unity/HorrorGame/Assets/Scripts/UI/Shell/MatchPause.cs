@@ -8,21 +8,20 @@ namespace HorrorGame.UI.Shell
     /// <summary>
     /// Stops the match, for real.
     /// <para>
-    /// <b>§07's clock is the game's currency and it must actually stop.</b> The section
-    /// makes elapsed time the thing every dilemma is priced in — the threat tier, the
-    /// monster's speed, whether §10's "지금 나갈까?" is a question worth asking — and
-    /// §03 is explicit that surfacing does not reset it: "나가는 것은 숨 돌리기이지
-    /// 리셋이 아니다." A pause menu that leaves it running charges a player for the time
-    /// they spent reading their own key bindings, and it is the kind of bug a player
-    /// notices in one session and never forgives.
+    /// <b>The race clock is the score and it must actually stop.</b> §02 records a
+    /// 완주 순위 and <c>RaceHud</c> puts the elapsed time on the screen, so a pause menu
+    /// that leaves the clock running charges a player for the time they spent reading
+    /// their own key bindings. It is the kind of bug a player notices in one session and
+    /// never forgives, and in a race it is the kind that decides a placing.
     /// </para>
     /// <para>
     /// <b>How it stops.</b> <c>Time.timeScale = 0</c>, which is enough because
     /// <c>MatchDirector</c> steps the whole match from <c>FixedUpdate</c> at
     /// <c>GameConstants.FixedStep</c> and Unity does not run <c>FixedUpdate</c> at zero
-    /// scale. One switch stops the clock, the monster, the clue read and the battery
-    /// together, and — importantly — stops them at the same instant, which a per-system
-    /// pause flag would not guarantee.
+    /// scale. One switch stops the clock and the monster together, and — importantly —
+    /// stops them at the same instant, which a per-system pause flag would not
+    /// guarantee. (It used to be listed as stopping the clue read and the battery drain
+    /// as well; DESCENT-PIVOT §7 step 7 deleted both, and the mechanism is unchanged.)
     /// </para>
     /// <para>
     /// <b>Three things do not stop, deliberately.</b> The player's input router runs on
@@ -36,8 +35,9 @@ namespace HorrorGame.UI.Shell
     /// there is no host migration; when Mirror is carrying a real session, one client
     /// stopping its own <c>timeScale</c> would desynchronise it from a match that is
     /// still running. The menu that opens this is therefore the solo one, and the
-    /// networked build will need a host-side vote instead — the same shape §02's
-    /// "leave for good" already has.
+    /// networked build will need something host-side instead. In a race the honest
+    /// answer is probably that there is no pause at all: twenty people cannot stop a
+    /// clock they are being ranked on, and a runner who alt-tabs is a runner who loses.
     /// </para>
     /// </summary>
     public static class MatchPause

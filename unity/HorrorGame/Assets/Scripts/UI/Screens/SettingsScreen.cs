@@ -28,8 +28,9 @@ namespace HorrorGame.UI.Screens
     /// <b>Everything else is comfort and is left alone.</b> Turning speed, invert-Y, the
     /// mix and the window can be set to whatever a person needs; §05 puts no number on
     /// any of them, so neither does this screen. The one comfort control with a
-    /// consequence is the effects volume, which carries §04's warning without blocking
-    /// the choice — the same posture §08's shop takes with the 소음기.
+    /// consequence is the effects volume, which carries its warning without blocking the
+    /// choice: a runner at zero has given up hearing the creature coming, which is
+    /// allowed and is worth saying out loud.
     /// </para>
     /// <para>
     /// <b>Applied live, saved on close.</b> Brightness and field of view are judged by
@@ -139,10 +140,9 @@ namespace HorrorGame.UI.Screens
             _fullScreenModes = DisplayOptions.FullScreenModes();
             _qualityNames = DisplayOptions.QualityLevels();
 
-            // §08's shop panel is deliberately translucent — the team is standing in the
-            // open with the night advancing behind it. This screen is the opposite: the
-            // match is either not running or stopped, and the world showing through at
-            // the panel's 6 % put a bloomed corridor light straight through the middle
+            // Nearly opaque, and measured rather than chosen. The match behind this is
+            // either not running or stopped, and the world showing through at the
+            // panel's own 6 % put a bloomed corridor light straight through the middle
             // of the 밝기 column, which is the one row a player has to judge by eye.
             var dim = UiFactory.CreateImage("Dim", root, new Color(0.006f, 0.006f, 0.010f, 0.985f), raycastTarget: true);
             UiFactory.Stretch((RectTransform)dim.transform);
@@ -239,18 +239,18 @@ namespace HorrorGame.UI.Screens
             y -= UiControls.SettingRowHeight + UiControls.SettingRowGap;
 
             var sfx = UiControls.CreateRow(column, Font, "효과음",
-                "발소리 · 괴물 · 도구 · 인터페이스. §04 청음사는 이 소리만으로 괴물을 찾는다 — 줄이면 직업 하나가 꺼진다.",
+                "발소리 · 괴물 · 인터페이스. 괴물이 어느 복도에 있는지는 소리로만 알 수 있다 — 0으로 두면 눈으로만 달리게 된다.",
                 y, ColumnWidth);
             _sfxSlider = UiControls.CreateSlider(sfx, SettingsLimits.VolumeMin, SettingsLimits.VolumeMax, 1f, OnSfxChanged);
             _sfxValue = UiControls.CreateValueText(sfx, Font, string.Empty);
             y -= UiControls.SettingRowHeight + UiControls.SettingRowGap;
 
-            var ambience = UiControls.CreateRow(column, Font, "환경음", "§12 구역 배드와 §07 긴장 배드.", y, ColumnWidth);
+            var ambience = UiControls.CreateRow(column, Font, "환경음", "§12 구역 배드와 긴장 배드.", y, ColumnWidth);
             _ambienceSlider = UiControls.CreateSlider(ambience, SettingsLimits.VolumeMin, SettingsLimits.VolumeMax, 1f, OnAmbienceChanged);
             _ambienceValue = UiControls.CreateValueText(ambience, Font, string.Empty);
             y -= UiControls.SettingRowHeight + UiControls.SettingRowGap;
 
-            var voice = UiControls.CreateRow(column, Font, "음성", "§13 근접 음성. §03의 「말로 전달해야 한다」가 지나가는 채널.", y, ColumnWidth);
+            var voice = UiControls.CreateRow(column, Font, "음성", "§13 근접 음성. 근처 주자에게만 들린다 — 길을 묻는 것도, 속이는 것도 이 채널이다.", y, ColumnWidth);
             _voiceSlider = UiControls.CreateSlider(voice, SettingsLimits.VolumeMin, SettingsLimits.VolumeMax, 1f, OnVoiceChanged);
             _voiceValue = UiControls.CreateValueText(voice, Font, string.Empty);
             y -= UiControls.SettingRowHeight + UiControls.SettingRowGap;
@@ -262,13 +262,13 @@ namespace HorrorGame.UI.Screens
                 (RectTransform)UiFactory.CreateText(
                     "Headphones", band.transform, Font,
                     "헤드폰 필수 — §05: 「3D 오디오는 카메라 기준 → 헤드폰 필수」.\n"
-                    + "스피커로는 몸을 돌려 삼각측량하는 §04 청음사의 방향 판별이 성립하지 않는다.",
+                    + "스피커로는 몸을 돌려 괴물의 방향을 재는 것도, 목소리가 어느 복도에서 오는지 아는 것도 성립하지 않는다.",
                     UiControls.NoteSize, UiStyle.Trade, TextAnchor.MiddleLeft).transform,
                 new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(14f, 0f), new Vector2(ColumnWidth - 28f, 46f));
         }
 
         // ------------------------------------------------------------------
-        // Right column — §03's lock, and the window.
+        // Right column — the dark, and the window.
         // ------------------------------------------------------------------
 
         private void BuildDisplay(RectTransform column)
@@ -278,9 +278,9 @@ namespace HorrorGame.UI.Screens
             y -= 46f;
 
             var brightnessRow = UiControls.CreateRow(column, Font, "밝기",
-                "§03 밸런스 항목. 「어둠 = 목표의 잠금장치」 — 전부 밝히면 손전등도, 배터리도, 왕복할 이유도 사라진다.\n"
-                + "그래서 폭이 §03의 판독 한계(" + Percent(GameConstants.ClueMinReadableLightQuality)
-                + ")와 같은 ±" + Percent(SettingsLimits.BrightnessGainSpan) + "로 묶여 있다.",
+                "밸런스 항목. 어둠은 이 게임의 공포이고, 아래층으로 갈수록 더 어두워진다 — 전부 밝히면 내려갈 이유가 사라진다.\n"
+                + "경주이기도 하다. 남보다 한 모퉁이 더 보이는 설정은 실력이 아니므로 폭이 ±"
+                + Percent(SettingsLimits.BrightnessGainSpan) + "로 묶여 있다.",
                 y, ColumnWidth);
             _brightnessSlider = UiControls.CreateSlider(brightnessRow, 0f, 1f, SettingsLimits.BrightnessNeutral01, OnBrightnessChanged);
             _brightnessValue = UiControls.CreateValueText(brightnessRow, Font, string.Empty);
@@ -620,8 +620,8 @@ namespace HorrorGame.UI.Screens
 
             if (_sfxValue != null)
             {
-                // §04's warning, on the number rather than only in the note: a 청음사 at
-                // zero effects volume is a role that has been switched off.
+                // The warning on the number rather than only in the note: a runner at zero
+                // effects volume has switched off the only warning the creature gives.
                 _sfxValue.color = settings.VolumeSfx <= 0.001f ? UiStyle.Spent : UiStyle.Trade;
             }
 

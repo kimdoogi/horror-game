@@ -42,29 +42,49 @@ namespace HorrorGame.Core.Map
         /// </summary>
         MazeSpace = 1 << 1,
 
-        /// <summary>
-        /// 관측 지점 — a 2층 난간, window or grate. §12 관측자: somewhere the monster
-        /// can be watched from <see cref="GameConstants.ObserverRange"/> without
-        /// being reachable from where it stands.
-        /// </summary>
-        ObservationPost = 1 << 2,
+        // DELETED in the 상점/전리품/단서 제거 round, and their bits deliberately left
+        // as holes rather than reused — a stale saved sketch that still has bit 2 set
+        // must not silently become something else.
+        //
+        //   ObservationPost = 1 << 2   §12 관측자. A 난간/window the monster could be
+        //                              watched from. The 관측자 went with §04's roles.
+        //   ElectricalPanel = 1 << 3   §12 정비공's 배전반, "전기 패널 구역당 1개" — what
+        //                              made a zone lightable. The light economy is gone:
+        //                              the runner's torch simply works.
+        //   Concealment     = 1 << 5   §12's 은폐 지점, for §07 새벽's MonsterKnowsExit
+        //                              ambush. A race has nowhere worth waiting: standing
+        //                              still is losing.
+        //
+        // Measured before deleting: no runtime component, director or system read any of
+        // the three. Their only readers were MapValidator rules, and RuleConcealmentNearExit
+        // was already waived in MapSceneGenerator.KnownFailingRules as obsolete.
 
-        /// <summary>전기 패널. §12 정비공: "전기 패널 구역당 1개" — what makes a zone lightable at all.</summary>
-        ElectricalPanel = 1 << 3,
-
         /// <summary>
-        /// 단서 · 목표물 후보 지점. §12 builds three per zone and picks one per match,
-        /// so all three must satisfy the site conditions — the choice is made after
-        /// the map is built and cannot rescue a bad site.
+        /// 도달 지점 — a probe the reachability audits must be able to walk to.
+        /// <para>
+        /// <b>This bit changed job, not just name.</b> It was <c>CandidateSite</c>: §12
+        /// built three per zone and §03 picked one per match to hide a 단서 or the
+        /// 목표물 at, so all three had to satisfy the site conditions. There is no
+        /// objective to hide and nothing to read, so nothing chooses between them any
+        /// more — but the geometry earns its keep for a different reason, and that
+        /// reason was always the real one.
+        /// </para>
+        /// <para>
+        /// The audits (<c>NavMeshConnectivity</c>, <c>PlayerTraversal</c>,
+        /// <c>Editor/Dressing/Reachability</c>) prove the building by pairing every
+        /// marker with every other and walking between them. On B2–B8 these are the only
+        /// markers standing on a band rail rather than one step off it in an alcove, so
+        /// a wall that seals a rail without sealing the alcoves hanging off it has
+        /// something standing on it. Its failure mode inverted with its name: a missing
+        /// 후보 지점 was a balance complaint, a <c>ReachProbe</c> the audit cannot walk to
+        /// is a failed build.
+        /// </para>
+        /// <para>
+        /// The count is <c>floor.Bands.Count</c>, not §12's 후보 지점 arithmetic. Both are
+        /// 3 today and they mean different things.
+        /// </para>
         /// </summary>
-        CandidateSite = 1 << 4,
-
-        /// <summary>
-        /// 은폐 지점 — somewhere to wait out a monster that already knows where you
-        /// are going. §12's last checklist item exists for §07 새벽, the tier at
-        /// which <c>MonsterKnowsExit</c> turns the way out into an ambush.
-        /// </summary>
-        Concealment = 1 << 5,
+        ReachProbe = 1 << 4,
 
         /// <summary>
         /// 출입구 — the way out of the map. Marked rather than inferred because a

@@ -3,7 +3,6 @@
 using System.Collections;
 using System.Text;
 using HorrorGame.Core;
-using HorrorGame.Core.Roles;
 using HorrorGame.Gameplay.Player;
 using NUnit.Framework;
 using UnityEngine;
@@ -127,7 +126,7 @@ namespace HorrorGame.Tests.PlayMode.PlayerRig
         [UnityTest]
         public IEnumerator Pressing_the_crouch_key_lowers_the_capsule_and_halves_the_speed()
         {
-            var motor = BuildPlayer(RoleId.Runner);
+            var motor = BuildPlayer();
             var stance = motor.GetComponent<PlayerStance>();
             var controller = motor.GetComponent<CharacterController>();
             yield return null;
@@ -171,7 +170,7 @@ namespace HorrorGame.Tests.PlayMode.PlayerRig
         [UnityTest]
         public IEnumerator Standing_up_under_a_ceiling_is_refused_rather_than_clipping_through_it()
         {
-            var motor = BuildPlayer(RoleId.Runner);
+            var motor = BuildPlayer();
             var stance = motor.GetComponent<PlayerStance>();
             var controller = motor.GetComponent<CharacterController>();
             yield return null;
@@ -245,7 +244,7 @@ namespace HorrorGame.Tests.PlayMode.PlayerRig
         [UnityTest]
         public IEnumerator Pressing_jump_leaves_the_ground_peaks_under_a_step_and_lands()
         {
-            var motor = BuildPlayer(RoleId.Runner);
+            var motor = BuildPlayer();
             var stance = motor.GetComponent<PlayerStance>();
             yield return null;
             yield return null;
@@ -311,7 +310,7 @@ namespace HorrorGame.Tests.PlayMode.PlayerRig
         [UnityTest]
         public IEnumerator The_hop_cannot_mount_a_ledge_a_walk_cannot()
         {
-            var motor = BuildPlayer(RoleId.Runner);
+            var motor = BuildPlayer();
             yield return null;
             yield return SettleOnFloor(motor);
 
@@ -367,13 +366,21 @@ namespace HorrorGame.Tests.PlayMode.PlayerRig
         }
 
         /// <summary>
-        /// §04's channel, both signs. Crouching quietens the movement term the 청음사 is
-        /// blinded by; the landing at the end of a hop is loud enough to blind them.
+        /// The noise channel, both signs. Crouching quietens the movement term; the landing
+        /// at the end of a hop is loud enough to give the runner away.
+        /// <para>
+        /// The meter used to be read as §04's 청음사 feed — the 직업 who heard what everyone
+        /// else made, with §08 selling a 소음기 to opt out of it. Both are gone with
+        /// DESCENT-PIVOT §7 step 7 and the meter is not: in a race the same number is what
+        /// §06's creature hears (<c>MatchDirector.TakeFootstepCue</c>) and what the other
+        /// nineteen runners hear through §12's floor materials. Crouching to move quietly
+        /// past a gate is the same trade it always was, with no 직업 on either end of it.
+        /// </para>
         /// </summary>
         [UnityTest]
-        public IEnumerator Crouching_is_quiet_and_a_landing_is_loud_on_section04s_own_meter()
+        public IEnumerator Crouching_is_quiet_and_a_landing_is_loud_on_the_noise_meter()
         {
-            var motor = BuildPlayer(RoleId.Runner);
+            var motor = BuildPlayer();
             var stance = motor.GetComponent<PlayerStance>();
             // Fully qualified: HorrorGame.Audio also declares a FloorSurfaceTag, so a
             // using directive here would make that name ambiguous against the player
@@ -394,8 +401,8 @@ namespace HorrorGame.Tests.PlayMode.PlayerRig
             var crouched = noise.Noise01;
 
             Assert.That(crouched, Is.LessThan(walking),
-                "§04 prices the 청음사 on 자기가 소리를 내면 못 듣는다, and §08 sells a 소음기 to buy out "
-                + "of it. Crouching is the free version of that trade and it has to move the same number.");
+                "§12 makes footsteps the channel everyone reads — the creature and the other "
+                + "nineteen — so the one stance that trades speed for silence has to move the number.");
             Assert.That(crouched,
                 Is.EqualTo(walking * GameConstants.CrouchNoiseMultiplier).Within(0.001f));
 
@@ -404,8 +411,9 @@ namespace HorrorGame.Tests.PlayMode.PlayerRig
             yield return null;
 
             Assert.That(noise.Noise01, Is.GreaterThan(GameConstants.ListenerSelfNoiseThreshold),
-                "a landing has to cut §04's feed. It is the opposite sign of the crouch on the same "
-                + "channel, and a silent one would make the jump a free verb.");
+                "a landing has to clear the audible threshold. It is the opposite sign of the crouch "
+                + "on the same channel, and a silent one would make the jump a free verb — a runner "
+                + "who could drop into the 안쪽 고리 in silence would have §06's creature for nothing.");
         }
 
         // ------------------------------------------------------------------- fixtures
@@ -530,7 +538,7 @@ namespace HorrorGame.Tests.PlayMode.PlayerRig
         /// keys are the only way in. Deliberately the same shape as
         /// <c>PlayerTests.BuildPlayer</c>, plus the stance.
         /// </summary>
-        private PlayerMotor BuildPlayer(RoleId role)
+        private PlayerMotor BuildPlayer()
         {
             _floor = GameObject.CreatePrimitive(PrimitiveType.Cube);
             _floor.name = "StanceTestFloor";
@@ -558,8 +566,9 @@ namespace HorrorGame.Tests.PlayMode.PlayerRig
             // for a stance there.
             _body.AddComponent<PlayerStance>();
 
+            // No role assigned, and that IS the assignment: DESCENT-PIVOT §7 step 7 ran on
+            // 2026-08-03 and §04 has no 직업 left. 20 runners, one body, 질주 for everybody.
             var motor = _body.AddComponent<PlayerMotor>();
-            motor.Role = role;
 
             look.PitchPivot = pivot;
             look.SetLook(0f, 0f);

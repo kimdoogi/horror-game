@@ -422,7 +422,6 @@ namespace HorrorGame.Tests.PlayMode.Net
                 YawDegrees = ReportedYawDegrees,
                 PitchDegrees = ReportedPitchDegrees,
                 FlashlightOn = true,
-                Carry = NetCarryState.Objective,
                 StaminaFraction = ReportedStaminaFraction,
             };
 
@@ -447,9 +446,12 @@ namespace HorrorGame.Tests.PlayMode.Net
             Assert.That(serverCopy.FlashlightOn, Is.True,
                 "§05 sends 손전등 on/off because §06 turns it into what the monster notices. It did not arrive.");
 
-            Assert.That(serverCopy.Carry, Is.EqualTo(NetCarryState.Objective),
-                "§05's 운반 상태 did not arrive. It is the most information-dense byte in the game — §03 says the "
-                + "carrier cannot hold a light, so somebody else has to.");
+            // The 운반 상태 assertion that stood here is DELETED with §08 and §03's 목표물.
+            // It called the carry byte "the most information-dense byte in the game" — and
+            // it was, in a co-op game where the carrier could not hold a light so somebody
+            // else had to. A runner carries a torch, so the byte had one value and is off
+            // the wire entirely. The four rows still asserted (position, flashlight, yaw,
+            // pitch, stamina) are the ones a race actually replicates.
 
             Assert.That(serverCopy.YawDegrees, Is.EqualTo(ReportedYawDegrees).Within(AngleToleranceDegrees),
                 "Yaw did not survive the wire. §05: 남의 손전등 방향이 정보다.");
@@ -757,8 +759,6 @@ namespace HorrorGame.Tests.PlayMode.Net
             public float PitchDegrees { get; set; }
 
             public bool FlashlightOn { get; set; }
-
-            public NetCarryState Carry { get; set; }
 
             public float StaminaFraction { get; set; }
         }

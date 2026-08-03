@@ -68,7 +68,11 @@ namespace HorrorGame.EditorTools.Dressing
             }
 
             var spawns = Points(markers, "PlayerSpawns");
-            var sites = Points(markers, "CandidateSites");
+            // The group MapSceneBuilder writes is marker.Kind + "s", so 후보 지점's
+            // "CandidateSites" became "ReachProbes" when the kind was renamed. Getting
+            // this wrong does not throw — Points returns an empty list and this tool
+            // silently measures zero routes and calls it fine.
+            var sites = Points(markers, "ReachProbes");
 
             var complete = 0;
             var partial = 0;

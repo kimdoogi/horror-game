@@ -60,8 +60,6 @@ namespace HorrorGame.Net
         [SyncVar(hook = nameof(OnFlashlightChanged))]
         private bool _flashlightOn;
 
-        [SyncVar(hook = nameof(OnCarryChanged))]
-        private NetCarryState _carry;
 
         [SyncVar]
         private byte _staminaSteps;
@@ -109,7 +107,6 @@ namespace HorrorGame.Net
         public bool FlashlightOn => _flashlightOn;
 
         /// <summary>§05's 운반 상태.</summary>
-        public NetCarryState Carry => _carry;
 
         /// <summary>This player's role. Public knowledge — §11 makes the lineup the match's premise.</summary>
         public RoleId Role => _role;
@@ -165,13 +162,15 @@ namespace HorrorGame.Net
         /// </summary>
         public event Action<bool>? FlashlightChanged;
 
-        /// <summary>
-        /// Raised when this player picks up or puts down what they are carrying.
-        /// §05 lists 운반 상태 for "애니메이션 + 속도", and both of those are things a
-        /// listener wants to change at the moment it happens rather than a frame
-        /// later.
-        /// </summary>
-        public event Action<NetCarryState>? CarryChanged;
+        // DELETED with §08 and §03's 목표물: the 운반 상태 SyncVar `_carry`, the `Carry`
+        // property, the `CarryChanged` event, the `NetCarryState` argument on
+        // CmdReportView and its hook. §05 listed 운반 상태 as one of the five rows every
+        // player replicates, for "애니메이션 + 속도".
+        //
+        // A runner carries a torch and nothing else, so the row was Empty on every
+        // machine, on every tick, for the whole race — a SyncVar with one reachable
+        // value. At twenty players that is the exact kind of per-tick traffic §16-1 is
+        // now the top open question about, spent on nothing.
 
         /// <summary>
         /// Attaches the local controller that produces §05's five rows. Called by
@@ -294,7 +293,6 @@ namespace HorrorGame.Net
                 NetViewCompression.PackYaw(source.YawDegrees),
                 NetViewCompression.PackPitch(source.PitchDegrees),
                 source.FlashlightOn,
-                source.Carry,
                 steps);
         }
 
@@ -309,7 +307,6 @@ namespace HorrorGame.Net
             ushort yawQ,
             ushort pitchQ,
             bool flashlightOn,
-            NetCarryState carry,
             byte staminaSteps)
         {
             var now = NetworkTime.localTime;
@@ -333,7 +330,6 @@ namespace HorrorGame.Net
             _yawQ = yawQ;
             _pitchQ = pitchQ;
             _flashlightOn = flashlightOn;
-            _carry = carry;
             _staminaSteps = (byte)Mathf.Clamp(staminaSteps, 0, StaminaApproximationSteps);
 
             // The host is also a player. Its own avatar has to move too.
@@ -351,11 +347,6 @@ namespace HorrorGame.Net
             }
 
             FlashlightChanged?.Invoke(current);
-        }
-
-        private void OnCarryChanged(NetCarryState previous, NetCarryState current)
-        {
-            CarryChanged?.Invoke(current);
         }
 
         /// <summary>

@@ -1,6 +1,5 @@
 #nullable enable
 
-using HorrorGame.Core;
 using UnityEngine;
 
 namespace HorrorGame.UI.Settings
@@ -33,17 +32,25 @@ namespace HorrorGame.UI.Settings
     /// </description></item>
     /// </list>
     /// <para>
-    /// <b>Brightness is the awkward one and it is handled by derivation rather than by
-    /// taste.</b> §03 makes darkness the lock on progress — "어둠 = 목표의 잠금장치" —
-    /// so a free gamma slider is a mechanic-removal tool, and yet <c>GameConstants</c>
-    /// has no §03 gamma value to defer to because the design document never imagined
-    /// the player's monitor. Rather than invent one,
-    /// <see cref="BrightnessGainSpan"/> is taken from
-    /// <c>GameConstants.ClueMinReadableLightQuality</c>: §03 puts its threshold at 20 %
-    /// of full light, so the widest a display preference may move the picture is the
-    /// same 20 %. At that width a surface sitting at §03's floor is still below it and
-    /// one above is still above it — the slider changes how comfortable the dark is to
-    /// look at and cannot change which side of §03's threshold anything is on.
+    /// <b>Brightness is the awkward one, and it is now a bounded number rather than a
+    /// derivation.</b> The dark is the horror and it deepens as the runner descends, so
+    /// a free gamma slider is a mechanic-removal tool — and in a race it is worse than
+    /// that, because a player who can see one corridor further than the field is a
+    /// player who is winning on a display setting. <c>GameConstants</c> has no gamma
+    /// value to defer to; the design document never imagined the player's monitor.
+    /// </para>
+    /// <para>
+    /// <b>Where the 20 % came from, and why it stayed.</b> It used to be read off
+    /// <c>GameConstants.ClueMinReadableLightQuality</c> — §03 put the light needed to
+    /// read a 단서 at 20 % of full, so the widest a display preference could move the
+    /// picture was the same 20 %, which guaranteed the slider could never move a surface
+    /// across §03's threshold. DESCENT-PIVOT §7 step 7 deleted the 단서 and that constant
+    /// with it. The width is kept, as a number with its history written down rather than
+    /// as a reference to a system that no longer exists, for two reasons: it is the width
+    /// every frame of this game has been graded and reviewed against, and ±20 % is small
+    /// enough that it cannot turn an unlit inner ring into a lit one. If it ever needs to
+    /// move, it has become a balance value and belongs in <c>GameConstants</c> with a
+    /// § citation (ARCHITECTURE §2).
     /// </para>
     /// </summary>
     public static class SettingsLimits
@@ -60,7 +67,7 @@ namespace HorrorGame.UI.Settings
         /// <summary>Unchanged from the rig's own authored value. §05's turning speed is not a balance item.</summary>
         public const float MouseSensitivityDefault = 1f;
 
-        /// <summary>Every volume slider's floor. Silence is a legitimate choice; §04's warning is a label, not a lock.</summary>
+        /// <summary>Every volume slider's floor. Silence is a legitimate choice; the warning beside it is a label, not a lock.</summary>
         public const float VolumeMin = 0f;
 
         /// <summary>Every volume slider's ceiling. <c>GameAudio</c> takes 0..1 and applies §-derived trims underneath.</summary>
@@ -68,13 +75,11 @@ namespace HorrorGame.UI.Settings
 
         /// <summary>
         /// Widest fractional change in displayed luminance a player may apply, either
-        /// way. §03's own threshold, reused — see the type remarks for why this is a
-        /// derivation and not a preference.
+        /// way. ±20 % — see the type remarks for where the figure came from, why it is
+        /// written here rather than derived, and what would have to be true for it to
+        /// move.
         /// </summary>
-        public static float BrightnessGainSpan
-        {
-            get { return GameConstants.ClueMinReadableLightQuality; }
-        }
+        public const float BrightnessGainSpan = 0.20f;
 
         /// <summary>Dimmest the player may make the picture, as a linear multiplier on luminance.</summary>
         public static float BrightnessGainMin

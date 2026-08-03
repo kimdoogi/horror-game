@@ -42,9 +42,6 @@ namespace HorrorGame.Gameplay.Player
         [SerializeField]
         private PlayerMotor? _motor;
 
-        [SerializeField]
-        private PlayerLoadout? _loadout;
-
         [Tooltip("Drives the Crouch/CrouchWalk clips from the crouch key. Optional — a locker can still set Crouching by hand.")]
         [SerializeField]
         private PlayerStance? _stance;
@@ -233,7 +230,6 @@ namespace HorrorGame.Gameplay.Player
         {
             _animator = GetComponentInChildren<Animator>();
             _motor = GetComponentInParent<PlayerMotor>();
-            _loadout = GetComponentInParent<PlayerLoadout>();
             _stance = GetComponentInParent<PlayerStance>();
         }
 
@@ -247,11 +243,6 @@ namespace HorrorGame.Gameplay.Player
             if (_motor == null)
             {
                 _motor = GetComponentInParent<PlayerMotor>();
-            }
-
-            if (_loadout == null)
-            {
-                _loadout = GetComponentInParent<PlayerLoadout>();
             }
 
             if (_stance == null)
@@ -278,12 +269,19 @@ namespace HorrorGame.Gameplay.Player
             }
 
             var speed = _motor != null ? _motor.GroundSpeed : 0f;
-            var carrying = _loadout != null && _loadout.CarryingObjective;
-            var burdened = _loadout != null
-                && (_loadout.CarryingOversizePiece
-                    || _loadout.SpeedMultiplier <= GameConstants.WeightMulOverloaded);
 
-            var next = Resolve(speed, carrying, burdened, CrouchingNow, Dead);
+            // Both carry flags are now constants, and they are passed rather than removed
+            // from Resolve on purpose. They came from PlayerLoadout — §03's 목표물 in both
+            // hands, and §08's 대형 전리품 or a bag over WeightMulOverloaded — and a runner
+            // in a race carries nothing but a torch, so neither can be true.
+            //
+            // Resolve keeps its two parameters and the driver keeps all nine clip slots.
+            // Carry/CarryIdle/CarryHeavy are unreachable at runtime today, and an
+            // unreachable pose is a very different thing from a missing one: the rig is
+            // still assembled with nine clips, PlayerFeelHarness can still drive the poses
+            // for a look, and the day something IS carried — a shut door being dragged, a
+            // body — the animation exists rather than having to be re-authored.
+            var next = Resolve(speed, carryingObjective: false, visiblyBurdened: false, CrouchingNow, Dead);
             _state = next;
 
             AdvanceWeights(next, Time.deltaTime);

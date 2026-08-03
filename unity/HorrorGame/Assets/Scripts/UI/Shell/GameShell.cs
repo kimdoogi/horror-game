@@ -42,6 +42,16 @@ namespace HorrorGame.UI.Shell
     /// only the gameplay layer reaching back can, which is what
     /// <c>RaceLobby.Install</c>'s <c>RuntimeInitializeOnLoadMethod</c> does.
     /// </para>
+    /// <para>
+    /// <b>The menu also carries <see cref="StartMatch"/> directly, and it has to.</b>
+    /// Once <c>RaceLobby</c> is installed — which it always is in a real build, from a
+    /// <c>RuntimeInitializeOnLoadMethod</c> that no scene has to opt into — 시작 can only
+    /// ever end at the lobby, and the lobby refuses to start below
+    /// <c>GameConstants.RaceRunnersMin</c>. A player on their own therefore had no button
+    /// on this menu that reached the building at all. 혼자 내려가기 is that button. It is
+    /// deliberately not a second way into a race: it loads the same scene with one runner
+    /// in it, which is a practice descent and is labelled as one.
+    /// </para>
     /// </summary>
     [DisallowMultipleComponent]
     [DefaultExecutionOrder(-200)]
@@ -120,7 +130,7 @@ namespace HorrorGame.UI.Shell
             _settings?.SetVisible(false);
             _loading?.Close();
 
-            _menu?.Open(BeginFromMenu, OpenSettingsFromMenu, Quit);
+            _menu?.Open(BeginFromMenu, StartMatch, OpenSettingsFromMenu, Quit);
         }
 
         /// <summary>
@@ -362,7 +372,7 @@ namespace HorrorGame.UI.Shell
             }
 
             _state = ShellState.Menu;
-            _menu?.Open(BeginFromMenu, OpenSettingsFromMenu, Quit);
+            _menu?.Open(BeginFromMenu, StartMatch, OpenSettingsFromMenu, Quit);
         }
 
         private void OnResumed()

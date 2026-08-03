@@ -11,12 +11,12 @@ using HorrorGame.Core.Monster;
 using HorrorGame.Gameplay.Ghost;
 using HorrorGame.Gameplay.Interaction;
 using HorrorGame.Gameplay.Match;
+using HorrorGame.Gameplay.Race;
 using HorrorGame.Gameplay.Monster;
 using HorrorGame.Gameplay.Player;
-using HorrorGame.UI.Readouts;
-using HorrorGame.UI.Screens;
 using NUnit.Framework;
 using UnityEngine;
+using HorrorGame.UI.Screens;
 using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
 
@@ -100,15 +100,15 @@ namespace HorrorGame.Tests.PlayMode.Ghosts
 
         /// <summary>
         /// The whole of the wiring, asserted end to end: §06 catches the player, §09 takes
-        /// over, §08's pile is reported to the ghost, and §02's verdict is held rather
-        /// than shown.
+        /// over, and §02's verdict is held rather than shown. (This summary used to name
+        /// §08's pile being reported to the ghost as a fourth step; the economy went on
+        /// 2026-08-03 and there is no pile.)
         /// </summary>
         [UnityTest]
         public IEnumerator Being_caught_makes_a_ghost_and_does_not_end_the_screen()
         {
             var run = new Run();
             yield return run.Start();
-            yield return run.Descend();
             yield return run.Die();
 
             var director = run.Director;
@@ -124,21 +124,35 @@ namespace HorrorGame.Tests.PlayMode.Ghosts
             Assert.That(ghosts.Ghost, Is.Not.Null);
             Assert.That(ghosts.Ghost!.SeesEntireMap, Is.True, "§09 시야: 맵 전체를 자유롭게 본다 (벽 통과).");
 
-            // §02 has decided — one seat, dead, so 전멸 — and that is exactly the case that
-            // used to slam the panel up.
-            Assert.That(director.Outcome, Is.EqualTo(MatchOutcome.Wiped),
-                "the tally is unchanged: §02 still reads a solo death as 전멸.");
+            // §02 has decided, and this is the assertion that changed shape with the
+            // pivot. It read `director.Outcome == MatchOutcome.Wiped` — one seat, dead,
+            // therefore 전멸, the co-op verdict that used to slam the panel up. A race has
+            // no team to wipe: a caught runner is 탈락, and the standings say so by name.
+            Assert.That(director.Race!.ExitOf(director.LocalPlayerIndex), Is.EqualTo(RaceExit.Caught),
+                "§02: being caught is 탈락. The runner is out of the standings as something other than "
+                + "Caught, which means RaceDirector.ReportCaught never ran — the defect where a caught "
+                + "runner stayed Running forever and the race could never close.");
 
             Assert.That(director.IsRunning, Is.True,
                 "§09: 죽으면 지루하다 → 볼 게 있고 할 게 있다. The match has to keep running or there is nothing to watch — "
                 + "§07's clock, §06's hunt and the 45 s cooldown are all stepped from it.");
 
-            Assert.That(director.EndScreenHeldForGhost, Is.True,
+            Assert.That(director.RaceVerdictHeldForGhost, Is.True,
                 "§02's verdict is reached and held for the ghost, not shown to it.");
 
-            var end = director.GetComponentInChildren<EndScreen>();
-            Assert.That(end == null || !end.IsVisible, Is.True,
-                "§09 must not be thrown to §02's panel the instant the monster lands. The end screen is up.");
+            // ONE ASSERTION WAS REMOVED HERE on 2026-08-03 — DESCENT-PIVOT §7 step 7. It was
+            //     var end = director.GetComponentInChildren<EndScreen>();
+            //     Assert.That(end == null || !end.IsVisible, Is.True);
+            // and it did not survive because UI/Screens/EndScreen.cs does not: 완전 승리 /
+            // 부분 승리 / 생존 / 패배 were four ways a TEAM ended a 왕복, and a race ends one
+            // runner four other ways (§02: 승리 · 완주 · 탈락 · 시간 초과).
+            //
+            // The line above still carries the half that matters — the verdict is REACHED and
+            // HELD rather than shown — and it reads the director's own flag, which is what the
+            // screen was only ever a consequence of. The half that is genuinely uncovered is
+            // that nothing now checks a panel does not appear over a ghost's view. What would
+            // appear is UI/RaceHud.cs's 탈락 verdict panel, and that panel has no test at all;
+            // it is named in UiTests' own header as the gap left by EndScreenReadout.
         }
 
         /// <summary>
@@ -150,7 +164,6 @@ namespace HorrorGame.Tests.PlayMode.Ghosts
         {
             var run = new Run();
             yield return run.Start();
-            yield return run.Descend();
             yield return run.Die();
 
             var director = run.Director;
@@ -158,12 +171,13 @@ namespace HorrorGame.Tests.PlayMode.Ghosts
 
             Assert.That(ghosts.VerdictIsWaiting, Is.True, "the ghost was never told §02 had finished.");
 
-            var before = director.Outcome;
-            Assert.That(ghosts.TryEndTheMatch(), Is.True, "the held end screen refused to open.");
+            var before = director.Race!.ExitOf(director.LocalPlayerIndex);
+            Assert.That(ghosts.TryEndTheMatch(), Is.True, "the held verdict refused to open.");
             yield return null;
 
-            Assert.That(director.Outcome, Is.EqualTo(before),
-                "§09 offers the ghost the timing and nothing else. The outcome moved when the ghost asked for it.");
+            Assert.That(director.Race!.ExitOf(director.LocalPlayerIndex), Is.EqualTo(before),
+                "§09 offers the ghost the timing and nothing else. The standing moved when the ghost asked "
+                + "for it — an eliminated player deciding their own placing.");
 
             Assert.That(ghosts.IsActive, Is.False, "the ghost kept the camera after the match ended.");
             Assert.That(director.IsRunning, Is.False, "the match kept stepping after §02's screen went up.");
@@ -178,7 +192,6 @@ namespace HorrorGame.Tests.PlayMode.Ghosts
         {
             var run = new Run();
             yield return run.Start();
-            yield return run.Descend();
             yield return run.Die();
 
             var ghosts = run.Ghosts;
@@ -241,7 +254,6 @@ namespace HorrorGame.Tests.PlayMode.Ghosts
         {
             var run = new Run();
             yield return run.Start();
-            yield return run.Descend();
             yield return run.Die();
 
             var ghosts = run.Ghosts;
@@ -276,7 +288,6 @@ namespace HorrorGame.Tests.PlayMode.Ghosts
         {
             var run = new Run();
             yield return run.Start();
-            yield return run.Descend();
             yield return run.Die();
 
             var state = run.Director.State!;
@@ -343,44 +354,54 @@ namespace HorrorGame.Tests.PlayMode.Ghosts
         }
 
         /// <summary>
-        /// §09 탈출: 불가능. The ghost cannot leave by any route the match exposes, and
-        /// the one that looks closest — <c>MatchDirector.TryLeaveForGood</c> — refuses.
+        /// 탈락에는 순위가 없다 — §02, and the whole point of the elimination rule.
+        /// <para>
+        /// <b>This test used to ask a different question and could not keep asking it.</b>
+        /// It was <c>A_ghost_has_no_route_to_the_exit</c>: §09 탈출 불가능, proved by
+        /// <c>MatchDirector.TryLeaveForGood</c> refusing and by flying the camera to §01's
+        /// 지상 and checking the corpse had not surfaced with it. There is no exit and no
+        /// surface — a race ends at the middle of B8, not at a door — so the co-op question
+        /// has no subject.
+        /// </para>
+        /// <para>
+        /// The race question underneath it is sharper, and it is the one the design
+        /// argues for: give a caught runner a placing and safe crawling stops being
+        /// punished, because dying slowly at the back would still beat finishing. So a
+        /// ghost must be <see cref="RaceExit.Caught"/> and must not be able to move
+        /// itself out of that, by flying, by waiting, or by asking the session to end.
+        /// </para>
         /// </summary>
         [UnityTest]
-        public IEnumerator A_ghost_has_no_route_to_the_exit()
+        public IEnumerator A_caught_runner_has_no_placing_and_cannot_get_one()
         {
             var run = new Run();
             yield return run.Start();
-            yield return run.Descend();
             yield return run.Die();
 
             var director = run.Director;
             var state = director.State!;
+            var race = director.Race!;
             var index = director.LocalPlayerIndex;
 
-            Assert.That(state.PlayerAt(index).Ghost!.CanEscape, Is.False, "§09 탈출: 불가능 — 사망 페널티가 명확해진다.");
-
-            Assert.That(director.TryLeaveForGood(out var refusal), Is.False,
-                "§09's ghost walked out of the match through §02's own door.");
-            Assert.That(refusal, Is.Not.Empty);
+            Assert.That(state.PlayerAt(index).Ghost!.CanEscape, Is.False,
+                "§09 탈출: 불가능 — 사망 페널티가 명확해진다.");
+            Assert.That(race.ExitOf(index), Is.EqualTo(RaceExit.Caught),
+                "§02: 잡히면 탈락. Anything else here is a caught runner still in the standings.");
 
             Assert.That(state.TryExtract(index), Is.False,
-                "MatchState let a ghost extract. §02 rests on this: if the dead could leave, 누군가는 살아서 나가야 한다 "
-                + "would cost nothing and a wipe would be unreachable.");
+                "MatchState let a ghost extract.");
 
-            // And flying to the surface is not an exit either. §09's ghost passes through
-            // walls, so it can reach §01's 지상 in seconds; the body it left behind is
-            // what the match measures, and it is still underground.
-            var map = director.Map!;
-            run.Fly(map.Entrance + (Vector3.up * 2f));
+            // Flying does not finish a race. §09's ghost passes through walls, so it can be
+            // at the finish in seconds; the body it left behind is what the race measures,
+            // and that body is on the floor where it was caught.
+            var finish = race.Finish;
+            run.Fly(finish + (Vector3.up * 2f));
             run.RunSeconds(1f);
 
-            Assert.That(director.LocalPlayerOnSurface, Is.False,
-                "flying the camera to the 출입구 surfaced the player. §09's ghost is a view, not a body — "
-                + "MatchDirector.UpdatePhase must keep measuring the corpse.");
+            Assert.That(race.ExitOf(index), Is.EqualTo(RaceExit.Caught),
+                "flying the ghost's camera to the middle of B8 converted a 탈락 into a placing. §09 is a "
+                + "view, not a body — the race must keep measuring the corpse.");
             Assert.That(state.PlayerAt(index).HasEscaped, Is.False);
-            Assert.That(director.TryLeaveForGood(out _), Is.False,
-                "standing the ghost's camera in §01's 안전 지대 opened §02's exit.");
 
             yield return null;
         }
@@ -482,36 +503,16 @@ namespace HorrorGame.Tests.PlayMode.Ghosts
                     "MatchDirector built no GhostSession, so §09 has nowhere to happen.");
             }
 
-            /// <summary>
-            /// Walks the rig out of §01's 지상. §09 only mints a ghost below ground —
-            /// §01 and §08 both label the surface a 안전 지대 — so a death up here is
-            /// refused and the test would be measuring nothing.
-            /// </summary>
-            internal IEnumerator Descend()
-            {
-                var map = _director!.Map!;
-                var deepest = float.PositiveInfinity;
-                var chosen = _motor!.transform.position;
-
-                for (var i = 0; i < map.CandidateSites.Count; i++)
-                {
-                    var at = map.CandidateSites[i].position;
-                    if (map.IsOnSurface(at) || at.y >= deepest)
-                    {
-                        continue;
-                    }
-
-                    deepest = at.y;
-                    chosen = at;
-                }
-
-                Teleport(chosen + (Vector3.up * 0.2f));
-                _director.StepMatch(GameConstants.FixedStep);
-                yield return null;
-
-                Assert.That(_director.LocalPlayerOnSurface, Is.False,
-                    "the player is still in §01's 지상, where §09 refuses to make a ghost.");
-            }
+            // DELETED: Descend(). It walked the rig off §01's 지상 before every test in
+            // this fixture, because §09 only minted a ghost below ground — §01 and §08 both
+            // called the surface a 안전 지대 — so a death up there was refused and the test
+            // would have measured nothing. It found somewhere to stand by scanning
+            // MatchMap.CandidateSites for the deepest one MatchMap.IsOnSurface said no to.
+            //
+            // Neither the surface nor the 후보 지점 exist. A runner starts on the rim of B1,
+            // 26 m under the street, and there is nowhere in the building a death is
+            // refused — so the step this helper existed to perform has already happened by
+            // the time Start() returns.
 
             /// <summary>
             /// Gets the player caught, the way a player gets caught: §06 hears a footstep,

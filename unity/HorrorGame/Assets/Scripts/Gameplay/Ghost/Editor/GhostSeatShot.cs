@@ -116,12 +116,14 @@ namespace HorrorGame.EditorTools
             var report = new StringBuilder();
             report.AppendLine("§09 — what a dead player is given to look at");
 
-            // §01 puts everyone on the surface at t=0 and §09 only mints a ghost below
-            // ground, so the walk down is part of the path being photographed rather than
-            // a setup step: MatchDirector's own UpdatePhase has to see the descent.
+            // §01 used to put everyone on the surface at t=0 and §09 only minted a ghost
+            // below ground, so the walk down was part of the path being photographed. A
+            // runner now starts on the rim of B1 with the whole tower below them, and there
+            // is nowhere a death is refused — but the walk is kept, moved onto a deeper
+            // storey, because a ghost photographed on the storey it entered on shows less
+            // of the building than one photographed halfway down.
             var down = Descend(director, motor);
-            report.AppendLine("  descended to  " + Fmt(down)
-                + (director.LocalPlayerOnSurface ? "   ⚠ still reads as 지상" : string.Empty));
+            report.AppendLine("  descended to  " + Fmt(down));
 
             var state = director.State;
             if (state == null)
@@ -129,10 +131,11 @@ namespace HorrorGame.EditorTools
                 throw new InvalidOperationException("the match started without a MatchState");
             }
 
-            // §08's pile is half of what §09 gives a ghost to look at — "자기 물건이
-            // 어디 있는지 보이는데 말할 수 없다" — and an empty-handed death makes no pile
-            // at all, so the frame would be of the rule not firing.
-            report.AppendLine("  picked up     " + Pocket(director, motor));
+            // DELETED with §08: the Pocket() step. §09's consolation used to be half about
+            // the pile — 「자기 물건이 어디 있는지 보이는데 말할 수 없다」 — so this put a
+            // 전리품 in the runner's pockets before killing them, or the frame would have
+            // been of the rule not firing. There is nothing to pick up, and a race ghost's
+            // consolation is watching the other nineteen finish.
 
             // Through the host, not around it. Calling MatchState.TryKill directly would
             // photograph a ghost that never went through CheckGrab, which is the wiring
@@ -232,8 +235,12 @@ namespace HorrorGame.EditorTools
             }
 
             // 50 — §02 has decided and is being held for the ghost.
-            report.AppendLine("  §02 " + director.Outcome
-                + ", held for §09: " + (director.EndScreenHeldForGhost ? "yes" : "NO ⚠")
+            var race = director.Race;
+            report.AppendLine("  §02 "
+                + (race != null
+                    ? race.ExitOf(director.LocalPlayerIndex).ToString()
+                    : "no RaceDirector ⚠")
+                + ", held for §09: " + (director.RaceVerdictHeldForGhost ? "yes" : "NO ⚠")
                 + ", match running: " + (director.IsRunning ? "yes" : "NO ⚠"));
 
             Settle(ghosts);
@@ -264,17 +271,18 @@ namespace HorrorGame.EditorTools
                 return motor.transform.position;
             }
 
-            // §12's 후보 지점 rather than a player spawn. Every PlayerSpawn on this map is
-            // on the entrance storey, so picking the deepest of them left the player in
-            // §01's 지상 and made the descent a no-op; a candidate site is by construction
-            // out in the building, and it is where §03 sends the team anyway.
+            // The creature starts rather than §12's 후보 지점, which are deleted. Every
+            // PlayerSpawn on this map is on B1, so picking the deepest of THOSE would leave
+            // the runner where they began and make the descent a no-op. MonsterSpawns are
+            // one per storey by construction, so the deepest is on B8 — and standing the
+            // ghost where the creature starts is the frame this tool wants anyway.
             var chosen = motor.transform.position;
             var deepest = float.PositiveInfinity;
 
-            for (var i = 0; i < map.CandidateSites.Count; i++)
+            for (var i = 0; i < map.MonsterSpawns.Count; i++)
             {
-                var at = map.CandidateSites[i].position;
-                if (map.IsOnSurface(at) || at.y >= deepest)
+                var at = map.MonsterSpawns[i].position;
+                if (at.y >= deepest)
                 {
                     continue;
                 }
@@ -285,59 +293,9 @@ namespace HorrorGame.EditorTools
 
             Teleport(motor.gameObject, chosen + (Vector3.up * 0.2f));
 
-            // One fixed step so MatchDirector.UpdatePhase sees the crossing and runs
-            // Descended() — §07's clock, the apron and the shop all hang off that edge.
+            // One fixed step so the match sees the move before anything is photographed.
             director.StepMatch(GameConstants.FixedStep);
             return motor.transform.position;
-        }
-
-        /// <summary>
-        /// Puts a §08 전리품 in the pockets so the death has something to drop. Reported
-        /// rather than asserted: an empty-handed frame is still worth photographing, it
-        /// just proves less.
-        /// </summary>
-        private static string Pocket(MatchDirector director, PlayerMotor motor)
-        {
-            var interactor = motor.GetComponentInChildren<PlayerInteractor>();
-            if (interactor == null)
-            {
-                return "nothing — the rig has no interactor";
-            }
-
-            var nearest = (LootPropInteractable?)null;
-            var best = float.PositiveInfinity;
-
-            foreach (var piece in UnityEngine.Object.FindObjectsByType<LootPropInteractable>(
-                FindObjectsInactive.Exclude, FindObjectsSortMode.None))
-            {
-                var distance = Vector3.Distance(piece.transform.position, motor.transform.position);
-                if (distance < best)
-                {
-                    best = distance;
-                    nearest = piece;
-                }
-            }
-
-            if (nearest == null)
-            {
-                return "nothing — no 전리품 on this map";
-            }
-
-            // Its position is read before the press: a taken 전리품 despawns, and the
-            // reference goes with it.
-            var lay = nearest.transform.position;
-            var name = nearest.Title;
-
-            Teleport(motor.gameObject, lay + (Vector3.up * 0.2f));
-            nearest.OnPressed(interactor);
-            var refusal = nearest != null ? nearest.Refusal : string.Empty;
-            director.StepMatch(GameConstants.FixedStep);
-
-            var pockets = interactor.Pockets;
-            return pockets != null && pockets.LootCount > 0
-                ? name + " ×" + pockets.LootCount.ToString(CultureInfo.InvariantCulture)
-                  + ", lifted at " + Fmt(lay)
-                : "nothing — " + refusal;
         }
 
         /// <summary>
@@ -390,7 +348,6 @@ namespace HorrorGame.EditorTools
                     "§06's monster stood on the player for " + KillSteps
                     + " steps and CheckGrab never fired, so §09 was never reached."
                     + "  state=" + monster.State
-                    + "  onSurface=" + director.LocalPlayerOnSurface
                     + "  player=" + Fmt(motor.transform.position)
                     + "  monster=" + Fmt(monster.transform.position)
                     + "  target=" + (brain != null ? brain.ChaseTargetId.ToString(CultureInfo.InvariantCulture) : "no brain")

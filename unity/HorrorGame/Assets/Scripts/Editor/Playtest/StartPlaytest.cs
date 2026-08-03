@@ -6,7 +6,6 @@ using System.Text;
 using HorrorGame.EditorTools.Audio;
 using HorrorGame.EditorTools.Dressing;
 using HorrorGame.EditorTools.SceneGen;
-using HorrorGame.Gameplay.Guidance;
 using HorrorGame.Gameplay.Match;
 using HorrorGame.Gameplay.Monster;
 using HorrorGame.Gameplay.Player;
@@ -121,7 +120,7 @@ namespace HorrorGame.EditorTools.Playtest
             {
                 log.AppendLine("지도  재생성 — " + reason);
                 if (!MapPipeline.Regenerate(
-                        FirstMapSketch.DefaultSeed, DressingScatter.DefaultSeed, AtmosphereTier, out var mapReport))
+                        DescentMap.DefaultSeed, DressingScatter.DefaultSeed, AtmosphereTier, out var mapReport))
                 {
                     report = Explain(
                         log,
@@ -147,7 +146,7 @@ namespace HorrorGame.EditorTools.Playtest
             {
                 log.AppendLine("지도  구조 확인 실패 — 재생성합니다");
                 if (!MapPipeline.Regenerate(
-                        FirstMapSketch.DefaultSeed, DressingScatter.DefaultSeed, AtmosphereTier, out var retry))
+                        DescentMap.DefaultSeed, DressingScatter.DefaultSeed, AtmosphereTier, out var retry))
                 {
                     report = Explain(log, "지도를 다시 만들 수 없습니다: " + mapFailure, retry);
                     return false;
@@ -312,11 +311,10 @@ namespace HorrorGame.EditorTools.Playtest
                 return false;
             }
 
-            if (UnityEngine.Object.FindFirstObjectByType<PlaytestGuidanceScreen>() == null)
-            {
-                missing = "안내 화면(PlaytestGuidanceScreen)";
-                return false;
-            }
+            // DELETED with the co-op tutor: the PlaytestGuidanceScreen check. The scene
+            // no longer carries one — it drew the next step of §01's 왕복, the clue count,
+            // the wallet and §02's four outcomes. MatchDirector builds RaceHud, which is
+            // the race's own screen.
 
             missing = string.Empty;
             return true;

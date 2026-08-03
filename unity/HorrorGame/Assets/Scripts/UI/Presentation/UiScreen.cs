@@ -11,17 +11,17 @@ namespace HorrorGame.UI
     /// <b>What a screen may and may not do.</b> ARCHITECTURE §1 puts rules in Core
     /// and leaves this layer to represent them. So a subclass reads core state and
     /// writes strings, colours and fill fractions — it never advances a clock, never
-    /// spends a credit and never decides an outcome. Where the player has to be able
-    /// to <em>act</em>, the screen raises a request through an interface
-    /// (<see cref="IShopRequests"/>, <see cref="IRoleClaimRequests"/>) and waits to
-    /// be told what happened, because §13 gives the host authority over both and a
-    /// client that applied its own purchase would be guessing.
+    /// moves a runner and never decides a placing. Where the player has to be able to
+    /// <em>act</em>, the screen raises a request through an interface
+    /// (<see cref="ILobbyRequests"/>) and waits to be told what happened, because §13
+    /// gives the host authority and a client that recorded its own arrival would be
+    /// the first value cheated in a race (§02).
     /// </para>
     /// <para>
     /// This assembly deliberately does not reference Mirror or Steamworks. A
     /// <c>NetworkBehaviour</c> cannot be written here even by accident, which is the
-    /// cheapest possible enforcement of ARCHITECTURE §4's rule that clue contents and
-    /// the objective's location never leave the host.
+    /// cheapest possible enforcement of ARCHITECTURE §4's rule that a placing is the
+    /// host's to record and nobody else's to claim.
     /// </para>
     /// </summary>
     public abstract class UiScreen : MonoBehaviour

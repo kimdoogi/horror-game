@@ -5,7 +5,6 @@ using System.Globalization;
 using HorrorGame.Core;
 using HorrorGame.Core.Map;
 using HorrorGame.Core.Movement;
-using HorrorGame.Core.Roles;
 using HorrorGame.Gameplay.Player;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -165,7 +164,6 @@ namespace HorrorGame.Gameplay.PlayerEditor
 
             body.AddComponent<PlayerInputRouter>();
             var look = body.AddComponent<PlayerLook>();
-            body.AddComponent<PlayerLoadout>();
 
             // Before the motor and the animator: both look for one in Awake, and
             // AddComponent runs Awake immediately, so this order is the wiring.
@@ -173,8 +171,6 @@ namespace HorrorGame.Gameplay.PlayerEditor
             var motor = body.AddComponent<PlayerMotor>();
             body.AddComponent<PlayerCameraRig>();
             var flashlight = body.AddComponent<PlayerFlashlight>();
-            // §03's 목표물 and §08's 대형 전리품, as the models they actually are.
-            body.AddComponent<PlayerHeldProp>();
             var animator = body.AddComponent<PlayerAnimatorDriver>();
             var footsteps = body.AddComponent<PlayerFootsteps>();
 
@@ -191,7 +187,11 @@ namespace HorrorGame.Gameplay.PlayerEditor
             // costs nothing until V is pressed.
             body.AddComponent<ThirdPersonCamera>();
 
-            motor.Role = RoleId.Runner;
+            // DELETED from the rig: PlayerLoadout (§08's inventory and carry weight),
+            // PlayerHeldProp (§03's 목표물 and §08's 대형 전리품 as actual models in the
+            // hands) and `motor.Role = RoleId.Runner`. Every runner in a race carries a
+            // torch, has 질주, and has no role to be assigned.
+            _ = motor;
 
             // After every renderer exists and before anything is wired to it: this is
             // what decides that the owner sees hands and not a chest.
@@ -259,7 +259,6 @@ namespace HorrorGame.Gameplay.PlayerEditor
         {
             AssignSerialized(harness, "_motor", rig.GetComponent<PlayerMotor>());
             AssignSerialized(harness, "_cameraRig", rig.GetComponent<PlayerCameraRig>());
-            AssignSerialized(harness, "_loadout", rig.GetComponent<PlayerLoadout>());
             AssignSerialized(harness, "_footsteps", rig.GetComponent<PlayerFootsteps>());
             AssignSerialized(harness, "_input", rig.GetComponent<PlayerInputRouter>());
         }

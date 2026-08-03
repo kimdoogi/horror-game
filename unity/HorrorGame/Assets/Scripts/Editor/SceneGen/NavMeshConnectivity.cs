@@ -269,11 +269,10 @@ namespace HorrorGame.EditorTools.SceneGen
         /// answered the question printed beside it.
         /// </para>
         /// <para>
-        /// <b>Targets are every other marker on the storey</b>, not just spawns and 후보
-        /// 지점. In a race the runner crosses the whole floor, and <c>DescentMap.MarkPlaces</c>
-        /// says out loud that a storey's 후보 지점 and its 전리품 are the ONLY probes this
-        /// audit collects there — so anything narrower measures less of the floor than the
-        /// map has evidence for.
+        /// <b>Targets are every other marker on the storey</b>, not just spawns. In a race
+        /// the runner crosses the whole floor, and a storey's 도달 지점 (<c>ReachProbe_*</c>)
+        /// are the ONLY probes this audit collects there — so anything narrower measures
+        /// less of the floor than the map has evidence for.
         /// </para>
         /// </summary>
         /// <param name="snapped">Markers, each carrying where it was authored and where it snapped.</param>
@@ -358,15 +357,28 @@ namespace HorrorGame.EditorTools.SceneGen
             "B" + (index + 1) + " (y " + y.ToString("0.0") + ")";
 
         /// <summary>
-        /// Gathers the points the game actually navigates between: spawns, §12's
-        /// candidate sites, loot points and the exit. Testing arbitrary geometry would
-        /// flag decorative alcoves nobody walks into.
+        /// Gathers the points the game actually navigates between: the two spawn kinds and
+        /// the 도달 지점 probes. Testing arbitrary geometry would flag decorative alcoves
+        /// nobody walks into.
+        /// <para>
+        /// <b>The list was six names longer and five of them are now dead.</b> It read
+        /// { PlayerSpawn, MonsterSpawn, Site, Candidate, Loot, Exit, Objective, Clue } —
+        /// a substring match wide enough to catch §12's 후보 지점, §08's 전리품 and §03's
+        /// 단서 under whatever the generator happened to call them. Those markers are
+        /// deleted and re-emitted as <c>ReachProbe_*</c> at the SAME cells, so the count
+        /// this audit pairs is unchanged and the names it matches are not.
+        /// </para>
+        /// <para>
+        /// This prefix is a contract with <c>MapSketch.ReachProbeAt</c>. If the generator
+        /// renames a probe and this does not follow, the audit silently measures a
+        /// building with no probes in it and reports a cheerful 100 %.
+        /// </para>
         /// </summary>
         private static List<(string Name, Vector3 Position)> CollectPoints(Scene scene)
         {
             var interesting = new[]
             {
-                "PlayerSpawn", "MonsterSpawn", "Site", "Candidate", "Loot", "Exit", "Objective", "Clue",
+                "PlayerSpawn", "MonsterSpawn", "ReachProbe",
             };
 
             return scene.GetRootGameObjects()

@@ -680,8 +680,11 @@ namespace HorrorGame.Gameplay.Ghost
                             ? separation.y > 0f ? " 위" : " 아래"
                             : string.Empty);
 
-            var clock = UiStrings.Phase(tier.Phase) + " · "
-                        + tier.MonsterSpeed.ToString("0.0", CultureInfo.InvariantCulture) + " m/s";
+            // The §07 phase name is gone with UiStrings.Phase: the five 초저녁/밤/심야/…
+            // labels were §07's clock, which only ever read on the surface, and there is no
+            // surface. The creature's speed is the half a spectator can act on — it is what
+            // the tier actually does to the runners still in the race.
+            var clock = tier.MonsterSpeed.ToString("0.0", CultureInfo.InvariantCulture) + " m/s";
 
             overlay.SetMonsterWatch(true, state, where, clock);
         }

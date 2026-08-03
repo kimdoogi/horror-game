@@ -61,9 +61,13 @@ namespace HorrorGame.UI
     /// <summary>
     /// What a player in the lobby can ask for. §11 · §13.
     /// <para>
-    /// Every one of these is a request rather than an action, for the same reason
-    /// <see cref="IRoleClaimRequests"/> is: §13 makes the host authoritative and the
-    /// seed is the sharpest case of it in the game. A client that picked its own seed
+    /// Every one of these is a request rather than an action: §13 makes the host
+    /// authoritative and the seed is the sharpest case of it in the game. (The other
+    /// two request interfaces this layer had — <c>IShopRequests</c> and
+    /// <c>IRoleClaimRequests</c> — went with the shop and the role picker in
+    /// DESCENT-PIVOT §7 step 7; this is the last one, because starting a race is the
+    /// last thing left that a client may ask for and must not do.)
+    /// A client that picked its own seed
     /// would build a different building from everybody else and would be racing down
     /// a maze nobody else can see. So the screen asks, and redraws whatever it is
     /// told; a refusal is a screen that comes back unchanged.
@@ -486,14 +490,14 @@ namespace HorrorGame.UI
         private void BuildRoster(RectTransform panel)
         {
             var inner = PanelWidth - (Padding * 2f);
-            var columnWidth = (inner - UiStyle.ShopColumnGap) * 0.5f;
+            var columnWidth = (inner - UiStyle.ColumnGap) * 0.5f;
 
             for (var i = 0; i < GameConstants.RaceRunnersMax; i++)
             {
                 var column = i / RowsPerColumn;
                 var slot = i % RowsPerColumn;
 
-                var x = Padding + (column * (columnWidth + UiStyle.ShopColumnGap));
+                var x = Padding + (column * (columnWidth + UiStyle.ColumnGap));
                 var y = -RosterTop - (slot * (RunnerRowHeight + RunnerRowGap));
 
                 var back = UiFactory.CreateImage("Runner_" + i, panel, UiStyle.RowDisabled);

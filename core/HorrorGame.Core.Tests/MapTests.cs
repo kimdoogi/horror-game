@@ -106,9 +106,12 @@ namespace HorrorGame.Core.Tests
             Assert.That(OtherFailures(report, MapValidator.RuleSightBreakSpacing), Is.Empty,
                 "§12's own 첫 맵 스케치 fails its own rules:\n" + report.Describe());
             Assert.That(report.ChecklistPassed, Is.True);
-            Assert.That(report.Results.Count(r => r.IsChecklistItem), Is.EqualTo(11),
-                "§12's 검증 체크리스트 has eleven items. A validator that checks ten of them "
-                + "reports PASS on a map that breaks the eleventh.");
+            Assert.That(report.Results.Count(r => r.IsChecklistItem), Is.EqualTo(8),
+                "§12's 검증 체크리스트 has eight items left. A validator that checks seven of them "
+                + "reports PASS on a map that breaks the eighth. It was eleven until the "
+                + "상점/전리품/단서 제거 round deleted 관측 지점, 단서·목표물 후보 지점 and 은폐 지점 — "
+                + "three rules whose subjects (§04's 관측자, §03's clue chain, §07 새벽's ambush) no "
+                + "longer exist.");
         }
 
         /// <summary>
@@ -126,8 +129,8 @@ namespace HorrorGame.Core.Tests
         public void SketchMap_PrototypeIsTheHallTheRoomAndTheCorridorBetweenThem()
         {
             var map = BuildSketchMap(Flaw.None);
-            var hall = map.Zones[map.Nodes[NodeNamed(map, "B 타일 후보1")].ZoneId];
-            var room = map.Zones[map.Nodes[NodeNamed(map, "A 나무 후보1")].ZoneId];
+            var hall = map.Zones[map.Nodes[NodeNamed(map, "B 타일 도달1")].ZoneId];
+            var room = map.Zones[map.Nodes[NodeNamed(map, "A 나무 도달1")].ZoneId];
 
             Assert.That(hall.Floor, Is.EqualTo(FloorMaterial.Tile), "§12: B is 타일.");
             Assert.That(room.Floor, Is.EqualTo(FloorMaterial.Wood), "§12: A is 나무.");
@@ -138,14 +141,11 @@ namespace HorrorGame.Core.Tests
             Assert.That(map.NodesOfKindInZone(hall.Id, MapNodeKind.OpenSpace), Is.Not.Empty,
                 "§12 draws B as the 개방 공간 — 시야 20m — because that is where aggro is taken from far "
                 + "enough out for the release to be arithmetically possible.");
-            Assert.That(map.NodesOfKindInZone(hall.Id, MapNodeKind.ObservationPost), Is.Not.Empty,
-                "§12's sketch puts [관측지점] in B.");
-
             Assert.That(map.EdgesBetweenZones(hall.Id, room.Id).Length,
                 Is.InRange(GameConstants.ZoneEntryPointsMin, GameConstants.ZoneEntryPointsMax));
 
-            var fromHall = NodeNamed(map, "B 타일 후보1");
-            var intoRoom = NodeNamed(map, "A 나무 관측지점");
+            var fromHall = NodeNamed(map, "B 타일 도달1");
+            var intoRoom = NodeNamed(map, "A 나무 모퉁이");
             Assert.That(map.HasStraightSightLine(fromHall, intoRoom), Is.False,
                 "The corridor from the hall into A leaves the two in line of sight, so a Runner who "
                 + "took aggro in the hall is still visible after entering A. §06 releases on "
@@ -274,25 +274,6 @@ namespace HorrorGame.Core.Tests
                 + "to send the monster the wrong way round.");
             Assert.That(result.Detail, Does.Contain("구역당"));
         }
-
-        /// <summary>"막힌 길 비율이 20~25%이고, 각각 보상이 있다" — one 막힌 길 emptied.</summary>
-        [Test]
-        public void Checklist_DeadEndWithoutReward_FailsOnItsOwn()
-        {
-            var map = BuildSketchMap(Flaw.DeadEndWithoutReward);
-            var report = MapValidator.Validate(map);
-
-            var deadEnds = EveryNode(map).Where(map.IsDeadEnd).ToArray();
-            var ratio = deadEnds.Length / (float)map.Nodes.Length;
-            Assert.That(ratio, Is.InRange(GameConstants.DeadEndRatioMin, GameConstants.DeadEndRatioMax),
-                "The ratio must still be legal, or this would be testing two clauses at once.");
-
-            var result = AssertOnlyFailure(report, MapValidator.RuleDeadEnds,
-                "A 막힌 길 with nothing in it is a risk with no upside — the trap §12's 보상 rule exists "
-                + "to prevent.");
-            Assert.That(result.Detail, Does.Contain("위험을 감수할 이유"));
-        }
-
         /// <summary>
         /// The other half of the same item: the ratio itself. §12 bands it at 20~25%
         /// from both sides — "적으면 맵 지식 무의미, 많으면 운에 죽음".
@@ -360,25 +341,6 @@ namespace HorrorGame.Core.Tests
                 "A blank surface has to fail loudly. Left alone it silently becomes the best zone on "
                 + "the map to hunt in.");
         }
-
-        /// <summary>"관측 지점이 구역당 1개 이상 있다."</summary>
-        [Test]
-        public void Checklist_ZoneWithNoObservationPost_FailsOnItsOwn()
-        {
-            var map = BuildSketchMap(Flaw.ZoneWithNoObservationPost);
-            var report = MapValidator.Validate(map);
-
-            Assert.That(GameConstants.ObserverRange, Is.LessThan(GameConstants.MonsterSightRange),
-                "This is why §12 demands the post at all: the Observer's "
-                + GameConstants.ObserverRange + " m sits inside the monster's own "
-                + GameConstants.MonsterSightRange + " m, so watching from the floor means being seen.");
-
-            var result = AssertOnlyFailure(report, MapValidator.RuleObservationPosts,
-                "A zone with no 관측 지점 makes the Observer walk into the monster's sight range to use "
-                + "its ability at all.");
-            Assert.That(result.Detail, Does.Contain("없으면 관측자는 죽으러 가야 한다"));
-        }
-
         /// <summary>
         /// "잠글 수 있는 문이 구역당 1~2개, 병목에 있다." The count stays legal and the
         /// door moves to a passage with a short way round — §12's harder clause, since
@@ -461,42 +423,6 @@ namespace HorrorGame.Core.Tests
                 + GameConstants.ZoneEntryPointsMax + " so that the monster has to guess and a single "
                 + "locked door cannot seal a whole zone off.");
         }
-
-        /// <summary>
-        /// "단서·목표물 후보가 구역당 3개, 모두 탈출로 2개 이상." The count stays at three
-        /// and one of them moves somewhere with a single way out. §12: "모든 후보가 위
-        /// 조건을 만족해야 한다" — the objective is chosen after the map is built, so one
-        /// bad candidate is a match that can be lost to the level.
-        /// </summary>
-        [Test]
-        public void Checklist_CandidateSiteWithOneExit_FailsOnItsOwn()
-        {
-            var map = BuildSketchMap(Flaw.CandidateSiteWithOneExit);
-            var report = MapValidator.Validate(map);
-
-            for (var z = 0; z < map.Zones.Length; z++)
-            {
-                Assert.That(map.NodesOfKindInZone(z, MapNodeKind.CandidateSite).Length,
-                    Is.EqualTo(GameConstants.CandidateSitesPerZone),
-                    "Every zone still has §12's three, so only the exit-count clause is under test.");
-            }
-
-            var trapped = map.NodesOfKind(MapNodeKind.CandidateSite)
-                .Single(n => map.Degree(n) < GameConstants.CandidateSiteMinExits);
-
-            Assert.That(GameConstants.ClueReadSeconds * GameConstants.MonsterBaseSpeed,
-                Is.GreaterThan(GameConstants.ClueReadRange),
-                "Why the second exit is not a nicety: a clue takes " + GameConstants.ClueReadSeconds
-                + " s of held beam (§03), and the monster covers more ground in that time than the "
-                + "range the clue can be read from. Anyone caught mid-read at a one-exit site is dead, "
-                + "not unlucky.");
-
-            var result = AssertOnlyFailure(report, MapValidator.RuleCandidateSites, "See above.");
-            Assert.That(result.Detail, Does.Contain(map.Nodes[trapped].Describe()),
-                "The report must name the site, not just the zone — three candidates a zone means "
-                + "twelve places to search otherwise.");
-        }
-
         /// <summary>
         /// "구역 간 진입점이 2~3개로 제한돼 있다." Two extra doorways between the same
         /// pair of zones, which §07 cares about: it measures patrol scope in whole
@@ -517,35 +443,6 @@ namespace HorrorGame.Core.Tests
 
             AssertOnlyFailure(report, MapValidator.RuleZoneEntryPoints, "See above.");
         }
-
-        /// <summary>
-        /// "출입구 근처에 은폐 지점이 있다 (§07 새벽 단계 대응)." The hiding place stays
-        /// on the map and stops being one.
-        /// </summary>
-        [Test]
-        public void Checklist_NoConcealmentNearTheExit_FailsOnItsOwn()
-        {
-            var map = BuildSketchMap(Flaw.NoConcealmentNearTheExit);
-            var report = MapValidator.Validate(map);
-
-            Assert.That(map.NodesOfKind(MapNodeKind.Entrance), Is.Not.Empty,
-                "The exit is still there — this is the concealment clause under test, not the exit.");
-            Assert.That(map.NodesOfKind(MapNodeKind.Concealment), Is.Empty);
-
-            Assert.That(GameConstants.ThreatStandstillChanceNone, Is.Zero,
-                "§07 새벽 is why the rule exists: by then the monster never stops moving,");
-            Assert.That(GameConstants.ThreatSpeedPreDawn,
-                Is.GreaterThan(GameConstants.RunSpeed * GameConstants.ObjectiveCarrySpeedMultiplier),
-                "and an escort carrying the objective moves at "
-                + (GameConstants.RunSpeed * GameConstants.ObjectiveCarrySpeedMultiplier)
-                + " m/s against its " + GameConstants.ThreatSpeedPreDawn
-                + " m/s. With nowhere to wait by the door, the last twenty metres of the match are a "
-                + "walk into a monster that already knows where they are going.");
-
-            var result = AssertOnlyFailure(report, MapValidator.RuleConcealmentNearExit, "See above.");
-            Assert.That(result.Detail, Does.Contain("은폐 지점"));
-        }
-
         // ====================================================================
         // §12 수치 규칙 — 시야 차단 지점 간격 15~25m.
         // ====================================================================
@@ -648,12 +545,20 @@ namespace HorrorGame.Core.Tests
         }
 
         /// <summary>
-        /// The eleven items are eleven. This is the guard against a checklist test
-        /// above silently covering two rules, or a twelfth rule appearing without a
-        /// test to break it.
+        /// The eight items are eight. This is the guard against a checklist test above
+        /// silently covering two rules, or a ninth rule appearing without a test to
+        /// break it.
+        /// <para>
+        /// It was eleven. Three went in the 상점/전리품/단서 제거 round because they were
+        /// requirements OF systems that no longer exist: 관측 지점 (§04's 관측자),
+        /// 단서·목표물 후보 지점 with its 전기 패널 clause (§03 and the light economy), and
+        /// 은폐 지점 near the exit (§07 새벽's ambush, and already waived as obsolete in
+        /// MapSceneGenerator.KnownFailingRules). §12's 막힌 길 rule kept its ratio band
+        /// and lost its "각각 보상이 있다" half with §08.
+        /// </para>
         /// </summary>
         [Test]
-        public void Checklist_HasExactlyTheElevenItemsSection12Lists()
+        public void Checklist_HasExactlyTheEightItemsSection12StillLists()
         {
             var covered = new[]
             {
@@ -663,11 +568,8 @@ namespace HorrorGame.Core.Tests
                 MapValidator.RuleLoops,
                 MapValidator.RuleDeadEnds,
                 MapValidator.RuleFloorMaterials,
-                MapValidator.RuleObservationPosts,
                 MapValidator.RuleLockableDoors,
-                MapValidator.RuleCandidateSites,
                 MapValidator.RuleZoneEntryPoints,
-                MapValidator.RuleConcealmentNearExit,
             };
 
             var reported = MapValidator.Validate(BuildSketchMap(Flaw.None)).Results
@@ -676,8 +578,9 @@ namespace HorrorGame.Core.Tests
                 .ToArray();
 
             Assert.That(reported, Is.EquivalentTo(covered),
-                "§12's 검증 체크리스트 has eleven items and each one has a test above that breaks only "
-                + "it. If this fails, a rule was added or renamed and its isolation test is missing.");
+                "§12's 검증 체크리스트 now has eight items and each one has a test above that breaks "
+                + "only it. If this fails, a rule was added or renamed and its isolation test is "
+                + "missing.");
         }
 
         // ====================================================================
@@ -1328,7 +1231,7 @@ namespace HorrorGame.Core.Tests
         public void SightBreakingCorner_IsMeasuredNotDeclared()
         {
             var map = BuildSketchMap(Flaw.None);
-            var ring = NodeNamed(map, "A 나무 후보2");
+            var ring = NodeNamed(map, "A 나무 도달2");
             var straight = StraightCorridor();
 
             Assert.That(map.IsSightBreakingCorner(ring), Is.True,
@@ -1420,7 +1323,7 @@ namespace HorrorGame.Core.Tests
         public void FloorAt_AnswersInsideTheMapAndNowhereElse()
         {
             var map = BuildSketchMap(Flaw.None);
-            var inside = map.Nodes[NodeNamed(map, "A 나무 후보1")].Position;
+            var inside = map.Nodes[NodeNamed(map, "A 나무 도달1")].Position;
 
             Assert.That(map.FloorAt(inside), Is.EqualTo(FloorMaterial.Wood));
             Assert.That(map.ZoneIdAt(inside), Is.EqualTo(0));
@@ -1688,16 +1591,12 @@ namespace HorrorGame.Core.Tests
             OpenSpaceNotAdjacentToMaze,
             NoSCorridorInOneZone,
             ZoneWithNoLoop,
-            DeadEndWithoutReward,
             TooManyDeadEnds,
             TwoZonesShareAFloor,
             ZoneWithNoFloorMaterial,
-            ZoneWithNoObservationPost,
             DoorAwayFromBottleneck,
             TooManyLockableDoors,
-            CandidateSiteWithOneExit,
             TooManyZoneEntryPoints,
-            NoConcealmentNearTheExit,
         }
 
         /// <summary>The corner ids and positions of one zone's ring, so the specials can hang off it.</summary>
@@ -1742,19 +1641,19 @@ namespace HorrorGame.Core.Tests
             var a = AddZoneRing(
                 map, "A 나무", FloorMaterial.Wood, new Vec3(0f, 0f, 0f), MapNodeKind.None,
                 true,
-                flaw != Flaw.CandidateSiteWithOneExit,
+                true,
                 flaw == Flaw.NoSCorridorInOneZone,
                 flaw != Flaw.ZoneWithNoLoop,
                 flaw == Flaw.StraightCorridorOverTwentyMetres);
 
-            var gateAne = Attach(map, a, 2, g, g, maze | MapNodeKind.ElectricalPanel, "A 북동 통로", 0);
+            var gateAne = Attach(map, a, 2, g, g, maze, "A 북동 통로", 0);
             var gateAnw = Attach(map, a, 3, -g, g, maze, "A 북서 통로", 0);
             var gateAse = Attach(map, a, 1, g, -g, maze, "A 남동 통로", 0);
             Attach(
                 map, a, 0, -g, -g,
-                flaw == Flaw.CandidateSiteWithOneExit ? MapNodeKind.CandidateSite : MapNodeKind.None,
+                MapNodeKind.None,
                 "A 창고",
-                flaw == Flaw.DeadEndWithoutReward ? 0 : DeadEndReward);
+                DeadEndReward);
             Attach(map, a, 3, -g, -g, MapNodeKind.None, "A 다락", DeadEndReward);
 
             if (flaw == Flaw.TooManyDeadEnds)
@@ -1763,12 +1662,12 @@ namespace HorrorGame.Core.Tests
                 Attach(map, a, 2, g, -g, MapNodeKind.None, "A 곳간", DeadEndReward);
             }
 
-            // B 타일 — 개방 공간 (홀), top left. §12's sketch puts [관측지점] here.
+            // B 타일 — 개방 공간 (홀), top left.
             var b = AddZoneRing(
                 map, "B 타일", FloorMaterial.Tile, new Vec3(0f, 0f, side), MapNodeKind.OpenSpace,
                 true, true, false, true, false);
 
-            var gateBsw = Attach(map, b, 0, -g, -g, hallGate | MapNodeKind.ElectricalPanel, "B 남서 통로", 0);
+            var gateBsw = Attach(map, b, 0, -g, -g, hallGate, "B 남서 통로", 0);
             var gateBse = Attach(map, b, 1, g, -g, hallGate, "B 남동 통로", 0);
             var gateBne = Attach(map, b, 2, g, g, hallGate, "B 북동 통로", 0);
             Attach(map, b, 3, -g, g, MapNodeKind.None, "B 창고", DeadEndReward);
@@ -1780,9 +1679,9 @@ namespace HorrorGame.Core.Tests
                 : flaw == Flaw.ZoneWithNoFloorMaterial ? FloorMaterial.None : FloorMaterial.Gravel;
             var c = AddZoneRing(
                 map, "C 자갈", cFloor, new Vec3(side, 0f, side), MapNodeKind.None,
-                flaw != Flaw.ZoneWithNoObservationPost, true, false, true, false);
+                true, true, false, true, false);
 
-            var gateCsw = Attach(map, c, 0, -g, -g, maze | MapNodeKind.ElectricalPanel, "C 남서 통로", 0);
+            var gateCsw = Attach(map, c, 0, -g, -g, maze, "C 남서 통로", 0);
             var gateCnw = Attach(map, c, 3, -g, g, maze, "C 북서 통로", 0);
             var gateCse = Attach(map, c, 1, g, -g, maze, "C 남동 통로", 0);
             Attach(map, c, 2, g, g, MapNodeKind.None, "C 창고", DeadEndReward);
@@ -1793,15 +1692,15 @@ namespace HorrorGame.Core.Tests
                 map, "D 콘크리트", FloorMaterial.Concrete, new Vec3(side, 0f, 0f), MapNodeKind.None,
                 true, true, false, true, false);
 
-            var gateDnw = Attach(map, d, 3, -g, g, maze | MapNodeKind.ElectricalPanel, "D 북서 통로", 0);
+            var gateDnw = Attach(map, d, 3, -g, g, maze, "D 북서 통로", 0);
             var gateDne = Attach(map, d, 2, g, g, maze, "D 북동 통로", 0);
             var gateDsw = Attach(map, d, 0, -g, -g, maze, "D 남서 통로", 0);
             Attach(map, d, 1, g, -g, MapNodeKind.None, "D 창고", DeadEndReward);
             Attach(map, d, 0, g, -g, MapNodeKind.None, "D 자재실", DeadEndReward);
             Attach(
                 map, d, 1, -g, -g,
-                flaw == Flaw.NoConcealmentNearTheExit ? MapNodeKind.None : MapNodeKind.Concealment,
-                "D 은폐 지점",
+                MapNodeKind.None,
+                "D 모퉁이",
                 DeadEndReward);
 
             var exit = map.AddNode(
@@ -1868,7 +1767,7 @@ namespace HorrorGame.Core.Tests
 
             var a = AddZoneRing(map, "A 나무", FloorMaterial.Wood, new Vec3(0f, 0f, 0f), maze,
                 true, true, false, true, false);
-            var gateAse = Attach(map, a, 1, g, -g, maze | MapNodeKind.ElectricalPanel, "A 남동 통로", 0);
+            var gateAse = Attach(map, a, 1, g, -g, maze, "A 남동 통로", 0);
             var gateAne = Attach(map, a, 2, g, g, maze, "A 북동 통로", 0);
             Attach(map, a, 0, -g, -g, maze, "A 창고", DeadEndReward);
             Attach(map, a, 0, g, -g, maze, "A 곳간", DeadEndReward);
@@ -1877,7 +1776,7 @@ namespace HorrorGame.Core.Tests
 
             var b = AddZoneRing(map, "B 타일", FloorMaterial.Tile, new Vec3(side, 0f, 0f), hall,
                 true, true, false, true, false);
-            var gateBsw = Attach(map, b, 0, -g, -g, hall | MapNodeKind.ElectricalPanel, "B 남서 통로", 0);
+            var gateBsw = Attach(map, b, 0, -g, -g, hall, "B 남서 통로", 0);
             var gateBnw = Attach(map, b, 3, -g, g, hall, "B 북서 통로", 0);
             var gateBse = Attach(map, b, 1, g, -g, hall, "B 남동 통로", 0);
             var gateBne = Attach(map, b, 2, g, g, hall, "B 북동 통로", 0);
@@ -1886,7 +1785,7 @@ namespace HorrorGame.Core.Tests
 
             var c = AddZoneRing(map, "C 자갈", FloorMaterial.Gravel, new Vec3(side * 2f, 0f, 0f), hall,
                 true, true, false, true, false);
-            var gateCsw = Attach(map, c, 0, -g, -g, hall | MapNodeKind.ElectricalPanel, "C 남서 통로", 0);
+            var gateCsw = Attach(map, c, 0, -g, -g, hall, "C 남서 통로", 0);
             var gateCnw = Attach(map, c, 3, -g, g, hall, "C 북서 통로", 0);
             var gateCse = Attach(map, c, 1, g, -g, hall, "C 남동 통로", 0);
             var gateCne = Attach(map, c, 2, g, g, hall, "C 북동 통로", 0);
@@ -1894,10 +1793,10 @@ namespace HorrorGame.Core.Tests
 
             var d = AddZoneRing(map, "D 콘크리트", FloorMaterial.Concrete, new Vec3(side * 3f, 0f, 0f), hall,
                 true, true, false, true, false);
-            var gateDsw = Attach(map, d, 0, -g, -g, hall | MapNodeKind.ElectricalPanel, "D 남서 통로", 0);
+            var gateDsw = Attach(map, d, 0, -g, -g, hall, "D 남서 통로", 0);
             var gateDnw = Attach(map, d, 3, -g, g, hall, "D 북서 통로", 0);
             Attach(map, d, 1, g, -g, hall, "D 창고", DeadEndReward);
-            Attach(map, d, 1, -g, -g, MapNodeKind.Concealment, "D 은폐 지점", DeadEndReward);
+            Attach(map, d, 1, -g, -g, MapNodeKind.None, "D 모퉁이", DeadEndReward);
 
             var exit = map.AddNode(
                 d.Zone,
@@ -1950,15 +1849,22 @@ namespace HorrorGame.Core.Tests
                 At(origin, inset, inset + RingSide),
             };
 
+            // 후보 지점 → 도달 지점, and the fourth corner loses §04's 관측 지점 outright.
+            // Both parameters are kept in the signature and ignored: every caller passes
+            // a literal, and threading a dead flag through eight call sites to delete it
+            // would touch more of this fixture than the rules under test.
+            _ = observationPost;
+            _ = candidateOnCorner2;
+
             var kinds = new[]
             {
-                cornerKind | MapNodeKind.CandidateSite,
-                cornerKind | MapNodeKind.CandidateSite,
-                cornerKind | (candidateOnCorner2 ? MapNodeKind.CandidateSite : MapNodeKind.None),
-                cornerKind | (observationPost ? MapNodeKind.ObservationPost : MapNodeKind.None),
+                cornerKind | MapNodeKind.ReachProbe,
+                cornerKind | MapNodeKind.ReachProbe,
+                cornerKind | MapNodeKind.ReachProbe,
+                cornerKind,
             };
 
-            var names = new[] { " 후보1", " 후보2", " 후보3", " 관측지점" };
+            var names = new[] { " 도달1", " 도달2", " 도달3", " 모퉁이" };
             var corners = new int[4];
             for (var i = 0; i < 4; i++)
             {

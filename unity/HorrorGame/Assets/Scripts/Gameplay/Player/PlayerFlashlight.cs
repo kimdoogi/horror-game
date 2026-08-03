@@ -38,9 +38,6 @@ namespace HorrorGame.Gameplay.Player
         [SerializeField]
         private PlayerLook? _look;
 
-        [SerializeField]
-        private PlayerLoadout? _loadout;
-
         [Tooltip("The spot light. Left empty, found in children.")]
         [SerializeField]
         private Light? _spot;
@@ -63,15 +60,14 @@ namespace HorrorGame.Gameplay.Player
         [SerializeField]
         private Color _colour = new Color(1f, 0.96f, 0.87f);
 
-        private readonly BatteryState _battery = new BatteryState();
         private FlashlightState? _state;
         private Transform? _mount;
         private bool _resolved;
 
         /// <summary>
-        /// The rules object: on/off, the cell behind it, and §08's upgrade. Everything that
-        /// needs to know whether this player is visible or can read a clue asks this, not
-        /// the <see cref="Light"/>.
+        /// The rules object: on, or off. That is the whole of it now — the cell behind it
+        /// and §08's 강화 손전등 upgrade are deleted. Everything that needs to know whether
+        /// this player is visible asks this, not the <see cref="Light"/>.
         /// </summary>
         public FlashlightState State
         {
@@ -79,7 +75,7 @@ namespace HorrorGame.Gameplay.Player
             {
                 if (_state == null)
                 {
-                    _state = new FlashlightState(_battery);
+                    _state = new FlashlightState();
                 }
 
                 return _state;
@@ -140,7 +136,6 @@ namespace HorrorGame.Gameplay.Player
         {
             _input = GetComponentInChildren<PlayerInputRouter>();
             _look = GetComponentInChildren<PlayerLook>();
-            _loadout = GetComponentInChildren<PlayerLoadout>();
             _spot = GetComponentInChildren<Light>();
             _rigRoot = transform;
         }
@@ -174,11 +169,6 @@ namespace HorrorGame.Gameplay.Player
                 _look = GetComponentInChildren<PlayerLook>();
             }
 
-            if (_loadout == null)
-            {
-                _loadout = GetComponentInChildren<PlayerLoadout>();
-            }
-
             if (_spot == null)
             {
                 _spot = GetComponentInChildren<Light>();
@@ -206,58 +196,29 @@ namespace HorrorGame.Gameplay.Player
             }
         }
 
-        /// <summary>
-        /// Whether both hands are already on something, so there is no hand left for the
-        /// torch.
-        /// <para>
-        /// §03 states it for the objective — "양손을 쓴다 · 손전등을 들 수 없다 → 누군가
-        /// 비춰줘야 한다" — and §08's 대형 초상화 · 궤짝 is the same physical fact: a
-        /// two-person carry with a pair of hands on each edge, which is exactly how the
-        /// <c>CarryHeavy</c> pose is authored. An overloaded bag is deliberately <em>not</em>
-        /// included: §08 charges that as weight and takes speed for it, it does not fill
-        /// anybody's hands.
-        /// </para>
-        /// </summary>
-        public bool HandsFull
-        {
-            get
-            {
-                ResolveWiring();
-                return _loadout != null
-                    && (_loadout.CarryingObjective || _loadout.CarryingOversizePiece);
-            }
-        }
-
-        /// <summary>
-        /// Takes the light away from a player whose hands are full, whatever they last
-        /// pressed.
-        /// <para>
-        /// Public alongside <see cref="RefreshPresentation"/> so a capture rig runs the
-        /// rule rather than re-stating it. A shot tool that decided for itself that the
-        /// light is off while carrying would photograph its own opinion of §03 and would
-        /// keep agreeing with the game right up until the day they diverged.
-        /// </para>
-        /// </summary>
-        public void EnforceCarryRules()
-        {
-            if (HandsFull)
-            {
-                // Taken away rather than the key ignored, so the carrier goes dark the
-                // instant they lift it and the escort has to be arranged, not assumed.
-                State.TurnOff();
-            }
-        }
+        // DELETED with the carry system and the light economy:
+        //
+        //   _battery / State.Tick(deltaTime)  §03's 왕복 clock — charge, switch-on cost,
+        //                                     idle drain, spare cells. Tick was removed
+        //                                     from FlashlightState rather than emptied,
+        //                                     so there is now NO code path that can turn
+        //                                     this beam off by itself. That was the point:
+        //                                     a half-deleted torch that is always dead is
+        //                                     the failure mode to avoid.
+        //   HandsFull / EnforceCarryRules     §03's 「양손을 쓴다 · 손전등을 들 수 없다」 and
+        //                                     §08's two-person 궤짝. A runner's hands hold
+        //                                     a torch and nothing else, so there was
+        //                                     nothing left that could take it away.
+        //
+        // The whole of Update is now: if the key was pressed, flip the switch.
 
         private void Update()
         {
-            EnforceCarryRules();
-
-            if (!HandsFull && _input != null && _input.FlashlightToggled)
+            if (_input != null && _input.FlashlightToggled)
             {
                 State.Toggle();
             }
 
-            State.Tick(Time.deltaTime);
             RefreshPresentation();
         }
 

@@ -80,7 +80,9 @@ namespace HorrorGame.Tests.PlayMode.PlayerRig
             view.Apply();
 
             Assert.That(Mode(rig, "Player_Body"), Is.EqualTo(ShadowCastingMode.On),
-                "§13 puts the other three players on screen — 협동 게임에서는 다른 3명이 보여야 한다.");
+                "§13 puts the other runners on screen. §11 races up to twenty of them down the same\n"
+                + "storey, and what a runner needs to read at a gate is 앞에 사람이 있다 — so a remote\n"
+                + "body is drawn whole, hands and all.");
         }
 
         [UnityTest]
@@ -92,7 +94,10 @@ namespace HorrorGame.Tests.PlayMode.PlayerRig
 
             view.SetHandPropVisible(false);
             Assert.That(Renderer(rig, "Player_Torch").enabled, Is.False,
-                "§03 takes the light away while both hands are on the objective; the player has to see that.");
+                "§04 leaves every runner one thing in their hands and it is the torch. Switched off it\n"
+                + "is in a pocket, and the mesh has to agree — a torch drawn in an unlit fist is a lamp\n"
+                + "with no light coming out of it. The 목표물 that used to empty both hands is gone with\n"
+                + "§08; the visibility switch it drove is still the one PlayerFlashlight uses.");
 
             view.SetHandPropVisible(true);
             Assert.That(Renderer(rig, "Player_Torch").enabled, Is.True);
@@ -131,7 +136,7 @@ namespace HorrorGame.Tests.PlayMode.PlayerRig
             // like. Equipment and skin together says "body", and no arrangement of
             // materials on a single renderer can draw half of it, which is the whole
             // reason the mesh is split.
-            AddSkinned(rig, "Player_Merged", "Role_Listener",
+            AddSkinned(rig, "Player_Merged", "Player_Cloth",
                 PlayerRigParts.SkinMaterial, "Player_Coverall", PlayerRigParts.GearMaterial);
 
             // Expected before the component exists: the warning is written from Awake, and
@@ -146,14 +151,24 @@ namespace HorrorGame.Tests.PlayMode.PlayerRig
         }
 
         [Test]
-        public void A_role_swap_does_not_make_the_arms_unrecognisable()
+        public void An_instanced_material_does_not_make_the_arms_unrecognisable()
         {
             var rig = BuildSplitRig();
 
             // Touching Renderer.materials instantiates every slot and Unity renames them
-            // "X (Instance)". §04 swaps slot 0 per RoleId, so this happens to the arms in
-            // every real match; a classifier matching names exactly would work until the
-            // first role was assigned and then quietly hide the hands.
+            // "X (Instance)", and PlayerRigParts.Classify has to keep working on the new
+            // names — it matches by substring, and this test is what says so.
+            //
+            // Renamed from A_role_swap_... on 2026-08-03. The old name was accurate: §04
+            // tinted slot 0 per RoleId and that was the in-game producer of the instanced
+            // name. DESCENT-PIVOT §7 step 7 deleted 직업 and, measured rather than assumed,
+            // deleted the only runtime writer of Renderer.materials on the player rig —
+            // `grep -rn "\.materials\b" Scripts/Gameplay/{Player,Presence}` now finds only
+            // the editor material pipeline and a doc comment. So this test is the one place
+            // in the project that still produces the case, which is an argument for keeping
+            // it rather than retiring it with §04: the contract it pins is a substring match
+            // that nothing else re-checks, and Unity instantiates a material the instant
+            // anybody reads that property — including whatever is written next.
             var arms = Renderer(rig, "Player_Arms");
             var instanced = arms.materials;
             Assert.That(instanced[0].name, Does.Contain("(Instance)"));
@@ -171,9 +186,12 @@ namespace HorrorGame.Tests.PlayMode.PlayerRig
             var rig = new GameObject("Player");
             _rig = rig;
 
-            AddSkinned(rig, "Player_Body", "Role_Listener", PlayerRigParts.SkinMaterial,
+            // Slot 0 is a material the classifier is not allowed to care about. It was
+            // "Role_Listener" until §04's 직업 were deleted; the slot stays because the
+            // point of the fixture is that Classify reads only the two names it knows.
+            AddSkinned(rig, "Player_Body", "Player_Cloth", PlayerRigParts.SkinMaterial,
                 "Player_Coverall", PlayerRigParts.GearMaterial);
-            AddSkinned(rig, "Player_Arms", "Role_Listener", PlayerRigParts.SkinMaterial, "Player_Coverall");
+            AddSkinned(rig, "Player_Arms", "Player_Cloth", PlayerRigParts.SkinMaterial, "Player_Coverall");
             AddSkinned(rig, "Player_Torch", PlayerRigParts.GearMaterial);
 
             rig.AddComponent<PlayerFirstPersonView>();

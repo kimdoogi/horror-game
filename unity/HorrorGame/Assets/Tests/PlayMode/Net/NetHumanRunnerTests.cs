@@ -402,10 +402,9 @@ namespace HorrorGame.Tests.PlayMode.Net
                 + "sweeping the ceiling when they are sweeping the floor. PlayerRigNetView.PitchDegrees is "
                 + "where the conversion lives.");
 
-            Assert.That(serverCopy.Carry, Is.EqualTo(NetCarryState.Empty),
-                "§05's 운반 상태 row for a player with an empty inventory should be Empty, and it is "
-                + serverCopy.Carry + " — the bridge is reading the loadout wrongly, which would draw a "
-                + "flashlight on a pair of full hands.");
+            // DELETED with §08: the 운반 상태 assertion. It proved a player with an empty
+            // inventory replicated as Empty rather than as full hands with no torch. There
+            // is no inventory and the row is off the wire.
 
             Assert.That(serverCopy.ApproximateStaminaFraction, Is.GreaterThan(0f),
                 "The player has not sprinted, so §05's 스태미나 row should be full and it arrived at zero. "
@@ -828,7 +827,6 @@ namespace HorrorGame.Tests.PlayMode.Net
             controller.stepOffset = GameConstants.PlayerStepOffsetMetres;
 
             _drivableRig!.AddComponent<PlayerLook>();
-            _drivableRig!.AddComponent<PlayerLoadout>();
 
             // Last, because PlayerMotor.Awake wires itself to whatever is already on the
             // object and adds a PlayerStance if there is none — the same ordering

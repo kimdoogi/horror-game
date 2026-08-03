@@ -32,14 +32,15 @@ namespace HorrorGame.EditorTools.SceneGen
         /// <summary>Root object every generated map hangs from. The runtime finds the map by this name.</summary>
         public const string MapRootName = "Map";
 
-        /// <summary>Child of the root holding spawn, site and loot markers.</summary>
+        /// <summary>Child of the root holding the spawns, the 도달 지점 and the finish light.</summary>
         public const string MarkerRootName = "Markers";
 
         /// <summary>Prefix of a zone's root object. The suffix is the §12 surface, which is the Listener's answer.</summary>
         public const string ZonePrefix = "Zone_";
 
-        /// <summary>Group under a zone whose lights the Engineer's 구역 조명 switches (§04).</summary>
-        public const string ZoneLightGroupName = "ZoneLights";
+        // A ZoneLightGroupName const stood here — "ZoneLights", the group under each zone
+        // whose lamps the 정비공's §04 구역 조명 switched. The light economy is deleted
+        // (see BuildFinishLight) and nothing outside this file ever referenced the name.
 
         /// <summary>
         /// Child of the root holding the per-storey volumes that keep the NavMesh off
@@ -150,20 +151,57 @@ namespace HorrorGame.EditorTools.SceneGen
             3f * GameConstants.JumpTakeoffSpeed * GameConstants.FixedStep;
 
         /// <summary>
+        /// How long the fall out of a 투하구 lasts, seconds — <c>Chute</c>'s own
+        /// <c>FallSeconds</c>.
+        /// <para>
+        /// §01 asks for it by name: 「the last half second of every storey is falling in the
+        /// dark towards a floor you have not seen yet」. It is the only free number in the
+        /// drop; the height below follows from it.
+        /// </para>
+        /// </summary>
+        private const float ChuteFallSeconds = 0.5f;
+
+        /// <summary>
         /// Metres above its 착지 a 투하구 puts a runner down — the runtime's own
-        /// <c>Chute.DropHeightMetres</c>.
+        /// <c>Chute.DropHeightMetres</c>, DERIVED here from the same two facts it is
+        /// derived from there.
         /// <para>
         /// Restated rather than referenced because this class lives in an editor assembly
         /// that does not reference the runtime's Race assembly (see the asmdef's list),
         /// which is the same reason <c>DescentPlaythroughTests</c> keeps its own copy of
-        /// the storey pitch. It is used for one thing only: to prove, at generation time,
-        /// that no boundary plate stands in the 3.0 m of air a runner falls through. If
-        /// the runtime ever changes the drop, this number is wrong in the safe direction
-        /// only by luck — so <see cref="VerifyChutesDropIntoOpenAir"/> prints it, and
-        /// <c>DescentPlaythroughTests</c> measures the real one against the real geometry.
+        /// the storey pitch. Restating an ARITHMETIC is safe in a way that restating a
+        /// typed-in 3.0 was not: both sides read <see cref="GameConstants.JumpGravity"/>
+        /// and both sides say half a second, so the two can only disagree if somebody
+        /// changes the fiction.
+        /// </para>
+        /// <para>
+        /// <b>It was 3.0 m, and 3.0 m dropped every runner into the ceiling.</b> The kit's
+        /// corridor is <see cref="MapKitCatalogue.CorridorClearHeight"/> 3.00 m clear, so
+        /// feet at 착지 + 3.0 stand exactly ON the soffit plane with the whole 1.75 m body
+        /// inside the slab and the floor above it; a <see cref="CharacterController"/>
+        /// teleported inside a collider is pushed out the shortest way, which there is UP,
+        /// back onto the storey the runner just left — after the descent has been recorded.
+        /// Measured: 0 of 238 swallowed runners ended up standing on the floor below.
+        /// </para>
+        /// <para>
+        /// <b>Two facts bound it and the fall is the one that binds.</b> The body must fit
+        /// under the soffit, so the feet can be at most 3.00 − 1.75 = <b>1.250 m</b> up
+        /// (<see cref="PlayerTraversal.PlayerBody"/> 1.75 m). A free fall lasting
+        /// <see cref="ChuteFallSeconds"/> at <see cref="GameConstants.JumpGravity"/> 9.81 m/s²
+        /// covers ½ × 9.81 × 0.5² = <b>1.226 m</b>. 1.226 &lt; 1.250, so the fall sets the
+        /// number and the headroom merely permits it — with 23.7 mm to spare over a standing
+        /// body, which is the whole margin this drop has and the reason
+        /// <see cref="VerifyChutesDropIntoOpenAir"/> now measures it every generation instead
+        /// of asserting it here.
+        /// </para>
+        /// <para>
+        /// Had the ceiling been the binding one, the honest fix would have been the ceiling:
+        /// a shorter fall to fit a room is a room deciding the fiction. It is not, so the
+        /// fiction decides.
         /// </para>
         /// </summary>
-        private const float ChuteDropHeightMetres = 3.0f;
+        private const float ChuteDropHeightMetres =
+            0.5f * GameConstants.JumpGravity * ChuteFallSeconds * ChuteFallSeconds;
 
         /// <summary>
         /// Slack the shell's own containment check allows at a wall, metres.
@@ -209,14 +247,12 @@ namespace HorrorGame.EditorTools.SceneGen
             var shafts = ShaftCells(map);
             var zoneRoots = new GameObject[map.ZoneRects.Length];
             var zoneTileRoots = new GameObject[map.ZoneRects.Length];
-            var zoneLightRoots = new GameObject[map.ZoneRects.Length];
 
             for (var i = 0; i < map.ZoneRects.Length; i++)
             {
                 var rect = map.ZoneRects[i];
                 zoneRoots[i] = Child(root, ZonePrefix + ZoneSlug(rect) + "_B" + (rect.Level + 1) + "_" + rect.Floor);
                 zoneTileRoots[i] = Child(zoneRoots[i], "Tiles");
-                zoneLightRoots[i] = Child(zoneRoots[i], ZoneLightGroupName);
 
                 var floorRoot = Child(zoneRoots[i], "Floor");
                 var ceilingRoot = Child(zoneRoots[i], "Ceiling");
@@ -277,6 +313,27 @@ namespace HorrorGame.EditorTools.SceneGen
                 }
             }
 
+            // The props, and the honest answer to "what is this still furnishing".
+            //
+            // Searched rather than assumed, because the brief for this round named a van, a
+            // shop, clue boards, loot pieces, 배전반 and safes. Five of those six have no
+            // representation here at all: MapKitPiece has 21 members and every one of them is
+            // corridor, junction, chamber, hall, floor tile, stair, gallery, doorway or door
+            // leaf — there is no van, no shop counter, no clue board, no crate and no safe in
+            // the kit, and nothing in this file names one. The §08 van was never map geometry;
+            // it is spawned by the match, not the generator.
+            //
+            // The sixth was real and it is gone. MapSketch.BuildProps has exactly one
+            // generator — a WallPanelElectrical at every ElectricalPanel mark — and
+            // DescentMap.MarkPlaces was its only caller, one per storey. Measured in the
+            // shipped scene before this round: 8 prefab instances named ElectricalPanel_*,
+            // and nothing else under any Zone_*/Props at all. With the mark deleted this loop
+            // now runs zero times on §01's tower.
+            //
+            // It stays as a loop rather than being deleted with its only client. MapSketch.Prop
+            // is a general "put this piece at this world position" API that a map author can
+            // call, and a builder that silently dropped those would be a worse trap than an
+            // empty foreach. Zero props is the correct output for a race map, not a dead path.
             foreach (var prop in map.Props)
             {
                 var parent = prop.ZoneId >= 0 ? Child(zoneRoots[prop.ZoneId], "Props") : sharedRoot;
@@ -292,7 +349,7 @@ namespace HorrorGame.EditorTools.SceneGen
                 KeepOutOfNavMeshBake(go);
             }
 
-            BuildMarkers(root, map, zoneLightRoots);
+            BuildMarkers(root, map);
             BuildAmbience();
 
             // Last of the geometry, and after everything that owns a renderer, because
@@ -311,18 +368,25 @@ namespace HorrorGame.EditorTools.SceneGen
         // Markers — everything the runtime looks up by name.
         // ====================================================================
 
-        private static void BuildMarkers(GameObject root, MapSketchResult map, GameObject[] zoneLightRoots)
+        private static void BuildMarkers(GameObject root, MapSketchResult map)
         {
             var markerRoot = Child(root, MarkerRootName);
             var groups = new Dictionary<MapMarkerKind, GameObject>();
 
             foreach (var marker in map.Markers)
             {
-                if (marker.Kind == MapMarkerKind.ZoneLight || marker.Kind == MapMarkerKind.EntranceLight)
+                if (marker.Kind == MapMarkerKind.EntranceLight)
                 {
-                    BuildLight(marker, map, zoneLightRoots);
+                    BuildFinishLight(marker, markerRoot);
                     continue;
                 }
+
+                // The ZoneLight clause that stood here is gone, as its own comment said it
+                // should be: it dropped 구역 조명 markers so the generic path would not turn
+                // each of the 567 into an empty transform under Markers/ZoneLights. MapSketch
+                // no longer emits one, so there is nothing left to drop and the clause has
+                // become what it predicted — dead. See BuildFinishLight for why the light
+                // economy went.
 
                 if (marker.Kind == MapMarkerKind.LockableDoor)
                 {
@@ -339,15 +403,12 @@ namespace HorrorGame.EditorTools.SceneGen
                 var go = Child(group, marker.Name);
                 go.transform.position = ToUnity(marker.Position);
 
-                // §13: the objective's location and a clue's contents exist only on the
-                // host. Every candidate site is therefore an identical empty transform —
-                // no component, no flag, nothing a client could read to learn which one
-                // the host picked. A marker that carried "this is the real one" would
-                // defeat §03's whole constraint before the match started.
-                if (marker.Kind == MapMarkerKind.CandidateSite)
-                {
-                    go.transform.rotation = Quaternion.identity;
-                }
+                // No per-kind special cases left. There was one: every CandidateSite had its
+                // rotation forced to identity so that §13 — "the objective's location and a
+                // clue's contents exist only on the host" — could not be read off the scene
+                // by a client comparing markers. §03's clue chain is deleted, there is no
+                // objective to hide and no candidate to be the real one, and a 도달 지점 is a
+                // statement about geometry that every client is welcome to.
             }
         }
 
@@ -499,44 +560,55 @@ namespace HorrorGame.EditorTools.SceneGen
             // means a door needs no scene authoring at all.
         }
 
-        private static void BuildLight(MapMarkerPlacement marker, MapSketchResult map, GameObject[] zoneLightRoots)
+        /// <summary>
+        /// Hangs the one light that burns: §02's finish, the middle of B8.
+        /// <para>
+        /// <b>The 567 구역 조명 that used to come through here are deleted.</b> Every node
+        /// with two or more ways out got a point light, authored DISABLED, because §03 made
+        /// darkness "목표의 잠금장치" and §04 gave the 정비공 a 구역 조명 to switch it off with
+        /// — at a 전기 패널, one per zone. The panels are gone with the light economy
+        /// (<c>DescentMap.MarkPlaces</c>), the 정비공 is gone with the roles, and searched
+        /// across the runtime nothing else ever named one: no component looks up
+        /// <c>ZoneLight_</c>, and the only reader of the group was
+        /// <c>MatchDirector.CollectAreaLights</c>, which takes every point light in the scene
+        /// and would have been collecting 567 lamps that no longer have a switch. A light
+        /// nobody can turn on is not darkness with a lock on it, it is 567 disabled
+        /// components in the shipped scene.
+        /// </para>
+        /// <para>
+        /// Darkness is not what went; the CHORE is. §01's runner carries a light that simply
+        /// works, and the maze is dark and gets darker with depth because that is the floor's
+        /// property rather than a job.
+        /// </para>
+        /// <para>
+        /// <b>This one stays and it is load-bearing three times over.</b> It is the only
+        /// 출입구 mark on the tower, and three separate things find §02's finish through it:
+        /// <c>MatchMap.FindEntrance</c>, <c>RaceDirector</c>'s fallback when no
+        /// <c>FinishMarkerName</c> transform exists, and <c>PlayerTraversal.CollectMarkers</c>,
+        /// which undoes the height offset applied below to get the floor a runner arrives on.
+        /// It also earns its keep in the fiction: in a dark maze the finish is the one thing
+        /// you are allowed to see from across the room.
+        /// </para>
+        /// </summary>
+        private static void BuildFinishLight(MapMarkerPlacement marker, GameObject markerRoot)
         {
-            var parent = marker.ZoneId >= 0 && marker.ZoneId < zoneLightRoots.Length
-                ? zoneLightRoots[marker.ZoneId]
-                : null;
-            var go = new GameObject(marker.Name);
-            if (parent != null)
-            {
-                go.transform.SetParent(parent.transform, false);
-            }
+            var go = Child(Child(markerRoot, MapMarkerKind.EntranceLight.ToString() + "s"), marker.Name);
 
             // Eye height is the wrong place for a ceiling fitting; the kit's corridors
             // are 3 m clear, so the fixture hangs just under that.
+            //
+            // PlayerTraversal.CollectMarkers subtracts this exact expression to recover the
+            // floor under the finish. It is written once, here, and read there — do not
+            // change one without the other.
             go.transform.position = ToUnity(marker.Position) + (Vector3.up * (MapKitCatalogue.CorridorClearWidth + 0.6f));
 
             var light = go.AddComponent<Light>();
             light.type = LightType.Point;
             light.range = GameConstants.ZoneLightRadius;
             light.shadows = LightShadows.None;
-
-            if (marker.Kind == MapMarkerKind.EntranceLight)
-            {
-                // The way out stays lit. §07 새벽 turns the door into an ambush and §03
-                // makes the building dark; a player who cannot find the exit at all is
-                // not facing a dilemma, just a missing affordance.
-                light.intensity = 1.2f;
-                light.color = new Color(1.0f, 0.94f, 0.82f);
-                light.enabled = true;
-            }
-            else
-            {
-                // §03: "어둠 = 목표의 잠금장치." Zone lights exist so the Engineer has
-                // something to switch on (§04 구역 조명, 전기 패널 구역당 1개); they start
-                // off, because a lit building would hand the objective over for free.
-                light.intensity = 0.9f;
-                light.color = new Color(0.85f, 0.88f, 1.0f);
-                light.enabled = false;
-            }
+            light.intensity = 1.2f;
+            light.color = new Color(1.0f, 0.94f, 0.82f);
+            light.enabled = true;
         }
 
         private static void BuildAmbience()
@@ -1440,10 +1512,16 @@ namespace HorrorGame.EditorTools.SceneGen
         /// The reach audit builds the real rig and would say so if the two ever parted.
         /// </para>
         /// <para>
-        /// It measures the boundary only. The map's own floor IS inside this capsule and
-        /// always has been — a 3.0 m drop plus a 1.75 m body is 4.75 m against a 3.75 m
-        /// storey — and calling that a defect would be measuring the building rather than
-        /// the shell. What the shell owes is that it adds nothing.
+        /// <b>It now measures the ceiling too, and that clause used to be an excuse.</b> It
+        /// read: "the map's own floor IS inside this capsule and always has been — a 3.0 m
+        /// drop plus a 1.75 m body is 4.75 m against a 3.75 m storey — and calling that a
+        /// defect would be measuring the building rather than the shell." Every word of that
+        /// is true and it was the bug: a body that does not fit under the ceiling it is
+        /// dropped beneath is not a fact about the shell, it is the drop being wrong, and
+        /// writing the arithmetic down as a known exception is what kept it wrong for the
+        /// whole life of the descent. <see cref="ChuteDropHeightMetres"/> is derived now, and
+        /// the sum it used to excuse is the number this method prints: drop + body against
+        /// <see cref="MapKitCatalogue.CorridorClearHeight"/>, measured, every generation.
         /// </para>
         /// </summary>
         private static void VerifyChutesDropIntoOpenAir(MapSketchResult map, List<PlacedPlate> built)
@@ -1506,11 +1584,18 @@ namespace HorrorGame.EditorTools.SceneGen
                 return;
             }
 
+            // The ceiling, measured rather than asserted. The drop is derived from the fall
+            // and the fall is shorter than the headroom by construction, so this can only
+            // fail if the kit's corridor gets lower or the rig gets taller — both of which
+            // are somebody else's edit to somebody else's file, which is exactly when a
+            // derived constant needs a witness.
+            var headroom = MapKitCatalogue.CorridorClearHeight - (ChuteDropHeightMetres + body.Height);
+
             if (blocked > 0)
             {
                 Debug.LogError("[SceneGen] " + blocked + " of " + landings
                     + " 투하구 drop a runner INTO the boundary — " + worst
-                    + ". Chute.DropPoint is 착지 + " + ChuteDropHeightMetres.ToString("0.0")
+                    + ". Chute.DropPoint is 착지 + " + ChuteDropHeightMetres.ToString("0.000")
                     + " m and the body stands " + body.Height.ToString("0.00")
                     + " m up from there; a runner teleported inside a collider is pushed out the "
                     + "short way, which at a storey seam is UP, back onto the floor they just left, "
@@ -1519,14 +1604,33 @@ namespace HorrorGame.EditorTools.SceneGen
                 return;
             }
 
+            if (headroom < 0f)
+            {
+                Debug.LogError("[SceneGen] Every 투하구 drops a runner into the CEILING. 착지 + "
+                    + ChuteDropHeightMetres.ToString("0.000") + " m plus a "
+                    + body.Height.ToString("0.00") + " m body is "
+                    + (ChuteDropHeightMetres + body.Height).ToString("0.000")
+                    + " m against MapKitCatalogue.CorridorClearHeight "
+                    + MapKitCatalogue.CorridorClearHeight.ToString("0.00") + " m — over by "
+                    + (-headroom).ToString("0.000") + " m. The drop is derived from a "
+                    + ChuteFallSeconds.ToString("0.0") + " s fall at "
+                    + GameConstants.JumpGravity.ToString("0.00")
+                    + " m/s², so this means the corridor got lower or the rig got taller and the "
+                    + "two facts no longer both fit. §01's only way down is this drop.");
+                return;
+            }
+
             Debug.Log("[SceneGen] 투하구: " + landings + " landings, all in open air. Tightest boundary "
                 + "clearance " + tightest.ToString("0.000") + " m (" + tightestWhere
                 + "), measured on the capsule's own box — " + body.Radius.ToString("0.00")
                 + " m radius by " + body.Height.ToString("0.00") + " m, " + body.Source
-                + " — standing at 착지 + " + ChuteDropHeightMetres.ToString("0.0")
-                + " m. This says nothing about the map's own floor, which the capsule is "
-                + "inside at every drop and always has been: 3.0 m + 1.75 m is 4.75 m against "
-                + "a 3.75 m storey.");
+                + " — standing at 착지 + " + ChuteDropHeightMetres.ToString("0.000")
+                + " m. Under the kit's own ceiling by " + headroom.ToString("0.000") + " m: "
+                + ChuteDropHeightMetres.ToString("0.000") + " + " + body.Height.ToString("0.00")
+                + " against " + MapKitCatalogue.CorridorClearHeight.ToString("0.00")
+                + " m clear. The drop is ½ × " + GameConstants.JumpGravity.ToString("0.00")
+                + " × " + ChuteFallSeconds.ToString("0.0") + "² — §01's half second of falling — "
+                + "and it fits, which is the whole reason it is that number.");
         }
 
         /// <summary>

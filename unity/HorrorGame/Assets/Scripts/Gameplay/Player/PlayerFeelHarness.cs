@@ -2,7 +2,6 @@
 
 using System.Globalization;
 using HorrorGame.Core;
-using HorrorGame.Core.Economy;
 using HorrorGame.Core.Map;
 using HorrorGame.Core.Movement;
 using HorrorGame.Core.Roles;
@@ -66,9 +65,6 @@ namespace HorrorGame.Gameplay.Player
 
         [SerializeField]
         private PlayerCameraRig? _cameraRig;
-
-        [SerializeField]
-        private PlayerLoadout? _loadout;
 
         [SerializeField]
         private PlayerFootsteps? _footsteps;
@@ -277,17 +273,12 @@ namespace HorrorGame.Gameplay.Player
 
             var look = body.AddComponent<PlayerLook>();
 
-            _loadout = body.AddComponent<PlayerLoadout>();
-
             // Before the motor: PlayerMotor's Awake looks for one, and AddComponent runs
             // Awake immediately, so the order here is the wiring.
             body.AddComponent<PlayerStance>();
             _motor = body.AddComponent<PlayerMotor>();
             _cameraRig = body.AddComponent<PlayerCameraRig>();
             body.AddComponent<PlayerFlashlight>();
-            // §03's two two-handed states are defined by what they cost, and the cost
-            // is only visible if the thing that costs it is in the hands.
-            body.AddComponent<PlayerHeldProp>();
             _footsteps = body.AddComponent<PlayerFootsteps>();
             _viewMotion = body.AddComponent<PlayerViewMotion>();
 
@@ -317,11 +308,6 @@ namespace HorrorGame.Gameplay.Player
                 _cameraRig = body.GetComponent<PlayerCameraRig>();
             }
 
-            if (_loadout == null)
-            {
-                _loadout = body.GetComponent<PlayerLoadout>();
-            }
-
             if (_footsteps == null)
             {
                 _footsteps = body.GetComponentInChildren<PlayerFootsteps>();
@@ -337,12 +323,11 @@ namespace HorrorGame.Gameplay.Player
                 _input = body.GetComponent<PlayerInputRouter>();
             }
 
-            if (_motor != null)
-            {
-                // §04's Runner: the role §14's questions 1 and 2 are written about, because
-                // 5.6 against the monster's 4.8 is the margin the whole chase rests on.
-                _motor.Role = RoleId.Runner;
-            }
+            // DELETED: _motor.Role = RoleId.Runner. The harness used to have to say which
+            // of §04's five 직업 it was measuring, because only the Runner's Shift bought
+            // 5.6 m/s and §14's questions 1 and 2 are written about that margin against the
+            // creature's 4.8. Every runner has 질주 now, so a rig with no role IS the
+            // measured one.
         }
 
         private void EnsurePacer()
@@ -480,30 +465,11 @@ namespace HorrorGame.Gameplay.Player
                 }
             }
 
-            if (_loadout != null)
-            {
-                if (keyboard.oKey.wasPressedThisFrame)
-                {
-                    _loadout.SetCarryingObjective(!_loadout.CarryingObjective);
-                }
-
-                if (keyboard.bKey.wasPressedThisFrame)
-                {
-                    if (_loadout.Inventory.BagEquipped)
-                    {
-                        _loadout.Inventory.TryUnequipBag();
-                    }
-                    else
-                    {
-                        _loadout.Inventory.TryEquipBag();
-                    }
-                }
-
-                if (keyboard.lKey.wasPressedThisFrame)
-                {
-                    CycleLoot();
-                }
-            }
+            // DELETED with §08 and §03: the O / B / L keys. They toggled the 목표물 in
+            // both hands, equipped and unequipped §08's 가방, and cycled 전리품 into the
+            // inventory until it overloaded — the three levers this harness existed to
+            // A/B carry weight against §05's speed table. A runner carries a torch, so
+            // there is nothing left to weigh.
 
             if (_motor != null && keyboard.rKey.wasPressedThisFrame)
             {
@@ -539,20 +505,6 @@ namespace HorrorGame.Gameplay.Player
             }
         }
 
-        private void CycleLoot()
-        {
-            if (_loadout == null)
-            {
-                return;
-            }
-
-            var inventory = _loadout.Inventory;
-            if (inventory.TotalWeight > GameConstants.WeightHeavyMax || !inventory.TryAdd(LootId.LargePiece))
-            {
-                inventory.DropAll();
-            }
-        }
-
         // ---------------------------------------------------------------------- readout
 
         private void OnGUI()
@@ -579,9 +531,10 @@ namespace HorrorGame.Gameplay.Player
                  + "   (base " + F(_motor.LastContext.BaseSpeed) + ")", Color.white);
             Line("direction    x" + F(_motor.DirectionalMultiplier)
                  + "   at " + F(_motor.HeadingOffsetDegrees) + " deg off forward", Color.cyan);
-            Line("load         x" + F(_motor.LastContext.LoadMultiplier)
-                 + (_motor.LastContext.CarryingObjective ? "   + objective x" + F(GameConstants.ObjectiveCarrySpeedMultiplier) : string.Empty),
-                Color.white);
+            // The load line is now the stance alone — 웅크리기 is the only thing that
+            // multiplies a runner's speed. Kept rather than deleted because a load
+            // multiplier that is silently not 1 is exactly the bug this readout catches.
+            Line("load         x" + F(_motor.LastContext.LoadMultiplier), Color.white);
             Line("measured     " + F(_motor.GroundSpeed) + " m/s on " + Surface(), Color.grey);
 
             Line(" ", Color.white);

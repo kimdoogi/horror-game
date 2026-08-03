@@ -43,7 +43,6 @@ namespace HorrorGame.Net.PlayerBridge
         private PlayerMotor? _motor;
         private PlayerLook? _look;
         private PlayerFlashlight? _flashlight;
-        private PlayerLoadout? _loadout;
 
         /// <summary>
         /// §05's 위치 row: the rig root's world position, which is the character
@@ -108,34 +107,10 @@ namespace HorrorGame.Net.PlayerBridge
             get { return _flashlight != null && _flashlight.IsLit; }
         }
 
-        /// <summary>
-        /// §05's 운반 상태 row, in the order <c>NetCarryStates.Of</c> uses: the objective
-        /// beats an oversize piece because §03 forbids holding both, and loot is only
-        /// reported when there is some.
-        /// </summary>
-        public NetCarryState Carry
-        {
-            get
-            {
-                var loadout = _loadout;
-                if (loadout == null)
-                {
-                    return NetCarryState.Empty;
-                }
-
-                if (loadout.CarryingObjective)
-                {
-                    return NetCarryState.Objective;
-                }
-
-                if (loadout.CarryingOversizePiece)
-                {
-                    return NetCarryState.OversizePiece;
-                }
-
-                return loadout.Inventory.LootCount > 0 ? NetCarryState.Loot : NetCarryState.Empty;
-            }
-        }
+        // DELETED with §08 and §03's 목표물: the 운반 상태 row. It read PlayerLoadout —
+        // objective, then oversize piece, then any loot — and PlayerLoadout is deleted
+        // because a runner carries a torch and nothing else. NetPlayer no longer has a
+        // SyncVar to send it to.
 
         /// <summary>
         /// §05's 스태미나 row, exact. <see cref="NetPlayer"/> is what quantises it for
@@ -208,10 +183,6 @@ namespace HorrorGame.Net.PlayerBridge
                 _flashlight = GetComponentInChildren<PlayerFlashlight>();
             }
 
-            if (_loadout == null)
-            {
-                _loadout = GetComponentInChildren<PlayerLoadout>();
-            }
         }
     }
 }

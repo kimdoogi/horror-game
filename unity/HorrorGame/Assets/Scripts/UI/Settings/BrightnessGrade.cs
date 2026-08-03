@@ -10,13 +10,13 @@ namespace HorrorGame.UI.Settings
     /// The player's brightness preference, expressed as a post-exposure offset in its
     /// own Volume.
     /// <para>
-    /// <b>§03 makes this a gameplay setting.</b> "어둠 = 목표의 잠금장치" — the dark is
-    /// what makes the flashlight worth its battery, the battery worth a round trip and
-    /// the round trip the shape of §01's whole loop. A player who lifts the black point
-    /// until the corridors are readable has not adjusted their monitor; they have
-    /// removed the lock and, with it, the reason to come back up. So the range is
-    /// derived from §03's own threshold rather than opened — see
-    /// <see cref="SettingsLimits"/> — and the settings screen says why on the row.
+    /// <b>This is a gameplay setting.</b> §01's building gets darker the further down it
+    /// goes, and that deepening is the horror the descent is made of. A player who lifts
+    /// the black point until the inner rings are readable has not adjusted their
+    /// monitor; they have deleted eight storeys of atmosphere and, in a race, bought
+    /// themselves a corridor of sight the rest of the field does not have. So the range
+    /// is clamped rather than opened — see <see cref="SettingsLimits"/>, which records
+    /// where the ±20 % came from — and the settings screen says why on the row.
     /// </para>
     /// <para>
     /// <b>A separate Volume, at a higher priority than the game's own.</b>

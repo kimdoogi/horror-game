@@ -4,7 +4,6 @@ using System.Collections;
 using HorrorGame.Core;
 using HorrorGame.Core.Map;
 using HorrorGame.Core.Movement;
-using HorrorGame.Core.Roles;
 using HorrorGame.Gameplay.Player;
 using NUnit.Framework;
 using UnityEngine;
@@ -86,21 +85,22 @@ namespace HorrorGame.Tests.PlayMode.PlayerRig
         [UnityTest]
         public IEnumerator Forward_sprint_moves_the_body_at_section05_full_speed()
         {
-            var motor = BuildPlayer(RoleId.Runner);
+            var motor = BuildPlayer();
             yield return null;
             Settle(motor);
 
             var travelled = Travel(motor, new MoveInput(1f, 0f, true), 2f);
 
             Assert.That(travelled, Is.EqualTo(GameConstants.RunnerSprintSpeed).Within(0.02f),
-                "§05: 전진 100% of 주자 질주 has to arrive as metres on the floor, not just as a "
-                + "number out of SpeedResolver.");
+                "§05: 전진 100% of 질주 has to arrive as metres on the floor, not just as a number\n"
+                + "out of SpeedResolver. Every runner has this speed now — §04 gave it to all twenty —\n"
+                + "so it is the one number the whole race is measured against.");
         }
 
         [UnityTest]
         public IEnumerator Backpedalling_is_slower_than_the_monster()
         {
-            var motor = BuildPlayer(RoleId.Runner);
+            var motor = BuildPlayer();
             yield return null;
             Settle(motor);
 
@@ -116,7 +116,7 @@ namespace HorrorGame.Tests.PlayMode.PlayerRig
         [UnityTest]
         public IEnumerator The_peek_costs_speed_continuously_rather_than_in_four_jumps()
         {
-            var motor = BuildPlayer(RoleId.Runner);
+            var motor = BuildPlayer();
             yield return null;
 
             // A 22.5 degree turn is not one of §05's four rows. If it costs either nothing
@@ -137,7 +137,7 @@ namespace HorrorGame.Tests.PlayMode.PlayerRig
         [UnityTest]
         public IEnumerator The_sprint_bar_empties_and_drops_the_runner_to_running_speed()
         {
-            var motor = BuildPlayer(RoleId.Runner);
+            var motor = BuildPlayer();
             yield return null;
 
             var input = new MoveInput(1f, 0f, true);
@@ -148,70 +148,48 @@ namespace HorrorGame.Tests.PlayMode.PlayerRig
             }
 
             Assert.That(motor.Stamina.Fraction, Is.EqualTo(0f).Within(0.02f),
-                "§06 sizes the bar at 12 s so that '주자도 스태미나가 끝나면 잡힌다'.");
+                "§06 sizes the bar at 12 s so that '스태미나가 끝나면 잡힌다'. §04 makes the bar the\n"
+                + "race's central decision — 지금 쓸까, 관문에서 쓸까 — and a bar that never empties is\n"
+                + "no decision at all.");
             Assert.That(motor.LastContext.BaseSpeed, Is.EqualTo(GameConstants.RunSpeed).Within(0.001f));
 
             motor.Step(input, Step);
             Assert.That(motor.ResolvedSpeed, Is.LessThan(GameConstants.MonsterBaseSpeed),
-                "An exhausted Runner has to be catchable, or §06's dilemma has no downside.");
+                "An exhausted runner has to be catchable, or §06's dilemma has no downside.");
         }
 
-        [UnityTest]
-        public IEnumerator A_non_runner_never_outruns_the_monster()
-        {
-            var motor = BuildPlayer(RoleId.Listener);
-            yield return null;
-
-            motor.Step(new MoveInput(1f, 0f, true), Step);
-
-            Assert.That(motor.ResolvedSpeed, Is.EqualTo(GameConstants.RunSpeed).Within(0.001f),
-                "§04 gives 질주 to the Runner alone; everyone else's Shift buys 달리기 4.5.");
-            Assert.That(motor.ResolvedSpeed, Is.LessThan(GameConstants.MonsterBaseSpeed));
-            Assert.That(motor.Stamina.Fraction, Is.EqualTo(1f).Within(0.001f),
-                "A role that cannot sprint must not be spending a sprint bar.");
-        }
-
-        [UnityTest]
-        public IEnumerator Carrying_the_objective_costs_speed_and_forbids_sprinting()
-        {
-            var motor = BuildPlayer(RoleId.Runner);
-            var loadout = motor.GetComponent<PlayerLoadout>();
-            yield return null;
-
-            Assert.That(loadout.SetCarryingObjective(true), Is.True);
-            motor.Step(new MoveInput(1f, 0f, true), Step);
-
-            Assert.That(motor.LastContext.BaseSpeed, Is.EqualTo(GameConstants.RunSpeed).Within(0.001f),
-                "§03: 주자가 들면 질주 불가.");
-            Assert.That(motor.ResolvedSpeed,
-                Is.LessThan(GameConstants.RunSpeed * GameConstants.ObjectiveCarrySpeedMultiplier + 0.001f),
-                "§05 applies the objective's ×0.80 on top of everything else.");
-        }
-
-        [UnityTest]
-        public IEnumerator The_bag_penalty_is_charged_once_and_not_twice()
-        {
-            var motor = BuildPlayer(RoleId.Runner);
-            var loadout = motor.GetComponent<PlayerLoadout>();
-            yield return null;
-
-            motor.Step(new MoveInput(1f, 0f, true), Step);
-            var bare = motor.ResolvedSpeed;
-
-            Assert.That(loadout.Inventory.TryEquipBag(), Is.True);
-            motor.Step(new MoveInput(1f, 0f, true), Step);
-
-            Assert.That(motor.ResolvedSpeed,
-                Is.EqualTo(bare * GameConstants.BagSpeedMultiplier).Within(0.001f),
-                "Inventory.SpeedMultiplier already contains §08's bag penalty. Setting "
-                + "MovementContext.BagEquipped as well would charge it twice, which looks like "
-                + "a feel problem and is arithmetic.");
-        }
+        // ────────────────────────────────────────────────────────────────────────────
+        // THREE TESTS WERE DELETED HERE on 2026-08-03 — DESCENT-PIVOT §7 step 7.
+        //
+        //   A_non_runner_never_outruns_the_monster
+        //       Asserted §04's 주자 was the only body that could sprint and that everyone
+        //       else topped out at 달리기 4.5. §04 has no 직업 left: the race starts twenty
+        //       identical bodies and 질주 belongs to all of them, bounded by stamina
+        //       (game-design §04, 「질주는 남는다 — 전원에게, 체력으로」). The assertion is
+        //       not stale, it is now FALSE, which is why it is deleted and not adjusted.
+        //       Its surviving half — that an exhausted runner is slower than the creature —
+        //       is asserted by The_sprint_bar_empties_and_drops_the_runner_to_running_speed
+        //       below, so no coverage went with it.
+        //
+        //   Carrying_the_objective_costs_speed_and_forbids_sprinting
+        //   Carrying_the_objective_takes_the_flashlight_away  (further down, at the torch)
+        //       Both drove PlayerLoadout.SetCarryingObjective. There is no 목표물: §02's
+        //       회수 was replaced by 「B8 중심에 먼저 닿기」 and nothing in a race is carried.
+        //       COVERAGE LOST AND NOT NEEDED: the ×0.80 carry multiplier and the
+        //       both-hands-full rule have no subject left to apply to.
+        //
+        //   The_bag_penalty_is_charged_once_and_not_twice
+        //       §08's 가방 and Inventory.SpeedMultiplier. Deleted with the economy.
+        //       COVERAGE LOST, and the general lesson is worth keeping in mind rather than
+        //       in a test: the defect was one multiplier applied on both sides of the
+        //       Core/Unity seam. Nothing in the race applies a load multiplier at all now,
+        //       so there is no second place for it to be applied from.
+        // ────────────────────────────────────────────────────────────────────────────
 
         [UnityTest]
         public IEnumerator Movement_can_be_locked_without_locking_the_view()
         {
-            var motor = BuildPlayer(RoleId.Runner);
+            var motor = BuildPlayer();
             var look = motor.GetComponent<PlayerLook>();
             yield return null;
 
@@ -221,13 +199,15 @@ namespace HorrorGame.Tests.PlayMode.PlayerRig
 
             look.SetLook(123f, -20f);
             Assert.That(look.YawDegrees, Is.EqualTo(123f).Within(0.01f),
-                "§05 decides this explicitly for §04's Observer: 이동만 정지, 마우스룩 허용.");
+                "§05 decides this explicitly: 이동만 정지, 마우스룩 허용. A screen that freezes is the\n"
+                + "worst 조작감 there is, and being rooted while still able to look around is scarier —\n"
+                + "which is the whole reason a shut door costs 1.1초 of standing still (§12-B).");
         }
 
         [UnityTest]
         public IEnumerator Mouse_yaw_defines_which_way_forward_is()
         {
-            var motor = BuildPlayer(RoleId.Runner);
+            var motor = BuildPlayer();
             var look = motor.GetComponent<PlayerLook>();
             yield return null;
 
@@ -248,7 +228,7 @@ namespace HorrorGame.Tests.PlayMode.PlayerRig
         [UnityTest]
         public IEnumerator The_camera_holds_section05s_fov_window()
         {
-            var motor = BuildPlayer(RoleId.Runner);
+            var motor = BuildPlayer();
             var rig = motor.GetComponent<PlayerCameraRig>();
             yield return null;
 
@@ -264,7 +244,7 @@ namespace HorrorGame.Tests.PlayMode.PlayerRig
         [UnityTest]
         public IEnumerator The_flashlight_cone_is_the_cores_cone()
         {
-            var motor = BuildPlayer(RoleId.Runner);
+            var motor = BuildPlayer();
             var torch = motor.GetComponent<PlayerFlashlight>();
             var light = motor.GetComponentInChildren<Light>();
             yield return null;
@@ -287,28 +267,9 @@ namespace HorrorGame.Tests.PlayMode.PlayerRig
         }
 
         [UnityTest]
-        public IEnumerator Carrying_the_objective_takes_the_flashlight_away()
-        {
-            var motor = BuildPlayer(RoleId.Runner);
-            var torch = motor.GetComponent<PlayerFlashlight>();
-            var loadout = motor.GetComponent<PlayerLoadout>();
-            yield return null;
-
-            torch.State.TryTurnOn();
-            yield return null;
-            Assert.That(torch.IsLit, Is.True);
-
-            loadout.SetCarryingObjective(true);
-            yield return null;
-
-            Assert.That(torch.IsLit, Is.False,
-                "§03: 양손을 쓴다 · 손전등을 들 수 없다 → 누군가 비춰줘야 한다.");
-        }
-
-        [UnityTest]
         public IEnumerator Footsteps_read_the_real_surface_underfoot()
         {
-            var motor = BuildPlayer(RoleId.Runner);
+            var motor = BuildPlayer();
             var footsteps = motor.GetComponent<PlayerFootsteps>();
             _floor!.GetComponent<FloorSurfaceTag>().FloorMaterial = FloorMaterial.Gravel;
             yield return null;
@@ -323,28 +284,29 @@ namespace HorrorGame.Tests.PlayMode.PlayerRig
             yield return null;
 
             Assert.That(footsteps.Surface, Is.EqualTo(FloorMaterial.Metal),
-                "Crossing a material boundary has to change the answer, or §04's Listener cannot "
-                + "tell zone C from the stairwell.");
+                "Crossing a material boundary has to change the answer, or §12's 「구역별로 바닥 재질이\n"
+                + "달라야 발소리로 위치를 판별할 수 있다」 is a picture. In a race it is how you hear which\n"
+                + "gate the others are piling into.");
         }
 
         [UnityTest]
         public IEnumerator An_unauthored_floor_reports_None_rather_than_guessing()
         {
-            var motor = BuildPlayer(RoleId.Runner);
+            var motor = BuildPlayer();
             var footsteps = motor.GetComponent<PlayerFootsteps>();
             Object.DestroyImmediate(_floor!.GetComponent<FloorSurfaceTag>());
             yield return null;
             yield return null;
 
             Assert.That(footsteps.Surface, Is.EqualTo(FloorMaterial.None),
-                "A plausible-sounding wrong surface would misinform §04's Listener; silence is the "
-                + "failure mode somebody notices.");
+                "A plausible-sounding wrong surface would misinform every ear on the storey; silence is\n"
+                + "the failure mode somebody notices.");
         }
 
         [UnityTest]
         public IEnumerator The_animation_graph_plays_and_reports_footfalls()
         {
-            var motor = BuildPlayer(RoleId.Runner);
+            var motor = BuildPlayer();
             var driver = motor.gameObject.AddComponent<PlayerAnimatorDriver>();
             var animator = motor.gameObject.AddComponent<Animator>();
 
@@ -375,8 +337,8 @@ namespace HorrorGame.Tests.PlayMode.PlayerRig
             Assert.That(driver.State, Is.EqualTo(PlayerAnimationState.Run),
                 "§05 needs the pose other players see to match what the motor is doing.");
             Assert.That(footfalls, Is.GreaterThan(0),
-                "§12 makes footstep timing the Listener's channel, so the graph has to report "
-                + "when a foot lands.");
+                "§12 makes footstep timing the channel everyone reads — §06's creature and the other\n"
+                + "nineteen runners — so the graph has to report when a foot lands.");
         }
 
         [UnityTest]
@@ -408,7 +370,7 @@ namespace HorrorGame.Tests.PlayMode.PlayerRig
 
         // ------------------------------------------------------------------- fixtures
 
-        private PlayerMotor BuildPlayer(RoleId role)
+        private PlayerMotor BuildPlayer()
         {
             _floor = GameObject.CreatePrimitive(PrimitiveType.Cube);
             _floor.name = "TestFloor";
@@ -438,10 +400,11 @@ namespace HorrorGame.Tests.PlayMode.PlayerRig
             var look = _body.AddComponent<PlayerLook>();
             look.PitchPivot = pivot;
 
-            _body.AddComponent<PlayerLoadout>();
 
+            // No role is assigned, and that IS the assignment. §04 has no 직업 after
+            // DESCENT-PIVOT §7 step 7 — twenty runners, one body, 질주 for everybody —
+            // so the rig is built the way the race builds it and nothing is picked.
             var motor = _body.AddComponent<PlayerMotor>();
-            motor.Role = role;
 
             // Nothing is feeding input, so Update must not step; every test drives Step
             // itself with an explicit delta, which is also how the host will drive it (§13).

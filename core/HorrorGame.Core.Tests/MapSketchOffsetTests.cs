@@ -61,7 +61,7 @@ namespace HorrorGame.Core.Tests
                 ".#####..",
                 "...E....");
 
-            sketch.Mark('E', MapNodeKind.CandidateSite, "probe_site");
+            sketch.Mark('E', MapNodeKind.ReachProbe, "probe_site");
             sketch.Mark('S', MapNodeKind.Entrance, "probe_exit");
 
             // (12,11) is the body of the ring's south run: the corner is at (11,11) and
@@ -155,7 +155,7 @@ namespace HorrorGame.Core.Tests
                 ".#...#..",
                 ".#####..",
                 "...E....");
-            hand.Mark('E', MapNodeKind.CandidateSite, "probe_site");
+            hand.Mark('E', MapNodeKind.ReachProbe, "probe_site");
             hand.Mark('S', MapNodeKind.Entrance, "probe_exit");
             hand.Door(29, 5);
 

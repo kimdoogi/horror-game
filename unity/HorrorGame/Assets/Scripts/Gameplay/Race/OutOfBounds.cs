@@ -165,10 +165,16 @@ namespace HorrorGame.Gameplay.Race
         /// </para>
         /// <para>
         /// Arithmetic rather than a tuned value, the way <c>GameConstants.JumpAirtimeSeconds</c>
-        /// is: a free fall of <see cref="Chute.DropHeightMetres"/> 3.0 m at
-        /// <see cref="GameConstants.JumpGravity"/> 9.81 m/s² takes √(2 × 3.0 ÷ 9.81) =
-        /// 0.782 s, doubled for the controller's own settle onto a landing that may not be
-        /// perfectly flat. 1.564 s.
+        /// is: a free fall of <see cref="Chute.DropHeightMetres"/> 1.226 m at
+        /// <see cref="GameConstants.JumpGravity"/> 9.81 m/s² takes √(2 × 1.226 ÷ 9.81) =
+        /// 0.500 s, doubled for the controller's own settle onto a landing that may not be
+        /// perfectly flat. 1.000 s.
+        /// <para>
+        /// It read 3.0 m / 0.782 s / 1.564 s until 2026-08-03, when Chute.DropHeightMetres
+        /// was derived from §01's own half second instead of typed in. The VALUE here has
+        /// always followed the constant; only this prose was ever a copy, which is exactly
+        /// how a comment ends up describing a build nobody is running.
+        /// </para>
         /// </para>
         /// <para>
         /// <b>The cap almost never matters, because the grace ends early.</b> The first step

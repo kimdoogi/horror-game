@@ -501,7 +501,10 @@ namespace HorrorGame.Tests.PlayMode.Audio
             Assert.That(rig.PlayerSteps, Is.Not.Null);
             Assert.That(rig.MonsterSteps, Is.Not.Null);
             Assert.That(rig.MonsterVoice, Is.Not.Null);
-            Assert.That(rig.ListenerDriver, Is.Not.Null, "§04's 청음사 needs stepping every frame.");
+            Assert.That(rig.ListenerDriver, Is.Not.Null,
+                "the occlusion driver needs stepping every frame. It was §04's 청음사 feed until "
+                + "DESCENT-PIVOT §7 step 7 deleted 직업; it is now what every runner hears through "
+                + "§12's walls, which is the same code and twenty times the audience.");
 
             var census = AudioSceneCensus.Take();
 
@@ -513,14 +516,17 @@ namespace HorrorGame.Tests.PlayMode.Audio
                 "The rig spawns a source per bed layer, per cue channel and per emitter. A handful "
                 + "would mean most of the graph never got built.");
 
-            // Every one-shot family has to actually resolve to a clip.
+            // Every one-shot family the race can still fire has to actually resolve to a clip.
+            //
+            // Five rows were struck from this list on 2026-08-03 with the systems that raised
+            // them — ClueReadSuccess, ClueReadFailed (§03's chain), ShopOpen, LootPickupHeavy
+            // (§08's 상점 and 궤짝) and BatteryInsert (the light economy). Nothing in a race
+            // plays them; a cue asserted to resolve that nothing can raise is a green number
+            // over dead audio, which is the exact shape this file exists to catch.
             Assert.That(rig.Play(AudioCueId.FlashlightOn), Is.True, "§05's F key.");
-            Assert.That(rig.Play(AudioCueId.DoorOpen), Is.True, "§04: 문을 열면 정보가 끊긴다.");
-            Assert.That(rig.Play(AudioCueId.ClueReadSuccess), Is.True, "§03's only confirmation.");
-            Assert.That(rig.Play(AudioCueId.ClueReadFailed), Is.True);
-            Assert.That(rig.Play(AudioCueId.ShopOpen), Is.True, "§08.");
-            Assert.That(rig.Play(AudioCueId.LootPickupHeavy), Is.True, "§08's 궤짝.");
-            Assert.That(rig.Play(AudioCueId.BatteryInsert), Is.True, "§03's reason to walk back up.");
+            Assert.That(rig.Play(AudioCueId.DoorOpen), Is.True,
+                "§12-B's 문 is the last interaction the race has, and opening one is the loudest "
+                + "thing a runner does on purpose.");
         }
 
         /// <summary>
@@ -548,8 +554,8 @@ namespace HorrorGame.Tests.PlayMode.Audio
                     + "HorrorGame ▸ Audio ▸ Build Audible Solo Playtest Scene.");
             }
 
-            // The scene carries a whole match — B-001's fragmented NavMesh, an
-            // ObjectiveResolver fallback, a monster that cannot path. None of that is
+            // The scene carries a whole match — a fragmented NavMesh, a storey the
+            // creature cannot path across. None of that is
             // this test's business, and letting those errors fail it would make the
             // audio suite red for a bug in the map.
             LogAssert.ignoreFailingMessages = true;

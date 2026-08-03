@@ -130,13 +130,12 @@ namespace HorrorGame.UI.Settings
         }
 
         /// <summary>
-        /// Footsteps, the monster, items and interface, 0..1.
+        /// Footsteps, the monster and the interface, 0..1.
         /// <para>
-        /// §04 gives the 청음사 nothing but sound to work with and §12 makes the five
-        /// floor surfaces their entire alphabet, so this one slider can delete a role.
-        /// The settings screen says so on the row. It does not stop the player — §08's
-        /// 소음기 sets the precedent that this project warns and lets the team make its
-        /// own mistake.
+        /// §12 makes the five floor surfaces the whole alphabet of where anybody is, and
+        /// the creature announces itself in no other way, so a runner at zero is running
+        /// on sight alone. The settings screen says so on the row and does not stop
+        /// them: silence is a legitimate way to play, just an expensive one.
         /// </para>
         /// </summary>
         public float VolumeSfx
@@ -145,14 +144,14 @@ namespace HorrorGame.UI.Settings
             set { _volumeSfx = ClampVolume(value); }
         }
 
-        /// <summary>§12's zone beds and §07's tension beds, 0..1. <see cref="AudioBus.Ambience"/>.</summary>
+        /// <summary>§12's zone beds and the tension beds, 0..1. <see cref="AudioBus.Ambience"/>.</summary>
         public float VolumeAmbience
         {
             get { return _volumeAmbience; }
             set { _volumeAmbience = ClampVolume(value); }
         }
 
-        /// <summary>§13's 근접 음성, 0..1. The channel §03's clue rule runs through.</summary>
+        /// <summary>§13's 근접 음성, 0..1. The only thing two runners in the same corridor can do to each other besides shut a door.</summary>
         public float VolumeVoice
         {
             get { return _volumeVoice; }

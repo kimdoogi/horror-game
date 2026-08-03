@@ -663,11 +663,11 @@ namespace HorrorGame.EditorTools.SceneGen
             // you can be seen across, and the ring bands are corridor by design.
             MapValidator.RuleOpenAdjacentToMaze,
 
-            // 은폐 지점 near the 출입구 was for §07's 새벽, when the team is carrying the
-            // objective out through a door the creature has learned. The race has no way out
-            // and no carry — the 출입구 marker is now the FINISH, and a hiding place beside
-            // the finish line would be somewhere to wait rather than somewhere to survive.
-            MapValidator.RuleConcealmentNearExit,
+            // The 은폐 지점 waiver that stood here is gone because its SUBJECT is gone: the
+            // rule itself has been deleted from MapValidator, along with 관측 지점 and
+            // 단서·목표물 후보 지점. A waiver is a promise to come back to a rule; these
+            // three are never coming back, so they are deletions rather than exceptions,
+            // and the report now has three fewer lines rather than three more excuses.
 
             // 구역 대각선 30~40 m sized a zone so §03's clue chain — 층 → 구역 → 지점 — could
             // narrow usefully: small enough to search, big enough to be worth naming. §03's

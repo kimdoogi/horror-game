@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
-using HorrorGame.Core.Economy;
 using HorrorGame.Core.Match;
 using HorrorGame.Core.Roles;
 using HorrorGame.Core.Session;
@@ -77,8 +76,10 @@ namespace HorrorGame.Core.Telemetry
         /// <summary>Prefix for §13's five 직업별 선택 카운터. §11.</summary>
         public const string RolePickPrefix = "role_pick";
 
-        /// <summary>Prefix for §13's 아이템별 구매 카운터. §08.</summary>
-        public const string PurchasePrefix = "purchase";
+        // DELETED with §08: PurchasePrefix and the whole purchase_* counter family.
+        // §13 counted which shop trades players accept; with no currency there is
+        // nothing to buy and no event that could raise one of these. See
+        // MatchRecorder for the matching removal.
 
         /// <summary>Prefix for §13's 클리어 / 전멸 / 포기 counters. §02.</summary>
         public const string OutcomePrefix = "outcome";
@@ -152,9 +153,6 @@ namespace HorrorGame.Core.Telemetry
         /// <summary>Role pick counter for a slot holding <see cref="RoleId.None"/> or an undefined value.</summary>
         private const string RolePickUnassigned = RolePickPrefix + "_unassigned";
 
-        /// <summary>Purchase counter for <see cref="ShopItemId.None"/> or an undefined value.</summary>
-        private const string PurchaseUnknown = PurchasePrefix + "_unknown";
-
         private static readonly ReadOnlyCollection<string> _aggroDurationBuckets =
             Array.AsReadOnly(BuildUniformBands(
                 AggroDurationHistogram,
@@ -187,25 +185,6 @@ namespace HorrorGame.Core.Telemetry
                 RolePickPrefix + "_engineer",
                 RolePickPrefix + "_flasher",
                 RolePickUnassigned,
-            });
-
-        private static readonly ReadOnlyCollection<string> _purchaseCounters =
-            Array.AsReadOnly(new[]
-            {
-                PurchasePrefix + "_battery",
-                PurchasePrefix + "_repair_materials",
-                PurchasePrefix + "_first_aid_kit",
-                PurchasePrefix + "_upgraded_flashlight",
-                PurchasePrefix + "_flare",
-                PurchasePrefix + "_chalk",
-                PurchasePrefix + "_rope",
-                PurchasePrefix + "_bag",
-                PurchasePrefix + "_blueprint",
-                PurchasePrefix + "_pocket_watch",
-                PurchasePrefix + "_detector",
-                PurchasePrefix + "_bait",
-                PurchasePrefix + "_suppressor",
-                PurchaseUnknown,
             });
 
         private static readonly ReadOnlyCollection<string> _outcomeCounters =
@@ -241,9 +220,6 @@ namespace HorrorGame.Core.Telemetry
         /// first five against each other.
         /// </summary>
         public static IReadOnlyList<string> RolePickCounters => _rolePickCounters;
-
-        /// <summary>§13's 아이템별 구매 카운터, in <see cref="ShopItemId"/> order, followed by the unknown counter.</summary>
-        public static IReadOnlyList<string> PurchaseCounters => _purchaseCounters;
 
         /// <summary>§13's 클리어 / 전멸 / 포기, followed by the counters §02 needs and §13 omits. See <see cref="OutcomeSurvived"/>.</summary>
         public static IReadOnlyList<string> OutcomeCounters => _outcomeCounters;
@@ -343,38 +319,6 @@ namespace HorrorGame.Core.Telemetry
                 case RoleId.Engineer: return _rolePickCounters[3];
                 case RoleId.Flasher: return _rolePickCounters[4];
                 default: return RolePickUnassigned;
-            }
-        }
-
-        /// <summary>
-        /// The §13 counter for one unit of <paramref name="item"/> being bought.
-        /// <para>
-        /// §08 is a set of §10 trades, and §13 measures which ones players
-        /// actually take: a 강화 손전등 that nobody buys means its 대가 ("괴물이 2배
-        /// 멀리서 본다") is priced too high, and a 소음기 that sells well means teams
-        /// are voiding their own Listener. §11's role substitutes — 감지기, 미끼,
-        /// 조명탄, 섬광탄 — are the other half of the answer to "is any role
-        /// compulsory".
-        /// </para>
-        /// </summary>
-        public static string Purchase(ShopItemId item)
-        {
-            switch (item)
-            {
-                case ShopItemId.Battery: return _purchaseCounters[0];
-                case ShopItemId.RepairMaterials: return _purchaseCounters[1];
-                case ShopItemId.FirstAidKit: return _purchaseCounters[2];
-                case ShopItemId.UpgradedFlashlight: return _purchaseCounters[3];
-                case ShopItemId.Flare: return _purchaseCounters[4];
-                case ShopItemId.Chalk: return _purchaseCounters[5];
-                case ShopItemId.Rope: return _purchaseCounters[6];
-                case ShopItemId.Bag: return _purchaseCounters[7];
-                case ShopItemId.Blueprint: return _purchaseCounters[8];
-                case ShopItemId.PocketWatch: return _purchaseCounters[9];
-                case ShopItemId.Detector: return _purchaseCounters[10];
-                case ShopItemId.Bait: return _purchaseCounters[11];
-                case ShopItemId.Suppressor: return _purchaseCounters[12];
-                default: return PurchaseUnknown;
             }
         }
 
@@ -553,7 +497,6 @@ namespace HorrorGame.Core.Telemetry
             all.AddRange(_roundTripsBuckets);
             all.AddRange(_backpedalShareBuckets);
             all.AddRange(_rolePickCounters);
-            all.AddRange(_purchaseCounters);
             all.AddRange(_outcomeCounters);
             return all.ToArray();
         }

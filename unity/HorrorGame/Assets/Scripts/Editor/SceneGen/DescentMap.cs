@@ -1,4 +1,3 @@
-using HorrorGame.Core;
 using HorrorGame.Core.Map;
 using HorrorGame.Core.Session;
 
@@ -271,7 +270,7 @@ namespace HorrorGame.EditorTools.SceneGen
         /// Chebyshev distance from the middle, because that is the metric
         /// <see cref="RadialStorey"/> lays its bands out in — a "ring" there is a square, so
         /// Euclidean distance would call the middle of a side and its corner different rings
-        /// and put two 후보 지점 on the same band.
+        /// and put two 도달 지점 on the same band.
         /// </para>
         /// <para>
         /// Measured from the floor's own centre rather than from <see cref="Centre"/>, so the
@@ -332,31 +331,68 @@ namespace HorrorGame.EditorTools.SceneGen
         }
 
         /// <summary>
-        /// Marks what §12 counts: the way out, the 관측 지점, the 배전반 and the 후보 지점.
+        /// Marks the two things a race floor has: §02's finish, and the 도달 지점 —
+        /// the places this map ASSERTS a runner can reach.
         /// <para>
-        /// §03's clue chain is gone, so a 후보 지점 is no longer a place the objective might
-        /// be — it is a junction worth naming, and the validator still wants three per zone
-        /// with two exits each, which on a ring floor is a useful shape to guarantee.
+        /// <b>What used to be here and why it went.</b> Every storey used to carry a 관측
+        /// 지점 (§12 관측자, so somebody could watch the creature from out of its reach), a
+        /// 배전반 (§04 정비공's 전기 패널, which made a zone lightable), a 은신처 (§12's 은폐
+        /// 지점, for §07 새벽 when the creature has learned the way out), and three 후보 지점
+        /// (§03's clue chain, three per zone with one picked per match). DESCENT-PIVOT §7
+        /// step 7 deleted the roles, the clue chain and the light economy; none of those four
+        /// has had a mechanic behind it since. Searched across the runtime, not assumed: no
+        /// component, director or system reads <c>MapNodeKind.ObservationPost</c>,
+        /// <c>ElectricalPanel</c> or <c>Concealment</c> — the only readers left were
+        /// <c>MapValidator</c> rules written for the co-operative game. A mark whose only
+        /// reader is the rule that counts it is furniture.
         /// </para>
         /// <para>
-        /// <b>These marks are also the only evidence the map has that a storey is whole, and
-        /// that is now the job they are chosen for.</b> <c>NavMeshConnectivity</c> collects
-        /// markers whose names contain PlayerSpawn, MonsterSpawn, Site, Candidate, Loot,
-        /// Exit, Objective or Clue. Nothing else on a storey matches: the 관측 지점, the
-        /// 배전반, the 은신처 and B8's own 도착점 are named in Korean and are invisible to it,
-        /// and a 투하구 is not collected either. So a floor's reachability is proved by its
-        /// three 후보 지점 and by the 전리품 that land on its 막힌 길 — and by nothing else.
+        /// The 배전반 was also the map's last PROP: <c>MapSketch.BuildProps</c> hangs a
+        /// <c>WallPanelElectrical</c> on every <c>ElectricalPanel</c> mark and on nothing
+        /// else, so deleting the mark takes eight panels off the walls. Nothing replaces
+        /// them. The runner's light simply works; there is no panel to find and no zone to
+        /// switch on. Darkness stays — it is the floor's, not a task's.
         /// </para>
         /// <para>
-        /// <b>Which is why the 전리품 markers stay, even though §08 does not.</b> A race has
-        /// no economy, and it would have been one line to stop placing them. Measured on seed
-        /// 20260802, that line would have turned a 10-island FAIL into an 8-island PASS —
-        /// the per-storey floor — with two eight-cell pockets of B2 and B5 still walled out
-        /// of their own floors, because those four 전리품 are the only markers anywhere near
-        /// them. §12's 막힌 길 are 20~25% of a floor by design; a marker on each of them is
-        /// the only probe this map has on the fifth of itself that leads nowhere, and the
-        /// runner test (<c>PlayerTraversal</c>) counts them as reachability too. What is
-        /// deleted with §08 is the ECONOMY — the value, the van, the shop — not the probe.
+        /// <b>도달 지점 — and this is a change of job, not a change of name.</b> The
+        /// audits collect a storey's markers and ask whether each can walk to the others
+        /// (<c>NavMeshConnectivity</c>) and whether a runner-shaped body can get to them
+        /// (<c>PlayerTraversal</c>). They see PlayerSpawn, MonsterSpawn and the 도달 지점;
+        /// B8's 도착점 and every 투하구 are named in Korean and are invisible to them. So a
+        /// floor's reachability is proved by its 도달 지점 and by nothing else, and a marker
+        /// kind that means exactly that is what the map should be placing.
+        /// </para>
+        /// <para>
+        /// It replaces two things that were both already doing this job under other names:
+        /// <list type="number">
+        /// <item><b>The 전리품 at every 막힌 길.</b> 152 of the old 220 markers. §08 is gone
+        /// and it would have been one line to stop placing them; measured on seed 20260802,
+        /// that line turned a 10-island FAIL into an 8-island PASS with two eight-cell
+        /// pockets of B2 and B5 still walled out of their own floors, because those four
+        /// markers were the only ones anywhere near them. §12's 막힌 길 are 20~25% of a
+        /// floor by design and a marker on each is the only probe this map has on the fifth
+        /// of itself that leads nowhere. The ECONOMY is deleted — the credit value, the
+        /// pickup, the van, the shop. The probe is kept and told what it is for. A
+        /// 도달 지점 has no value, nothing spawns on it and nothing can be carried off it;
+        /// a 전리품 that nobody could pick up would have been a lie, and this is not one.</item>
+        /// <item><b>The three 후보 지점 per storey.</b> These stopped being §03 sites a
+        /// pivot ago — the comment they replace already said the job they are CHOSEN for is
+        /// being a floor's evidence, and everything about the choice below (one per ring,
+        /// never the 문's own mouth) is a reachability argument with no clue in it. They were
+        /// §03-shaped only in the enum. A race floor wants nothing from three named
+        /// junctions AS junctions: no role visits one, nothing is hidden at one, and if all
+        /// three vanished the audit would still catch a sealed band, because the 막힌 길
+        /// probes inside it would island out with it. So the case for keeping them is only
+        /// the case for evidence, and it is a real one — on B2…B8, where there are no player
+        /// spawns, these three are the ONLY markers standing on a band rail rather than one
+        /// step off it in an alcove. Measured on B1, seed 20260802: the 막힌 길 probes sit at
+        /// Chebyshev radius 4, 5, 8 and 11 and these sit at 9, 6 and 3, so the floor's
+        /// evidence spans seven radii instead of four, and a wall that seals a rail without
+        /// sealing the alcoves hanging off it has three markers standing on it.</item>
+        /// </list>
+        /// One kind, one name, one reason: 176 도달 지점 where there were 152 전리품 and 24
+        /// 후보 지점, at exactly the same cells. The marker count, the pair count and every
+        /// island number are unchanged by construction — see the report on this change.
         /// </para>
         /// </summary>
         private static void MarkPlaces(MapSketch sketch, RadialStoreyResult[] floors)
@@ -376,11 +412,21 @@ namespace HorrorGame.EditorTools.SceneGen
                     sketch.Mark(floor.Centre, MapNodeKind.Entrance, label + "_도착점");
                 }
 
-                // Three 후보 지점 on the gate mouths — where a gate branches off its band,
-                // which is the only shape on a ring floor with three ways out. The gate cells
-                // themselves cannot carry a mark: they are deliberately mid-passage so a door
-                // can hang on them, and MapSketch refuses a mark on a passage rather than
-                // letting the §12 count come up short without anything failing.
+                // One 도달 지점 per band, on the gate mouths — where a gate branches off its
+                // band, which is the only shape on a ring floor with three ways out. The gate
+                // cells themselves cannot carry a mark: they are deliberately mid-passage so a
+                // door can hang on them, and MapSketch refuses a mark on a passage rather than
+                // letting the count come up short without anything failing.
+                //
+                // THE COUNT IS THE BAND COUNT, and that is the §12 dependency going. It used
+                // to be GameConstants.CandidateSitesPerZone — "단서·목표물 후보가 구역당 3개",
+                // §03's number for how far a clue chain narrows the search. §03 is deleted, so
+                // borrowing its 3 would be keeping the co-operative game's arithmetic and
+                // calling it a coincidence that RadialStorey also builds three bands. What the
+                // probes are one-of is a BAND: a band with no marker on it is a band the audit
+                // cannot see into, and RadialStorey.Build is the only thing that knows how many
+                // there are. Both numbers are 3 today and they mean different things; if a
+                // storey ever grows a fourth ring this one follows it and the other would not.
                 //
                 // ONE PER RING, not the first three. RadialStorey appends its gate mouths
                 // outermost band first — four 외곽, then two 중간, then one 안쪽 — so taking
@@ -430,7 +476,7 @@ namespace HorrorGame.EditorTools.SceneGen
                 // the scene (Markers/Door_(7,11@L0) at x 18.75, its Hinge child at 17.65, so
                 // CorridorClearWidth is 2.2 m) that is 3.2 × 1.14 m of surface removed every
                 // time somebody shuts the door, reaching 1.6 m along a passage whose navmesh
-                // is only about 1.2 m wide. A 후보 지점 one cell from the leaf is a probe
+                // is only about 1.2 m wide. A 도달 지점 one cell from the leaf is a probe
                 // whose answer depends on whether a door is open. §12's whole reason for
                 // refusing a mark on a 병목 passage applies here at one cell's remove.
                 //
@@ -442,16 +488,16 @@ namespace HorrorGame.EditorTools.SceneGen
                 //
                 // This does not hide the 문. The audit already catches it without a marker
                 // on top of it: with the 문 present the report is 10 islands / 104 partial
-                // pairs, and the two extra islands are four 전리품 sealed into pockets on B2
-                // and B5 — the two floors whose door cell is (12,7). Hidden and re-baked it
-                // is 8 islands / 0 partial (RadialStorey records the measurement). Both of
-                // those numbers were taken with the 후보 지점 nowhere near a door.
+                // pairs, and the two extra islands are four 막힌 길 probes sealed into pockets
+                // on B2 and B5 — the two floors whose door cell is (12,7). Hidden and re-baked
+                // it is 8 islands / 0 partial (RadialStorey records the measurement). Both of
+                // those numbers were taken with the band probes nowhere near a door.
                 var rings = new System.Collections.Generic.List<int>();
-                var sites = new System.Collections.Generic.List<MapCell>();
+                var probes = new System.Collections.Generic.List<MapCell>();
 
-                while (sites.Count < GameConstants.CandidateSitesPerZone)
+                while (probes.Count < floor.Bands.Count)
                 {
-                    // Outermost ring first, so 관문1 is the one a runner meets first.
+                    // Outermost ring first, so 도달1 is the one a runner meets first.
                     var pick = -1;
                     var picked = -1;
                     for (var i = 0; i < floor.GateMouths.Count; i++)
@@ -477,13 +523,14 @@ namespace HorrorGame.EditorTools.SceneGen
                     }
 
                     rings.Add(picked);
-                    sites.Add(floor.GateMouths[pick]);
+                    probes.Add(floor.GateMouths[pick]);
                 }
 
-                // A storey with fewer rings than §12 wants sites still has to carry three:
-                // MapValidator compares the count exactly, and one short zone fails the whole
-                // building. Topping up from the mouths that are left keeps that a question
-                // about the layout rather than a map that will not build.
+                // A storey that ran out of usable mouths before it ran out of bands still
+                // carries one probe per band, taken from whatever mouths are left. A band with
+                // no probe on it is a band the audit cannot see into: seal it off and the
+                // markers inside it are its 막힌 길 probes alone, which are one step OFF the
+                // rail and prove the alcove rather than the way past it.
                 //
                 // The 문's own mouth is allowed here and only here, as the last cell on the
                 // list. Reaching it means the floor has run out of junctions, which is a
@@ -492,34 +539,32 @@ namespace HorrorGame.EditorTools.SceneGen
                 // a one-storey snap. Seed 20260802 never reaches this loop: every storey
                 // offers mouths on all three rings.
                 for (var i = 0;
-                     i < floor.GateMouths.Count && sites.Count < GameConstants.CandidateSitesPerZone;
+                     i < floor.GateMouths.Count && probes.Count < floor.Bands.Count;
                      i++)
                 {
-                    if (!sites.Contains(floor.GateMouths[i]))
+                    if (!probes.Contains(floor.GateMouths[i]))
                     {
-                        sites.Add(floor.GateMouths[i]);
+                        probes.Add(floor.GateMouths[i]);
                     }
                 }
 
-                for (var i = 0; i < sites.Count; i++)
+                for (var i = 0; i < probes.Count; i++)
                 {
-                    sketch.Mark(sites[i], MapNodeKind.CandidateSite, label + "_관문" + (i + 1));
+                    sketch.Mark(probes[i], MapNodeKind.ReachProbe, label + "_도달" + (i + 1));
                 }
 
-                // One 관측 지점 and one 배전반 per zone, both on alcoves — the only places on
-                // a ring floor where standing still does not block somebody.
-                if (floor.Alcoves.Count >= 2)
-                {
-                    sketch.Mark(floor.Alcoves[0], MapNodeKind.ObservationPost, label + "_관측");
-                    sketch.Mark(floor.Alcoves[floor.Alcoves.Count / 2], MapNodeKind.ElectricalPanel, label + "_배전반");
-                }
-
-                // §12 wants a 은폐 지점 near the way out. On B8 that is the finish; elsewhere
-                // it is the last alcove before the middle.
-                if (floor.Alcoves.Count >= 3)
-                {
-                    sketch.Mark(floor.Alcoves[floor.Alcoves.Count - 1], MapNodeKind.Concealment, label + "_은신처");
-                }
+                // Nothing else. What stood here was a 관측 지점 and a 배전반 on
+                // Alcoves[0] and Alcoves[Count/2], and a 은신처 on Alcoves[^1] — §12's
+                // 관측자 vantage, §04's 전기 패널 and §07 새벽's hiding place. All three are
+                // gone with the game that read them, and none of them was a probe: the cells
+                // are 막힌 길, so they already carry a 도달 지점 from MapSketch's own leaf
+                // sweep and this loop never added evidence, only furniture.
+                //
+                // RadialStorey still sorts its alcoves so the last one is nearest the middle
+                // (see PunchAlcoves) — that ordering was a contract with the 은신처 mark and
+                // it is now unread. Left alone deliberately: it is stable, it costs a sort,
+                // and the next thing that wants "the alcove nearest the middle" will find it
+                // already true instead of finding a list in gate order.
             }
         }
     }

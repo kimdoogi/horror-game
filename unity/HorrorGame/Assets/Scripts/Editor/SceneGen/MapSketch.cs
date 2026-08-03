@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using HorrorGame.Core;
-using HorrorGame.Core.Economy;
 using HorrorGame.Core.Map;
 using HorrorGame.Core.Math;
 using HorrorGame.Core.Session;
@@ -19,14 +18,26 @@ namespace HorrorGame.EditorTools.SceneGen
         MonsterSpawn,
 
         /// <summary>
-        /// A 단서 · 목표물 후보 지점. §12 builds three per zone; §13 says which one is
-        /// live exists <em>only</em> on the host, so every candidate is generated
-        /// identically and the scene carries no hint of the answer.
+        /// 도달 지점 — a marker whose only job is to be somewhere the reachability
+        /// audits must be able to walk to.
+        /// <para>
+        /// <b>It replaces two markers that were doing this job under other names.</b>
+        /// <c>CandidateSite</c> was §12's three-per-zone 단서·목표물 후보, and
+        /// <c>LootSpawn</c> was a §08 전리품 on every 막힌 길 — 24 + 152 = 176 of the
+        /// 220 markers <c>NavMeshConnectivity</c> pairs into its 3482 routes. Both
+        /// systems are deleted, and 80% of the building's proof of reachability was
+        /// riding on them by accident.
+        /// </para>
+        /// <para>
+        /// Same cells, no payload. A <c>LootSpawn</c> was a reward with a position —
+        /// <c>DeadEndRewards.Next()</c> drew a §08 credit value and hung it on the node.
+        /// A <c>ReachProbe</c> is a position with nothing on it: nothing spawns, nothing
+        /// is worth anything, and the set no longer depends on a random draw at all.
+        /// The failure mode inverts with the name — a missing 전리품 was a balance
+        /// complaint, a probe the audit cannot reach is a failed build.
+        /// </para>
         /// </summary>
-        CandidateSite,
-
-        /// <summary>A 전리품 drop (§08). Every 막힌 길 gets one — §12's "위험을 감수할 이유".</summary>
-        LootSpawn,
+        ReachProbe,
 
         /// <summary>
         /// §12's 잠글 수 있는 문. Sits mid-passage on a 순환로's neck, which is why it is a
@@ -50,8 +61,11 @@ namespace HorrorGame.EditorTools.SceneGen
         /// <summary>Where a 투하구 puts you down: the rim of the storey below.</summary>
         ChuteLanding,
 
-        /// <summary>A light the Engineer's 구역 조명 switches (§04). Starts off — §03 "어둠 = 목표의 잠금장치".</summary>
-        ZoneLight,
+        // DELETED with §04's 정비공 and the light economy: ZoneLight. 567 point lights,
+        // one at every junction of degree 2 or more, authored DISABLED and switchable
+        // only by the Engineer at a 배전반. With no role to switch them and no panel to
+        // switch them at, they were 567 lamps nobody could ever turn on. Darkness is
+        // untouched by their removal — they were off.
 
         /// <summary>A light that is already on: the way out, so players can find it in the dark.</summary>
         EntranceLight,
@@ -850,7 +864,6 @@ namespace HorrorGame.EditorTools.SceneGen
             var nodeIdOf = new Dictionary<MapCell, int>();
             var orderedNodeCells = new List<MapCell>(nodeCells);
             orderedNodeCells.Sort(CompareCells);
-            var rewards = new DeadEndRewards(random);
 
             foreach (var cell in orderedNodeCells)
             {
@@ -872,10 +885,11 @@ namespace HorrorGame.EditorTools.SceneGen
                 builder.Connect(nodeIdOf[_chutes[i].Mouth], nodeIdOf[_chutes[i].Landing]);
             }
 
-            // Rewards can only be assigned once the degrees are known, so the graph is
-            // built twice: once to learn the topology, once with the 막힌 길 보상 §12
-            // requires on every leaf. Cheap, and it keeps IsDeadEnd the single source
-            // of truth about what a dead end is.
+            // The graph is still built twice: once to learn the topology, once knowing
+            // it. It used to be so that §12's 막힌 길 보상 could be hung on every leaf;
+            // it is now so that every leaf can be given a 도달 지점 marker. Same pass,
+            // same cells, no §08 value — and it keeps IsDeadEnd the single source of
+            // truth about what a dead end is.
             var probe = builder.Build();
             var finalBuilder = new MapGraphBuilder().Named(_name);
             for (var i = 0; i < _zones.Count; i++)
@@ -883,19 +897,23 @@ namespace HorrorGame.EditorTools.SceneGen
                 finalBuilder.AddZone(_zones[i].Name, _zones[i].Floor, _zones[i].Centre, _zones[i].Size);
             }
 
-            var lootAt = new Dictionary<MapCell, int>();
+            var leaves = new List<MapCell>();
             foreach (var cell in orderedNodeCells)
             {
                 _marks.TryGetValue(cell, out var mark);
                 var id = nodeIdOf[cell];
-                var reward = probe.IsDeadEnd(id) ? rewards.Next() : 0;
-                if (reward > 0)
+                if (probe.IsDeadEnd(id))
                 {
-                    lootAt[cell] = reward;
+                    leaves.Add(cell);
                 }
 
                 var name = string.IsNullOrEmpty(mark.Name) ? _zones[zoneOf[cell]].Name + cell.ToString() : mark.Name;
-                finalBuilder.AddNode(zoneOf[cell], cell.Centre, KindOf(mark, cell), name, reward);
+
+                // The node's reward is now always 0. §12's 막힌 길 보상 was a §08 credit
+                // value; a race pays for a dead end in the only currency it has, which is
+                // time. The parameter survives because MapNode carries it and MapValidator
+                // still reads it — see CheckDeadEnds.
+                finalBuilder.AddNode(zoneOf[cell], cell.Centre, KindOf(mark, cell), name, 0);
             }
 
             var doorEdgeCells = new HashSet<MapCell>(_doorCells);
@@ -951,7 +969,7 @@ namespace HorrorGame.EditorTools.SceneGen
             // marker by MapSceneBuilder.BuildDoor, and hanging a second one here is what
             // put two leaves in every doorway. See BuildProps's remarks.
             var props = BuildProps(zoneOf);
-            var markers = BuildMarkers(graph, nodeIdOf, zoneOf, lootAt);
+            var markers = BuildMarkers(graph, nodeIdOf, zoneOf, leaves);
             return new MapSketchResult(seed, graph, tiles, props, markers, _zones.ToArray());
         }
 
@@ -1486,21 +1504,15 @@ namespace HorrorGame.EditorTools.SceneGen
 
                 var inward = FirstDirection(mask);
 
-                // §12 관측자 asks for somewhere the monster can be watched from
-                // ObserverRange without being reachable. A leaf is exactly that shape,
-                // so an alcove marked 관측 지점 gets the barred window rather than the
-                // 막힌 길 cap — same topology, and the bars are what make standing
-                // there survivable.
-                _marks.TryGetValue(cell, out var mark);
-                if ((mark.Kind & MapNodeKind.ObservationPost) != 0)
-                {
-                    tiles.Add(new MapTilePlacement(
-                        MapKitPiece.ObservationPostBarredWindow, cell,
-                        MapDirections.YawFacing(inward), zoneOf[cell]));
-                    consumed.Add(cell);
-                    continue;
-                }
-
+                // DELETED with §04's 관측자: the ObservationPostBarredWindow branch that
+                // stood here. An alcove marked 관측 지점 got the barred window instead of
+                // the 막힌 길 cap — same topology, and the bars were what made standing
+                // there survivable while a role's whole job was watching the creature from
+                // ObserverRange. Nobody watches now: in a race, standing still to look at
+                // the hazard is losing. Measured on the shipped scene, exactly 8 leaves
+                // took this branch, one per storey; they now take the DeadEnd_Cap the
+                // other 144 already take, which closes the same blind end and leaves the
+                // alcove equally open toward its corridor.
                 var outward = MapDirections.Opposite(inward);
                 var beyond = cell.Step(outward);
                 if (_corridor.Contains(beyond) || consumed.Contains(beyond) || InsideRoom(beyond))
@@ -1976,24 +1988,17 @@ namespace HorrorGame.EditorTools.SceneGen
         /// </summary>
         private MapPropPlacement[] BuildProps(Dictionary<MapCell, int> zoneOf)
         {
+            // DELETED with the light economy: the loop over _marks that stood here and
+            // put a MapKitPiece.WallPanelElectrical at every MapNodeKind.ElectricalPanel.
+            // It was the ONLY prop generator in the sketch — measured on the shipped
+            // scene, all 8 prefab instances under any Zone_*/Props were named
+            // ElectricalPanel_*, one per storey, and there was nothing else. With no
+            // 정비공 and no zone lights to switch, there is nothing behind the panel door.
+            //
+            // _extraProps stays, and so does this method: it is the general path an
+            // authored prop takes, and a builder that silently dropped one would be a
+            // worse trap than a method that currently just sorts.
             var props = new List<MapPropPlacement>(_extraProps);
-
-            foreach (var pair in _marks)
-            {
-                var cell = pair.Key;
-                var mark = pair.Value;
-                if (!zoneOf.TryGetValue(cell, out var zone))
-                {
-                    continue;
-                }
-
-                if ((mark.Kind & MapNodeKind.ElectricalPanel) != 0)
-                {
-                    props.Add(new MapPropPlacement(
-                        MapKitPiece.WallPanelElectrical, cell.Centre, 0f, zone,
-                        "ElectricalPanel_" + _zones[zone].Name + "_" + cell.X + "_" + cell.Z));
-                }
-            }
 
             props.Sort((a, b) => string.CompareOrdinal(a.Name, b.Name));
             return props.ToArray();
@@ -2003,7 +2008,7 @@ namespace HorrorGame.EditorTools.SceneGen
             MapGraph graph,
             Dictionary<MapCell, int> nodeIdOf,
             Dictionary<MapCell, int> zoneOf,
-            Dictionary<MapCell, int> lootAt)
+            List<MapCell> leaves)
         {
             var markers = new List<MapMarkerPlacement>();
 
@@ -2084,46 +2089,78 @@ namespace HorrorGame.EditorTools.SceneGen
 
             BuildMonsterSpawns(markers, graph, nodeIdOf, entrance);
 
-            var sites = graph.NodesOfKind(MapNodeKind.CandidateSite);
-            for (var i = 0; i < sites.Length; i++)
+            // 도달 지점, from the two sources that used to be 후보 지점 and 전리품, under
+            // one name and one naming scheme so the audits match a single prefix.
+            //
+            // The marks are iterated rather than graph.NodesOfKind, because a marked node
+            // has to hand back its CELL to be named the same way a leaf is. The two sets
+            // are disjoint by construction — a band probe stands on a rail, which has
+            // degree 2 or more, and a leaf has degree 1 — so no cell is emitted twice.
+            foreach (var pair in _marks)
             {
-                var node = sites[i];
-                markers.Add(new MapMarkerPlacement(
-                    MapMarkerKind.CandidateSite, graph.Nodes[node].Position, graph.Nodes[node].ZoneId, node,
-                    "CandidateSite_" + graph.Zones[graph.Nodes[node].ZoneId].Name + "_" + i));
+                if ((pair.Value.Kind & MapNodeKind.ReachProbe) == 0
+                    || !nodeIdOf.TryGetValue(pair.Key, out var probeNode))
+                {
+                    continue;
+                }
+
+                markers.Add(ReachProbeAt(graph, probeNode, pair.Key));
             }
 
-            foreach (var pair in lootAt)
+            for (var i = 0; i < leaves.Count; i++)
             {
-                var node = nodeIdOf[pair.Key];
-                markers.Add(new MapMarkerPlacement(
-                    MapMarkerKind.LootSpawn, graph.Nodes[node].Position, graph.Nodes[node].ZoneId, node,
-                    "LootSpawn_" + graph.Zones[graph.Nodes[node].ZoneId].Name
-                    + "_" + pair.Key.Level + "_" + pair.Key.X + "_" + pair.Key.Z));
+                markers.Add(ReachProbeAt(graph, nodeIdOf[leaves[i]], leaves[i]));
             }
 
+            // One light in the whole building, and it is the finish. The 567 ZoneLights
+            // that used to come out of this loop are deleted with §04's 정비공 — see
+            // MapMarkerKind. The 출입구 light stays because three things find §02's
+            // finish through it (MatchMap.FindEntrance, RaceDirector's fallback, and
+            // PlayerTraversal.CollectMarkers), and because in a dark maze the finish is
+            // the one thing worth being able to see from across the room.
             for (var i = 0; i < graph.Nodes.Length; i++)
             {
                 var node = graph.Nodes[i];
-                var isEntrance = node.HasAny(MapNodeKind.Entrance);
-                var kind = isEntrance ? MapMarkerKind.EntranceLight : MapMarkerKind.ZoneLight;
-
-                // One light per junction rather than per cell: §04's 구역 조명 lights a
-                // whole zone at once, so the unit that matters is the zone group, and a
-                // light in every corridor cell would make the dark §03 depends on
-                // impossible to switch off convincingly.
-                if (graph.Degree(i) < 2 && !isEntrance)
+                if (!node.HasAny(MapNodeKind.Entrance))
                 {
                     continue;
                 }
 
                 markers.Add(new MapMarkerPlacement(
-                    kind, node.Position, node.ZoneId, i,
-                    (isEntrance ? "EntranceLight_" : "ZoneLight_") + graph.Zones[node.ZoneId].Name + "_" + i));
+                    MapMarkerKind.EntranceLight, node.Position, node.ZoneId, i,
+                    "EntranceLight_" + graph.Zones[node.ZoneId].Name + "_" + i));
             }
 
             markers.Sort((a, b) => string.CompareOrdinal(a.Name, b.Name));
             return markers.ToArray();
+        }
+
+        /// <summary>
+        /// One 도달 지점 marker, named from its CELL rather than its node index.
+        /// <para>
+        /// The cell is what makes the name stable. A node index moves whenever the graph
+        /// gains or loses a vertex anywhere earlier in the sort, so an index-named marker
+        /// silently renames half the building on an unrelated edit — and every audit
+        /// matches these by name. <c>(level, x, z)</c> is where the probe physically is
+        /// and does not move unless the probe does.
+        /// </para>
+        /// <para>
+        /// The prefix is the contract with three editor-side readers —
+        /// <c>NavMeshConnectivity.CollectPoints</c>, <c>PlayerTraversal.CollectMarkers</c>
+        /// and <c>Editor/Dressing/Reachability</c>. Change it here and all three must
+        /// change in the same commit, or the audit measures a building with no probes in
+        /// it and reports a cheerful 100%.
+        /// </para>
+        /// </summary>
+        private static MapMarkerPlacement ReachProbeAt(MapGraph graph, int node, MapCell cell)
+        {
+            return new MapMarkerPlacement(
+                MapMarkerKind.ReachProbe,
+                graph.Nodes[node].Position,
+                graph.Nodes[node].ZoneId,
+                node,
+                "ReachProbe_" + graph.Zones[graph.Nodes[node].ZoneId].Name
+                + "_" + cell.Level + "_" + cell.X + "_" + cell.Z);
         }
 
         /// <summary>
@@ -2507,31 +2544,13 @@ namespace HorrorGame.EditorTools.SceneGen
             public override int GetHashCode() => (_cell.GetHashCode() * 397) ^ (int)_direction;
         }
 
-        /// <summary>
-        /// Picks what is waiting in each 막힌 길. §12 requires a reward on every one —
-        /// "위험을 감수할 이유" — and §08's catalogue is where the values live, so the
-        /// generator never invents a number.
-        /// </summary>
-        private sealed class DeadEndRewards
-        {
-            private readonly IRandomSource _random;
-
-            public DeadEndRewards(IRandomSource random)
-            {
-                _random = random;
-            }
-
-            public int Next()
-            {
-                var all = LootCatalogue.All;
-                var pick = all[_random.NextInt(0, all.Count)];
-                var value = LootCatalogue.ValueOf(pick);
-
-                // A zero-value entry would leave the leaf unrewarded and fail §12, so a
-                // catalogue that ever gains one falls back to the cheapest real piece
-                // rather than silently producing an invalid map.
-                return value > 0 ? value : GameConstants.LootValueTrinket;
-            }
-        }
+        // DELETED with §08: the DeadEndRewards class. It drew one value per 막힌 길 out
+        // of LootCatalogue so §12's "위험을 감수할 이유" had a number on it. It was the
+        // ONLY consumer of Build's IRandomSource — measured, not assumed: `random`
+        // appeared exactly twice in this file, at the constructor and at the draw, and
+        // DescentMap hands Build a fresh DeterministicRandom(seed) that RadialStorey
+        // never sees. So the reward stream can be removed outright without shifting one
+        // cell of any authored layout, and the probe set is now fully deterministic —
+        // strictly more so than the loot it replaces.
     }
 }
