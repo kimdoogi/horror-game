@@ -371,8 +371,24 @@ namespace HorrorGame.Net
         /// </summary>
         public override void OnServerReady(NetworkConnectionToClient conn)
         {
-            if (_spawnRunnerForEachPlayer && conn.identity == null && TryAddRunner(conn))
+            // Said out loud, every time, because the alternative is what shipped: two
+            // real processes reached the maze with nobody's body in it and the only
+            // trace was "0 runner body/bodies carried across the scene load" — a count
+            // that cannot tell "the carry failed" from "there was nothing to carry".
+            if (!_spawnRunnerForEachPlayer)
             {
+                Debug.Log("[Net] §01 " + conn.connectionId + "번 연결은 준비됐지만 "
+                          + "_spawnRunnerForEachPlayer 가 꺼져 있어 몸을 만들지 않는다.");
+            }
+            else if (conn.identity != null)
+            {
+                Debug.Log("[Net] §01 " + conn.connectionId + "번 연결은 이미 몸이 있다 — 다시 만들지 않는다.");
+            }
+            else if (TryAddRunner(conn))
+            {
+                Debug.Log("[Net] §01 " + conn.connectionId + "번 주자의 몸을 만들었다. "
+                          + "지금 서버가 들고 있는 스폰 오브젝트는 " + NetworkServer.spawned.Count + "개다.");
+
                 // AddPlayerForConnection already called SetClientReady and spawned the
                 // observers, so calling base here would send every observed object a
                 // second time.
@@ -414,6 +430,16 @@ namespace HorrorGame.Net
             {
                 return true;
             }
+
+            // Mirror refuses with its own Debug.LogWarning and nothing that names the
+            // consequence, so say it here: a connection without a body is a player
+            // nobody can see, for the whole match, and the party will still descend.
+            Debug.LogError(
+                "[Net] §01 " + conn.connectionId + "번 주자의 몸을 Mirror 가 받지 않았다 — "
+                + "AddPlayerForConnection 거절. 이 사람은 판이 끝날 때까지 아무에게도 보이지 않는다. "
+                + "서버 " + (NetworkServer.active ? "켜짐" : "꺼짐")
+                + " · 이 연결의 기존 몸 " + (conn.identity == null ? "없음" : "있음")
+                + " · assetId " + NetRunner.AssetId);
 
             Destroy(runner);
             return false;

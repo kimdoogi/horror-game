@@ -58,7 +58,20 @@ namespace HorrorGame.Gameplay.Race
         /// "still at the origin", which is tens of metres away.
         /// </para>
         /// </summary>
-        private const float OnTheLineMetres = 2.5f;
+        /// <summary>
+        /// Metres a replicated position may sit from a marker and still count as standing
+        /// on it.
+        /// <para>
+        /// It covers the quantised round trip a position takes over the wire, not the
+        /// distance between two places — the markers are one 2.5 m cell apart, so this is
+        /// deliberately under half of that. It used to be a full 2.5 m, which meant a
+        /// runner was "on" its own marker and both of its neighbours at once; paired with
+        /// a first-match loop that put two runners on one cell. Nearest-match makes the
+        /// value less load-bearing, and keeping it small keeps a runner who is genuinely
+        /// nowhere near the ring from being reported as on it.
+        /// </para>
+        /// </summary>
+        private const float OnTheLineMetres = 1.0f;
 
         /// <summary>
         /// How long to wait for the host's placement before starting anyway, seconds.
@@ -71,6 +84,17 @@ namespace HorrorGame.Gameplay.Race
         /// </para>
         /// </summary>
         private const float AnswerSecondsBudget = 2f;
+
+        /// <summary>
+        /// Metres within which two spawn markers are the same place.
+        /// <para>
+        /// A cell is 2.5 m, so half of one: two markers closer than this are inside the
+        /// same corridor cell, and a runner put on either is standing where a runner put
+        /// on the other is standing. Bigger would merge neighbouring cells and shrink the
+        /// ring; smaller would keep counting a pile as a spread.
+        /// </para>
+        /// </summary>
+        private const float SamePlaceMetres = 1.25f;
 
         /// <summary>Where the local rig was actually started, once <see cref="TakeTheStartLine"/> has finished.</summary>
         public static Vector3 LocalStart { get; private set; }
@@ -152,12 +176,27 @@ namespace HorrorGame.Gameplay.Race
                 // a machine that heard nothing a different marker from everybody else's,
                 // so a broken session is a spread-out race rather than a pile.
                 var seat = RaceParty.Settled ? RaceParty.LocalSeat : 0;
-                var fallback = spawns[((seat % spawns.Count) + spawns.Count) % spawns.Count];
-                answer = fallback != null ? fallback.position : rig.transform.position;
+
+                // De-duplicated first, and that is the whole of this fix. The generator
+                // offers B1's entire outer ring rather than exactly twenty places
+                // (DescentMap.PlaceStarts: "a cell only becomes a graph node if it is a
+                // bend, a junction or an end"), and markers land on top of each other —
+                // NetRaceStartPoints reports "28 distinct points from 36 markers" on the
+                // shipped map. Indexing the raw 36 by seat therefore hands two seats the
+                // same cell whenever they straddle a duplicated pair, which is exactly
+                // what two real instances did: seat 0 and seat 1 both stood at
+                // (23.8, 0.0, 6.3). The seat is here to spread a broken session out; a
+                // list with duplicates in it defeats the one thing it is for.
+                var distinct = DistinctPlaces(spawns);
+                var fallback = distinct.Count > 0
+                    ? distinct[((seat % distinct.Count) + distinct.Count) % distinct.Count]
+                    : rig.transform.position;
+                answer = fallback;
 
                 Debug.LogWarning(
                     "[Race] §13의 배치가 " + AnswerSecondsBudget + "초 안에 오지 않았다 — 좌석 " + seat
-                    + "번의 표식으로 대신 출발한다. 남들이 보는 이 주자의 위치와 어긋날 수 있다.");
+                    + "번의 자리로 대신 출발한다 (표식 " + spawns.Count + "개 중 서로 다른 자리 "
+                    + distinct.Count + "곳). 남들이 보는 이 주자의 위치와 어긋날 수 있다.");
             }
 
             PlaceRig(rig, answer);
@@ -191,6 +230,16 @@ namespace HorrorGame.Gameplay.Race
 
             var candidate = player.NetworkedPosition;
 
+            // NEAREST, not first-within-tolerance, and that distinction was worth two
+            // runners. The rim's markers are one cell apart, the tolerance is one cell,
+            // so a runner standing on marker #7 is also inside the tolerance of #6 and
+            // #8 — and the old loop returned whichever came first in scene order. Two
+            // real instances placed one cell apart both snapped to the same marker and
+            // both reported (23.8, 0.0, 6.3), while the host's own placement log said
+            // "2곳에 서로 다르게 (0명 겹침)". The placement was right; the reading was not.
+            var bestIndex = -1;
+            var bestSqr = float.PositiveInfinity;
+
             for (var i = 0; i < spawns.Count; i++)
             {
                 var marker = spawns[i];
@@ -202,19 +251,25 @@ namespace HorrorGame.Gameplay.Race
                 var flat = marker.position - candidate;
                 flat.y = 0f;
 
-                if (flat.sqrMagnitude <= OnTheLineMetres * OnTheLineMetres)
+                var sqr = flat.sqrMagnitude;
+                if (sqr < bestSqr)
                 {
-                    // The marker's own position and not the replicated one: the marker is
-                    // where the floor is, and the replicated value has been through a
-                    // quantised round trip. A rig dropped a few centimetres under the
-                    // floor is a rig the character controller spends its first step
-                    // depenetrating out of.
-                    answer = marker.position;
-                    return true;
+                    bestSqr = sqr;
+                    bestIndex = i;
                 }
             }
 
-            return false;
+            if (bestIndex < 0 || bestSqr > OnTheLineMetres * OnTheLineMetres)
+            {
+                return false;
+            }
+
+            // The marker's own position and not the replicated one: the marker is where
+            // the floor is, and the replicated value has been through a quantised round
+            // trip. A rig dropped a few centimetres under the floor is a rig the
+            // character controller spends its first step depenetrating out of.
+            answer = spawns[bestIndex].position;
+            return true;
         }
 
         /// <summary>
@@ -269,6 +324,50 @@ namespace HorrorGame.Gameplay.Race
         /// quoted from it rather than re-derived, so the two can never disagree.
         /// </para>
         /// </summary>
+        /// <summary>
+        /// The spawn markers, one per place rather than one per marker.
+        /// <para>
+        /// Two markers within <see cref="SamePlaceMetres"/> of each other are one place:
+        /// a runner put on either is standing in the same cell as a runner put on the
+        /// other, so handing them to two seats is handing two people one spot. Kept in
+        /// marker order so the answer is stable across machines — every peer reads the
+        /// same scene and must agree on which seat gets which place, or the fallback
+        /// spreads the field on one machine and piles it on another.
+        /// </para>
+        /// </summary>
+        /// <param name="spawns">§01's PlayerSpawn markers, in scene order.</param>
+        private static List<Vector3> DistinctPlaces(IReadOnlyList<Transform> spawns)
+        {
+            var places = new List<Vector3>();
+
+            for (var i = 0; i < spawns.Count; i++)
+            {
+                if (spawns[i] == null)
+                {
+                    continue;
+                }
+
+                var at = spawns[i].position;
+                var seen = false;
+
+                for (var j = 0; j < places.Count; j++)
+                {
+                    if ((places[j] - at).sqrMagnitude <= SamePlaceMetres * SamePlaceMetres)
+                    {
+                        seen = true;
+                        break;
+                    }
+                }
+
+                if (!seen)
+                {
+                    places.Add(at);
+                }
+            }
+
+            return places;
+        }
+
         private static void ReportStartLine()
         {
             if (!NetworkServer.active)

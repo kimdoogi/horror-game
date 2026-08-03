@@ -211,6 +211,19 @@ namespace HorrorGame.Net
         /// </para>
         /// </summary>
         /// <returns>How many runners were placed.</returns>
+        /// <summary>
+        /// Metres within which two starting places are one place.
+        /// <para>
+        /// Half a 2.5 m cell: two runners closer than this are standing in the same
+        /// corridor cell, whatever their coordinates say. Matches
+        /// <c>RaceRunners.SamePlaceMetres</c>, which asks the same question of the same
+        /// markers on the other side of the wire — the two must not disagree about what
+        /// counts as one place, or the host says the field is spread while a client
+        /// reports a pile.
+        /// </para>
+        /// </summary>
+        private const float SamePlaceMetres = 1.25f;
+
         public static int PlaceSpawnedRunners()
         {
             if (!NetworkServer.active || Registered == 0)
@@ -225,21 +238,44 @@ namespace HorrorGame.Net
             }
 
             var placed = 0;
+            var bodiless = 0;
+            var unplaced = 0;
+            var taken = new List<Vector3>();
+            var collisions = 0;
 
             foreach (var connection in NetworkServer.connections.Values)
             {
                 var identity = connection?.identity;
                 if (identity == null || !identity.TryGetComponent(out NetPlayer player))
                 {
+                    bodiless++;
                     continue;
                 }
 
                 var start = manager.GetStartPosition();
                 if (start == null)
                 {
+                    unplaced++;
                     continue;
                 }
 
+                // §11 gives twenty runners twenty places, and this is where that either
+                // happens or quietly does not. Two real instances once put both runners
+                // on one cell and the only symptom was two identical coordinates in two
+                // log files nobody was diffing — so the placement counts its own
+                // collisions and says so, rather than leaving it to be noticed.
+                for (var i = 0; i < taken.Count; i++)
+                {
+                    var apart = taken[i] - start.position;
+                    apart.y = 0f;
+                    if (apart.sqrMagnitude <= SamePlaceMetres * SamePlaceMetres)
+                    {
+                        collisions++;
+                        break;
+                    }
+                }
+
+                taken.Add(start.position);
                 player.TeleportTo(start.position);
 
                 // Rotation is set on the host's copy only, and that is not an oversight:
@@ -253,9 +289,27 @@ namespace HorrorGame.Net
                 placed++;
             }
 
+            if (collisions > 0)
+            {
+                Debug.LogError(
+                    "[Net] §11 · " + collisions + "명이 다른 주자와 같은 자리에 놓였다. GetStartPosition 이 "
+                    + "같은 표식을 두 번 돌려줬다는 뜻이다 — playerSpawnMethod 가 RoundRobin 인지, "
+                    + "등록된 자리가 " + Registered + "곳뿐이 아닌지 보라. 스무 명이면 스무 명이 겹친다.");
+            }
+
+            if (bodiless > 0 || unplaced > 0)
+            {
+                Debug.LogError(
+                    "[Net] §01 출발선: 몸이 없는 연결 " + bodiless + "개, 자리를 못 받은 주자 "
+                    + unplaced + "명. 몸이 없으면 OnServerReady 가 그 연결에 주자를 못 만든 것이고, "
+                    + "자리를 못 받았으면 등록된 표식이 " + Registered + "곳뿐이다.");
+            }
+
             if (placed > 0)
             {
-                Debug.Log("[Net] Placed " + placed + " runner(s) on B1's rim now that the building exists.");
+                Debug.Log(
+                    "[Net] Placed " + placed + " runner(s) on B1's rim now that the building exists — "
+                    + taken.Count + "곳에 서로 다르게 (" + collisions + "명 겹침).");
             }
 
             return placed;

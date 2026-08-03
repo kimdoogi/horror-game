@@ -64,6 +64,8 @@ namespace HorrorGame.EditorTools.SceneGen
             System.Threading.Thread.Sleep(2000);
             StartProcess(playerPath, ClientArgument);
 
+            Debug.Log("[TwoInstance] 로그: 호스트 " + LogPathFor(HostArgument)
+                      + " · 클라이언트 " + LogPathFor(ClientArgument));
             Debug.Log("[TwoInstance] Launched two instances of " + playerPath + " ("
                 + HostArgument + " then " + ClientArgument + ").");
         }
@@ -167,6 +169,28 @@ namespace HorrorGame.EditorTools.SceneGen
             return paths.ToArray();
         }
 
+        /// <summary>
+        /// Whether the player on disk was built from what is in the project now.
+        /// <para>
+        /// <b>Scenes are not the only input, and treating them as one was a real bug.</b>
+        /// This compared the built player against the scenes and nothing else, so a
+        /// change to any <c>.cs</c> file left it "up to date": you fixed the game,
+        /// re-ran the two-instance test, and watched the build from before the fix.
+        /// Twice in one session a defect was declared un-fixed on that evidence.
+        /// </para>
+        /// <para>
+        /// The compiled assemblies under <c>Library/ScriptAssemblies</c> are the honest
+        /// stand-in for the code: Unity rewrites them on every recompile, so one of them
+        /// being newer than the player means the player is running code that no longer
+        /// exists. They are used rather than the <c>.cs</c> files themselves because a
+        /// comment-only edit touches a source file and produces an identical assembly —
+        /// and rebuilding a 500 MB player to change a comment is the kind of friction
+        /// that stops the test being run at all, which is the thing §14 is most afraid
+        /// of.
+        /// </para>
+        /// </summary>
+        /// <param name="playerPath">The built player.</param>
+        /// <param name="scenes">Scenes compiled into it.</param>
         private static bool IsUpToDate(string playerPath, string[] scenes)
         {
             if (!File.Exists(playerPath) && !Directory.Exists(playerPath))
@@ -182,6 +206,29 @@ namespace HorrorGame.EditorTools.SceneGen
             {
                 if (File.GetLastWriteTimeUtc(scene) > built)
                 {
+                    return false;
+                }
+            }
+
+            var assemblies = Path.Combine(
+                Directory.GetParent(UnityEngine.Application.dataPath)?.FullName ?? ".",
+                "Library",
+                "ScriptAssemblies");
+
+            if (!Directory.Exists(assemblies))
+            {
+                // No assemblies to compare against is not evidence of freshness. Rebuild
+                // rather than launch something that might be anything.
+                return false;
+            }
+
+            foreach (var dll in Directory.GetFiles(assemblies, "*.dll"))
+            {
+                if (File.GetLastWriteTimeUtc(dll) > built)
+                {
+                    Debug.Log(
+                        "[TwoInstance] " + Path.GetFileName(dll) + " is newer than the built player — "
+                        + "rebuilding, because the alternative is testing code that is no longer in the project.");
                     return false;
                 }
             }
@@ -203,17 +250,52 @@ namespace HorrorGame.EditorTools.SceneGen
             }
         }
 
+        /// <summary>
+        /// Where each side writes its log. One file per side, because they would
+        /// otherwise share one.
+        /// <para>
+        /// Unity's default log path is per-product, so two copies of the same player
+        /// write to the same <c>Player.log</c> and interleave mid-word — a host line and
+        /// a client line spliced together at a byte boundary. That made every reading of
+        /// this test ambiguous: two identical coordinates in one file could be one runner
+        /// logged twice or two runners in one cell, and there was no way to tell.
+        /// </para>
+        /// </summary>
+        /// <param name="argument">Which side this is.</param>
+        public static string LogPathFor(string argument)
+        {
+            var side = string.Equals(argument, HostArgument, StringComparison.Ordinal) ? "host" : "client";
+            return Path.Combine(Path.GetTempPath(), "horror-" + side + ".log");
+        }
+
         private static void StartProcess(string playerPath, string argument)
         {
             var fileName = playerPath;
-            var arguments = argument;
+            var logFile = LogPathFor(argument);
+            var arguments = argument + " -logFile \"" + logFile + "\"";
+
+            // Left over from the run before this one, so a launch that dies on start
+            // leaves an empty file rather than the previous run's success.
+            try
+            {
+                if (File.Exists(logFile))
+                {
+                    File.Delete(logFile);
+                }
+            }
+            catch (Exception)
+            {
+                // A log we could not clear is still a log; the timestamps inside it say
+                // which run is which.
+            }
 
             if (playerPath.EndsWith(".app", StringComparison.Ordinal))
             {
                 // A macOS bundle is a folder; `open -n` is what starts a second copy of
                 // the same app, which is the entire point of this command.
                 fileName = "/usr/bin/open";
-                arguments = "-n \"" + playerPath + "\" --args " + argument;
+                arguments = "-n \"" + playerPath + "\" --args " + argument
+                            + " -logFile \"" + logFile + "\"";
             }
 
             try
