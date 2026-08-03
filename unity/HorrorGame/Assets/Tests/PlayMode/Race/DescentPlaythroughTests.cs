@@ -41,6 +41,19 @@ namespace HorrorGame.Tests.PlayMode.Racing
     /// the thing that has never been proven.
     /// </para>
     /// <para>
+    /// <b>The drop is measured, not assumed — and it was not, for most of this file's life.</b>
+    /// The descent used to confirm that <c>MatchDirector.CheckChutes</c> had moved the body and
+    /// then set that body down on the 착지 coordinate, which threw away the one thing a 투하구 can
+    /// be wrong about: whether the three metres between the mouth and the floor below exist. A
+    /// round of storey shells blocked every drop in the building and this test still passed. So
+    /// before anything is set down, a ray is fired straight down from
+    /// <see cref="Chute.DropPoint"/> and the first thing it meets is measured against the 착지
+    /// the same chute names, the 착지 is asked of the bake rather than of the marker, and the
+    /// body's own capsule is asked what it would be standing inside. The setting-down stays,
+    /// because a headless test cannot fall; what it discards now is only the half second of
+    /// falling, and every reading was taken before it.
+    /// </para>
+    /// <para>
     /// <b>Nothing is asserted until the whole building has been measured.</b> An assertion on
     /// the first storey would report one broken link and hide seven. So each storey's
     /// reachability, drop and bookkeeping are recorded into <see cref="Leg"/>s, the descent
@@ -108,6 +121,41 @@ namespace HorrorGame.Tests.PlayMode.Racing
         private const int Drops = RaceState.Storeys - 1;
 
         /// <summary>
+        /// Metres the first solid thing under a <see cref="Chute.DropPoint"/> may be off the 착지
+        /// the same chute names, before the drop is landing on something that is not that floor.
+        /// <para>
+        /// The 착지 markers sit exactly on their storey's floor plane — measured in the artefact,
+        /// y = 0, −3.75 … −26.25 — and a floor tile's top is that same plane, so on a building
+        /// whose geometry agrees with its markers this figure is zero. The NavMesh audit's own
+        /// bar for vertical junk on a good bake is a 0.045 m tallest climb; 0.15 m is over three
+        /// times that, and it is under the 0.25 m by which a <c>MapSceneBuilder</c> storey shell's
+        /// lid plate stands proud of the floor it covers — which is the thing this measurement
+        /// exists to catch.
+        /// </para>
+        /// </summary>
+        private const float LandsOnTheLandingMetres = 0.15f;
+
+        /// <summary>
+        /// The player capsule used to ask what a body would be inside at a drop point, when the
+        /// rig in the scene has no <see cref="CharacterController"/> to read it off. The rig
+        /// always has one — <c>PlayerFeelHarnessMenu.BuildRig</c> builds 0.30 m by 1.75 m — but a
+        /// probe that silently measured a zero-radius point on a rig that changed shape would
+        /// report open air everywhere.
+        /// </summary>
+        private const float RigRadiusMetres = 0.30f;
+
+        /// <summary>The other half of <see cref="RigRadiusMetres"/>.</summary>
+        private const float RigHeightMetres = 1.75f;
+
+        /// <summary>
+        /// Where <c>MapSceneBuilder</c> hangs the invisible boundary shell — its own
+        /// <c>BoundaryRootName</c>, quoted here for the same reason <see cref="StoreyPitchMetres"/>
+        /// is: the generator lives in an editor assembly this one cannot reference. Only used to
+        /// say <em>which</em> defect a probe found, never to decide whether it found one.
+        /// </summary>
+        private const string BoundaryRootName = "Boundary";
+
+        /// <summary>
         /// Whole-test cap, milliseconds. The building is on the order of a kilometre of corridor
         /// at <see cref="GameConstants.RunnerSprintSpeed"/> — a few hundred seconds of simulated
         /// time and some ten thousand fixed steps — and the wall-clock cost is dominated by
@@ -139,6 +187,20 @@ namespace HorrorGame.Tests.PlayMode.Racing
             public int LandedStorey = -1;
             public float LandingRimMetres;
             public int RecordedStorey = -1;
+
+            // ── What the drop does, measured rather than assumed ─────────────
+            public Vector3 DropPoint;
+            public bool DropColumnFound;
+            public string DropColumnHits = string.Empty;
+            public float DropColumnMetres;
+            public float DropColumnTopY;
+            public int DropColumnStorey = -1;
+            public bool DropLandsOnTheLanding;
+            public string DropPointInside = string.Empty;
+            public float HeadroomOverTheLandingMetres = float.PositiveInfinity;
+            public bool LandingOnNavMesh;
+            public int LandingNavStorey = -1;
+            public float LandingNavGapMetres;
         }
 
         private readonly List<Leg> _legs = new List<Leg>();
@@ -480,19 +542,89 @@ namespace HorrorGame.Tests.PlayMode.Racing
                 leg.LandedStorey = StoreyOf(taken.Landing.y);
                 leg.LandingRimMetres = Chebyshev(taken.Landing.x - middleX, taken.Landing.z - middleZ);
 
+                // ── What the drop DOES, asked of the building ────────────────────
+                // This block exists because the four lines under it used to be the whole answer.
+                // The test confirmed the 투하구 had fired and then set the body down on the
+                // landing coordinate, which threw away the only thing a drop can be wrong about:
+                // whether the three metres between the mouth and the floor below are there. Every
+                // storey shell built last round blocked every drop and this test still passed,
+                // because nothing here ever looked down the hole.
+                //
+                // Asked with queries rather than by falling, and that is a decision rather than a
+                // shortcut. A PlayMode test could yield frames and let §05's gravity do it, but
+                // the answer would then depend on how many frames the engine handed back and on
+                // whether MatchDirector's own FixedUpdate got one — the flakiest possible way to
+                // measure a fact about static geometry. A ray and an overlap answer the same
+                // question about the same colliders, in the same frame, every run.
+                var dropPoint = taken.DropPoint();
+                leg.DropPoint = dropPoint;
+
+                // Straight down from the drop point, and deliberately with no lift on the ray's
+                // origin. Chute.DropHeightMetres is 3.0 m and the kit's corridor gives exactly
+                // 3.00 m of clear height (MapKit.manifest corridor_clear.height), so the drop
+                // point IS the ceiling plane of the cell it drops into — half a metre of lift,
+                // the way EscapeTests.Underfoot takes it, would start this ray inside the ceiling
+                // slab and report the storey above.
+                var reach = (RaceState.Storeys * StoreyPitchMetres) + 10f;
+                leg.DropColumnFound = FirstHit(player, dropPoint, Vector3.down, reach, out var under);
+                if (leg.DropColumnFound)
+                {
+                    leg.DropColumnMetres = under.distance;
+                    leg.DropColumnTopY = under.point.y;
+                    leg.DropColumnStorey = StoreyOf(under.point.y);
+                    leg.DropColumnHits = Path(under.collider != null ? under.collider.transform : null);
+                    leg.DropLandsOnTheLanding =
+                        Mathf.Abs(under.point.y - taken.Landing.y) <= LandsOnTheLandingMetres
+                        && leg.DropColumnStorey == leg.Storey + 1;
+                }
+
+                // Reported, not asserted, and the arithmetic says why. A standing body at the
+                // drop point needs DropHeightMetres + the rig's own height of room — 3.0 + 1.75 =
+                // 4.75 m — against a StoreyPitchMetres of 3.75 and 3.00 m of corridor clear. No
+                // building assembled from this kit can give that, so demanding it would paint the
+                // headline test red for a decision that lives in Chute.DropHeightMetres rather
+                // than in any map. What it is worth is the naming: the report prints the
+                // hierarchy path of everything the body would be inside, so a 'Map/Boundary/…'
+                // plate in that list is a shell standing in a storey it is supposed to be outside
+                // of, and the reader can tell that apart from the kit's own ceiling.
+                leg.DropPointInside = InsideAt(player, dropPoint);
+
+                // How much room the 착지 actually has over it, so the line above can be read
+                // against a number instead of against the manifest.
+                if (FirstHit(player, taken.Landing + (Vector3.up * 0.05f), Vector3.up, StoreyPitchMetres, out var lid))
+                {
+                    leg.HeadroomOverTheLandingMetres = lid.point.y - taken.Landing.y;
+                }
+
+                // The honest version of "does the drop land the runner on the storey below": not
+                // the height of the drop point, which is a number this file could have computed
+                // itself, but whether the bake has floor at the 착지 and whether that floor
+                // belongs to the storey the chute claims. NavSnapMetres is 1.8 m, under half a
+                // storey, so this cannot be answered by the floor above or below.
+                leg.LandingOnNavMesh = NavMesh.SamplePosition(
+                    taken.Landing, out var landHit, NavSnapMetres, NavMesh.AllAreas);
+                if (leg.LandingOnNavMesh)
+                {
+                    leg.LandingNavStorey = StoreyOf(landHit.position.y);
+                    leg.LandingNavGapMetres = Vector3.Distance(taken.Landing, landHit.position);
+                }
+
                 var duringDescent = race.Rules;
                 leg.RecordedStorey = duringDescent != null ? duringDescent[seat].Storey : -1;
 
                 // ── Stand up on the rim below ────────────────────────────────────
-                // §05's gravity does the last three metres in the shipped game; a headless test
-                // steps no PlayerMotor, so the body is set down on the landing the chute itself
-                // chose. What is asserted above is the chute's own arithmetic, before the setting
-                // down touches anything.
-                var landing = taken.Landing;
-                if (NavMesh.SamplePosition(landing, out var landHit, NavSnapMetres, NavMesh.AllAreas))
-                {
-                    landing = landHit.position;
-                }
+                // §05's gravity does the last three metres in the shipped game and this test
+                // steps no PlayerMotor, so the body is set down on the 착지 the chute chose. That
+                // is a simplification with a guard in front of it rather than a blindfold: the
+                // block above has already measured what is under the drop point, how far below
+                // it, which storey it belongs to and what the drop point is inside, and every one
+                // of those readings was taken before this line moved anything. What is discarded
+                // here is only the half second of falling, which no assertion below depends on.
+                //
+                // Snapped onto the bake when the bake has floor there, and left on the marker
+                // when it has not — because "there is no NavMesh at this 착지" is itself a
+                // finding, and silently keeping the marker used to hide it.
+                var landing = leg.LandingOnNavMesh ? landHit.position : taken.Landing;
 
                 Place(player, landing);
                 director.StepMatch(GameConstants.FixedStep);
@@ -604,6 +736,59 @@ namespace HorrorGame.Tests.PlayMode.Racing
                         + (leg.LandedStorey + 1) + ", inside RadialStorey's d = 8 wall. §01: 착지는 다음 층의 "
                         + "외곽이다. Land anybody near a middle and one runner reaching one centre falls the rest "
                         + "of the way — the building becomes a single maze.");
+                }
+
+                // ── The drop itself, which this test used to set down and forget ──
+                if (!leg.DropColumnFound)
+                {
+                    broken.Add(
+                        "투하구 · B" + (leg.Storey + 1) + ": there is nothing at all under this chute's drop point "
+                        + leg.DropPoint.ToString("0.00") + " — a ray " + ((RaceState.Storeys * StoreyPitchMetres)
+                            + 10f).ToString("0") + " m long met no collider. §01 drops a runner from "
+                        + Chute.DropHeightMetres.ToString("0.0") + " m and lets §05's gravity finish it; with no "
+                        + "floor beneath, the drop is a fall out of the building and the descent ends here whatever "
+                        + "the standings say.");
+                }
+                else if (!leg.DropLandsOnTheLanding)
+                {
+                    broken.Add(
+                        "투하구 · B" + (leg.Storey + 1) + ": the first solid thing under the drop point is "
+                        + leg.DropColumnHits + " at y " + leg.DropColumnTopY.ToString("0.00") + " ("
+                        + leg.DropColumnMetres.ToString("0.00") + " m below the drop point), and this chute's 착지 "
+                        + "is y " + leg.DropPoint.y.ToString("0.00") + " − " + Chute.DropHeightMetres.ToString("0.0")
+                        + " = " + (leg.DropPoint.y - Chute.DropHeightMetres).ToString("0.00") + " on B"
+                        + (leg.Storey + 2) + " — off by "
+                        + Mathf.Abs(leg.DropColumnTopY - (leg.DropPoint.y - Chute.DropHeightMetres)).ToString("0.00")
+                        + " m, against " + LandsOnTheLandingMetres.ToString("0.00") + " m of slack"
+                        + (leg.DropColumnStorey == leg.Storey + 1
+                            ? string.Empty
+                            : ", and on B" + (leg.DropColumnStorey + 1) + " rather than B" + (leg.Storey + 2))
+                        + ". A runner who steps into this 투하구 does not reach the floor of the storey below — "
+                        + "they come down on " + leg.DropColumnHits + " — and every measurement the rest of the "
+                        + "descent takes is taken standing on it. This is the reading DescentPlaythroughTests used "
+                        + "to discard by setting the body down on the 착지 coordinate the moment the chute fired.");
+                }
+
+                if (!leg.LandingOnNavMesh)
+                {
+                    broken.Add(
+                        "투하구 · B" + (leg.Storey + 1) + "'s 착지 "
+                        + (leg.DropPoint - (Vector3.up * Chute.DropHeightMetres)).ToString("0.00")
+                        + " has no NavMesh within "
+                        + NavSnapMetres.ToString("0.0") + " m. The marker is somewhere the bake does not call "
+                        + "walkable, so a runner dropped there is off the graph: §06 cannot path to them, "
+                        + "PlayerReachAudit's 투하구 count is about markers rather than about floor, and the storey "
+                        + "below is entered at a point the storey below does not have.");
+                }
+                else if (leg.LandingNavStorey != leg.Storey + 1)
+                {
+                    broken.Add(
+                        "투하구 · B" + (leg.Storey + 1) + "'s 착지 snapped onto NavMesh on B"
+                        + (leg.LandingNavStorey + 1) + ", " + leg.LandingNavGapMetres.ToString("0.00")
+                        + " m away, not on B" + (leg.Storey + 2) + ". Sampling is capped at "
+                        + NavSnapMetres.ToString("0.0") + " m — under half a " + StoreyPitchMetres.ToString("0.00")
+                        + " m storey — so this is not a snap that reached through a floor; the floor at this 착지 "
+                        + "is genuinely not the one §01 says the runner lands on.");
                 }
             }
 
@@ -855,6 +1040,149 @@ namespace HorrorGame.Tests.PlayMode.Racing
         }
 
         // ------------------------------------------------------------------
+        // Looking down the hole.
+        // ------------------------------------------------------------------
+
+        /// <summary>Room for every collider a probe can meet through eight storeys of building.</summary>
+        private readonly RaycastHit[] _probe = new RaycastHit[32];
+
+        /// <summary>
+        /// The nearest collider along a ray, with the runner's own body skipped by name.
+        /// <para>
+        /// By name rather than by trusting PhysX to drop a ray that starts inside a convex shape:
+        /// every one of these probes is fired at a point the match has just put the body on, so
+        /// the origin is inside the player's own capsule, and "the thing under me is me" is
+        /// exactly the shape of a reading that sends the next person to the wrong storey.
+        /// </para>
+        /// </summary>
+        private bool FirstHit(Transform player, Vector3 from, Vector3 direction, float reach, out RaycastHit nearest)
+        {
+            var found = Physics.RaycastNonAlloc(
+                from, direction, _probe, reach, ~0, QueryTriggerInteraction.Ignore);
+
+            var best = -1;
+            for (var i = 0; i < found; i++)
+            {
+                var t = _probe[i].collider != null ? _probe[i].collider.transform : null;
+                if (t == null || t.IsChildOf(player))
+                {
+                    continue;
+                }
+
+                if (best < 0 || _probe[i].distance < _probe[best].distance)
+                {
+                    best = i;
+                }
+            }
+
+            nearest = best >= 0 ? _probe[best] : default(RaycastHit);
+            return best >= 0;
+        }
+
+        /// <summary>
+        /// Everything a body standing with its feet at <paramref name="feet"/> would be inside,
+        /// named by its place in the hierarchy — the capsule cast §01's drop point has never been
+        /// asked to survive.
+        /// <para>
+        /// The capsule is the rig's own, read off the <see cref="CharacterController"/> in the
+        /// scene rather than written down here, because the radius and height are the entire
+        /// question of what fits where and a probe built from a constant would keep answering
+        /// after the rig changed shape.
+        /// </para>
+        /// </summary>
+        /// <returns>An empty string when the body fits — nothing is a finding here.</returns>
+        private string InsideAt(Transform player, Vector3 feet)
+        {
+            var radius = RigRadiusMetres;
+            var height = RigHeightMetres;
+            var controller = player.GetComponent<CharacterController>();
+            if (controller != null)
+            {
+                radius = controller.radius;
+                height = controller.height;
+            }
+
+            // A CharacterController's own description of itself: transform.position is the feet
+            // and the capsule's two sphere centres sit one radius in from each end.
+            var lift = Mathf.Max(radius, 0.01f);
+            var lower = feet + (Vector3.up * lift);
+            var upper = feet + (Vector3.up * Mathf.Max(height - lift, lift));
+
+            var hits = Physics.OverlapCapsule(lower, upper, radius, ~0, QueryTriggerInteraction.Ignore);
+            var named = new List<string>();
+            for (var i = 0; i < hits.Length; i++)
+            {
+                var t = hits[i] != null ? hits[i].transform : null;
+                if (t == null || t.IsChildOf(player))
+                {
+                    continue;
+                }
+
+                var path = Path(t);
+                if (!named.Contains(path))
+                {
+                    named.Add(path);
+                }
+            }
+
+            if (named.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            var sb = new StringBuilder();
+            for (var i = 0; i < named.Count && i < 4; i++)
+            {
+                if (i > 0)
+                {
+                    sb.Append(", ");
+                }
+
+                sb.Append(named[i]);
+            }
+
+            if (named.Count > 4)
+            {
+                sb.Append(" 외 " + (named.Count - 4) + "개");
+            }
+
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// The last few links of an object's hierarchy path — enough to find it in the scene
+        /// without a wall of text, and enough to tell <c>Map/Boundary/StoreyShell_B4/Lid</c> apart
+        /// from a corridor's own ceiling. Same shape and same purpose as <c>EscapeTests.Path</c>.
+        /// </summary>
+        private static string Path(Transform? of)
+        {
+            if (of == null)
+            {
+                return "(collider 없음)";
+            }
+
+            var links = new List<string>();
+            var walk = of;
+            while (walk != null && links.Count < 4)
+            {
+                links.Add(walk.name);
+                walk = walk.parent;
+            }
+
+            var sb = new StringBuilder();
+            for (var i = links.Count - 1; i >= 0; i--)
+            {
+                sb.Append(links[i]);
+                if (i > 0)
+                {
+                    sb.Append('/');
+                }
+            }
+
+            return sb.ToString();
+        }
+
+        // ------------------------------------------------------------------
         // The report.
         // ------------------------------------------------------------------
 
@@ -902,6 +1230,55 @@ namespace HorrorGame.Tests.PlayMode.Racing
                 sb.AppendLine(
                     ("B" + (leg.Storey + 1)).PadRight(5) + reach.PadRight(33) + drop.PadRight(30)
                     + recorded.PadRight(9) + here);
+            }
+
+            // ── What each drop actually drops into ───────────────────────────────
+            // Printed on a green run as well as a red one, and that is the point of it. The
+            // storey table above says "↓ B2 외곽 25.0 m" whether or not those three metres exist,
+            // because it is built out of the chute's own bookkeeping; this one is built out of
+            // rays fired at the building. A row here that reads '3.00 m ↓ FloorTile' is the claim
+            // "the drop lands on the floor below" with a measurement behind it, and a row that
+            // names a Map/Boundary plate is the shell standing in the way of §01.
+            sb.AppendLine();
+            sb.AppendLine("── §01 투하구, 구멍 아래로 쏜 광선 ─────────────────────────────");
+            sb.AppendLine("층   낙하 지점         첫 충돌까지   착지에서   무엇에 닿았나");
+
+            for (var i = 0; i < _legs.Count; i++)
+            {
+                var leg = _legs[i];
+                if (!leg.HadChute)
+                {
+                    continue;
+                }
+
+                var landingY = leg.DropPoint.y - Chute.DropHeightMetres;
+                var hit = !leg.DropColumnFound
+                    ? "아무것도 없다"
+                    : leg.DropColumnHits + " (B" + (leg.DropColumnStorey + 1) + ")";
+                var off = leg.DropColumnFound
+                    ? (leg.DropColumnTopY - landingY).ToString("+0.00;-0.00;0.00") + " m"
+                    : "—";
+
+                sb.AppendLine(
+                    ("B" + (leg.Storey + 1)).PadRight(5)
+                    + leg.DropPoint.ToString("0.0").PadRight(18)
+                    + (leg.DropColumnFound ? leg.DropColumnMetres.ToString("0.00") + " m" : "—").PadRight(14)
+                    + off.PadRight(11)
+                    + hit
+                    + (leg.DropLandsOnTheLanding ? string.Empty : "  ← 착지가 아니다"));
+
+                sb.AppendLine(
+                    "     착지 NavMesh " + (leg.LandingOnNavMesh
+                        ? "B" + (leg.LandingNavStorey + 1) + " (" + leg.LandingNavGapMetres.ToString("0.00") + " m)"
+                        : "없음 (반경 " + NavSnapMetres.ToString("0.0") + " m)")
+                    + " · 착지 위 천장까지 "
+                    + (float.IsInfinity(leg.HeadroomOverTheLandingMetres)
+                        ? "막힌 것이 없다"
+                        : leg.HeadroomOverTheLandingMetres.ToString("0.00") + " m (투하 높이 "
+                          + Chute.DropHeightMetres.ToString("0.0") + " m)")
+                    + (string.IsNullOrEmpty(leg.DropPointInside)
+                        ? " · 낙하 지점에 몸이 들어간다"
+                        : " · 낙하 지점의 몸이 겹치는 것: " + leg.DropPointInside));
             }
 
             var rules = race.Rules;

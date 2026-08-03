@@ -208,6 +208,13 @@ namespace HorrorGame.Gameplay.Match
         /// <summary>Every 투하구 in the scene, wired at match start. §01.</summary>
         private readonly List<Chute> _chutes = new List<Chute>();
 
+        /// <summary>
+        /// §01's safety net: the runtime half of "you cannot leave the building". The
+        /// physical shell is the primary fix and this is what catches what it misses. See
+        /// <see cref="OutOfBounds"/> and <see cref="CheckBounds"/>.
+        /// </summary>
+        private readonly OutOfBounds _bounds = new OutOfBounds();
+
         /// <summary>§02's standings in the scene. Null outside race mode.</summary>
         private RaceDirector? _raceDirector;
 
@@ -306,6 +313,50 @@ namespace HorrorGame.Gameplay.Match
         {
             get { return _hud != null && _hud.ShopOpen; }
         }
+
+        /// <summary>
+        /// How many times §01's safety net has had to put the local runner back inside the
+        /// building this match. Zero is the number a shipped map should read.
+        /// <para>
+        /// Public because it is the only number that says whether the shell is holding. A
+        /// storey that produces one recovery per playthrough has a seam in it, and the
+        /// [Match] warning <see cref="CheckBounds"/> logs names the position it happened at.
+        /// </para>
+        /// </summary>
+        public int OutOfBoundsRecoveries
+        {
+            get { return _bounds.Recoveries; }
+        }
+
+        /// <summary>
+        /// How long the local runner has been off the map, seconds. 0 whenever they are on
+        /// it, and it never passes <see cref="OutOfBounds.OutsideGraceSeconds"/> — the step
+        /// that reaches it is the step they are put back.
+        /// <para>
+        /// It is here so a screen can COUNT DOWN. A teleport with no warning reads as a bug;
+        /// "맵 밖 — 1.4초 후 복귀" reads as a rule. See the remarks on <see cref="RunnerPutBack"/>.
+        /// </para>
+        /// </summary>
+        public float SecondsOutsideTheMap
+        {
+            get { return _bounds.SecondsOutside; }
+        }
+
+        /// <summary>
+        /// Raised on the step §01's safety net puts the local runner back: where they were,
+        /// and where they were returned to.
+        /// <para>
+        /// <b>This is the half a player sees, and it is deliberately an event rather than a
+        /// screen.</b> The recovery itself is legible on its own — position is written and
+        /// rotation is not, so the camera keeps the heading the player was holding and the
+        /// world snaps back around them rather than the player being re-spawned facing
+        /// somewhere new. What that does not do is NAME what happened, and the name belongs
+        /// on <c>RaceHud</c>, which is §02's screen and not this class's. The event and
+        /// <see cref="SecondsOutsideTheMap"/> are the whole of what the HUD needs; the two
+        /// lines that consume them are in this change's report.
+        /// </para>
+        /// </summary>
+        public event Action<Vector3, Vector3>? RunnerPutBack;
 
         /// <summary>
         /// §09's seat for the dead. Null until <see cref="ResolveWiring"/> has run; the
@@ -515,6 +566,12 @@ namespace HorrorGame.Gameplay.Match
             {
                 return false;
             }
+
+            // §01's safety net starts every match with no memory of the last one. Its anchor
+            // is the runner's last honest footprint, and a footprint from the previous
+            // building would put a runner back inside a map that no longer exists — every
+            // seed lays out a different tower on the same 57.5 m square.
+            _bounds.Reset();
 
             // ── §01's race, or the co-operative recovery match it grew out of ──────
             //
@@ -974,6 +1031,24 @@ namespace HorrorGame.Gameplay.Match
             StepClueRead();
             CheckGrab();
             CheckChutes();
+
+            // AFTER CheckChutes and BEFORE the race is ticked, and both halves of that are
+            // load-bearing.
+            //
+            // After, because a 투하구 that fires on this step has to have told the guard
+            // before the guard looks: CheckChutes leaves the runner three metres in the air
+            // over the storey below with no floor within reach of them, which is what
+            // falling out of the world looks like from the outside. Chute.Swallows is the
+            // only thing in this project that knows the difference, so it is the only thing
+            // that gets to say so — see OutOfBounds.Descended.
+            //
+            // Before, because RaceDirector.Tick is what samples §02's finish circle. A
+            // runner who crossed the footprint outside the walls and is standing on the
+            // middle of B8 must be put back BEFORE the race is asked whether anybody has
+            // arrived, or the guard would run one step too late to matter and the exploit it
+            // exists to close would still win the match.
+            CheckBounds();
+
             _raceDirector?.Tick(_clock.ElapsedSeconds);
 
             while (_clock.TryDequeueTierAdvance(out var crossed))
@@ -1396,9 +1471,112 @@ namespace HorrorGame.Gameplay.Match
                     _raceDirector.ReportDescent(LocalPlayerIndex, _chutes[i].StoreyBelow, _clock.ElapsedSeconds);
                 }
 
+                // The one thing that can tell §01's own falling from falling out of the
+                // world. For the next 0.78 s the runner has no floor within reach and every
+                // test the guard could run says "outside"; this line is why it says nothing.
+                // The landing rather than the drop point, because the landing is the floor —
+                // if this descent's own landing turns out to be broken, the guard has
+                // somewhere on the rim below to put them, not a point three metres above it.
+                _bounds.Descended(_chutes[i].Landing);
+
                 Debug.Log("[Match] §01 B" + (_chutes[i].StoreyBelow + 1) + " 도착 — "
                           + _clock.ElapsedSeconds.ToString("0") + "초", this);
                 return;
+            }
+        }
+
+        /// <summary>
+        /// A runner who is outside the building, or falling out of it, is put back.
+        /// <para>
+        /// <b>The owner reported this from playing: 「맵밖으로 나갈수가있눈거같은데」.</b> It is
+        /// not cosmetic. §02 is a race to the MIDDLE and everything on a floor exists to make
+        /// reaching it hard; a runner outside the walls walks straight across the footprint,
+        /// ignores every gate, every door and every creature, and wins. Another agent is
+        /// building the physical shell, which is the right primary fix. This is the net under
+        /// it, because a <c>CharacterController</c> at <c>GameConstants.RunnerSprintSpeed</c>
+        /// tunnels through thin colliders, depenetration has seams, and twenty players find
+        /// shapes nobody modelled. The rule, the thresholds and every derivation are in
+        /// <see cref="OutOfBounds"/>; this method is the wiring.
+        /// </para>
+        /// <para>
+        /// <b>Race only, and that is a decision rather than a shortcut.</b> The co-operative
+        /// recovery match this file grew out of has §01's 지상 — and <c>SurfaceApron</c>
+        /// builds that ground at RUNTIME, under <c>_worldRoot</c>, long after the NavMesh
+        /// asset was baked. A NavMesh-shaped guard asked about the apron would be measuring a
+        /// world that is not in the bake and would put a player standing at the van back
+        /// inside the building, every match, correctly by its own rule. The race has no
+        /// surface at all (<c>MatchMap.HasSurface</c> is false on the tower, so
+        /// <c>IsOnSurface</c> is false everywhere and <c>_onSurface</c> never flips), which
+        /// is exactly the condition under which the NavMesh IS the world. The
+        /// <c>_onSurface</c> test is kept anyway, as the thing that would hold if a later
+        /// race map ever declared a 지상.
+        /// </para>
+        /// <para>
+        /// A ghost is skipped for the reason <see cref="CheckGrab"/> skips one: §09 takes the
+        /// player out of the world and leaves the body where it fell. A corpse is not a
+        /// runner, and §08's pile lies where the corpse does — moving it would move the
+        /// evidence the ghost is made to watch.
+        /// </para>
+        /// <para>
+        /// The controller is switched off across the write for the same reason
+        /// <see cref="CheckChutes"/> and <see cref="MovePlayerToSpawn"/> switch it off: a
+        /// live <c>CharacterController</c> silently ignores writes to
+        /// <c>transform.position</c>, which is the exact shape of bug that makes a fix pass
+        /// review and do nothing. Rotation is deliberately left alone — the player keeps the
+        /// heading they were holding, so what they see is the world snapping back around
+        /// them and not a respawn.
+        /// </para>
+        /// </summary>
+        private void CheckBounds()
+        {
+            var root = _playerRoot;
+            if (!_raceMode || _onSurface || root == null || LocalPlayerIsGhost)
+            {
+                _bounds.Idle();
+                return;
+            }
+
+            var leaving = root.position;
+            if (!_bounds.Tick(GameConstants.FixedStep, leaving, OutOfBounds.SampleFloor(leaving)))
+            {
+                return;
+            }
+
+            var to = _bounds.Recovery;
+            var controller = root.GetComponent<CharacterController>();
+            if (controller != null)
+            {
+                controller.enabled = false;
+            }
+
+            root.position = to;
+
+            if (controller != null)
+            {
+                controller.enabled = true;
+            }
+
+            // A warning, not a log line. Zero is the number a shipped map should read, so
+            // every one of these is either a seam in the shell or a bug in this guard, and
+            // both want to be yellow. LogWarning rather than LogError because the Test
+            // Framework fails a test on an unexpected LogError and a recovery is a thing
+            // that WORKED — the map is what failed.
+            Debug.LogWarning(
+                "[Match] §01 맵 밖 — B" + (Mathf.RoundToInt(-to.y / OutOfBounds.StoreyPitchMetres) + 1)
+                + " 주자를 되돌린다: "
+                + (_bounds.Reason == OutOfBoundsReason.BelowTheBuilding
+                    ? "건물 아래로 떨어졌다 (마지막 발자국보다 "
+                      + OutOfBounds.StoreyPitchMetres.ToString("0.00") + " m 넘게 아래)"
+                    : "발밑에 바닥이 없다 (NavMesh " + OutOfBounds.FloorSearchRadiusMetres.ToString("0.0")
+                      + " m 안에 아무것도, " + OutOfBounds.OutsideGraceSeconds.ToString("0.0") + "초 동안)")
+                + ". 나간 자리 " + leaving.ToString("0.00") + " → 마지막 발자국 " + to.ToString("0.00")
+                + " — " + Vector3.Distance(leaving, to).ToString("0.0") + " m 무효, "
+                + _clock.ElapsedSeconds.ToString("0") + "초, 이번 판 " + _bounds.Recoveries + "번째.", this);
+
+            var moved = RunnerPutBack;
+            if (moved != null)
+            {
+                moved(leaving, to);
             }
         }
 

@@ -1435,6 +1435,25 @@ namespace HorrorGame.EditorTools.SceneGen
             var ordered = new List<MapCell>(_corridor);
             ordered.Sort(CompareCells);
 
+            // Every 막힌 길 the tiler is responsible for closing, gathered before a piece
+            // is placed so the two passes below can be checked against it rather than
+            // trusted. One corridor neighbour, no 문 across it, no 계단 arriving at it,
+            // and not a cell a room already floors — the same set §12 counts from the
+            // graph, seen from the tiler's side.
+            var blindEnds = new List<MapCell>();
+            foreach (var cell in ordered)
+            {
+                if (InsideRoom(cell) || doorCells.Contains(cell) || landings.ContainsKey(cell))
+                {
+                    continue;
+                }
+
+                if (CountBits(MaskWithStair(cell, landings)) == 1)
+                {
+                    blindEnds.Add(cell);
+                }
+            }
+
             // Dead-end caps first: the cap is 2 cells long, so it has to claim its
             // outward cell before the straight tiler does.
             var capOrigins = new List<MapCell>();
@@ -1489,27 +1508,34 @@ namespace HorrorGame.EditorTools.SceneGen
                     continue;
                 }
 
-                // Not where another cap is already standing within two cells.
+                // There used to be a third guard here: no cap within Chebyshev 3 of
+                // another cap's origin. It is gone, and this is why.
                 //
-                // A DeadEndCap is a solid two-cell box with one opening, and the radial
-                // storeys put blind cells close enough together that caps cluster: measured
-                // on one floor, 29 caps with 14 pairs inside two cells of each other, and in
-                // one 3 x 3 there were FOUR — at (17,4), (17,6), (15,6) and (17,7). Stacked
-                // like that they wall each other's openings off, and the floor ends up with
-                // pockets nothing can path out of. The graph says every one of those cells is
-                // reachable, §12 counts them, the checklist passes, and only the NavMesh bake
-                // disagrees — nine two-cell islands with no way in.
+                // It was added by 0a65f45 to stop caps clustering — "in one 3 x 3 there
+                // were FOUR" — and that commit's own measurement records what it bought:
+                // "the NavMesh audit came back byte-identical to the run before it …
+                // the caps were a real defect and they were NOT the cause of the islands.
+                // Committing the fix … not because it bought anything measurable." So the
+                // rule never protected the bake. It was a tidiness rule with a magic 3 in
+                // it, and the claim it left behind — that a declined cell is "still walled
+                // by its neighbours' geometry" — was false. A declined cell falls through
+                // to the greedy straight tiler and gets a Corridor_Straight_2m5, which is
+                // authored with walls on its two long sides and NOTHING at either end.
+                // Measured on the shipped scene: 152 막힌 길, 104 capped, 8 barred, and 40
+                // left as 2.2 m doorways out of the maze — five per storey, the same five
+                // on all eight, one of them 9.0 m from B8's finish across the open floor
+                // slab. That is the owner's "맵밖으로 나갈수가있는거같은데".
                 //
-                // Dropping the cap costs a dressed end wall and nothing else: the cell is
-                // still floor, still walled by its neighbours' geometry, still a 막힌 길 in
-                // the graph. Keeping it costs a floor nobody can finish.
-                if (capOrigins.Exists(o => o.Level == cell.Level
-                                           && System.Math.Max(System.Math.Abs(o.X - cell.X),
-                                                              System.Math.Abs(o.Z - cell.Z)) <= 3))
-                {
-                    continue;
-                }
-
+                // What removing it costs, measured on the same scene by placing all 40:
+                // caps per storey 13 → 18, cap footprints sharing an edge 0 → 2, densest
+                // 3 x 3 by cap origin 1 → 2. The four-in-a-3x3 lump does not come back.
+                // Nothing else moves: no two 막힌 길 on this map want the same outward
+                // cell (measured: 0 contentions), so no cap loses its place, and every one
+                // of the 40 has a degree-3 Junction_T as its one neighbour, so no pair of
+                // caps can seal each other in. The numbers are logged below rather than
+                // enforced, because the thing worth knowing is how dense the caps got, and
+                // a silent 'continue' is what turned that into a hole in the building.
+                //
                 // The cap is authored with its dock on −Y and its body running +Y, so
                 // it faces the corridor it closes off.
                 var capAt = MinCell(cell, beyond);
@@ -1519,6 +1545,48 @@ namespace HorrorGame.EditorTools.SceneGen
                 consumed.Add(cell);
                 consumed.Add(beyond);
             }
+
+            // Second pass: close whatever the cap could not take.
+            //
+            // A cap needs a second cell, and there are three ways it can be refused one —
+            // the cell beyond is corridor, is already taken, or belongs to a room. When
+            // that happens the 막힌 길 must NOT be handed to the greedy tiler: §12's maze
+            // is what makes §02's race to the middle cost anything, and a corridor end
+            // that opens onto the storey's own floor slab is a runner walking round the
+            // 4 → 2 → 1 gates instead of through them. MapSceneBuilder.BuildFloorSlab
+            // pours that slab under the walls and between the corridors, so outside is
+            // not a void here — it is a shortcut.
+            //
+            // ObservationPostBarredWindow is the kit's only ONE-cell blind end: authored
+            // with a solid W wall, a solid N wall at the far end and its single dock on
+            // −Y, so it closes the end inside the cell it is given and claims nothing it
+            // could take from a neighbour. That is what makes this pass total — it cannot
+            // itself be refused. The window it carries sits at 1.00 ~ 2.20 m in a SIDE
+            // wall behind 0.13 m bars, above solid masonry, so it is a sightline and never
+            // a passage; §12's 창문 · 격자 is the same fixture doing the same job one cell
+            // further in. The cost, said plainly: where this fires the cell reads as an
+            // Observer post rather than as a 막힌 길 with a 전리품 plinth, and
+            // DressingSpace.IsObservationPost keys off the piece name, so the dresser will
+            // leave those walls bare. On the shipped map it fires nowhere — all 40 take a
+            // real cap — and an unexercised branch is worth exactly what it says on the
+            // log line below.
+            var barred = 0;
+            foreach (var cell in blindEnds)
+            {
+                if (consumed.Contains(cell))
+                {
+                    continue;
+                }
+
+                tiles.Add(new MapTilePlacement(
+                    MapKitPiece.ObservationPostBarredWindow, cell,
+                    MapDirections.YawFacing(FirstDirection(MaskWithStair(cell, landings))),
+                    zoneOf[cell]));
+                consumed.Add(cell);
+                barred++;
+            }
+
+            ReportBlindEnds(blindEnds, capOrigins, consumed, barred);
 
             foreach (var cell in ordered)
             {
@@ -1659,6 +1727,83 @@ namespace HorrorGame.EditorTools.SceneGen
             }
 
             return tiles.ToArray();
+        }
+
+        /// <summary>
+        /// States what happened to every 막힌 길, and refuses to build a map with an open
+        /// one.
+        /// <para>
+        /// This is the falsifier for the pass above, and it is a throw rather than a log
+        /// because of what the alternative looked like: 40 corridor ends stood open in a
+        /// shipped scene, on every one of the eight storeys, and nothing said so. The
+        /// §12 checklist reads the graph — where those cells are perfectly good 막힌 길 —
+        /// the NavMesh audit reads the baked surface, which the storey's floor slab is
+        /// not part of, and the 주자 tests walk the intended route. Three green gates and
+        /// a hole in the building. The count below is the one number that can see it.
+        /// </para>
+        /// <para>
+        /// The cap density is reported and not enforced, so that 0a65f45's measurement
+        /// stays comparable: it counted "14 pairs inside two cells of each other" on one
+        /// floor and called that clustering. If a future layout brings the lump back, it
+        /// shows up here as a number instead of as 40 silently declined caps.
+        /// </para>
+        /// </summary>
+        /// <exception cref="MapSketchException">A 막힌 길 reached the greedy tiler, which would leave it open at the far end.</exception>
+        private static void ReportBlindEnds(
+            List<MapCell> blindEnds, List<MapCell> capOrigins, HashSet<MapCell> consumed, int barred)
+        {
+            var open = new List<MapCell>();
+            foreach (var cell in blindEnds)
+            {
+                if (!consumed.Contains(cell))
+                {
+                    open.Add(cell);
+                }
+            }
+
+            if (open.Count > 0)
+            {
+                throw new MapSketchException(
+                    open.Count + " 막힌 길 reached the straight tiler with nothing closing them: "
+                    + Describe(new HashSet<MapCell>(open)) + ". Corridor_Straight_2m5 is authored with "
+                    + "walls on its two long sides and nothing at either end, so each of these would be a "
+                    + MapKitCatalogue.CorridorClearWidth.ToString("0.00")
+                    + " m doorway out of §12's maze onto the storey's own floor slab — and §02 is a race to "
+                    + "the middle that the maze is the whole cost of. Close it with a piece, not with a "
+                    + "comment.");
+            }
+
+            // Pairs of caps whose origins sit inside two cells of each other, on the same
+            // storey. 0a65f45's unit, so the two runs can be compared directly.
+            var close = 0;
+            var tightest = int.MaxValue;
+            for (var i = 0; i < capOrigins.Count; i++)
+            {
+                for (var j = i + 1; j < capOrigins.Count; j++)
+                {
+                    if (capOrigins[i].Level != capOrigins[j].Level)
+                    {
+                        continue;
+                    }
+
+                    var gap = System.Math.Max(
+                        System.Math.Abs(capOrigins[i].X - capOrigins[j].X),
+                        System.Math.Abs(capOrigins[i].Z - capOrigins[j].Z));
+                    tightest = System.Math.Min(tightest, gap);
+                    if (gap <= 2)
+                    {
+                        close++;
+                    }
+                }
+            }
+
+            UnityEngine.Debug.Log(
+                "[SceneGen] 막힌 길 " + blindEnds.Count + "개 전부 막혔다: 막힌 길 cap "
+                + capOrigins.Count + ", 격자창 " + (blindEnds.Count - capOrigins.Count - barred)
+                + " (관측 지점) + " + barred + " (cap이 들어갈 자리가 없어서), 열린 채 남은 곳 "
+                + open.Count + ". "
+                + "Cap origins inside two cells of one another: " + close + " pair(s), tightest "
+                + (tightest == int.MaxValue ? "n/a" : tightest.ToString()) + " cell(s).");
         }
 
         /// <summary>

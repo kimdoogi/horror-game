@@ -48,6 +48,19 @@ namespace HorrorGame.EditorTools.SceneGen
         public const string NavigationBandRootName = "NavMeshBands";
 
         /// <summary>
+        /// Child of the root holding the per-storey boundary shells — the box each
+        /// storey is sealed inside so a runner cannot get out of the building.
+        /// <para>
+        /// ASCII, and every object under it is ASCII, on purpose. Unity escapes Korean
+        /// in <c>m_Name</c> as <c>\uXXXX</c>, so a name like 경계 cannot be counted with
+        /// a grep of the written scene and a zero would read as "the shells are missing"
+        /// when it means "the grep was wrong". Everything about this object is meant to
+        /// be checkable from the <c>.unity</c> file without opening Unity.
+        /// </para>
+        /// </summary>
+        public const string BoundaryRootName = "Boundary";
+
+        /// <summary>
         /// The object a generated map must <em>not</em> contain.
         /// <para>
         /// A previous generation bridged each 계단's two flights with a
@@ -64,6 +77,109 @@ namespace HorrorGame.EditorTools.SceneGen
 
         /// <summary>Y offset of a zone's floor slab below the corridor floor, metres. Just enough to stop z-fighting.</summary>
         private const float FloorSlabDepth = 0.01f;
+
+        /// <summary>
+        /// How far below a storey's own floor its shell starts, metres, and therefore
+        /// where one storey's shell stops and the next one's begins.
+        /// <para>
+        /// It is a window, not a taste. The split has to fall below the deepest thing the
+        /// storey builds downward — the zone floor slab, whose underside is
+        /// <see cref="FloorSlabDepth"/> plus the tile's own 0.154 m, so 0.164 m below the
+        /// floor — and it has to leave the tallest thing the storey builds upward inside
+        /// the same shell, because the shells tile the tower with no gap: a shell's
+        /// inside is exactly one <see cref="MapKitCatalogue.StoreyMetres"/> tall, so
+        /// giving the bottom this much takes the same amount off the top, and a corridor
+        /// piece is 3.3 m against a 3.75 m storey. That leaves 0.164 &lt; x &lt; 0.45, and
+        /// 0.25 is the middle of it. <see cref="BuildStoreyShells"/> re-derives both
+        /// walls from <see cref="MapKitCatalogue"/> and says so if a kit re-export ever
+        /// closes the window.
+        /// </para>
+        /// <para>
+        /// <b>It no longer decides where any horizontal plate goes, and that is the fix
+        /// this round.</b> It used to: every shell grew a floor plate down from this plane
+        /// and a lid up from it, which put a 1.0 m slab across the seam and a plate's top
+        /// face 0.25 m proud of the floor above. Now it settles one thing only — which
+        /// storey's shell owns which slice of the wall curtain. The curtain is continuous
+        /// either way, because shell L's walls run from <c>FloorY(L) − this</c> to
+        /// <c>FloorY(L−1) − this</c> and consecutive walls therefore meet face to face all
+        /// the way down the tower.
+        /// </para>
+        /// </summary>
+        private const float ShellUnderfloorMetres = 0.25f;
+
+        /// <summary>
+        /// Thickness of a boundary WALL, metres.
+        /// <para>
+        /// Not about tunnelling: the runner is a <see cref="CharacterController"/> and
+        /// <c>Move</c> sweeps, so it cannot pass through a wall of any thickness. It is
+        /// about leaving a wall that is still unambiguously solid when something else
+        /// meets it, and the fastest thing that can meet a wall is a runner sprinting
+        /// straight into it — <see cref="GameConstants.RunnerSprintSpeed"/> 5.6 m/s, which
+        /// is 0.112 m in one <see cref="GameConstants.FixedStep"/>. Half a metre is four
+        /// and a half of those. It is also a fifth of the kit's
+        /// <see cref="MapKitCatalogue.GridMetres"/> cell, and every wall grows OUTWARD from
+        /// the footprint it encloses, so the boundary never claims so much as a cell of
+        /// ground beyond the building.
+        /// </para>
+        /// </summary>
+        private const float ShellWallMetres = 0.5f;
+
+        /// <summary>
+        /// Thickness of a horizontal boundary plate, metres — derived, not chosen.
+        /// <para>
+        /// A plate is a different job from a wall and it gets a different number, because
+        /// the fastest thing that can meet one is far slower. <b>Nothing falls onto a
+        /// plate.</b> The band plates are laid flush with the floor they continue, so a
+        /// runner steps onto one without dropping at all; the only vertical travel in the
+        /// building is a 투하구, and that lands on the storey's own slab, not on the
+        /// boundary. What is left is a jump — <see cref="GameConstants.JumpApexMetres"/>
+        /// 0.35 m, so <see cref="GameConstants.JumpTakeoffSpeed"/> 2.62 m/s, or 0.052 m in
+        /// one <see cref="GameConstants.FixedStep"/>. Three of those — the shortest run of
+        /// steps this project is willing to call unambiguous — is 0.157 m, which lands
+        /// within a millimetre of the kit's own 0.154 m floor tile. That is a pleasing check
+        /// and not the reason; the reason is the jump.
+        /// </para>
+        /// <para>
+        /// It matters that this is small rather than generous. A plate's top face is flush
+        /// with a floor, so every millimetre of its thickness hangs into the room below it;
+        /// 0.157 m out of a 3.75 m storey is the same order as the slab that already hangs
+        /// there, and half a metre would not be.
+        /// </para>
+        /// </summary>
+        private static readonly float ShellPlateMetres =
+            3f * GameConstants.JumpTakeoffSpeed * GameConstants.FixedStep;
+
+        /// <summary>
+        /// Metres above its 착지 a 투하구 puts a runner down — the runtime's own
+        /// <c>Chute.DropHeightMetres</c>.
+        /// <para>
+        /// Restated rather than referenced because this class lives in an editor assembly
+        /// that does not reference the runtime's Race assembly (see the asmdef's list),
+        /// which is the same reason <c>DescentPlaythroughTests</c> keeps its own copy of
+        /// the storey pitch. It is used for one thing only: to prove, at generation time,
+        /// that no boundary plate stands in the 3.0 m of air a runner falls through. If
+        /// the runtime ever changes the drop, this number is wrong in the safe direction
+        /// only by luck — so <see cref="VerifyChutesDropIntoOpenAir"/> prints it, and
+        /// <c>DescentPlaythroughTests</c> measures the real one against the real geometry.
+        /// </para>
+        /// </summary>
+        private const float ChuteDropHeightMetres = 3.0f;
+
+        /// <summary>
+        /// Slack the shell's own containment check allows at a wall, metres.
+        /// <para>
+        /// The map touches its boundary exactly: a corridor on the zone's first cell has
+        /// its outer wall face ON the shell's inner wall face, so the honest margin there
+        /// is zero and the check is comparing two floats that came from different
+        /// arithmetic — <see cref="AlignMinCorner"/> nudges a transform by
+        /// <c>min − bounds.min</c> and then the bounds are recomputed from the moved
+        /// transform. A centimetre is four orders of magnitude under the 0.6 m a 0.30 m
+        /// capsule needs to pass, so nothing a player can use hides inside it, and it
+        /// keeps the check from reporting sixty-four rim pieces as escapes because of a
+        /// rounding bit.
+        /// </para>
+        /// </summary>
+        private const float ShellSeamToleranceMetres = 0.01f;
 
         /// <summary>
         /// The area index Unity reserves for "not walkable" — a hole in the NavMesh.
@@ -178,6 +294,11 @@ namespace HorrorGame.EditorTools.SceneGen
 
             BuildMarkers(root, map, zoneLightRoots);
             BuildAmbience();
+
+            // Last of the geometry, and after everything that owns a renderer, because
+            // the shells check themselves against it: nothing the generator wrote may
+            // lie outside the box its storey is sealed in.
+            BuildStoreyShells(root, map, zoneRoots);
             BuildNavigationBands(root, map, climbs);
             BakeNavMesh(root, map, sceneName);
             ForbidStairLinks(root);
@@ -684,6 +805,947 @@ namespace HorrorGame.EditorTools.SceneGen
 
             return true;
         }
+
+        // ====================================================================
+        // The boundary — §01's building had none, and a race with no walls is not a race.
+        // ====================================================================
+
+        /// <summary>
+        /// Seals every storey inside an invisible box: four walls round the tower's
+        /// footprint, and — where a storey's shell reaches past its own floor slab — a
+        /// plate laid flush with that slab to floor the band between them.
+        /// <para>
+        /// <b>The building has never had an outside.</b> <see cref="MapKitPiece.FloorBoundarySplit"/>
+        /// is in the catalogue and no generator has ever placed one; grep the tree and it
+        /// appears exactly twice, in the enum and in the file-name switch. Beyond the last
+        /// drawn cell there was nothing at all — and, worse, INSIDE the last drawn cell
+        /// there was a 57.5 m square of bare floor slab. <see cref="BuildFloorSlab"/>
+        /// pours a tile over every cell of a zone's rectangle, and §01's radial storeys
+        /// only stand corridors on 213 of a storey's 529 cells; the other 316 are poured
+        /// concrete with nothing on them, 0.01 m below the corridor floors, which is a
+        /// step a 0.40 m <c>stepOffset</c> does not even notice.
+        /// </para>
+        /// <para>
+        /// <b>What was measured before this was written, seed 20260802, all eight
+        /// storeys.</b> A corridor piece is open at both ends and an end with no
+        /// neighbour is supposed to be closed by <see cref="MapKitPiece.DeadEndCap"/>.
+        /// 152 cells on the map have exactly one corridor neighbour. 104 got a cap and 8
+        /// got a barred window, so <b>40 did not</b> — five on every storey, because
+        /// <c>MapSketch.BuildTiles</c> drops a cap that would stand within three cells of
+        /// another one, and the cell then falls through to the greedy straight tiler,
+        /// which lays a <see cref="MapKitPiece.CorridorStraight2m5"/>: a piece with walls
+        /// on its long sides and <em>nothing at either end</em>. Each of those 40 is a
+        /// 2.2 m doorway out of the maze. Two per storey are on the rim at Chebyshev
+        /// radius 11 and one of those, (1,9), points at cell 0 — off the edge of the slab
+        /// itself, which is a fall with nothing under it for the whole depth of the
+        /// building, since every storey's slab has the same footprint.
+        /// </para>
+        /// <para>
+        /// <b>This is why the shell is a box round the footprint and not a fence at the
+        /// rim.</b> The 40 holes are at radius 4, 8 and 11 — the two inner ones open into
+        /// the empty ring the gates are punched through, and flooding that void from an
+        /// open end reaches radii 4 through 12 on every storey. A wall only at the rim
+        /// would have left all of that. A box round the whole footprint catches every one
+        /// of them, because there is nowhere outside it to be.
+        /// </para>
+        /// <para>
+        /// <b>And it is why the footprint is measured off the placed objects.</b> The
+        /// first version of this sized the box from the zone rectangle the sketch
+        /// declares, which is the obvious reading of "sized from the zone the storey
+        /// occupies" and is wrong twice over — see <see cref="Widen"/>, and the 19
+        /// dead-end caps that were left standing outside it.
+        /// </para>
+        /// <para>
+        /// <b>It does not restore the gates, and that must not be read as if it did.</b>
+        /// A runner who steps out at radius 8 is still standing on open slab that runs
+        /// from outside the 외곽 band to just outside the 안쪽 one, so §12-A's 4 → 2 → 1
+        /// narrowing can still be walked round. The shell keeps them in the building;
+        /// closing the 40 ends is a change to <c>MapSketch.BuildTiles</c> and is written
+        /// up in the report beside this change. Both are needed and only one is here.
+        /// </para>
+        /// <para>
+        /// <b>The first version of this put a plate under every storey and a lid over
+        /// every storey, and both were wrong. This is what the artefact said.</b> Read out
+        /// of the written scene: <c>StoreyShell_B1/Floor</c> spanned y [−0.750, −0.250] and
+        /// <c>StoreyShell_B2/Lid</c> spanned y [−0.250, +0.250], so the two of them made a
+        /// continuous 1.0 m slab across the whole 62.5 × 62.5 m footprint, straddling the
+        /// seam. That is where a 투하구 drops a runner: 착지 is <c>FloorY(level)</c> and
+        /// <c>Chute.DropPoint</c> is 착지 + 3.0 m, which for B2's 착지 at y = −3.750 is
+        /// y = −0.750 — the underside of that slab, with a 1.75 m capsule standing up
+        /// through all of it. Same arithmetic at all seven seams. And at the other end the
+        /// lid's top face stood 0.25 m proud of the floor above it across the entire
+        /// footprint, which is what a runner on B1..B7 was actually standing on: measured,
+        /// the reach audit's tallest climb went 0.045 → 0.237 m and its headroom probe
+        /// reported a standing place at y −11.00, which is <c>StoreyShell_B5/Lid</c>, not
+        /// B4's floor at −11.25.
+        /// </para>
+        /// <para>
+        /// <b>So the shell has no plate under the map at all now.</b> The map already has a
+        /// floor — <see cref="BuildFloorSlab"/> pours one over every cell of a zone's
+        /// rectangle — and the only place the shell reaches past it is the band between the
+        /// slab's edge and the wall, which exists because <see cref="Widen"/> sizes the box
+        /// round dead-end caps that stand at cell 0, outside the zone. That band is the
+        /// only thing left to floor, and it is floored with its top face on the slab's own
+        /// top plane, <c>FloorY(L) − FloorSlabDepth</c>. Three things follow, and each was
+        /// a defect before: nothing stands proud of anything, so the reach audit's climb is
+        /// the map's own again; no boundary collider is under the map, so a 발소리 raycast
+        /// and a headroom probe find the floor the player can see; and the 3.0 m of air
+        /// under every 투하구 is empty of boundary — measured at generation by
+        /// <see cref="VerifyChutesDropIntoOpenAir"/>, not asserted here.
+        /// </para>
+        /// <para>
+        /// <b>The tower's own two ends keep plates, and they are genuinely one-sided.</b>
+        /// A lid over B1 closes the top of the wall curtain; nothing in the building can
+        /// reach it (<c>GameConstants.JumpApexMetres</c> 0.35 m is pinned below the 0.40 m
+        /// step offset, so a jump reaches a strict subset of what walking reaches) and it
+        /// is there so "sealed" means a closed surface rather than an argument. A plate
+        /// under B8 hangs beneath that storey's slab — below it is outside the building,
+        /// and a hairline between two poured tiles there is a fall with nothing under it
+        /// for thirty metres. Neither is above a floor, so neither can be stood on.
+        /// </para>
+        /// <para>
+        /// <b>One footprint for the whole tower, and that is a fix too.</b> Measured per
+        /// storey, B4, B6 and B7 came out 60.0 × 62.5 m against everybody else's 62.5 ×
+        /// 62.5 — their <c>Wall_XMin</c> stood at x [2.000, 2.500] — because those three
+        /// storeys happen to have no <see cref="MapKitPiece.DeadEndCap"/> at cell x = 0,
+        /// while the other five do. Nothing was outside, and the log still said "Each
+        /// inside is 62.5 x 62.5 m" for all eight. §01's building is ONE column; a wall
+        /// that steps in by a cell on three floors is a building nobody drew, it leaves the
+        /// band above it unfloored for two storeys at a stretch, and it makes the
+        /// containment check below compare a storey against a box that is not its own. The
+        /// footprint is still MEASURED, storey by storey, off the objects that were placed
+        /// — it is then unioned, and every storey is sealed in the union.
+        /// </para>
+        /// <para>
+        /// <b>It does not close the 40 open ends, and the band is still walkable.</b> A
+        /// runner who finds one of them at the rim steps out onto the band and can follow
+        /// it along the side of the building. That was true when the band was a ledge 0.25 m
+        /// down and it is true now that it is flush; what changed is only that stepping
+        /// back is no longer a climb. The band is inside the walls, so it is not an escape —
+        /// but it is a corridor §12 never drew, and the fix for it is
+        /// <c>MapSketch.BuildTiles</c>, not this file.
+        /// </para>
+        /// <para>
+        /// <b>One consequence that is real.</b> A creature's 1.4 m
+        /// <c>MatchDirector.PushDoors</c> sphere can now find a band plate or a wall: one
+        /// more collider in a 32-slot buffer that a corridor fills to about eight, and it
+        /// is filtered out by the <c>GetComponentInParent&lt;DoorInteractable&gt;</c> the
+        /// loop already does. §09's <c>GhostRattleTarget</c> discards it outright — it has
+        /// no <c>Interactable</c> and its extent is far over the rattle range, which is the
+        /// scenery test that class already carries.
+        /// </para>
+        /// </summary>
+        private static void BuildStoreyShells(GameObject root, MapSketchResult map, GameObject[] zoneRoots)
+        {
+            // Both walls of ShellUnderfloorMetres' window, re-derived from the kit rather
+            // than restated, so a re-export that thickens a floor tile or raises a
+            // corridor says so here instead of shipping a shell that clips one of them.
+            var slabUnderside = FloorSlabDepth
+                + MapKitCatalogue.HeightMetres(MapKitPiece.FloorTileConcrete);
+            var roofHeadroom = MapKitCatalogue.StoreyMetres
+                - MapKitCatalogue.HeightMetres(MapKitPiece.CorridorStraight2m5);
+            if (ShellUnderfloorMetres <= slabUnderside || ShellUnderfloorMetres >= roofHeadroom)
+            {
+                Debug.LogError("[SceneGen] ShellUnderfloorMetres is " + ShellUnderfloorMetres
+                    + " m and the kit now demands more than " + slabUnderside.ToString("0.000")
+                    + " m and less than " + roofHeadroom.ToString("0.000")
+                    + " m. Below the floor the shell would cut the zone's own slab; above it the "
+                    + "shell would cut the corridor roofs, because the shells tile the tower with "
+                    + "no gap and what the bottom takes the top loses.");
+            }
+
+            var boundary = Child(root, BoundaryRootName);
+            var step = Mathf.RoundToInt(MapKitCatalogue.FloorTileMetres / MapKitCatalogue.GridMetres);
+            var interiors = new List<Bounds>();
+            var built = new List<PlacedPlate>();
+
+            // Per STOREY, not per zone, and the difference is a latent bug rather than a
+            // preference. §12 asks for 4~6 zones and says nothing about how they stack;
+            // §01's descent happens to put exactly one on each of its eight floors and so
+            // does FirstMapSketch, which is why a loop over ZoneRects looks correct. Give
+            // one storey two zones and that loop asks Child() for "StoreyShell_B3" twice,
+            // gets the same object back both times, and moves the first zone's plates onto
+            // the second zone's footprint — leaving half the storey open with a shell in
+            // the scene saying it is sealed. Grouping by level makes the name unique by
+            // construction and makes the box the union of what the storey holds.
+            var levels = new List<int>();
+            for (var i = 0; i < map.ZoneRects.Length; i++)
+            {
+                if (!levels.Contains(map.ZoneRects[i].Level))
+                {
+                    levels.Add(map.ZoneRects[i].Level);
+                }
+            }
+
+            levels.Sort();
+
+            // ── Pass 1: measure ──────────────────────────────────────────────
+            // Every number below is read off the objects this run placed. Nothing here
+            // decides a footprint; it finds one, and pass 2 builds to what was found.
+            var ownFootprint = new Dictionary<int, Plan>();
+            var floored = new Dictionary<int, Plan>();
+            var slabBottom = new Dictionary<int, float>();
+
+            foreach (var level in levels)
+            {
+                var box = Plan.Empty;
+                var slab = Plan.Empty;
+                var pouredArea = 0f;
+                var underside = float.PositiveInfinity;
+
+                for (var i = 0; i < map.ZoneRects.Length; i++)
+                {
+                    var rect = map.ZoneRects[i];
+                    if (rect.Level != level)
+                    {
+                        continue;
+                    }
+
+                    var zoneRoot = i < zoneRoots.Length ? zoneRoots[i] : null;
+                    Widen(rect, zoneRoot, step, ref box);
+
+                    var poured = SlabRectangle(rect, step);
+                    slab.Encapsulate(poured);
+                    pouredArea += poured.Area;
+                    underside = Mathf.Min(underside, SlabUndersideOf(zoneRoot, rect, slabUnderside));
+                }
+
+                // The band plates are the footprint MINUS this rectangle, so a rectangle
+                // that claims ground no tile was poured on is a hole in the floor that
+                // nothing will cover. One zone per storey makes the two areas equal by
+                // construction; two zones that do not tile their own bounding box do not,
+                // and this is the only place that would ever know.
+                if (slab.Exists && Mathf.Abs(pouredArea - slab.Area) > 0.01f)
+                {
+                    Debug.LogError("[SceneGen] B" + (level + 1) + "'s zones pour "
+                        + pouredArea.ToString("0.0") + " m² of floor but their bounding rectangle is "
+                        + slab.Area.ToString("0.0") + " m². The boundary floors only the band OUTSIDE "
+                        + "that rectangle, because the storey's own slab floors the inside — so the "
+                        + (slab.Area - pouredArea).ToString("0.0") + " m² difference is unfloored ground "
+                        + "inside the shell, which is a fall to the bottom of the tower.");
+                }
+
+                ownFootprint[level] = box;
+                floored[level] = slab;
+                slabBottom[level] = underside;
+            }
+
+            // One column, one footprint. Measured per storey and then unioned: B4, B6 and
+            // B7 measured 60.0 × 62.5 m against everybody else's 62.5 × 62.5 because those
+            // three have no DeadEndCap at cell x = 0, and sealing each storey in its own
+            // measurement is what let the containment check compare a storey against a box
+            // that was not its own. Any storey whose own measurement is smaller is named,
+            // so widening it is a fact in the log rather than a silent generosity.
+            var inside = Plan.Empty;
+            foreach (var level in levels)
+            {
+                inside.Encapsulate(ownFootprint[level]);
+            }
+
+            var widened = new List<string>();
+            foreach (var level in levels)
+            {
+                if (!Plan.Same(ownFootprint[level], inside, ShellSeamToleranceMetres))
+                {
+                    widened.Add("B" + (level + 1) + " " + ownFootprint[level].Describe());
+                }
+            }
+
+            // ── Pass 2: build ────────────────────────────────────────────────
+            foreach (var level in levels)
+            {
+                // One storey pitch exactly, so consecutive shells meet face to face with no
+                // gap and no overlap: this storey's walls stop on the plane the storey
+                // above starts its own, all the way down the tower.
+                var bottom = MapKitCatalogue.FloorY(level) - ShellUnderfloorMetres;
+                var top = bottom + MapKitCatalogue.StoreyMetres;
+                var interior = new Bounds(
+                    new Vector3((inside.MinX + inside.MaxX) * 0.5f, (bottom + top) * 0.5f,
+                        (inside.MinZ + inside.MaxZ) * 0.5f),
+                    new Vector3(inside.Width, top - bottom, inside.Depth));
+                interiors.Add(interior);
+
+                // One object per storey rather than one for the building, so a storey that
+                // is ever moved off the tower's axis takes its own box with it — the same
+                // reason DescentMap.SeedCreature measures from the floor's own recorded
+                // middle instead of from the Centre constant.
+                var shell = Child(boundary, "StoreyShell_B" + (level + 1));
+                var w = ShellWallMetres;
+                var mid = interior.center;
+                var height = interior.size.y;
+
+                // Each wall grows OUTWARD from the interior face, so the inside of the box
+                // is exactly the storey and no wall stands in it. The ±X walls run the full
+                // depth plus a thickness at each end, which is what closes the four
+                // vertical edges — a 0.30 m capsule needs only a 0.6 m gap, and a corner is
+                // where a box assembled from independent faces leaves one.
+                Plate(built, shell, "Wall_XMin",
+                    new Vector3(inside.MinX - (w * 0.5f), mid.y, mid.z),
+                    new Vector3(w, height, interior.size.z + (2f * w)));
+                Plate(built, shell, "Wall_XMax",
+                    new Vector3(inside.MaxX + (w * 0.5f), mid.y, mid.z),
+                    new Vector3(w, height, interior.size.z + (2f * w)));
+                Plate(built, shell, "Wall_ZMin",
+                    new Vector3(mid.x, mid.y, inside.MinZ - (w * 0.5f)),
+                    new Vector3(interior.size.x, height, w));
+                Plate(built, shell, "Wall_ZMax",
+                    new Vector3(mid.x, mid.y, inside.MaxZ + (w * 0.5f)),
+                    new Vector3(interior.size.x, height, w));
+
+                BuildBandPlates(built, shell, inside, floored[level],
+                    MapKitCatalogue.FloorY(level) - FloorSlabDepth);
+
+                // The tower's two ends, and only its ends. Above B1 and below B8 there is
+                // no storey to be sealed by, so these two are the closed surface; every
+                // other horizontal plane in the building is the map's own floor.
+                if (level == levels[0])
+                {
+                    Plate(built, shell, "Lid",
+                        new Vector3(mid.x, top + (ShellPlateMetres * 0.5f), mid.z),
+                        new Vector3(interior.size.x + (2f * w), ShellPlateMetres,
+                            interior.size.z + (2f * w)));
+                }
+
+                if (level == levels[levels.Count - 1])
+                {
+                    // Hung under the slab this storey actually poured, measured, so it is
+                    // below every floor a runner can stand on and cannot be one.
+                    var hang = slabBottom[level];
+                    Plate(built, shell, "Floor",
+                        new Vector3(mid.x, hang - (ShellPlateMetres * 0.5f), mid.z),
+                        new Vector3(interior.size.x + (2f * w), ShellPlateMetres,
+                            interior.size.z + (2f * w)));
+                }
+            }
+
+            // The second of the two reasons none of this reaches the NavMesh. The first is
+            // that a plate has no MeshFilter and BakeNavMesh collects
+            // NavMeshCollectGeometry.RenderMeshes, so CollectObjects.All finds nothing here
+            // to collect at all. This is belt and braces and it is also what writes
+            // m_IgnoreFromBuild: 1 into the scene, where it can be counted without Unity.
+            KeepOutOfNavMeshBake(boundary);
+
+            VerifyChutesDropIntoOpenAir(map, built);
+            VerifyNothingIsOutsideTheShells(root, boundary, interiors, built, widened);
+        }
+
+        /// <summary>
+        /// Floors the band between a storey's own slab and its shell wall — and floors
+        /// nothing else.
+        /// <para>
+        /// Four strips rather than one plate, and the difference is the whole point: a
+        /// plate under the storey would lie under the map, and the map already has a floor.
+        /// Whatever the boundary puts there competes with it — 0.164 m below and a runner
+        /// who steps off the slab has a step to climb back (measured: the reach audit's
+        /// tallest climb was 0.045 m and became 0.237 m); flush with it and two coplanar
+        /// surfaces answer the same downward raycast, which is how §04's 발소리 lookup and
+        /// the reach audit's headroom probe come to name a boundary plate as the floor.
+        /// Outside the slab there is no competition, because there is nothing there.
+        /// </para>
+        /// <para>
+        /// <paramref name="topY"/> is the slab's own top plane,
+        /// <c>FloorY(L) − FloorSlabDepth</c>, so the band and the slab are the same height
+        /// and stepping between them is not a step. The strips grow DOWN from it by
+        /// <see cref="ShellPlateMetres"/> and outward into the wall, so there is no hairline
+        /// at the join for a sweep to find.
+        /// </para>
+        /// <para>
+        /// The ±X strips run the full depth and the ±Z strips only the slab's width, the
+        /// same overlap rule the walls use, so the four corners are covered exactly once
+        /// and no seam runs corner to corner. A strip with no width is not built: on this
+        /// map the slab reaches the footprint's own +X and +Z edges, so six of the eight
+        /// storeys build two strips and none builds four.
+        /// </para>
+        /// </summary>
+        private static void BuildBandPlates(
+            List<PlacedPlate> built, GameObject shell, Plan inside, Plan slab, float topY)
+        {
+            if (!slab.Exists)
+            {
+                return;
+            }
+
+            var w = ShellWallMetres;
+            var t = ShellPlateMetres;
+            var centreY = topY - (t * 0.5f);
+
+            Strip(built, shell, "Band_XMin", inside.MinX - w, slab.MinX,
+                inside.MinZ - w, inside.MaxZ + w, centreY, t);
+            Strip(built, shell, "Band_XMax", slab.MaxX, inside.MaxX + w,
+                inside.MinZ - w, inside.MaxZ + w, centreY, t);
+            Strip(built, shell, "Band_ZMin", slab.MinX, slab.MaxX,
+                inside.MinZ - w, slab.MinZ, centreY, t);
+            Strip(built, shell, "Band_ZMax", slab.MinX, slab.MaxX,
+                slab.MaxZ, inside.MaxZ + w, centreY, t);
+        }
+
+        /// <summary>One band strip, or nothing at all when the slab already reaches the wall.</summary>
+        private static void Strip(
+            List<PlacedPlate> built, GameObject shell, string name,
+            float minX, float maxX, float minZ, float maxZ, float centreY, float thickness)
+        {
+            // A strip that is only the wall's own overhang wide IS the wall, not a floor.
+            // Every strip is built with a wall thickness of overhang on the side it meets
+            // the wall, so this is the same test on either axis: what is left over after
+            // the overhang has to be a band with real width in it.
+            if (maxX - minX <= ShellWallMetres + ShellSeamToleranceMetres
+                || maxZ - minZ <= ShellWallMetres + ShellSeamToleranceMetres)
+            {
+                return;
+            }
+
+            Plate(built, shell, name,
+                new Vector3((minX + maxX) * 0.5f, centreY, (minZ + maxZ) * 0.5f),
+                new Vector3(maxX - minX, thickness, maxZ - minZ));
+        }
+
+        /// <summary>
+        /// The underside of the floor this zone actually poured, metres.
+        /// <para>
+        /// Measured off the placed slab rather than computed from the piece table, for the
+        /// same reason <see cref="Widen"/> reads the drawn bounds: the table says a floor
+        /// tile is 0.154 m and the FBX is the artefact. Falls back to the table, saying so,
+        /// only when the zone has no floor to measure — which is itself worth knowing.
+        /// </para>
+        /// </summary>
+        private static float SlabUndersideOf(GameObject zoneRoot, MapZoneRect rect, float fromTheTable)
+        {
+            var fallback = MapKitCatalogue.FloorY(rect.Level) - fromTheTable;
+            if (zoneRoot == null)
+            {
+                return fallback;
+            }
+
+            var floorRoot = zoneRoot.transform.Find("Floor");
+            if (floorRoot == null || !TryBounds(floorRoot.gameObject, out var poured))
+            {
+                Debug.LogWarning("[SceneGen] B" + (rect.Level + 1) + " has no measurable floor slab under "
+                    + zoneRoot.name + "/Floor, so the plate under the tower is placed from the piece "
+                    + "table (" + fallback.ToString("0.000") + " m) instead of from what was poured.");
+                return fallback;
+            }
+
+            return poured.min.y;
+        }
+
+        /// <summary>
+        /// Grows a storey's footprint so it holds one of that storey's zones.
+        /// <para>
+        /// Three terms, and the third is the one that was missing when this was first
+        /// written and measured. The zone rectangle the sketch declares is not even the
+        /// edge of that zone's own floor: a 5 m tile is two cells and
+        /// <see cref="BuildFloorSlab"/> walks the rectangle in those steps, so a 23-cell
+        /// zone is floored out to cell 24. And a two-cell <see cref="MapKitPiece.DeadEndCap"/>
+        /// is placed at the lower of the blind cell and the cell BEYOND it, so a blind
+        /// cell on the zone's first row puts a cap at cell 0, outside the zone entirely.
+        /// Measured on §01's descent, seed 20260802: 19 caps stand at x = 0 or z = 0, each
+        /// putting 2.50 m of dressed geometry past a wall drawn on the rectangle. A box
+        /// sized from the declaration would have left nineteen ledges outside the
+        /// building — the bug being fixed, inside the fix.
+        /// </para>
+        /// <para>
+        /// So the third term is read off the objects that were actually placed rather than
+        /// derived from the piece table, which is the same choice this class makes when it
+        /// docks a piece by its world bounds instead of working out where a rotation moves
+        /// an FBX origin. Whatever the kit turns out to be, the box is round it.
+        /// </para>
+        /// </summary>
+        private static void Widen(MapZoneRect rect, GameObject zoneRoot, int step, ref Plan box)
+        {
+            // The floor this zone pours, from BuildFloorSlab's own arithmetic, so the slab
+            // and the wall that has to contain it cannot drift apart.
+            box.Encapsulate(SlabRectangle(rect, step));
+
+            if (zoneRoot == null || !TryBounds(zoneRoot, out var drawn))
+            {
+                return;
+            }
+
+            // Snapped outward onto the kit's own 2.5 m grid, with a centimetre of slack
+            // first so a wall face that is one float bit short of a grid line does not push
+            // the shell out by a whole cell. The snap is not tidiness: the band this leaves
+            // outside the slab is floored, so a wall left a few millimetres proud of the
+            // geometry is a few millimetres of standing room outside the maze with floor
+            // under it — and a band narrower than a wall's own thickness is not built at
+            // all, which is the other half of the same guard.
+            box.Encapsulate(new Plan
+            {
+                MinX = SnapDown(drawn.min.x),
+                MinZ = SnapDown(drawn.min.z),
+                MaxX = SnapUp(drawn.max.x),
+                MaxZ = SnapUp(drawn.max.z),
+            });
+        }
+
+        /// <summary>
+        /// The rectangle <see cref="BuildFloorSlab"/> actually pours for one zone, metres.
+        /// <para>
+        /// Its own loop, not a restatement of it: a 5 m tile is two cells and the loop steps
+        /// in twos from the zone's first cell, so a 23-cell zone is floored out to cell 24
+        /// and the slab is wider than the rectangle §12 declared. Two callers need this and
+        /// they must not disagree — <see cref="Widen"/> puts the wall outside it, and
+        /// <see cref="BuildBandPlates"/> floors only what is between them.
+        /// </para>
+        /// </summary>
+        private static Plan SlabRectangle(MapZoneRect rect, int step)
+        {
+            var lastTileX = rect.CellX + (((rect.CellsX - 1) / step) * step);
+            var lastTileZ = rect.CellZ + (((rect.CellsZ - 1) / step) * step);
+            return new Plan
+            {
+                MinX = rect.CellX * MapKitCatalogue.GridMetres,
+                MinZ = rect.CellZ * MapKitCatalogue.GridMetres,
+                MaxX = (lastTileX + step) * MapKitCatalogue.GridMetres,
+                MaxZ = (lastTileZ + step) * MapKitCatalogue.GridMetres,
+            };
+        }
+
+        /// <summary>Grid line at or below a coordinate, with <see cref="ShellSeamToleranceMetres"/> slack.</summary>
+        private static float SnapDown(float metres) =>
+            Mathf.Floor((metres + ShellSeamToleranceMetres) / MapKitCatalogue.GridMetres)
+            * MapKitCatalogue.GridMetres;
+
+        /// <summary>Grid line at or above a coordinate, with <see cref="ShellSeamToleranceMetres"/> slack.</summary>
+        private static float SnapUp(float metres) =>
+            Mathf.Ceil((metres - ShellSeamToleranceMetres) / MapKitCatalogue.GridMetres)
+            * MapKitCatalogue.GridMetres;
+
+        /// <summary>
+        /// One face of a shell: an empty object carrying a single <see cref="BoxCollider"/>.
+        /// <para>
+        /// No <see cref="MeshFilter"/> and no <see cref="Renderer"/> — not a disabled one,
+        /// none at all. That is what makes it invisible, and it is also the load-bearing
+        /// half of keeping it out of the bake, because <see cref="BakeNavMesh"/> collects
+        /// render meshes. A face with a disabled renderer would still be a mesh in the
+        /// scene for anything that walks <c>GetComponentsInChildren</c> with
+        /// <c>includeInactive</c>, which is how <see cref="FootprintOf"/> and the bake's
+        /// own triangle count read the map.
+        /// </para>
+        /// <para>
+        /// Named in ASCII and one object per face rather than six colliders on one, so
+        /// that when <c>PlayerTraversal</c> refuses a move it can print
+        /// <c>StoreyShell_B3/Wall_XMin</c> and the reader knows which face and which
+        /// storey. "Something is in the way" is not a bug report.
+        /// </para>
+        /// </summary>
+        private static void Plate(
+            List<PlacedPlate> built, GameObject parent, string name, Vector3 centre, Vector3 size)
+        {
+            var go = Child(parent, name);
+            go.transform.SetPositionAndRotation(centre, Quaternion.identity);
+            go.transform.localScale = Vector3.one;
+
+            var box = go.GetComponent<BoxCollider>();
+            if (box == null)
+            {
+                box = go.AddComponent<BoxCollider>();
+            }
+
+            box.center = Vector3.zero;
+            box.size = size;
+            box.isTrigger = false;
+
+            // Kept as a plain box rather than re-read off the collider later, so the checks
+            // below measure the same numbers this method wrote and a later reparenting
+            // cannot quietly move what they measure.
+            built.Add(new PlacedPlate(parent.name + "/" + name, new Bounds(centre, size)));
+        }
+
+        /// <summary>A boundary box this run wrote, and the name a failure should print.</summary>
+        private readonly struct PlacedPlate
+        {
+            public PlacedPlate(string name, Bounds box)
+            {
+                Name = name;
+                Box = box;
+            }
+
+            /// <summary>Scene path relative to the boundary root, e.g. <c>StoreyShell_B3/Wall_XMin</c>.</summary>
+            public string Name { get; }
+
+            /// <summary>World bounds of the collider.</summary>
+            public Bounds Box { get; }
+        }
+
+        /// <summary>
+        /// An axis-aligned rectangle in plan, metres.
+        /// <para>
+        /// A rectangle rather than a <see cref="Bounds"/> because every question the shells
+        /// ask is horizontal and a <c>Bounds</c> would carry a Y that means nothing here —
+        /// which is exactly how the first version came to compare a storey's footprint
+        /// against the tower's height and call it containment.
+        /// </para>
+        /// </summary>
+        private struct Plan
+        {
+            public float MinX;
+            public float MinZ;
+            public float MaxX;
+            public float MaxZ;
+
+            /// <summary>The rectangle that grows to hold the first thing put into it.</summary>
+            public static Plan Empty => new Plan
+            {
+                MinX = float.PositiveInfinity,
+                MinZ = float.PositiveInfinity,
+                MaxX = float.NegativeInfinity,
+                MaxZ = float.NegativeInfinity,
+            };
+
+            public bool Exists => MaxX > MinX && MaxZ > MinZ;
+
+            public float Width => MaxX - MinX;
+
+            public float Depth => MaxZ - MinZ;
+
+            public float Area => Exists ? Width * Depth : 0f;
+
+            /// <summary>True when two rectangles agree on all four edges within <paramref name="slack"/>.</summary>
+            public static bool Same(Plan a, Plan b, float slack) =>
+                Mathf.Abs(a.MinX - b.MinX) <= slack && Mathf.Abs(a.MinZ - b.MinZ) <= slack
+                && Mathf.Abs(a.MaxX - b.MaxX) <= slack && Mathf.Abs(a.MaxZ - b.MaxZ) <= slack;
+
+            public void Encapsulate(Plan other)
+            {
+                MinX = Mathf.Min(MinX, other.MinX);
+                MinZ = Mathf.Min(MinZ, other.MinZ);
+                MaxX = Mathf.Max(MaxX, other.MaxX);
+                MaxZ = Mathf.Max(MaxZ, other.MaxZ);
+            }
+
+            public string Describe() =>
+                "x [" + MinX.ToString("0.0") + ", " + MaxX.ToString("0.0")
+                + "] z [" + MinZ.ToString("0.0") + ", " + MaxZ.ToString("0.0") + "]";
+        }
+
+        /// <summary>
+        /// Proves, on the geometry this run just wrote, that no boundary collider stands in
+        /// the air a 투하구 drops a runner through.
+        /// <para>
+        /// <b>This is the check that was missing, and its absence shipped a map where every
+        /// drop landed inside a plate.</b> The reasoning in the first version was that a
+        /// 투하구 is not a hole — <c>Chute.Swallows</c> is a plan test and
+        /// <c>Chute.DropPoint</c> is a reposition — and that reasoning is correct and
+        /// entirely beside the point: the runner is repositioned to 착지 + 3.0 m and the
+        /// boundary had put a 1.0 m slab exactly there. A sentence in a doc comment cannot
+        /// find that. An overlap test can, and it costs nothing at generation time.
+        /// </para>
+        /// <para>
+        /// The body is the capsule's bounding box, which is conservative in the right
+        /// direction: it claims the corners a capsule does not fill, so a plate it calls
+        /// clear is clear for the capsule too. Its height and radius are
+        /// <see cref="PlayerTraversal.PlayerBody"/>'s documented numbers, deliberately not
+        /// measured off a rig here — measuring means building
+        /// <c>PlayerFeelHarnessMenu.BuildRig()</c> into the scene that is about to be saved.
+        /// The reach audit builds the real rig and would say so if the two ever parted.
+        /// </para>
+        /// <para>
+        /// It measures the boundary only. The map's own floor IS inside this capsule and
+        /// always has been — a 3.0 m drop plus a 1.75 m body is 4.75 m against a 3.75 m
+        /// storey — and calling that a defect would be measuring the building rather than
+        /// the shell. What the shell owes is that it adds nothing.
+        /// </para>
+        /// </summary>
+        private static void VerifyChutesDropIntoOpenAir(MapSketchResult map, List<PlacedPlate> built)
+        {
+            var body = new PlayerTraversal.PlayerBody();
+            var landings = 0;
+            var blocked = 0;
+            var tightest = float.PositiveInfinity;
+            var tightestWhere = "nothing";
+            var worst = string.Empty;
+
+            foreach (var marker in map.Markers)
+            {
+                if (marker.Kind != MapMarkerKind.ChuteLanding)
+                {
+                    continue;
+                }
+
+                landings++;
+
+                // Feet, not centre. CharacterController.center is (0, height/2, 0) on every
+                // rig this project builds, so the transform a chute assigns is the sole of
+                // the runner's foot and the body stands up from it.
+                var feet = ToUnity(marker.Position) + (Vector3.up * ChuteDropHeightMetres);
+                var capsule = new Bounds(
+                    feet + new Vector3(0f, body.Height * 0.5f, 0f),
+                    new Vector3(body.Radius * 2f, body.Height, body.Radius * 2f));
+
+                var nearest = float.PositiveInfinity;
+                var nearestName = "nothing";
+                foreach (var plate in built)
+                {
+                    var gap = Separation(capsule, plate.Box);
+                    if (gap < nearest)
+                    {
+                        nearest = gap;
+                        nearestName = plate.Name;
+                    }
+                }
+
+                if (nearest < 0f)
+                {
+                    blocked++;
+                    if (worst.Length == 0)
+                    {
+                        worst = marker.Name + " at " + feet.ToString("0.00") + " is inside "
+                            + nearestName + " by " + (-nearest).ToString("0.000") + " m";
+                    }
+                }
+
+                if (nearest < tightest)
+                {
+                    tightest = nearest;
+                    tightestWhere = marker.Name + " → " + nearestName;
+                }
+            }
+
+            if (landings == 0)
+            {
+                return;
+            }
+
+            if (blocked > 0)
+            {
+                Debug.LogError("[SceneGen] " + blocked + " of " + landings
+                    + " 투하구 drop a runner INTO the boundary — " + worst
+                    + ". Chute.DropPoint is 착지 + " + ChuteDropHeightMetres.ToString("0.0")
+                    + " m and the body stands " + body.Height.ToString("0.00")
+                    + " m up from there; a runner teleported inside a collider is pushed out the "
+                    + "short way, which at a storey seam is UP, back onto the floor they just left, "
+                    + "after MatchDirector has already recorded the descent. §01's only way down is "
+                    + "this drop.");
+                return;
+            }
+
+            Debug.Log("[SceneGen] 투하구: " + landings + " landings, all in open air. Tightest boundary "
+                + "clearance " + tightest.ToString("0.000") + " m (" + tightestWhere
+                + "), measured on the capsule's own box — " + body.Radius.ToString("0.00")
+                + " m radius by " + body.Height.ToString("0.00") + " m, " + body.Source
+                + " — standing at 착지 + " + ChuteDropHeightMetres.ToString("0.0")
+                + " m. This says nothing about the map's own floor, which the capsule is "
+                + "inside at every drop and always has been: 3.0 m + 1.75 m is 4.75 m against "
+                + "a 3.75 m storey.");
+        }
+
+        /// <summary>
+        /// Metres between two boxes: negative when they overlap, and then the depth of the
+        /// shallowest overlap. The largest per-axis gap is the answer, because two boxes are
+        /// apart the moment one axis separates them.
+        /// </summary>
+        private static float Separation(Bounds a, Bounds b)
+        {
+            var x = Mathf.Max(b.min.x - a.max.x, a.min.x - b.max.x);
+            var y = Mathf.Max(b.min.y - a.max.y, a.min.y - b.max.y);
+            var z = Mathf.Max(b.min.z - a.max.z, a.min.z - b.max.z);
+            return Mathf.Max(x, Mathf.Max(y, z));
+        }
+
+        /// <summary>
+        /// Measures the shells against what the generator actually wrote, and says the
+        /// numbers out loud.
+        /// <para>
+        /// Building a box and asserting in a comment that everything is inside it is the
+        /// failure this repo keeps finding — a green number nobody measured. So the check
+        /// is the artefact's: every <see cref="Renderer"/> under the map root has to sit
+        /// inside some storey's shell in plan, and inside the tower's total height.
+        /// </para>
+        /// <para>
+        /// Plan and height are checked separately on purpose. Horizontal containment is
+        /// the property this whole change exists for and it admits no exception: geometry
+        /// outside a wall is geometry a runner could be standing on outside the building.
+        /// Vertical containment is deliberately checked against the whole tower rather
+        /// than one storey, because crossing a storey line is legal and normal — a
+        /// storey's ceiling caps are poured at the plane of the floor above and therefore
+        /// live in the shell above, a 계단 climbs a whole storey by definition, and §12's
+        /// 6.3 m hall is taller than the 3.75 m it stands in.
+        /// </para>
+        /// <para>
+        /// <b>Against the shells that cover the object's own height, not against the best
+        /// of them, and that was a hole big enough to hide the defect it was written to
+        /// catch.</b> The first version took <c>Mathf.Max</c> over every interior — "the
+        /// best any shell does" — which is only sound while the shells share a footprint,
+        /// and they did not: B4, B6 and B7 came out 60.0 m wide against 62.5 for the rest,
+        /// so a renderer on B4 at x = 1.0 was checked against B1's wider box and passed.
+        /// The rule here is the physical one. At any height the enclosure is whichever
+        /// shell covers that height, so a piece has to be inside every shell its own
+        /// height reaches into — a ceiling cap poured at the plane of the floor above is
+        /// therefore judged by the shell above, which is where it is. A piece that reaches
+        /// into none of them is out of the tower and is judged by the nearest.
+        /// </para>
+        /// </summary>
+        private static void VerifyNothingIsOutsideTheShells(
+            GameObject root, GameObject boundary, List<Bounds> interiors,
+            List<PlacedPlate> built, List<string> widened)
+        {
+            if (interiors.Count == 0)
+            {
+                Debug.LogError("[SceneGen] No storey shell was built. A map with no boundary can be walked "
+                    + "out of, and §02's race to the middle is then a straight line across the footprint.");
+                return;
+            }
+
+            var visible = boundary.GetComponentsInChildren<Renderer>(true).Length;
+            if (visible > 0)
+            {
+                Debug.LogError("[SceneGen] " + visible + " renderer(s) under Map/" + BoundaryRootName
+                    + ". The boundary must be invisible — a player must never see a grey box — and a "
+                    + "renderer here is also geometry the NavMesh bake collects, which would move every "
+                    + "audit number in the report below.");
+            }
+
+            var towerBottom = float.PositiveInfinity;
+            var towerTop = float.NegativeInfinity;
+            foreach (var interior in interiors)
+            {
+                towerBottom = Mathf.Min(towerBottom, interior.min.y);
+                towerTop = Mathf.Max(towerTop, interior.max.y);
+            }
+
+            var counted = 0;
+            var loose = 0;
+            var overhead = 0;
+            var worstOvershoot = 0f;
+            var worstName = "nothing";
+            var tightest = float.PositiveInfinity;
+            var tightestName = "nothing";
+            var overheadName = "nothing";
+            var overheadReach = 0f;
+
+            foreach (var renderer in root.GetComponentsInChildren<Renderer>(true))
+            {
+                if (renderer.transform.IsChildOf(boundary.transform))
+                {
+                    continue;
+                }
+
+                counted++;
+                var b = renderer.bounds;
+
+                // Every shell this object's own height reaches into, and the WORST of
+                // them. A storey it does not reach cannot contain it and cannot excuse it.
+                var margin = float.PositiveInfinity;
+                var judged = false;
+                foreach (var interior in interiors)
+                {
+                    if (b.max.y < interior.min.y - ShellSeamToleranceMetres
+                        || b.min.y > interior.max.y + ShellSeamToleranceMetres)
+                    {
+                        continue;
+                    }
+
+                    judged = true;
+                    margin = Mathf.Min(margin, PlanMargin(b, interior));
+                }
+
+                if (!judged)
+                {
+                    // Above the lid or under the floor: still measured, against the shell
+                    // it is nearest to, so an escape at the top of the tower is not filed
+                    // as "no shell applies" and dropped.
+                    var nearest = float.PositiveInfinity;
+                    foreach (var interior in interiors)
+                    {
+                        var away = Mathf.Max(interior.min.y - b.max.y, b.min.y - interior.max.y);
+                        if (away < nearest)
+                        {
+                            nearest = away;
+                            margin = PlanMargin(b, interior);
+                        }
+                    }
+                }
+
+                var name = renderer.transform.parent == null
+                    ? renderer.name
+                    : renderer.transform.parent.name + "/" + renderer.name;
+
+                if (margin < -ShellSeamToleranceMetres)
+                {
+                    loose++;
+                    if (-margin > worstOvershoot)
+                    {
+                        worstOvershoot = -margin;
+                        worstName = name;
+                    }
+                }
+                else if (margin < tightest)
+                {
+                    tightest = margin;
+                    tightestName = name;
+                }
+
+                var above = b.max.y - towerTop;
+                var below = towerBottom - b.min.y;
+                var escaped = Mathf.Max(above, below);
+                if (escaped > ShellSeamToleranceMetres)
+                {
+                    overhead++;
+
+                    // Named, because a bare count is a fact nobody can act on. This has
+                    // read 1 since the shells were first built and nothing said which one.
+                    if (escaped > overheadReach)
+                    {
+                        overheadReach = escaped;
+                        overheadName = name + (above > below
+                            ? " reaches y " + b.max.y.ToString("0.00")
+                            : " reaches down to y " + b.min.y.ToString("0.00"));
+                    }
+                }
+            }
+
+            if (loose > 0)
+            {
+                Debug.LogError("[SceneGen] " + loose + " of " + counted
+                    + " renderers stand outside every storey shell in plan — worst "
+                    + worstOvershoot.ToString("0.00") + " m at " + worstName
+                    + ". Anything outside the boundary is somewhere a runner can be outside the "
+                    + "building, which is the defect the shells exist for. A shell is sized from its "
+                    + "zone rectangle, its floor slab and everything drawn under Zone_*, so what lands "
+                    + "here is what none of those three see: a prop, a 문 leaf under Markers, or a tile "
+                    + "the sketch left in Shared because it straddles two zones.");
+            }
+
+            if (overhead > 0)
+            {
+                Debug.LogError("[SceneGen] " + overhead + " of " + counted + " renderers reach above y "
+                    + towerTop.ToString("0.00") + " or below y " + towerBottom.ToString("0.00")
+                    + " — outside the tower's lid or its floor, furthest " + overheadName
+                    + ". Crossing ONE storey line is legal (a ceiling cap is poured at the plane of the "
+                    + "floor above it, a 계단 climbs a whole storey); leaving the building at the top or "
+                    + "the bottom is not.");
+            }
+
+            var narrower = widened.Count == 0
+                ? "Every storey measured the same footprint."
+                : widened.Count + " storey(s) measured smaller and were widened to it: "
+                    + string.Join(", ", widened) + ".";
+
+            Debug.Log("[SceneGen] 경계: " + interiors.Count + " storey shells / " + built.Count
+                + " box colliders / " + visible + " renderers under Map/" + BoundaryRootName
+                + ". Each inside is " + interiors[0].size.x.ToString("0.0") + " x "
+                + interiors[0].size.z.ToString("0.0") + " m by " + interiors[0].size.y.ToString("0.00")
+                + " m tall; together they seal y " + towerBottom.ToString("0.00") + " .. "
+                + towerTop.ToString("0.00") + " with no gap between storeys. " + narrower
+                + " No plate lies under the map — the storey's own slab is its floor, and the boundary "
+                + "floors only the band outside it, flush. Out of the NavMesh bake twice over — no "
+                + "MeshFilter for CollectObjects.All + NavMeshCollectGeometry.RenderMeshes to find, and "
+                + "NavMeshModifier.ignoreFromBuild with applyToChildren on the root, which is the "
+                + "m_IgnoreFromBuild: 1 the scene carries. Checked " + counted + " renderers against the "
+                + "shells covering their own height: " + loose + " outside a wall, " + overhead
+                + " above the lid or under the floor, tightest clearance to a wall "
+                + tightest.ToString("0.000") + " m at " + tightestName + ".");
+        }
+
+        /// <summary>
+        /// How far inside a shell's four walls a box sits, metres — negative when it is out.
+        /// The tightest of the four sides, because a piece is outside the moment one wall
+        /// is behind it.
+        /// </summary>
+        private static float PlanMargin(Bounds b, Bounds interior) =>
+            Mathf.Min(
+                Mathf.Min(b.min.x - interior.min.x, interior.max.x - b.max.x),
+                Mathf.Min(b.min.z - interior.min.z, interior.max.z - b.max.z));
 
         // ====================================================================
         // Placement.
