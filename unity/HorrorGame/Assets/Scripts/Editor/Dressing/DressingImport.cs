@@ -14,7 +14,7 @@ namespace HorrorGame.EditorTools.Dressing
     /// up; Unity's importer normally bakes that conversion into the mesh, and when it
     /// does not, every piece arrives lying on its back. A shelving bay measures
     /// 1.10 × 0.42 × 1.97 with the 1.97 in Z instead of Y — so it is 1.97 m *deep*,
-    /// it fails §08's carry-channel test in every corridor in the building, and the
+    /// it fails the clear-channel test in every corridor in the building, and the
     /// scatter quietly produces a level with almost no cover in it. That is precisely
     /// what happened on the first run of this tool: one bulk piece placed out of 265
     /// cells, with no error anywhere.
@@ -117,7 +117,7 @@ namespace HorrorGame.EditorTools.Dressing
         /// <summary>
         /// Combined bounds of an asset instantiated with the correction applied.
         /// <para>
-        /// Used to measure §08's carry envelope off the loot FBXs, which come out of
+        /// Used to measure a piece's real footprint off the FBX, which comes out of
         /// the same exporter and land the same way up.
         /// </para>
         /// </summary>

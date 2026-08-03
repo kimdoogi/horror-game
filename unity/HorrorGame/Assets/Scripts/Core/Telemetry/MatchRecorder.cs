@@ -1,6 +1,6 @@
 using System;
 using HorrorGame.Core.Match;
-using HorrorGame.Core.Roles;
+using HorrorGame.Core.Race;
 
 namespace HorrorGame.Core.Telemetry
 {
@@ -22,9 +22,9 @@ namespace HorrorGame.Core.Telemetry
     /// </para>
     /// <para>
     /// <b>What is emitted when.</b> Per-event measurements go to the sink as they
-    /// happen (a chase that ended, an item that was bought), so a match that never
+    /// happen (a chase that ended, a storey arrived on), so a race that never
     /// reaches an ending still contributes what it observed. Per-match figures — the
-    /// outcome, the four role picks, the round-trip count, the backpedal share —
+    /// outcome, the deepest storey reached, the backpedal share —
     /// cannot exist until the match is over and are emitted once, from
     /// <see cref="Complete"/>, together with the summary and a flush.
     /// </para>
@@ -53,21 +53,12 @@ namespace HorrorGame.Core.Telemetry
 
         private float _longestAggroSeconds;
 
-        private RoleId _role0;
-        private RoleId _role1;
-        private RoleId _role2;
-        private RoleId _role3;
-
         private int _aggroEvents;
-        private int _roundTrips;
-        private int _playersEscaped;
-        private int _playersDied;
-        private int _cluesRead;
-        private int _clueMisreads;
-        private int _batteriesUsed;
+        private int _deepestStorey;
+        private int _runnersFinished;
+        private int _runnersEliminated;
 
         private bool _aggroActive;
-        private bool _objectiveRecovered;
         private bool _completed;
         private MatchSummary _finalSummary;
 
@@ -148,29 +139,13 @@ namespace HorrorGame.Core.Telemetry
             }
         }
 
-        /// <summary>
-        /// Records the four roles that were taken. §11 uses the spread across §13's
-        /// five counters to check that no role is compulsory, so all four slots are
-        /// set at once — a partial roster would make the counters disagree with the
-        /// "four picks per match" invariant that makes them comparable.
-        /// <para>
-        /// Stored, not emitted: the picks reach the sink from
-        /// <see cref="Complete"/>, so a roster still being shuffled in the lobby
-        /// cannot inflate a role's count. Calling this again replaces the roster.
-        /// </para>
-        /// </summary>
-        public void SetRoster(RoleId slot0, RoleId slot1, RoleId slot2, RoleId slot3)
-        {
-            if (_completed)
-            {
-                return;
-            }
-
-            _role0 = slot0;
-            _role1 = slot1;
-            _role2 = slot2;
-            _role3 = slot3;
-        }
+        // DELETED with §04: SetRoster(RoleId, RoleId, RoleId, RoleId) and the four
+        // _role slots behind it. It existed to feed §13's 직업별 선택 카운터, whose
+        // question was §11's "필수 직업이 있으면 풀이 가짜가 된다". The pivot answered
+        // that question by deleting roles — 「캐릭터는 다 똑같이 생겨도되지」 — so
+        // there is no spread left to measure and the four-picks-per-match invariant
+        // the counters were readable through does not exist. Do not re-add without
+        // re-adding roles.
 
         /// <summary>
         /// Opens or closes a chase. §06's 추격 state, seen from the outside.
@@ -262,44 +237,31 @@ namespace HorrorGame.Core.Telemetry
         }
 
         /// <summary>
-        /// Records one return to the surface. §03 expects 2–5 per match and §13
-        /// checks the distribution against §07's curve; the count reaches the sink
-        /// from <see cref="Complete"/>, since only the final figure answers the
-        /// question.
-        /// </summary>
-        public void RecordRoundTrip()
-        {
-            if (_completed)
-            {
-                return;
-            }
-
-            _roundTrips = AddClamped(_roundTrips, 1);
-        }
-
-        /// <summary>
-        /// Records a clue having been read, and whether the reader took the wrong
-        /// thing away from it.
+        /// Records a runner arriving on a storey. §01 — going down IS the game, so
+        /// how deep the field got is the measurement the whole building is judged by.
         /// <para>
-        /// One method rather than two, because §03 makes the misread a *property of
-        /// a read* — "그 자리에서 보고, 기억해서" — and separate calls would let
-        /// <see cref="MatchSummary.ClueMisreads"/> exceed
-        /// <see cref="MatchSummary.CluesRead"/>. §03 wants the misread count
-        /// non-zero: it is the intended failure mode, not a defect.
+        /// Takes the storey rather than counting drops, and keeps the deepest ever
+        /// seen. A count of 투하구 falls would say the same thing only while nobody
+        /// ever fell twice onto the same floor, and the §09 spectator flies through
+        /// all eight. Out-of-range values are ignored rather than clamped: a storey
+        /// index the map cannot produce is a wiring bug, and inventing a B8 arrival
+        /// out of one would make the deepest band the place bugs go to hide.
+        /// </para>
+        /// <para>
+        /// REPLACES <c>RecordRoundTrip()</c>, which counted returns to the surface.
+        /// A race has no 지상 to return to and no van to carry anything back to.
         /// </para>
         /// </summary>
-        public void RecordClueRead(bool misremembered)
+        public void RecordStoreyReached(int storey)
         {
-            if (_completed)
+            if (_completed || storey < 0 || storey >= RaceState.Storeys)
             {
                 return;
             }
 
-            _cluesRead = AddClamped(_cluesRead, 1);
-
-            if (misremembered)
+            if (storey > _deepestStorey)
             {
-                _clueMisreads = AddClamped(_clueMisreads, 1);
+                _deepestStorey = storey;
             }
         }
 
@@ -313,61 +275,44 @@ namespace HorrorGame.Core.Telemetry
         // like a measurement; that is the trap this deletion closes. Do not
         // re-add these without re-adding a shop, which is the thing the pivot
         // deleted.
+        //
+        // DELETED with them in the 하강 pivot, for the same reason:
+        //   RecordClueRead(bool)        — §03's 단서 chain; nothing is read in a race.
+        //   RecordBatteryUsed(int)      — §08's battery economy; the torch is free now
+        //                                 and its only price is being seen.
+        //   RecordObjectiveRecovered()  — §03's 목표물; there is nothing to carry out.
 
         /// <summary>
-        /// Records battery cells consumed. §16-5 calls this the value that sets the
-        /// round-trip rhythm, so it is read against
-        /// <see cref="MatchSummary.RoundTrips"/> rather than on its own.
-        /// </summary>
-        public void RecordBatteryUsed(int count = 1)
-        {
-            if (_completed || count <= 0)
-            {
-                return;
-            }
-
-            _batteriesUsed = AddClamped(_batteriesUsed, count);
-        }
-
-        /// <summary>
-        /// Records one death. §09. Clamped at
-        /// <see cref="GameConstants.PlayersPerMatch"/>; the recorder does not
+        /// Records one runner caught. §02 탈락 — out and unranked. Clamped at
+        /// <see cref="GameConstants.RaceRunnersMax"/>; the recorder does not
         /// otherwise police §02, because a summary that quietly disagrees with the
-        /// match is more useful than one this class has corrected.
+        /// race is more useful than one this class has corrected.
         /// </summary>
-        public void RecordPlayerDied()
+        public void RecordRunnerEliminated()
         {
-            if (_completed || _playersDied >= GameConstants.PlayersPerMatch)
+            if (_completed || _runnersEliminated >= GameConstants.RaceRunnersMax)
             {
                 return;
             }
 
-            _playersDied++;
+            _runnersEliminated++;
         }
 
         /// <summary>
-        /// Records one player getting out alive. §02 — "누군가는 살아서 나가야 한다",
-        /// and this is the count that decides between 완전 승리 and 부분 승리.
+        /// Records one runner reaching the middle of B8. §02 완주.
+        /// <para>
+        /// Not just the winner: §02 records a place for everybody who arrives,
+        /// which is what stops second position being worth the same as last.
+        /// </para>
         /// </summary>
-        public void RecordPlayerEscaped()
+        public void RecordRunnerFinished()
         {
-            if (_completed || _playersEscaped >= GameConstants.PlayersPerMatch)
+            if (_completed || _runnersFinished >= GameConstants.RaceRunnersMax)
             {
                 return;
             }
 
-            _playersEscaped++;
-        }
-
-        /// <summary>Records that the objective left the basement. §02. Idempotent — it can only happen once.</summary>
-        public void RecordObjectiveRecovered()
-        {
-            if (_completed)
-            {
-                return;
-            }
-
-            _objectiveRecovered = true;
+            _runnersFinished++;
         }
 
         /// <summary>
@@ -383,7 +328,7 @@ namespace HorrorGame.Core.Telemetry
         /// </para>
         /// <para>
         /// Before <see cref="Complete"/> the outcome reads
-        /// <see cref="MatchOutcome.InProgress"/>; afterwards this returns the same
+        /// <see cref="RacerStatus.Running"/>; afterwards this returns the same
         /// summary that was sent.
         /// </para>
         /// </summary>
@@ -394,14 +339,14 @@ namespace HorrorGame.Core.Telemetry
                 return _finalSummary;
             }
 
-            return Build(MatchOutcome.InProgress);
+            return Build(RacerStatus.Running);
         }
 
         /// <summary>
         /// Closes the match: files any chase still running, emits §13's per-match
         /// counters, hands the summary to the sink and flushes.
         /// <para>
-        /// The open chase is closed first, and that ordering is the point. A wipe
+        /// The open chase is closed first, and that ordering is the point. A 탈락
         /// happens *during* a chase, so a recorder that discarded the unclosed chase
         /// would systematically drop the longest ones — precisely the population
         /// §06's 12 m release distance has to be judged against — and the surviving
@@ -409,8 +354,8 @@ namespace HorrorGame.Core.Telemetry
         /// </para>
         /// <para>
         /// Runs once. A second call returns the same summary and emits nothing:
-        /// §13 sends one summary per match, and "everyone died" racing "the host
-        /// left" is an ordinary way to arrive here twice. A double-counted match
+        /// §13 sends one summary per race, and "the local runner was caught" racing
+        /// "the last finisher arrived" is an ordinary way to arrive here twice. A double-counted match
         /// would bias every global average, and a Steam Stats counter cannot be
         /// decremented back.
         /// </para>
@@ -420,7 +365,7 @@ namespace HorrorGame.Core.Telemetry
         /// records the verdict rather than inferring one, so a disagreement between
         /// the outcome and the counts stays visible in the data.
         /// </param>
-        public MatchSummary Complete(MatchOutcome outcome)
+        public MatchSummary Complete(RacerStatus outcome)
         {
             if (_completed)
             {
@@ -434,15 +379,13 @@ namespace HorrorGame.Core.Telemetry
 
             _sink.Increment(TelemetryBuckets.Outcome(outcome));
 
-            _sink.Increment(TelemetryBuckets.RolePick(_role0));
-            _sink.Increment(TelemetryBuckets.RolePick(_role1));
-            _sink.Increment(TelemetryBuckets.RolePick(_role2));
-            _sink.Increment(TelemetryBuckets.RolePick(_role3));
+            // DELETED with §04: four RolePick increments, one per seat. §13's
+            // 직업별 선택 카운터 measured a spread that no longer exists.
 
             // Observe, not Increment: the sink owns the banding (ITelemetrySink), so
             // a re-banding is one edit in TelemetryBuckets rather than a hunt
             // through every call site.
-            _sink.Observe(TelemetryBuckets.RoundTripsHistogram, _finalSummary.RoundTrips);
+            _sink.Observe(TelemetryBuckets.DeepestStoreyHistogram, _finalSummary.DeepestStorey);
             _sink.Observe(TelemetryBuckets.BackpedalShareHistogram, _finalSummary.BackpedalRatio);
 
             _sink.RecordMatchSummary(_finalSummary);
@@ -482,7 +425,7 @@ namespace HorrorGame.Core.Telemetry
             _sink.Observe(TelemetryBuckets.AggroDurationHistogram, duration);
         }
 
-        private MatchSummary Build(MatchOutcome outcome)
+        private MatchSummary Build(RacerStatus outcome)
         {
             return new MatchSummary
             {
@@ -491,22 +434,14 @@ namespace HorrorGame.Core.Telemetry
                 MapId = _mapId,
                 Outcome = outcome,
                 DurationSeconds = (float)_durationSeconds,
-                RoundTrips = _roundTrips,
-                PlayersEscaped = _playersEscaped,
-                PlayersDied = _playersDied,
-                Role0 = _role0,
-                Role1 = _role1,
-                Role2 = _role2,
-                Role3 = _role3,
-                CluesRead = _cluesRead,
-                ClueMisreads = _clueMisreads,
+                DeepestStorey = _deepestStorey,
+                RunnersFinished = _runnersFinished,
+                RunnersEliminated = _runnersEliminated,
                 AggroEvents = _aggroEvents,
                 TotalAggroSeconds = (float)_totalAggroSeconds,
                 LongestAggroSeconds = _longestAggroSeconds,
                 BackpedalSeconds = (float)_backpedalSeconds,
                 TotalMovingSeconds = (float)_totalMovingSeconds,
-                BatteriesUsed = _batteriesUsed,
-                ObjectiveRecovered = _objectiveRecovered,
             };
         }
 

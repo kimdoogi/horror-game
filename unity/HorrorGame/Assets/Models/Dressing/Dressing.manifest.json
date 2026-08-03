@@ -27,15 +27,6 @@
   ],
   "materials": [
     {
-      "name": "Clue_Face",
-      "r": 0.682,
-      "g": 0.641,
-      "b": 0.552,
-      "roughness": 0.75,
-      "metallic": 0.0,
-      "emission": 0.0
-    },
-    {
       "name": "Dress_BrassFitting",
       "r": 0.482,
       "g": 0.382,
@@ -1226,115 +1217,6 @@
       ],
       "clue_faces": 0,
       "note": ""
-    },
-    {
-      "name": "Dress_WallSign",
-      "file": "Dress_WallSign.fbx",
-      "group": "Sign",
-      "mount": "WALL",
-      "palettes": [
-        "*"
-      ],
-      "weight": 1.0,
-      "size_x": 0.52,
-      "size_y": 0.047,
-      "size_z": 0.36,
-      "mount_depth": 0.047,
-      "breaks_sightline": false,
-      "solid": false,
-      "hangs_low": false,
-      "triangles": 154,
-      "emissive_materials": 0,
-      "materials": [
-        "Dress_SteelPainted",
-        "Dress_SteelBare",
-        "Dress_Enamel",
-        "Clue_Face"
-      ],
-      "clue_faces": 1,
-      "note": "ㅁ↔ㅇ via a glossy field"
-    },
-    {
-      "name": "Dress_HangingSign",
-      "file": "Dress_HangingSign.fbx",
-      "group": "Sign",
-      "mount": "CEILING",
-      "palettes": [
-        "*"
-      ],
-      "weight": 0.7,
-      "size_x": 0.8,
-      "size_y": 0.09,
-      "size_z": 0.93,
-      "mount_depth": 0.93,
-      "breaks_sightline": false,
-      "solid": false,
-      "hangs_low": false,
-      "triangles": 936,
-      "emissive_materials": 0,
-      "materials": [
-        "Dress_SteelBare",
-        "Dress_SteelPainted",
-        "Dress_Enamel",
-        "Clue_Face"
-      ],
-      "clue_faces": 2,
-      "note": "좌↔우 via a mirrored back face"
-    },
-    {
-      "name": "Dress_PipeLabel",
-      "file": "Dress_PipeLabel.fbx",
-      "group": "Sign",
-      "mount": "WALL",
-      "palettes": [
-        "*"
-      ],
-      "weight": 0.9,
-      "size_x": 1.1,
-      "size_y": 0.2263,
-      "size_z": 0.192,
-      "mount_depth": 0.2263,
-      "breaks_sightline": false,
-      "solid": false,
-      "hangs_low": false,
-      "triangles": 386,
-      "emissive_materials": 0,
-      "materials": [
-        "Dress_Galvanised",
-        "Dress_SteelBare",
-        "Dress_SteelPainted",
-        "Dress_Enamel",
-        "Clue_Face"
-      ],
-      "clue_faces": 1,
-      "note": "6↔9 via a plate with no up-cue"
-    },
-    {
-      "name": "Dress_DoorPlate",
-      "file": "Dress_DoorPlate.fbx",
-      "group": "Sign",
-      "mount": "WALL",
-      "palettes": [
-        "*"
-      ],
-      "weight": 1.1,
-      "size_x": 0.2,
-      "size_y": 0.024,
-      "size_z": 0.14,
-      "mount_depth": 0.024,
-      "breaks_sightline": false,
-      "solid": false,
-      "hangs_low": false,
-      "triangles": 66,
-      "emissive_materials": 0,
-      "materials": [
-        "Dress_BrassFitting",
-        "Dress_Enamel",
-        "Clue_Face",
-        "Dress_SteelBare"
-      ],
-      "clue_faces": 1,
-      "note": "1↔7 via a small matte plate read in passing"
     }
   ]
 }

@@ -1,6 +1,5 @@
 #nullable enable
 
-using HorrorGame.Core.Roles;
 
 namespace HorrorGame.Net
 {
@@ -23,8 +22,8 @@ namespace HorrorGame.Net
         /// <summary>Platform display name, from <c>IUserIdentity</c>. Empty for an unoccupied seat.</summary>
         public string DisplayName;
 
-        /// <summary>The seat's pick, or <see cref="RoleId.None"/>. §04's five.</summary>
-        public RoleId Role;
+        // DELETED with §04: Role. Every seat carried one of §11's five 직업 and
+        // readiness was gated on having picked one. Twenty runners are identical.
 
         /// <summary>Whether this player has said they are ready to descend.</summary>
         public bool Ready;
@@ -34,6 +33,6 @@ namespace HorrorGame.Net
 
         /// <summary>An empty seat.</summary>
         public static NetLobbySeat Vacant =>
-            new NetLobbySeat { ConnectionId = -1, DisplayName = string.Empty, Role = RoleId.None, Ready = false };
+            new NetLobbySeat { ConnectionId = -1, DisplayName = string.Empty, Ready = false };
     }
 }

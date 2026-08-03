@@ -3,7 +3,9 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-using HorrorGame.Core.Roles;
+// DELETED with §04's 직업: using HorrorGame.Core.Roles. Nothing in this file has named a
+// RoleId since PlaytestRole went, and a using that survives its last use is how the next
+// person concludes the 직업 system is still wired into the playtest tool.
 using HorrorGame.Gameplay.Interaction;
 using HorrorGame.Gameplay.Match;
 using HorrorGame.Gameplay.Monster;
@@ -15,7 +17,7 @@ using UnityEngine.AI;
 using UnityEngine.SceneManagement;
 
 // An alias, not `using HorrorGame.Gameplay.Player`: that namespace holds fifteen
-// Player* types, this file already imports six namespaces, and `using System` on top
+// Player* types, this file already imports a dozen namespaces, and `using System` on top
 // of `using UnityEngine` would make the bare name `Object` ambiguous. One name is
 // needed from it, so one name is imported.
 using PlayerAnimatorDriver = HorrorGame.Gameplay.Player.PlayerAnimatorDriver;
@@ -32,11 +34,16 @@ namespace HorrorGame.EditorTools
     /// require a lobby, two instances and a working transport.
     /// </para>
     /// <para>
-    /// So this builds a throwaway scene beside the generated one: the map, a player at
-    /// a §12 spawn marker, a monster at its own, and a <see cref="MatchDirector"/> that
-    /// owns §01's whole loop — the clock, §03's clue chain and objective, §08's loot
-    /// and shop, and §02's verdict. It never edits the generated scene, so regenerating
-    /// the map cannot lose hand-placed work — there is none to lose.
+    /// So this builds a throwaway scene beside the generated one: the map, a runner at a
+    /// §12 spawn marker, a creature at its own, and a <see cref="MatchDirector"/> that owns
+    /// the whole descent — §07's clock, §06's creature on each storey, §01's 투하구, and
+    /// §02's standings. It never edits the generated scene, so regenerating the map cannot
+    /// lose hand-placed work — there is none to lose.
+    /// </para>
+    /// <para>
+    /// This sentence used to read "§01's whole loop — the clock, §03's clue chain and
+    /// objective, §08's loot and shop, and §02's verdict". None of the middle two exists.
+    /// 하강 is a footrace: nothing is read, carried, sold or bought in it.
     /// </para>
     /// <para>
     /// This assembly (<c>Assembly-CSharp-Editor</c>) is the only place this can live:
@@ -64,6 +71,19 @@ namespace HorrorGame.EditorTools
         /// <c>tools/blender/gen_player.py</c>, and they are listed here rather than derived
         /// from <see cref="PlayerAnimationState"/> because the field names are what a scene
         /// file actually contains — which is what the audit below reads back.
+        /// <para>
+        /// <b>It was nine, and three of the nine were co-op survivors.</b> Carry ·
+        /// CarryIdle · CarryHeavy animated §03's 목표물 and §08's 궤짝, and a runner in
+        /// 하강 has nothing in their hands ever. The previous round left them listed and
+        /// wrote down the exact condition for removing them: they stay for as long as
+        /// PlayerAnimatorDriver declares <c>_carry</c>, <c>_carryIdle</c> and
+        /// <c>_carryHeavy</c>, because this array says what the SCENE FILE contains and a
+        /// row dropped while the field survives is written as <c>{fileID: 0}</c> and then
+        /// reported by the audit as an unwired driver. Those three fields are now gone
+        /// from the driver, so the rows go here and in
+        /// <see cref="RequiredDriverReferences"/> in the same commit, exactly as written.
+        /// Six slots, and the Runner.fbx GUID is unchanged.
+        /// </para>
         /// </summary>
         private static readonly string[,] AnimationSlots =
         {
@@ -72,25 +92,28 @@ namespace HorrorGame.EditorTools
             { "_run", "Run" },
             { "_crouch", "Crouch" },
             { "_crouchWalk", "CrouchWalk" },
-            { "_carry", "Carry" },
-            { "_carryIdle", "CarryIdle" },
-            { "_carryHeavy", "CarryHeavy" },
             { "_death", "Death" },
         };
 
         /// <summary>
         /// Every reference on <see cref="PlayerAnimatorDriver"/> that has to be non-zero in
-        /// the saved scene for the player to stop sliding: the Animator plus the nine clips.
+        /// the saved scene for the player to stop sliding: the Animator plus the six clips.
         /// </summary>
         private static readonly string[] RequiredDriverReferences =
         {
-            "_animator", "_idle", "_walk", "_run", "_crouch", "_crouchWalk",
-            "_carry", "_carryIdle", "_carryHeavy", "_death",
+            "_animator", "_idle", "_walk", "_run", "_crouch", "_crouchWalk", "_death",
         };
 
         private const string Rule = "════════════════════════════════════════════════════════════════════════";
 
-        /// <summary>Seed for the whole match — layout, clue contents, loot and the monster. §13: a match replays from its seed.</summary>
+        /// <summary>
+        /// Seed for the whole descent — the eight storeys' layout, where the gates are punched,
+        /// and where each creature starts. §13: a match replays from its seed.
+        /// <para>
+        /// It read "layout, clue contents, loot and the monster" until R10. Two of those four
+        /// were §03 and §08 and are gone; the seed now has strictly less to decide.
+        /// </para>
+        /// </summary>
         public const int PlaytestSeed = 20260731;
 
         // DELETED with §04's roles: PlaytestRole. The solo tester had to be told which of
@@ -114,21 +137,70 @@ namespace HorrorGame.EditorTools
                 return;
             }
 
+            // ── what this block is, and why it is written from constants ──────────────
+            //
+            // These are the instructions a person reads immediately before pressing Play,
+            // which makes them the game's own description of itself. Until R10 they
+            // described the co-operative recovery game, in detail, on every solo build:
+            // §03's clue read ("hold the beam on a 표식"), §03's objective ("both hands, so
+            // no flashlight and no loot — carry it into the apron to win") and §08's loot
+            // ("the 궤짝 is a 2-person piece; the 금고 needs 정비공: set Local Role on the
+            // MatchDirector"). Three deleted systems, a deleted 직업, a deleted 지상 apron —
+            // printed by the one entry point a developer runs to try the game.
+            //
+            // They also said "Ctrl to crouch", and the Crouch action has been bound to
+            // <Keyboard>/c for as long as PlayerControls.inputactions has had one. Prose
+            // about a deleted system and a wrong key are the same defect — text nothing
+            // checks — so as much of this as can be measured now is.
+            //
+            // MEASURED, and therefore incapable of drifting: every duration, speed and
+            // multiplier (GameConstants), the interact key (PlayerInteractor's own const,
+            // which the interaction test presses), the fall (Chute) and the storey count
+            // (DescentMap). Delete any of those and this stops COMPILING rather than going
+            // quietly on describing them.
+            //
+            // QUOTED, and therefore still checkable only by eye: WASD · Shift · C · Space · F.
+            // Those live in Assets/Scripts/Gameplay/Player/Resources/PlayerControls.inputactions
+            // as binding paths, and there is no const anywhere naming them — which is exactly
+            // how "Ctrl" survived. One place to look, named here so the next reader does not
+            // have to find it.
             Debug.Log(
                 "[SoloPlaytest] Built " + SoloScenePath + ".\n"
-                + "  Press Play. WASD to move, mouse to look, Shift to run, Ctrl to crouch, Space to hop, "
-                + "F for the flashlight, E for a door.\n"
-                + "  §01 — you start on the rim of B1. Work in to the middle of the storey, drop down the "
-                + "투하구, and do it again. Eight times. The middle of B8 is the finish; the creature is a "
-                + "hazard, and being caught is 탈락.\n"
-                + "  §03 clues — stand still, close, and hold the beam on a 표식 for "
-                + Core.GameConstants.ClueReadSeconds + "s. Losing the light restarts it, and nothing is written down.\n"
-                + "  §03 objective — E takes it; both hands, so no flashlight and no loot. Carry it into the apron to win.\n"
-                + "  §08 loot — E picks up. The 궤짝 is a " + Core.GameConstants.SharedCarryMaxCarriers
-                + "-person piece and will say so. The 금고 needs 정비공: set Local Role on the MatchDirector.\n"
-                + "  §14 Q1 — is the chase fun? Let the monster see you and run for an S-corridor.\n"
-                + "  §14 Q2 — does the peek dilemma work? Hold a diagonal while looking back and watch "
-                + "the margin fall. §05: forward 100%, 45° peek 95%, backward 65%.");
+                + "  하강 — 선착순 미로탈출. 귀신 피해서 지하로 내려가고, 제일 먼저 맨 아래 한가운데에 닿으면 이긴다.\n"
+                + "  Press Play. WASD to move, mouse to look, Shift to sprint, C to crouch, Space to hop, "
+                + "F for the flashlight, " + PlayerInteractor.InteractKeyLabel + " for a door. That is every verb "
+                + "a runner has.\n"
+                + "  §01 the race — you start on the RIM of B1. Cut inward to the middle of the storey, walk into "
+                + "the 투하구, and fall " + Gameplay.Race.Chute.FallSeconds + "s onto the RIM of the next one down. "
+                + SceneGen.DescentMap.Storeys + " storeys; the middle of B" + SceneGen.DescentMap.Storeys
+                + " is the finish and the first one there wins. There is nothing to find, read, carry, sell or buy "
+                + "on the way — going down IS the game.\n"
+                + "  §12-A the gates — every storey is three concentric bands, 외곽 · 중간 · 안쪽, and the ways "
+                + "through them narrow 4 → 2 → 1. Each band's gates are staggered against the band outside it, so "
+                + "the next way in is half a lap around the ring rather than straight ahead.\n"
+                + "  §06 the creature — one per storey, and it never leaves its own floor (a 투하구 is a fall, not "
+                + "a path). It is a hazard, not a puzzle: caught is 탈락 — out, unranked, and the race carries on "
+                + "without you. Sprint is " + Core.GameConstants.RunnerSprintSpeed + " m/s against its "
+                + Core.GameConstants.ThreatSpeedEarlyEvening + "–" + Core.GameConstants.MonsterBaseSpeed
+                + " m/s (§07 speeds it up as the clock runs), and the bar lasts "
+                + Core.GameConstants.SprintStaminaSeconds + "s.\n"
+                + "  doors — [" + PlayerInteractor.InteractKeyLabel + "] opens one; HOLDING it for "
+                + Core.GameConstants.DoorShutSeconds + "s pulls one shut behind you. The creature needs "
+                + Core.GameConstants.DoorBreakSeconds + "s to come through, so the door you stopped to shut is "
+                + "worth " + Core.GameConstants.ChaseTollSecondsMin + "s — and once it is broken it stays broken "
+                + "for whoever is behind you.\n"
+                + "  the dark — F toggles the beam and nothing drains it any more. What the light costs is being "
+                + "seen.\n"
+                + "  탈락 — a catch drops you into §09's ghost: you fly, you cannot speak, you cannot leave. Hold "
+                + "[" + Gameplay.Ghost.GhostSession.EndMatchKey + "] to give up the seat and read §02's verdict.\n"
+                + "  §14 Q1 추격이 재밌는가 — let a creature see you, then break line of sight round two bends and "
+                + "keep it broken for " + Core.GameConstants.AggroReleaseLineOfSightBreak + "s.\n"
+                + "  §14 Q2 곁눈질 딜레마가 작동하는가 — hold a diagonal while looking back and watch the margin "
+                + "fall. §05: forward " + (Core.GameConstants.MulForward * 100f).ToString("0") + "%, 45° peek "
+                + (Core.GameConstants.MulDiagonal * 100f).ToString("0") + "%, backward "
+                + (Core.GameConstants.MulBackward * 100f).ToString("0") + "%.\n"
+                + "  §14 Q3 관문에서 붐비는 것이 재밌는가 — NOT answerable in this scene. One runner never queues "
+                + "at a gate; that question needs at least four people and §11's lobby.");
 
             EditorGUIUtility.PingObject(AssetDatabase.LoadAssetAtPath<SceneAsset>(SoloScenePath));
         }
@@ -275,7 +347,11 @@ namespace HorrorGame.EditorTools
                     + "Regenerate the map to get §12's spawn markers.");
             }
 
-            // §03 · §08's hands. One component, one prompt, one crosshair ray.
+            // The interact key. One component, one prompt, one crosshair ray — and in 하강 it
+            // reaches exactly one kind of thing, a door, because that is all there is to
+            // touch. It read "§03 · §08's hands" while the runner had an Inventory; the hands
+            // went with the loot and the crosshair stayed, which is the whole of what a race
+            // needs to say "that door, now".
             rig.AddComponent<PlayerInteractor>();
 
             return rig;
@@ -497,7 +573,7 @@ namespace HorrorGame.EditorTools
                     + "         FIX: in " + _lastPlayerModelPath + ".meta set\n"
                     + "                animationType: 2      # Generic — the rig is 13 bones, not a Mecanim humanoid\n"
                     + "                importAnimation: 1\n"
-                    + "                addColliders: 0       # a MeshCollider on the player's own visual eats §03's interact ray\n"
+                    + "                addColliders: 0       # a MeshCollider on the runner's own visual eats the door interact ray\n"
                     + "              then delete Library/ or reimport the asset.";
             }
 

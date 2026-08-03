@@ -1404,12 +1404,8 @@ namespace HorrorGame.Core.Map
         /// <param name="position">Metres, world space.</param>
         /// <param name="kind">Which §12 requirements this place answers.</param>
         /// <param name="name">Optional label.</param>
-        /// <param name="deadEndRewardValue">
-        /// §08 credits waiting here. §12 requires this above zero on every 막힌 길 —
-        /// "위험을 감수할 이유".
-        /// </param>
         /// <exception cref="ArgumentOutOfRangeException">The zone does not exist.</exception>
-        public int AddNode(int zoneId, Vec3 position, MapNodeKind kind, string? name, int deadEndRewardValue)
+        public int AddNode(int zoneId, Vec3 position, MapNodeKind kind, string? name)
         {
             if (zoneId < 0 || zoneId >= _zones.Count)
             {
@@ -1419,17 +1415,17 @@ namespace HorrorGame.Core.Map
             }
 
             var id = _nodes.Count;
-            _nodes.Add(new MapNode(id, zoneId, position, kind, deadEndRewardValue, name));
+            _nodes.Add(new MapNode(id, zoneId, position, kind, name));
             return id;
         }
 
-        /// <summary>Adds a plain junction with no reward and no declared purpose.</summary>
-        public int AddNode(int zoneId, Vec3 position, MapNodeKind kind, string? name) =>
-            AddNode(zoneId, position, kind, name, 0);
+        // DELETED with §08: the "no reward" convenience overload. It existed only to
+        // spare callers a trailing `0` for DeadEndRewardValue; with the reward gone
+        // it had the same signature as the real one.
 
         /// <summary>Adds an unnamed junction.</summary>
         public int AddNode(int zoneId, Vec3 position) =>
-            AddNode(zoneId, position, MapNodeKind.None, null, 0);
+            AddNode(zoneId, position, MapNodeKind.None, null);
 
         /// <summary>
         /// Joins two nodes with a straight passage and returns its edge id. Length is
@@ -1488,7 +1484,7 @@ namespace HorrorGame.Core.Map
             var ids = new int[positions.Length];
             for (var i = 0; i < positions.Length; i++)
             {
-                ids[i] = AddNode(zoneId, positions[i], kind, null, 0);
+                ids[i] = AddNode(zoneId, positions[i], kind, null);
                 if (i > 0)
                 {
                     Connect(ids[i - 1], ids[i]);

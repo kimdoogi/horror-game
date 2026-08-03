@@ -62,14 +62,11 @@ namespace HorrorGame.Gameplay.Player
         [SerializeField]
         private AnimationClip? _crouchWalk;
 
-        [SerializeField]
-        private AnimationClip? _carry;
-
-        [SerializeField]
-        private AnimationClip? _carryIdle;
-
-        [SerializeField]
-        private AnimationClip? _carryHeavy;
+        // DELETED with §03's 목표물 and §08's 대형 전리품: _carry, _carryIdle and
+        // _carryHeavy. Three of the nine clip slots the scene serialised were poses for
+        // holding something, and nothing is held. SoloPlaytest.AnimationSlots and
+        // RequiredDriverReferences dropped their matching rows in the same commit, which
+        // is the condition the previous round wrote down for removing them.
 
         [SerializeField]
         private AnimationClip? _death;
@@ -137,32 +134,23 @@ namespace HorrorGame.Gameplay.Player
         /// asserted in a test without a graph, an animator or a clip existing.
         /// </summary>
         /// <param name="groundSpeed">Measured horizontal speed, m/s.</param>
-        /// <param name="carryingObjective">§03's objective is in both hands.</param>
-        /// <param name="visiblyBurdened">§08's 대형 전리품, or a load past the heavy band.</param>
         /// <param name="crouching">Crouched.</param>
         /// <param name="dead">§09.</param>
-        public static PlayerAnimationState Resolve(
-            float groundSpeed, bool carryingObjective, bool visiblyBurdened, bool crouching, bool dead)
+        public static PlayerAnimationState Resolve(float groundSpeed, bool crouching, bool dead)
         {
             if (dead)
             {
                 return PlayerAnimationState.Death;
             }
 
-            // §04's own definition of "not moving" — the Observer's 이동 정지 threshold —
-            // rather than a second opinion invented here. If a player counts as still
-            // enough to read the monster's gaze, they must look still to everybody else.
-            var moving = groundSpeed > GameConstants.ObserverStillSpeedThreshold;
+            // The project's one definition of "not moving", shared with PlayerFootsteps
+            // and ViewMotionTuning. A runner who is idle to the animator and walking to
+            // the mix is three systems disagreeing about one fact.
+            var moving = groundSpeed > GameConstants.StillSpeedThreshold;
 
-            if (carryingObjective)
-            {
-                return moving ? PlayerAnimationState.Carry : PlayerAnimationState.CarryIdle;
-            }
-
-            if (visiblyBurdened)
-            {
-                return PlayerAnimationState.CarryHeavy;
-            }
+            // DELETED with §03 and §08: the carryingObjective and visiblyBurdened
+            // parameters and the three poses they selected. Both were always false at
+            // every call site once there was nothing to pick up.
 
             if (crouching)
             {
@@ -198,9 +186,6 @@ namespace HorrorGame.Gameplay.Player
                 case PlayerAnimationState.Run: return _run;
                 case PlayerAnimationState.Crouch: return _crouch;
                 case PlayerAnimationState.CrouchWalk: return _crouchWalk;
-                case PlayerAnimationState.Carry: return _carry;
-                case PlayerAnimationState.CarryIdle: return _carryIdle;
-                case PlayerAnimationState.CarryHeavy: return _carryHeavy;
                 case PlayerAnimationState.Death: return _death;
                 default: return null;
             }
@@ -217,7 +202,6 @@ namespace HorrorGame.Gameplay.Player
             {
                 case PlayerAnimationState.Walk:
                 case PlayerAnimationState.CrouchWalk:
-                case PlayerAnimationState.Carry:
                     return GameConstants.WalkSpeed;
                 case PlayerAnimationState.Run:
                     return GameConstants.RunSpeed;
@@ -272,7 +256,7 @@ namespace HorrorGame.Gameplay.Player
 
             // Both carry flags are now constants, and they are passed rather than removed
             // from Resolve on purpose. They came from PlayerLoadout — §03's 목표물 in both
-            // hands, and §08's 대형 전리품 or a bag over WeightMulOverloaded — and a runner
+            // hands, and §08's 대형 전리품 — and a runner
             // in a race carries nothing but a torch, so neither can be true.
             //
             // Resolve keeps its two parameters and the driver keeps all nine clip slots.
@@ -281,7 +265,7 @@ namespace HorrorGame.Gameplay.Player
             // still assembled with nine clips, PlayerFeelHarness can still drive the poses
             // for a look, and the day something IS carried — a shut door being dragged, a
             // body — the animation exists rather than having to be re-authored.
-            var next = Resolve(speed, carryingObjective: false, visiblyBurdened: false, CrouchingNow, Dead);
+            var next = Resolve(speed, CrouchingNow, Dead);
             _state = next;
 
             AdvanceWeights(next, Time.deltaTime);
@@ -311,9 +295,6 @@ namespace HorrorGame.Gameplay.Player
             Attach(PlayerAnimationState.Run, _run);
             Attach(PlayerAnimationState.Crouch, _crouch);
             Attach(PlayerAnimationState.CrouchWalk, _crouchWalk);
-            Attach(PlayerAnimationState.Carry, _carry);
-            Attach(PlayerAnimationState.CarryIdle, _carryIdle);
-            Attach(PlayerAnimationState.CarryHeavy, _carryHeavy);
             Attach(PlayerAnimationState.Death, _death);
 
             var output = AnimationPlayableOutput.Create(_graph, "PlayerAnimation", _animator);

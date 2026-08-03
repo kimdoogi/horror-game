@@ -182,9 +182,11 @@ namespace HorrorGame.Tests.PlayMode.Match
             var player = FindPlayerRoot();
             Assert.That(player, Is.Not.Null, "no player rig in the scene, so nobody can stand anywhere");
 
-            var state = director.State;
-            Assert.That(state, Is.Not.Null, "the match started without a state");
-            Assert.That(state!.PlayerAt(director.LocalPlayerIndex).Ghost, Is.Null,
+            // Was `director.State.PlayerAt(LocalPlayerIndex).Ghost is null`, read off a
+            // seat table nothing else in the game consulted. LocalPlayerIsGhost is the
+            // better assertion by the same reasoning: it is the property the game itself
+            // reads to decide whether the grab path runs at all.
+            Assert.That(director.LocalPlayerIsGhost, Is.False,
                 "the local player was already a ghost before the test put them anywhere. §09 skips "
                 + "the whole grab path for a corpse, which is one of the things that can look "
                 + "like 'the monster does not kill me'.");
@@ -306,7 +308,7 @@ namespace HorrorGame.Tests.PlayMode.Match
             var closest = float.MaxValue;
             var lastLogged = -1f;
 
-            while (elapsed < BudgetSeconds && state.PlayerAt(director.LocalPlayerIndex).Ghost == null)
+            while (elapsed < BudgetSeconds && !director.LocalPlayerIsGhost)
             {
                 // Hold the ground they reached. A body left to its own devices slides
                 // off a charging creature and the test would be measuring a chase.
@@ -332,7 +334,7 @@ namespace HorrorGame.Tests.PlayMode.Match
                 yield return null;
             }
 
-            var died = state.PlayerAt(director.LocalPlayerIndex).Ghost != null;
+            var died = director.LocalPlayerIsGhost;
 
             // ── If it did not happen, say which link was open ───────────────────
             var why = new StringBuilder();
@@ -358,8 +360,8 @@ namespace HorrorGame.Tests.PlayMode.Match
             }
             else
             {
-                why.AppendLine("덮쳤는데 죽지 않았다 — 접촉 판정(MonsterAttackReach)이나 "
-                               + "MatchState.TryKill이 거절하고 있다.");
+                why.AppendLine("덮쳤는데 죽지 않았다 — 접촉 판정(MonsterAttackReach)이 거절하거나, "
+                               + "MatchDirector가 이미 유령을 하나 들고 있다(_ghost != null).");
             }
 
             why.AppendLine();

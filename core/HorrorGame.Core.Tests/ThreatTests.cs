@@ -354,140 +354,21 @@ namespace HorrorGame.Core.Tests
         }
 
         // ====================================================================
-        // MatchClock. §07's "시계 하나" and §03's 부분 리셋.
+        // MatchClock. §07's "시계 하나" — the stamp on every RaceState entry, and
+        // the row that says how fast the creature is.
+        //
+        // DELETED with the co-operative game, because the race has no 지상:
+        //   Clock_KeepsRunningWhileTheTeamIsOnTheSurface
+        //   Clock_Surfacing_ResetsTheMonsterAndNotTheClock
+        //   Clock_SurfacingIsIdempotent_AndThePendingResetSurvivesADive
+        //   Clock_IsReadableOnlyOnTheSurfaceOrWithAPocketWatch
+        //   Clock_TierCrossingAndSurfacingOnTheSameStep_BothReport
+        // All five turned on SetTeamOnSurface. A runner starts on the rim of B1 and
+        // the only way out is down: there is no vehicle to come back to, so §03's
+        // 부분 리셋 has nothing to charge for, and §07's 「시각은 지상에서만 알 수
+        // 있다」 has no 지상 to be readable on. The 회중시계 that lifted that
+        // restriction was sold by §08, which has no currency left to sell it for.
         // ====================================================================
-
-        /// <summary>
-        /// The rule the whole section rests on: time keeps running while the team is
-        /// above ground. §03 — "나가는 것은 숨 돌리기이지 리셋이 아니다."
-        /// </summary>
-        [Test]
-        public void Clock_KeepsRunningWhileTheTeamIsOnTheSurface()
-        {
-            var clock = new MatchClock();
-            var below = GameConstants.ThreatTierSeconds / 2f;
-            var above = GameConstants.ThreatTierSeconds / 4f;
-
-            clock.SetTeamOnSurface(false);
-            TickFor(clock, below);
-            clock.SetTeamOnSurface(true);
-            TickFor(clock, above);
-
-            Assert.That(clock.ElapsedSeconds, Is.EqualTo(below + above).Within(0.01f),
-                "Shopping is paid for in the same currency as searching. §07.");
-            Assert.That(clock.SurfaceSeconds, Is.EqualTo(above).Within(0.01f),
-                "§07 promises surfacing has a price; this is the measurement of it.");
-            Assert.That(clock.BasementSeconds, Is.EqualTo(below).Within(0.01f));
-            Assert.That(clock.SurfaceSeconds + clock.BasementSeconds,
-                Is.EqualTo(clock.ElapsedSeconds).Within(0.01f), "Every second belongs to one side or the other.");
-        }
-
-        /// <summary>
-        /// §03's 부분 리셋, both halves: surfacing asks for the monster's chase
-        /// state, position and aggro to be cleared, and leaves the clock alone.
-        /// </summary>
-        [Test]
-        public void Clock_Surfacing_ResetsTheMonsterAndNotTheClock()
-        {
-            var clock = new MatchClock();
-            clock.SetTeamOnSurface(false);
-            TickFor(clock, GameConstants.ThreatTierSeconds * 1.25f);
-
-            var beforeSurfacing = clock.ElapsedSeconds;
-            var tierBefore = clock.TierIndex;
-
-            clock.SetTeamOnSurface(true);
-
-            Assert.That(clock.ElapsedSeconds, Is.EqualTo(beforeSurfacing).Within(0f),
-                "Surfacing must not move the clock a single step in either direction.");
-            Assert.That(clock.TierIndex, Is.EqualTo(tierBefore),
-                "Nor may it hand back a threat tier — 밤 does not become 초저녁 because the team went shopping.");
-
-            Assert.That(clock.MonsterResetPending, Is.True,
-                "§03: leaving clears the monster's chase state, position and aggro. The clock cannot do "
-                + "that itself, so it asks.");
-            Assert.That(clock.ConsumeMonsterReset(), Is.True);
-            Assert.That(clock.ConsumeMonsterReset(), Is.False,
-                "One reset per surfacing, not one per frame spent shopping.");
-            Assert.That(clock.ElapsedSeconds, Is.EqualTo(beforeSurfacing).Within(0f),
-                "Consuming the reset must not touch the clock either.");
-
-            TickFor(clock, GameConstants.ThreatTierSeconds);
-            Assert.That(clock.TierIndex, Is.EqualTo(tierBefore + 1),
-                "The night keeps escalating on schedule across a surfacing. That is §07's entire argument "
-                + "against the descent counter it discarded.");
-            Assert.That(clock.SurfacingCount, Is.EqualTo(1));
-        }
-
-        /// <summary>
-        /// The reset is owed for having left, so it survives a fast dive back in, and
-        /// a host that pushes the same position every frame must not accumulate
-        /// resets. §03 / §10 — nothing in this game is free or repeatable for nothing.
-        /// </summary>
-        [Test]
-        public void Clock_SurfacingIsIdempotent_AndThePendingResetSurvivesADive()
-        {
-            var clock = new MatchClock();
-
-            clock.SetTeamOnSurface(false);
-            clock.SetTeamOnSurface(true);
-            clock.SetTeamOnSurface(true);
-            clock.SetTeamOnSurface(true);
-
-            Assert.That(clock.SurfacingCount, Is.EqualTo(1),
-                "Re-asserting a state the clock is already in is not a round trip.");
-
-            clock.SetTeamOnSurface(false);
-            Assert.That(clock.MonsterResetPending, Is.True,
-                "Diving straight back down must not cancel the reset they earned by leaving — a fast dive "
-                + "would otherwise be punished for being fast.");
-            Assert.That(clock.ConsumeMonsterReset(), Is.True);
-
-            clock.SetTeamOnSurface(true);
-            Assert.That(clock.SurfacingCount, Is.EqualTo(2),
-                "§03 expects 2–5 round trips a match; this is the counter telemetry compares against.");
-            Assert.That(clock.MonsterResetPending, Is.True);
-        }
-
-        /// <summary>
-        /// §07: "시각은 지상에서만 알 수 있다." Not knowing the time is a rule — it is
-        /// one of §07's reasons for the round trip and §08's reason for selling a
-        /// 회중시계. The rules always know; the players do not.
-        /// </summary>
-        [Test]
-        public void Clock_IsReadableOnlyOnTheSurfaceOrWithAPocketWatch()
-        {
-            var clock = new MatchClock();
-
-            Assert.That(clock.IsTimeReadable, Is.True,
-                "§01 opens at the vehicle, above ground: the team knows it is 초저녁 without buying anything.");
-            Assert.That(clock.ReadableNightPhase, Is.EqualTo(NightPhase.EarlyEvening));
-
-            clock.SetTeamOnSurface(false);
-            TickFor(clock, GameConstants.ThreatTierSeconds * 2.5f);
-
-            Assert.That(clock.IsTimeReadable, Is.False, "Underground, nobody can answer 지금 몇 시쯤이야?");
-            Assert.That(clock.ReadableElapsedSeconds, Is.Null,
-                "Null rather than zero: a HUD handed 0 would confidently draw 초저녁 at 20 minutes, and "
-                + "§03's failure mode is players acting on remembered-wrong information. The engine must "
-                + "not manufacture more of it.");
-            Assert.That(clock.ReadableNightPhase, Is.Null);
-            Assert.That(clock.TierIndex, Is.EqualTo(2),
-                "The monster is on the 심야 row regardless of whether anyone can read a clock.");
-
-            clock.SetPocketWatchOwned(true);
-            Assert.That(clock.IsTimeReadable, Is.True, "§08's 회중시계 exists precisely to lift §07's restriction.");
-            Assert.That(clock.ReadableElapsedSeconds, Is.Not.Null);
-            Assert.That(clock.ReadableElapsedSeconds!.Value, Is.EqualTo(clock.ElapsedSeconds).Within(0f),
-                "The watch shows the real time, not a rounded one — it costs credits.");
-            Assert.That(clock.ReadableNightPhase, Is.EqualTo(NightPhase.LateNight));
-
-            clock.SetPocketWatchOwned(false);
-            Assert.That(clock.IsTimeReadable, Is.False, "Losing the watch closes the window again.");
-
-            clock.SetTeamOnSurface(true);
-            Assert.That(clock.IsTimeReadable, Is.True, "Walking out is always an option — it just costs a minute.");
-        }
 
         /// <summary>
         /// A frame spike must not swallow a tier. §07's escalations are the beats the
@@ -516,35 +397,6 @@ namespace HorrorGame.Core.Tests
             Assert.That(clock.TierIndex, Is.EqualTo(ThreatCurve.TierCount - 1),
                 "A spike is honoured in full: the night does not owe back the seconds the machine dropped.");
             Assert.That(clock.TryDequeueTierAdvance(out _), Is.False, "Nothing left to report.");
-        }
-
-        /// <summary>
-        /// A tier crossing and a surfacing landing on the same step are independent
-        /// signals; neither may consume the other.
-        /// </summary>
-        [Test]
-        public void Clock_TierCrossingAndSurfacingOnTheSameStep_BothReport()
-        {
-            var clock = new MatchClock();
-            clock.SetTeamOnSurface(false);
-
-            // Step up to the boundary rather than computing it, so the test does not
-            // depend on where float accumulation lands.
-            var guard = 0;
-            while (clock.TierIndex == 0 && guard++ < 100000)
-            {
-                clock.Tick(GameConstants.FixedStep);
-            }
-
-            clock.SetTeamOnSurface(true);
-
-            Assert.That(clock.TierIndex, Is.EqualTo(1), "The loop above must have crossed into 밤.");
-            Assert.That(clock.TryDequeueTierAdvance(out var tier), Is.True);
-            Assert.That(tier.Phase, Is.EqualTo(NightPhase.Night));
-            Assert.That(clock.TryDequeueTierAdvance(out _), Is.False,
-                "One boundary crossed, one report — the simultaneous surfacing must not add a second.");
-            Assert.That(clock.ConsumeMonsterReset(), Is.True,
-                "Nor may the tier crossing swallow the reset.");
         }
 
         /// <summary>
@@ -725,26 +577,14 @@ namespace HorrorGame.Core.Tests
                 + "the shape the fix should follow if the corner rule is retuned.");
         }
 
-        /// <summary>
-        /// <b>Finding.</b> F-001 records that §08's first weight band already drops
-        /// the Runner below the monster (5.6 × 0.85 = 4.76 &lt; 4.8). Against §07 that
-        /// cliff is tier-dependent: 4.76 still beats 4.4 and 4.6, so a loaded Runner
-        /// can escape for the first sixteen minutes and cannot afterwards. F-001's
-        /// arithmetic is a 심야 statement and needs the tier qualifier.
-        /// </summary>
-        [Test]
-        public void Finding_TheWeightCliffOnlyBitesFromLateNightOnwards()
-        {
-            var loadedSprint = GameConstants.RunnerSprintSpeed * GameConstants.WeightMulLight;
+        // DELETED with §08's carry weight: Finding_TheWeightCliffOnlyBitesFromLateNightOnwards.
+        // It refined F-001 by noting the cliff was tier-dependent — a loaded runner
+        // at 5.6 × 0.85 = 4.76 m/s still beat the creature's 4.4 and 4.6 but not its
+        // 4.8, so "picking up one chest ends the escape" was only true from 심야 on.
+        // There is nothing to pick up. What survives, and is asserted above, is the
+        // UNLOADED margin against each tier — which is the whole of what §07 does to
+        // a race now: it closes the gap on someone who is carrying nothing.
 
-            Assert.That(loadedSprint, Is.GreaterThan(ThreatCurve.Tier(0).MonsterSpeed),
-                "A Runner in §08's first penalty band still escapes at 초저녁.");
-            Assert.That(loadedSprint, Is.GreaterThan(ThreatCurve.Tier(1).MonsterSpeed),
-                "And at 밤, by 0.16 m/s.");
-            Assert.That(loadedSprint, Is.LessThan(ThreatCurve.Tier(2).MonsterSpeed),
-                "From 심야 on, F-001's cliff appears. So \"picking up one chest ends the escape\" is true "
-                + "from 16 minutes, and looting early is strictly safer than the weight table suggests.");
-        }
 
         /// <summary>
         /// <b>Finding.</b> §07's 절반 patrol scope adds nothing on §12's smallest legal
@@ -810,18 +650,5 @@ namespace HorrorGame.Core.Tests
         /// </summary>
         private static float SprintGainAgainst(ThreatTier tier) =>
             (GameConstants.RunnerSprintSpeed - tier.MonsterSpeed) * GameConstants.SprintStaminaSeconds;
-
-        /// <summary>
-        /// Advances a clock by <paramref name="seconds"/> in host-sized fixed steps,
-        /// which is the only way the game will ever drive it.
-        /// </summary>
-        private static void TickFor(MatchClock clock, float seconds)
-        {
-            var steps = (int)System.MathF.Round(seconds / GameConstants.FixedStep);
-            for (var i = 0; i < steps; i++)
-            {
-                clock.Tick(GameConstants.FixedStep);
-            }
-        }
     }
 }

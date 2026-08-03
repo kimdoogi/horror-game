@@ -2,8 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
-using HorrorGame.Core.Match;
-using HorrorGame.Core.Roles;
+using HorrorGame.Core.Race;
 using HorrorGame.Core.Session;
 
 namespace HorrorGame.Core.Telemetry
@@ -25,11 +24,9 @@ namespace HorrorGame.Core.Telemetry
     /// </para>
     /// <list type="table">
     /// <item><term>어그로 지속 시간</term><description>validates §06's 12 m 해제 거리.</description></item>
-    /// <item><term>왕복 횟수</term><description>validates §07's time curve (§03 expects 2–5).</description></item>
+    /// <item><term>최고 도달 층</term><description>validates §12-A's gates and §01's eight storeys — how far the field actually gets.</description></item>
     /// <item><term>후진(S) 사용 시간 비율</term><description>validates §05's 65% backward multiplier.</description></item>
-    /// <item><term>직업별 선택 카운터 5개</term><description>validates §11's "필수 직업이 있으면 풀이 가짜가 된다".</description></item>
-    /// <item><term>아이템별 구매 카운터</term><description>validates §08's economy and its growth curve.</description></item>
-    /// <item><term>클리어 / 전멸 / 포기</term><description>overall balance (§02).</description></item>
+    /// <item><term>완주 / 탈락</term><description>§02's only two verdicts.</description></item>
     /// </list>
     /// <para>
     /// <b>Bands are inclusive-exclusive and total.</b> A band covers
@@ -60,11 +57,17 @@ namespace HorrorGame.Core.Telemetry
         public const string AggroDurationHistogram = "aggro_duration";
 
         /// <summary>
-        /// Histogram name for descents per match. §03 expects 2–5 and §13 uses the
-        /// spread to check §07's curve — a match that needs six round trips has
-        /// spent its night walking rather than deciding.
+        /// Histogram name for the deepest storey a race reached, 0–7 (B1 to B8).
+        /// §01 makes descending the whole game, so this distribution is what says
+        /// whether the building is the right length: piled at the shallow end and
+        /// §06 or §12-A is eating the field before the race has a shape; piled at
+        /// B8 and nothing the creature does matters.
+        /// <para>
+        /// REPLACES <c>round_trips</c>, which counted returns to a 지상 the race
+        /// does not have.
+        /// </para>
         /// </summary>
-        public const string RoundTripsHistogram = "round_trips";
+        public const string DeepestStoreyHistogram = "deepest_storey";
 
         /// <summary>
         /// Histogram name for the share of movement time spent holding S, 0–1.
@@ -73,48 +76,39 @@ namespace HorrorGame.Core.Telemetry
         /// </summary>
         public const string BackpedalShareHistogram = "backpedal_share";
 
-        /// <summary>Prefix for §13's five 직업별 선택 카운터. §11.</summary>
-        public const string RolePickPrefix = "role_pick";
-
         // DELETED with §08: PurchasePrefix and the whole purchase_* counter family.
         // §13 counted which shop trades players accept; with no currency there is
         // nothing to buy and no event that could raise one of these. See
         // MatchRecorder for the matching removal.
+        //
+        // DELETED with §04: RolePickPrefix, RolePickUnassigned and the six
+        // role_pick_* counters. They answered §11's "필수 직업이 있으면 풀이
+        // 가짜가 된다" — a question the pivot answered by deleting 직업 outright.
 
-        /// <summary>Prefix for §13's 클리어 / 전멸 / 포기 counters. §02.</summary>
+        /// <summary>Prefix for §13's 완주 / 탈락 counters. §02.</summary>
         public const string OutcomePrefix = "outcome";
 
-        /// <summary>§13's 클리어 — §02's 완전 승리 and 부분 승리 together, both being 목표물 회수.</summary>
-        public const string OutcomeClear = OutcomePrefix + "_clear";
-
-        /// <summary>§13's 전멸 — §02's 패배, where the match's loot, credits and knowledge are all lost.</summary>
-        public const string OutcomeWipe = OutcomePrefix + "_wipe";
-
-        /// <summary>§13's 포기 — the host left. §13 does not migrate hosts, so the session simply ends.</summary>
-        public const string OutcomeAbandon = OutcomePrefix + "_abandon";
+        /// <summary>§02's 완주 — reached the middle of B8 and took a place.</summary>
+        public const string OutcomeFinished = OutcomePrefix + "_finished";
 
         /// <summary>
-        /// §02's 생존 — escaped without the objective.
+        /// §02's 탈락 — caught, out, unranked.
         /// <para>
-        /// Not in §13's list. §13 names three outcome counters (클리어 / 전멸 / 포기)
-        /// and §02 defines four results plus §13's own abandon, so 생존 — the
-        /// outcome §02 singles out because "그 판의 정보는 남는다" — has no counter
-        /// in the document. Folding it into 클리어 would overstate the clear rate
-        /// and folding it into 전멸 would understate it, so it gets its own name
-        /// and the disagreement is recorded in docs/BALANCE-FINDINGS.md instead of
-        /// being papered over here.
+        /// A distinct counter rather than a share of finishes, because §02's whole
+        /// rule is that 탈락 has no place: it cannot be expressed as a rank, so it
+        /// cannot be read off the finishing counter either.
         /// </para>
         /// </summary>
-        public const string OutcomeSurvived = OutcomePrefix + "_survived";
+        public const string OutcomeEliminated = OutcomePrefix + "_eliminated";
 
         /// <summary>
-        /// A match reported as still running. That is a caller bug, and it gets its
+        /// A race reported as still running. That is a caller bug, and it gets its
         /// own counter so the bug shows up as an implausible row rather than as
-        /// inflated clears.
+        /// inflated finishes.
         /// </summary>
         public const string OutcomeInProgress = OutcomePrefix + "_in_progress";
 
-        /// <summary>An outcome value outside <see cref="MatchOutcome"/>. Keeps the family total when an int is cast in from the network.</summary>
+        /// <summary>An outcome value outside <see cref="RacerStatus"/>. Keeps the family total when an int is cast in from the network.</summary>
         public const string OutcomeUnknown = OutcomePrefix + "_unknown";
 
         /// <summary>
@@ -141,7 +135,7 @@ namespace HorrorGame.Core.Telemetry
         /// <summary>Unit written into a share band name. Percent, because "0.05" is not a legal-looking stat name.</summary>
         private const string UnitPercent = "pct";
 
-        /// <summary>Count bands carry no unit: §13's template gives <c>round_trips_3</c>.</summary>
+        /// <summary>Count bands carry no unit: §13's template gives <c>deepest_storey_3</c>.</summary>
         private const string UnitNone = "";
 
         /// <summary>Scale from seconds to the number written in a seconds band name.</summary>
@@ -149,9 +143,6 @@ namespace HorrorGame.Core.Telemetry
 
         /// <summary>Scale from a 0–1 share to the number written in a percent band name.</summary>
         private const float ScalePercent = 100f;
-
-        /// <summary>Role pick counter for a slot holding <see cref="RoleId.None"/> or an undefined value.</summary>
-        private const string RolePickUnassigned = RolePickPrefix + "_unassigned";
 
         private static readonly ReadOnlyCollection<string> _aggroDurationBuckets =
             Array.AsReadOnly(BuildUniformBands(
@@ -169,31 +160,14 @@ namespace HorrorGame.Core.Telemetry
                 ScalePercent,
                 UnitPercent));
 
-        private static readonly ReadOnlyCollection<string> _roundTripsBuckets =
-            Array.AsReadOnly(BuildRoundTripBands());
-
-        // Written out rather than derived from the enum: these strings outlive the
-        // C# identifiers, and a refactor that renames RoleId.Flasher must not
-        // orphan a year of role_pick_flasher history. RolePickUnassigned is last
-        // because it is not one of §13's five — see RolePick.
-        private static readonly ReadOnlyCollection<string> _rolePickCounters =
-            Array.AsReadOnly(new[]
-            {
-                RolePickPrefix + "_listener",
-                RolePickPrefix + "_observer",
-                RolePickPrefix + "_runner",
-                RolePickPrefix + "_engineer",
-                RolePickPrefix + "_flasher",
-                RolePickUnassigned,
-            });
+        private static readonly ReadOnlyCollection<string> _deepestStoreyBuckets =
+            Array.AsReadOnly(BuildStoreyBands());
 
         private static readonly ReadOnlyCollection<string> _outcomeCounters =
             Array.AsReadOnly(new[]
             {
-                OutcomeClear,
-                OutcomeWipe,
-                OutcomeAbandon,
-                OutcomeSurvived,
+                OutcomeFinished,
+                OutcomeEliminated,
                 OutcomeInProgress,
                 OutcomeUnknown,
             });
@@ -208,20 +182,17 @@ namespace HorrorGame.Core.Telemetry
         /// </summary>
         public static IReadOnlyList<string> AggroDurationBuckets => _aggroDurationBuckets;
 
-        /// <summary>§13's 왕복 횟수 counters: one per exact count up to §03's expected maximum, then an open tail.</summary>
-        public static IReadOnlyList<string> RoundTripsBuckets => _roundTripsBuckets;
+        /// <summary>
+        /// The 최고 도달 층 counters: one per storey, B1 first. There is no open
+        /// tail — <see cref="RaceState.Storeys"/> is the whole building, so the
+        /// domain is closed and a tail band could only ever count a bug.
+        /// </summary>
+        public static IReadOnlyList<string> DeepestStoreyBuckets => _deepestStoreyBuckets;
 
         /// <summary>§13's 후진 사용 시간 비율 counters, lowest band first, open tail last.</summary>
         public static IReadOnlyList<string> BackpedalShareBuckets => _backpedalShareBuckets;
 
-        /// <summary>
-        /// §13's 직업별 선택 카운터, in <see cref="RoleId"/> order, followed by the
-        /// unassigned counter that keeps the family total. §11's check reads the
-        /// first five against each other.
-        /// </summary>
-        public static IReadOnlyList<string> RolePickCounters => _rolePickCounters;
-
-        /// <summary>§13's 클리어 / 전멸 / 포기, followed by the counters §02 needs and §13 omits. See <see cref="OutcomeSurvived"/>.</summary>
+        /// <summary>§02's 완주 / 탈락, followed by the two diagnostic rows that keep the family total.</summary>
         public static IReadOnlyList<string> OutcomeCounters => _outcomeCounters;
 
         /// <summary>
@@ -250,29 +221,31 @@ namespace HorrorGame.Core.Telemetry
         }
 
         /// <summary>
-        /// Which band of §13's 왕복 횟수 histogram a match with
-        /// <paramref name="roundTrips"/> descents belongs to.
+        /// Which band of the 최고 도달 층 histogram a race that reached
+        /// <paramref name="storey"/> belongs to.
         /// <para>
-        /// Exact counts rather than ranges, because the whole range §03 cares
-        /// about is 2–5 and collapsing it would delete the answer. Anything above
-        /// §03's maximum shares the open tail: past six round trips the match has
-        /// already failed §07's curve and the exact figure changes nothing.
-        /// Negatives are impossible and are filed at zero.
+        /// One band per storey, no ranges: eight is already the whole domain, and
+        /// §12-A narrows the gates on every one of them, so collapsing two floors
+        /// together would hide exactly the step where the field stops. Anything
+        /// outside 0..<see cref="RaceState.Storeys"/>−1 is clamped into the nearest
+        /// end so the family still totals the number of races — an impossible
+        /// storey is a wiring bug, and it is legible as one because it lands on B1
+        /// or B8 rather than in a band of its own.
         /// </para>
         /// </summary>
-        public static string RoundTrips(int roundTrips)
+        public static string DeepestStorey(int storey)
         {
-            if (roundTrips <= 0)
+            if (storey <= 0)
             {
-                return _roundTripsBuckets[0];
+                return _deepestStoreyBuckets[0];
             }
 
-            if (roundTrips > GameConstants.ExpectedRoundTripsMax)
+            if (storey >= _deepestStoreyBuckets.Count)
             {
-                return _roundTripsBuckets[_roundTripsBuckets.Count - 1];
+                return _deepestStoreyBuckets[_deepestStoreyBuckets.Count - 1];
             }
 
-            return _roundTripsBuckets[roundTrips];
+            return _deepestStoreyBuckets[storey];
         }
 
         /// <summary>
@@ -297,55 +270,24 @@ namespace HorrorGame.Core.Telemetry
         }
 
         /// <summary>
-        /// The §13 counter for one player having taken <paramref name="role"/>.
+        /// The §13 counter for how a race ended.
         /// <para>
-        /// Four increments per match against five counters, so a fair distribution
-        /// puts each role at 80% of matches rather than 20% — §11's rule is checked
-        /// by how far apart the five sit, and the discriminating figure is which
-        /// role is *absent*. <see cref="RoleId.None"/> and any undefined value go
-        /// to the unassigned counter, because the invariant that makes the five
-        /// readable is "the family sums to four per match": if a lobby bug shipped
-        /// an unset slot, that has to be visible rather than quietly deflating one
-        /// role's share.
+        /// §02 has exactly two verdicts and they do not reduce to each other:
+        /// 완주 carries a place, 탈락 carries none. <see cref="RacerStatus.Running"/>
+        /// and any undefined value get diagnostic rows rather than being folded into
+        /// either, so a caller bug reads as an implausible row instead of moving the
+        /// finish rate.
         /// </para>
         /// </summary>
-        public static string RolePick(RoleId role)
-        {
-            switch (role)
-            {
-                case RoleId.Listener: return _rolePickCounters[0];
-                case RoleId.Observer: return _rolePickCounters[1];
-                case RoleId.Runner: return _rolePickCounters[2];
-                case RoleId.Engineer: return _rolePickCounters[3];
-                case RoleId.Flasher: return _rolePickCounters[4];
-                default: return RolePickUnassigned;
-            }
-        }
-
-        /// <summary>
-        /// The §13 counter for how a match ended.
-        /// <para>
-        /// §13 asks for 클리어 / 전멸 / 포기. 클리어 is both of §02's victories,
-        /// since both are 목표물 회수 and §02 separates them only by how many got
-        /// out — a number <see cref="MatchSummary.PlayersEscaped"/> already
-        /// carries. §02's 생존 has no §13 counter at all; see
-        /// <see cref="OutcomeSurvived"/>.
-        /// </para>
-        /// </summary>
-        public static string Outcome(MatchOutcome outcome)
+        public static string Outcome(RacerStatus outcome)
         {
             switch (outcome)
             {
-                case MatchOutcome.FullVictory:
-                case MatchOutcome.PartialVictory:
-                    return OutcomeClear;
-                case MatchOutcome.Wiped:
-                    return OutcomeWipe;
-                case MatchOutcome.Abandoned:
-                    return OutcomeAbandon;
-                case MatchOutcome.Survived:
-                    return OutcomeSurvived;
-                case MatchOutcome.InProgress:
+                case RacerStatus.Finished:
+                    return OutcomeFinished;
+                case RacerStatus.Eliminated:
+                    return OutcomeEliminated;
+                case RacerStatus.Running:
                     return OutcomeInProgress;
                 default:
                     return OutcomeUnknown;
@@ -371,8 +313,8 @@ namespace HorrorGame.Core.Telemetry
                     return AggroDuration(value);
                 case BackpedalShareHistogram:
                     return BackpedalShare(value);
-                case RoundTripsHistogram:
-                    return RoundTrips(ToCount(value));
+                case DeepestStoreyHistogram:
+                    return DeepestStorey(ToCount(value));
                 default:
                     return histogram + UnbucketedSuffix;
             }
@@ -476,17 +418,19 @@ namespace HorrorGame.Core.Telemetry
             return names;
         }
 
-        private static string[] BuildRoundTripBands()
+        /// <summary>
+        /// One band per storey, named by the B-number a player would say out loud —
+        /// storey index 0 is <c>deepest_storey_b1</c>. Reading a Steam Stats page
+        /// against §12's floor plans should not need a mental −1.
+        /// </summary>
+        private static string[] BuildStoreyBands()
         {
-            // One band per exact count 0..ExpectedRoundTripsMax, then the tail.
-            var names = new string[GameConstants.ExpectedRoundTripsMax + 2];
-            for (var i = 0; i < names.Length - 1; i++)
+            var names = new string[RaceState.Storeys];
+            for (var i = 0; i < names.Length; i++)
             {
-                names[i] = RoundTripsHistogram + "_" + Digits(i);
+                names[i] = DeepestStoreyHistogram + "_b" + Digits(i + 1) + UnitNone;
             }
 
-            names[names.Length - 1] =
-                RoundTripsHistogram + "_" + Digits(GameConstants.ExpectedRoundTripsMax + 1) + UnitNone + OpenBandSuffix;
             return names;
         }
 
@@ -494,9 +438,8 @@ namespace HorrorGame.Core.Telemetry
         {
             var all = new List<string>();
             all.AddRange(_aggroDurationBuckets);
-            all.AddRange(_roundTripsBuckets);
+            all.AddRange(_deepestStoreyBuckets);
             all.AddRange(_backpedalShareBuckets);
-            all.AddRange(_rolePickCounters);
             all.AddRange(_outcomeCounters);
             return all.ToArray();
         }

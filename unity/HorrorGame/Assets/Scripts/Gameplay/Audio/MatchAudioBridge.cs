@@ -67,7 +67,6 @@ namespace HorrorGame.Gameplay.Audio
         // 지상, the shop, the battery and the wallet. _previousLit stays — the torch
         // still has a switch.
         private bool _floorProbeBound;
-        private bool _landmarksPlaced;
 
         private void Awake()
         {
@@ -111,7 +110,6 @@ namespace HorrorGame.Gameplay.Audio
             }
 
             BindFloorProbe(rig);
-            PlaceLandmarks(rig);
             PushMonster(rig);
             PushViewMotion(rig);
             PushMatch(rig);
@@ -191,58 +189,10 @@ namespace HorrorGame.Gameplay.Audio
         /// marker is the thing to add — not a second opinion computed here.
         /// </para>
         /// </summary>
-        private void PlaceLandmarks(MatchAudioRig rig)
-        {
-            if (_landmarksPlaced || _director == null)
-            {
-                return;
-            }
-
-            var map = _director.Map;
-            if (map == null)
-            {
-                return;
-            }
-
-            _landmarksPlaced = true;
-
-            // DELETED with the light economy: the generator landmark. It played
-            // AmbienceLibrary.GeneratorLoop at map.Entrance — the 지상 발전기 that recharged
-            // §03's cells, which is why it was the loudest thing on the surface and why it
-            // sat at the way out. There is no surface, no generator and no cell.
-
-            var byZone = new Dictionary<string, List<Vector3>>();
-            var sites = map.MonsterSpawns;
-
-            for (var i = 0; i < sites.Count; i++)
-            {
-                var site = sites[i];
-                if (site == null)
-                {
-                    continue;
-                }
-
-                var key = ZoneKeyOf(site.name);
-                if (!byZone.TryGetValue(key, out var bucket))
-                {
-                    bucket = new List<Vector3>();
-                    byZone[key] = bucket;
-                }
-
-                bucket.Add(site.position);
-            }
-
-            foreach (var pair in byZone)
-            {
-                var sum = Vector3.zero;
-                for (var i = 0; i < pair.Value.Count; i++)
-                {
-                    sum += pair.Value[i];
-                }
-
-                rig.PlaceLandmark(sum / pair.Value.Count, generator: false, label: pair.Key);
-            }
-        }
+        // DELETED with §03's 발전기 and §12's 전기 패널: PlaceLandmarks(MatchAudioRig).
+        // It placed one looping hum at the centroid of each storey's monster spawns, and
+        // before that a generator at the entrance. Both clips are gone from the project
+        // and MatchAudioRig no longer has a method to place them with.
 
         /// <summary>
         /// The zone letter out of a generated marker name — the same rule
@@ -320,7 +270,13 @@ namespace HorrorGame.Gameplay.Audio
             }
 
             rig.ElapsedSeconds = director.Clock.ElapsedSeconds;
-            rig.TimeIsReadable = director.Clock.IsTimeReadable;
+
+            // Was director.Clock.IsTimeReadable — §07's 「시각은 지상에서만 알 수 있다」,
+            // a 지상 that no longer exists. Every runner is underground for the whole
+            // race, so the tier stinger would never have played again. It plays: §07's
+            // tiers are what make B8 a different building from B1, and a race is the
+            // one place the clock IS the pressure.
+            rig.TimeIsReadable = true;
 
             // DELETED with §01's 지상 and §08's shop: the 표면 edge (surface_reached /
             // descend), the shop open/close edge, and the two calls below them. There is no

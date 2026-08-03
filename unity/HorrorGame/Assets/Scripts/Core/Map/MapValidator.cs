@@ -1022,10 +1022,9 @@ namespace HorrorGame.Core.Map
                 if (diagonal < GameConstants.ZoneDiagonalMin - MathX.Epsilon)
                 {
                     problems.Add(graph.Zones[z].Name + " is " + Metres(diagonal) + " across, under §12's "
-                                 + Metres(GameConstants.ZoneDiagonalMin) + ": a Listener fix off by "
-                                 + Metres(GameConstants.ListenerErrorRadiusMax)
-                                 + " (§04) would name the wrong zone rather than the wrong corner, which is "
-                                 + "the one confusion §12 does not want");
+                                 + Metres(GameConstants.ZoneDiagonalMin) + ": a zone this small is crossed "
+                                 + "before the runner behind you has heard which way you went, and §12 sizes "
+                                 + "a zone so a footstep names a room rather than the whole storey");
                 }
                 else if (diagonal > GameConstants.ZoneDiagonalMax + MathX.Epsilon)
                 {
@@ -1065,8 +1064,12 @@ namespace HorrorGame.Core.Map
                     : "Footprint " + Metres(width) + " × " + Metres(depth) + ", over §12's "
                       + Metres(GameConstants.MapExtent) + " square. §12 sizes the map so \"주자가 구역 "
                       + "2~3개 관통 가능\" on one sprint of " + Metres(GameConstants.SprintMaxTravelDistance)
-                      + " (§05); a bigger building makes the round trip §03 requires cost more battery than "
-                      + "the " + Seconds(GameConstants.BatterySecondsPerCell) + " one cell pays for.";
+                      + " (§05).";
+            // The second half of that sentence used to price a wider storey in
+            // BatterySecondsPerCell — the §03 round trip's battery cost. Both went
+            // with the co-op game. What still bounds the extent is the sprint: a
+            // storey wider than 2~3 zones per sprint means the creature can never
+            // be outrun to a gate, which is the whole of §05's answer to §06.
 
             return new MapValidationResult(RuleMapExtent, "맵 전체 100 × 100m", passed, detail, false);
         }

@@ -4,7 +4,7 @@ using System.Globalization;
 using System.Linq;
 using HorrorGame.Core;
 using HorrorGame.Core.Match;
-using HorrorGame.Core.Roles;
+using HorrorGame.Core.Race;
 using HorrorGame.Core.Session;
 using HorrorGame.Core.Telemetry;
 using NUnit.Framework;
@@ -55,16 +55,22 @@ namespace HorrorGame.Core.Tests
         }
 
         /// <summary>
-        /// Every family follows §13's template: uniform bands, one open tail, and a
-        /// name that states its own bounds.
+        /// Every UNIFORM family follows §13's template: uniform bands, one open tail,
+        /// and a name that states its own bounds.
+        /// <para>
+        /// DeepestStoreyBuckets is deliberately not in this list and does not belong
+        /// in it. Its domain is closed — <c>RaceState.Storeys</c> is the whole
+        /// building — so it has one band per storey and no open tail. A tail there
+        /// could only ever count a bug, and giving it one would make an impossible
+        /// storey look like a legitimate top band. It gets its own test below.
+        /// </para>
         /// </summary>
         [Test]
-        public void EveryFamily_FollowsSection13sTemplate()
+        public void EveryUniformFamily_FollowsSection13sTemplate()
         {
             foreach (var family in new[]
             {
                 TelemetryBuckets.AggroDurationBuckets,
-                TelemetryBuckets.RoundTripsBuckets,
                 TelemetryBuckets.BackpedalShareBuckets,
             })
             {
@@ -178,41 +184,45 @@ namespace HorrorGame.Core.Tests
         }
 
         /// <summary>
-        /// §03's 2–5 round trips each get their own counter, so the shape of the
-        /// distribution — not just whether it fell in range — is visible. §13 reads
-        /// it against §07's curve.
+        /// Every storey gets its own counter, so the shape of the distribution — not
+        /// just how deep the median got — is visible. §01 makes descending the whole
+        /// game, so this is the histogram the building is judged by.
+        /// <para>
+        /// REPLACES RoundTripBands_GiveEachOfSection03sOutcomesItsOwnCounter, which
+        /// pinned one band per return to a 지상 the race does not have.
+        /// </para>
         /// </summary>
         [Test]
-        public void RoundTripBands_GiveEachOfSection03sOutcomesItsOwnCounter()
+        public void DeepestStoreyBands_GiveEachStoreyItsOwnCounter()
         {
-            Assert.That(TelemetryBuckets.RoundTripsBuckets.Count,
-                Is.EqualTo(GameConstants.ExpectedRoundTripsMax + 2),
-                "One band per exact count 0–5 (§03), plus the open tail.");
+            Assert.That(TelemetryBuckets.DeepestStoreyBuckets.Count, Is.EqualTo(RaceState.Storeys),
+                "One band per storey and not one more — the domain is closed, so there is no tail.");
 
-            for (var trips = 0; trips <= GameConstants.ExpectedRoundTripsMax; trips++)
+            for (var storey = 0; storey < RaceState.Storeys; storey++)
             {
-                Assert.That(TelemetryBuckets.RoundTrips(trips),
-                    Is.EqualTo("round_trips_" + trips.ToString(CultureInfo.InvariantCulture)));
+                Assert.That(TelemetryBuckets.DeepestStorey(storey),
+                    Is.EqualTo("deepest_storey_b" + (storey + 1).ToString(CultureInfo.InvariantCulture)),
+                    "The name says the B-number a player would say out loud, so reading a Steam Stats page "
+                    + "against §12's floor plans needs no mental minus one.");
             }
 
-            var tail = Last(TelemetryBuckets.RoundTripsBuckets);
-            Assert.That(tail, Is.EqualTo("round_trips_"
-                + (GameConstants.ExpectedRoundTripsMax + 1).ToString(CultureInfo.InvariantCulture) + "_plus"));
+            var deepest = Last(TelemetryBuckets.DeepestStoreyBuckets);
+            Assert.That(deepest, Is.EqualTo("deepest_storey_b" + RaceState.Storeys.ToString(CultureInfo.InvariantCulture)),
+                "B8 carries the finish, so the deepest band is the one that says the race was completable.");
 
-            foreach (var trips in new[] { GameConstants.ExpectedRoundTripsMax + 1, 12, 1000, int.MaxValue })
+            foreach (var storey in new[] { RaceState.Storeys, RaceState.Storeys + 1, 1000, int.MaxValue })
             {
-                Assert.That(TelemetryBuckets.RoundTrips(trips), Is.EqualTo(tail),
-                    "Past §03's maximum the match has already failed §07's curve; the exact figure adds nothing.");
+                Assert.That(TelemetryBuckets.DeepestStorey(storey), Is.EqualTo(deepest),
+                    "A storey the map cannot produce is a wiring bug; it is clamped so the family still totals "
+                    + "the number of races, and it is legible because it lands on a real floor.");
             }
 
-            foreach (var trips in new[] { -1, -1000, int.MinValue })
+            foreach (var storey in new[] { -1, -1000, int.MinValue })
             {
-                Assert.That(TelemetryBuckets.RoundTrips(trips), Is.EqualTo(TelemetryBuckets.RoundTripsBuckets[0]),
-                    "A negative round-trip count is impossible, and must still be counted somewhere.");
+                Assert.That(TelemetryBuckets.DeepestStorey(storey),
+                    Is.EqualTo(TelemetryBuckets.DeepestStoreyBuckets[0]),
+                    "A negative storey is impossible, and must still be counted somewhere.");
             }
-
-            Assert.That(GameConstants.ExpectedRoundTripsMin, Is.GreaterThan(0),
-                "§03's lucky case is two descents, so round_trips_0 and _1 are the below-expectation rows.");
         }
 
         /// <summary>
@@ -318,51 +328,20 @@ namespace HorrorGame.Core.Tests
         }
 
         // ====================================================================
-        // FINDING — §13's three outcome counters cannot classify §02.
+        // §02's verdicts. The old FINDING here is RESOLVED BY DELETION.
+        //
+        // A test called OutcomeCounters_Section13sThree_CannotClassifySection02sResults
+        // stood at this spot. It pinned a real contradiction: §13 asked for three
+        // counters (클리어 / 전멸 / 포기) and the co-op §02 defined four results, of
+        // which 생존 — "목표물 없이 탈출 — 그 판의 정보는 남는다" — matched none.
+        // The whole tension it described was "지금 나갈까?", an argument about
+        // leaving with or without the 목표물.
+        //
+        // The pivot deleted both sides of the contradiction. §02 now has two
+        // verdicts and they are total: 완주 carries a place, 탈락 carries none.
+        // There is nothing to leave with, nowhere to leave to, and no information
+        // that survives a run. The test below is what replaced it.
         // ====================================================================
-
-        /// <summary>
-        /// Pins a second contradiction: §13 asks for three outcome counters —
-        /// 클리어 / 전멸 / 포기 — and §02 defines four results, of which 생존
-        /// ("목표물 없이 탈출 — 그 판의 정보는 남는다") matches none of the three.
-        /// <para>
-        /// §02 builds its central tension on exactly that asymmetry: surviving
-        /// without the objective keeps the match's information, a wipe destroys it,
-        /// and that gap is what makes "지금 나갈까?" an argument. §13's counters
-        /// cannot see it. Folding 생존 into 클리어 would overstate the clear rate
-        /// and hide the outcome the design most wants to observe; folding it into
-        /// 전멸 would claim teams die more than they do. So it is given its own
-        /// counter here and the disagreement is recorded rather than resolved —
-        /// see docs/BALANCE-FINDINGS.md.
-        /// </para>
-        /// </summary>
-        [Test]
-        public void OutcomeCounters_Section13sThree_CannotClassifySection02sResults()
-        {
-            var section13 = new[]
-            {
-                TelemetryBuckets.OutcomeClear,
-                TelemetryBuckets.OutcomeWipe,
-                TelemetryBuckets.OutcomeAbandon,
-            };
-
-            Assert.That(TelemetryBuckets.Outcome(MatchOutcome.FullVictory),
-                Is.EqualTo(TelemetryBuckets.OutcomeClear),
-                "§02's 완전 승리 is 목표물 회수, so it is a 클리어.");
-            Assert.That(TelemetryBuckets.Outcome(MatchOutcome.PartialVictory),
-                Is.EqualTo(TelemetryBuckets.OutcomeClear),
-                "§02's 부분 승리 is also 목표물 회수; PlayersEscaped already carries how many got out.");
-            Assert.That(TelemetryBuckets.Outcome(MatchOutcome.Wiped),
-                Is.EqualTo(TelemetryBuckets.OutcomeWipe));
-            Assert.That(TelemetryBuckets.Outcome(MatchOutcome.Abandoned),
-                Is.EqualTo(TelemetryBuckets.OutcomeAbandon));
-
-            Assert.That(section13, Does.Not.Contain(TelemetryBuckets.Outcome(MatchOutcome.Survived)),
-                "§02's 생존 has no counter in §13's list. If this now fails, §13 grew a fourth counter "
-                + "and docs/BALANCE-FINDINGS.md needs updating in the same commit.");
-            Assert.That(TelemetryBuckets.Outcome(MatchOutcome.Survived),
-                Is.EqualTo(TelemetryBuckets.OutcomeSurvived));
-        }
 
         /// <summary>
         /// Every outcome, including an undefined value cast in from the network, has
@@ -372,61 +351,45 @@ namespace HorrorGame.Core.Tests
         [Test]
         public void EveryOutcome_HasACounterInTheFamily()
         {
-            foreach (var outcome in Enum.GetValues<MatchOutcome>())
+            foreach (var outcome in Enum.GetValues<RacerStatus>())
             {
                 Assert.That(TelemetryBuckets.OutcomeCounters, Does.Contain(TelemetryBuckets.Outcome(outcome)),
                     $"{outcome} must be provisionable as a Steam stat.");
             }
 
-            Assert.That(TelemetryBuckets.Outcome((MatchOutcome)99), Is.EqualTo(TelemetryBuckets.OutcomeUnknown));
-            Assert.That(TelemetryBuckets.Outcome(MatchOutcome.InProgress),
+            Assert.That(TelemetryBuckets.Outcome(RacerStatus.Finished),
+                Is.EqualTo(TelemetryBuckets.OutcomeFinished), "§02 완주.");
+            Assert.That(TelemetryBuckets.Outcome(RacerStatus.Eliminated),
+                Is.EqualTo(TelemetryBuckets.OutcomeEliminated),
+                "§02 탈락 — and it is a counter of its own, not a share of the finishes, because a "
+                + "탈락 has no place and so cannot be read off a ranking.");
+
+            Assert.That(TelemetryBuckets.Outcome((RacerStatus)99), Is.EqualTo(TelemetryBuckets.OutcomeUnknown));
+            Assert.That(TelemetryBuckets.Outcome(RacerStatus.Running),
                 Is.EqualTo(TelemetryBuckets.OutcomeInProgress),
-                "A match reported as still running is a caller bug, and must not inflate the clears.");
+                "A race reported as still running is a caller bug, and must not inflate the finishes.");
         }
 
         // ====================================================================
-        // Categorical families: roles (§11).
+        // Categorical families: NONE. This section is empty on purpose.
         //
-        // §08's 아이템별 구매 카운터 used to live here too, covered by
+        // §08's 아이템별 구매 카운터 lived here, covered by
         // PurchaseCounters_CoverEverySection08Item. It went with the shop:
         // DESCENT-PIVOT §3 버린다 drops 전리품 · 크레딧 · 판매 outright ("통화가
-        // 없다"), so ShopItemId — the type that test enumerated — no longer
-        // exists and there is nothing left to count. Do not re-add a purchase
-        // counter without first re-adding a currency, which is a design change.
+        // 없다"), so ShopItemId — the type that test enumerated — no longer exists
+        // and there is nothing left to count.
+        //
+        // §13's 직업별 선택 카운터 5개 lived here too, covered by
+        // RolePickCounters_GiveEachSection04RoleItsOwn. It checked §11's absolute
+        // rule — "필수 직업이 있으면 풀이 가짜가 된다" — by comparing five role
+        // counters against each other. §04 v1.1 deleted 직업: 「캐릭터는 다 똑같이
+        // 생겨도되지」. Twenty identical runners have no spread to measure, and a
+        // counter family that can only ever report one shape is not a measurement.
+        //
+        // Do not re-add either without first re-adding the system it counts. Both
+        // are design changes, not telemetry changes.
         // ====================================================================
 
-        /// <summary>
-        /// §13's "직업별 선택 카운터 5개" — one per §04 role, all distinct, because
-        /// §11's absolute rule ("필수 직업이 있으면 풀이 가짜가 된다") is checked by
-        /// comparing the five against each other.
-        /// </summary>
-        [Test]
-        public void RolePickCounters_GiveEachSection04RoleItsOwn()
-        {
-            var picked = new List<string>();
-            foreach (var role in Enum.GetValues<RoleId>())
-            {
-                if (role == RoleId.None)
-                {
-                    continue;
-                }
-
-                var counter = TelemetryBuckets.RolePick(role);
-                Assert.That(TelemetryBuckets.RolePickCounters, Does.Contain(counter));
-                picked.Add(counter);
-            }
-
-            Assert.That(picked.Count, Is.EqualTo(GameConstants.RoleCount),
-                "§11 has five roles and §13 wants five counters.");
-            Assert.That(picked.Distinct().Count(), Is.EqualTo(GameConstants.RoleCount),
-                "Two roles sharing a counter would make §11's comparison meaningless.");
-
-            var unassigned = TelemetryBuckets.RolePick(RoleId.None);
-            Assert.That(TelemetryBuckets.RolePick((RoleId)99), Is.EqualTo(unassigned));
-            Assert.That(picked, Does.Not.Contain(unassigned),
-                "An unset slot must not be attributed to a role — the invariant that makes the five "
-                + "readable is that they sum to four per match.");
-        }
 
         /// <summary>
         /// The provisioning list must be free of duplicates and blanks: a Steam stat
@@ -466,8 +429,8 @@ namespace HorrorGame.Core.Tests
 
             Assert.That(TelemetryBuckets.Bucket(TelemetryBuckets.AggroDurationHistogram, 7f),
                 Is.EqualTo("aggro_duration_5_10s"));
-            Assert.That(TelemetryBuckets.Bucket(TelemetryBuckets.RoundTripsHistogram, 3f),
-                Is.EqualTo("round_trips_3"));
+            Assert.That(TelemetryBuckets.Bucket(TelemetryBuckets.DeepestStoreyHistogram, 3f),
+                Is.EqualTo("deepest_storey_b4"));
             Assert.That(TelemetryBuckets.Bucket(TelemetryBuckets.BackpedalShareHistogram, 0.07f),
                 Is.EqualTo("backpedal_share_5_10pct"));
         }
@@ -693,7 +656,7 @@ namespace HorrorGame.Core.Tests
         public void Recorder_ScriptedMatch_MatchesAHandComputedSummary()
         {
             var recorder = RunScriptedMatch(out var sink);
-            var summary = recorder.Complete(MatchOutcome.PartialVictory);
+            var summary = recorder.Complete(RacerStatus.Finished);
 
             // Time: 60 + 600 + 90 of quiet, then the three chases that were ticked
             // (4 + 12 + 6). The zero, negative, NaN and infinite deltas contribute
@@ -704,22 +667,12 @@ namespace HorrorGame.Core.Tests
             Assert.That(summary.MapId, Is.EqualTo(ScriptedMapId));
             Assert.That(summary.SessionId, Is.EqualTo(recorder.SessionId));
             Assert.That(TelemetryPrivacy.IsAnonymousSessionId(summary.SessionId), Is.True);
-            Assert.That(summary.Outcome, Is.EqualTo(MatchOutcome.PartialVictory));
+            Assert.That(summary.Outcome, Is.EqualTo(RacerStatus.Finished));
 
-            Assert.That(summary.Role0, Is.EqualTo(RoleId.Listener));
-            Assert.That(summary.Role1, Is.EqualTo(RoleId.Observer));
-            Assert.That(summary.Role2, Is.EqualTo(RoleId.Runner));
-            Assert.That(summary.Role3, Is.EqualTo(RoleId.Engineer));
-
-            Assert.That(summary.RoundTrips, Is.EqualTo(3));
-            Assert.That(summary.PlayersEscaped, Is.EqualTo(3));
-            Assert.That(summary.PlayersDied, Is.EqualTo(1));
-            Assert.That(summary.ObjectiveRecovered, Is.True);
-
-            Assert.That(summary.CluesRead, Is.EqualTo(GameConstants.CluesRequiredToLocate));
-            Assert.That(summary.ClueMisreads, Is.EqualTo(1));
-
-            Assert.That(summary.BatteriesUsed, Is.EqualTo(GameConstants.EconomyReferenceCellsPerDescent));
+            Assert.That(summary.DeepestStorey, Is.EqualTo(3),
+                "B4 was the deepest reached; the later B2 arrival must not lower it.");
+            Assert.That(summary.RunnersFinished, Is.EqualTo(3));
+            Assert.That(summary.RunnersEliminated, Is.EqualTo(1));
 
             // Four chases: 4 s, 12 s, an event reported directly at 20 s, and 6 s
             // that was still running when Complete closed the match.
@@ -743,20 +696,11 @@ namespace HorrorGame.Core.Tests
             Assert.That(sink.Count("aggro_duration_15s_plus"), Is.EqualTo(1));
             Assert.That(sink.TotalIn(TelemetryBuckets.AggroDurationBuckets), Is.EqualTo(summary.AggroEvents));
 
-            Assert.That(sink.Count(TelemetryBuckets.OutcomeClear), Is.EqualTo(1));
+            Assert.That(sink.Count(TelemetryBuckets.OutcomeFinished), Is.EqualTo(1));
             Assert.That(sink.TotalIn(TelemetryBuckets.OutcomeCounters), Is.EqualTo(1),
-                "One match, one outcome.");
+                "One race, one outcome.");
 
-            Assert.That(sink.Count("role_pick_listener"), Is.EqualTo(1));
-            Assert.That(sink.Count("role_pick_observer"), Is.EqualTo(1));
-            Assert.That(sink.Count("role_pick_runner"), Is.EqualTo(1));
-            Assert.That(sink.Count("role_pick_engineer"), Is.EqualTo(1));
-            Assert.That(sink.Count("role_pick_flasher"), Is.EqualTo(0), "§11: one role is always absent.");
-            Assert.That(sink.TotalIn(TelemetryBuckets.RolePickCounters),
-                Is.EqualTo(GameConstants.PlayersPerMatch),
-                "Four picks per match is what makes §11's comparison between the five meaningful.");
-
-            Assert.That(sink.Count("round_trips_3"), Is.EqualTo(1));
+            Assert.That(sink.Count("deepest_storey_b4"), Is.EqualTo(1));
             Assert.That(sink.Count("backpedal_share_20_25pct"), Is.EqualTo(1));
 
             Assert.That(sink.Summaries.Count, Is.EqualTo(1));
@@ -779,14 +723,13 @@ namespace HorrorGame.Core.Tests
             Assert.That(sink.Count("aggro_duration_10_15s"), Is.EqualTo(1), "A chase that ended is an event.");
 
             Assert.That(sink.TotalIn(TelemetryBuckets.OutcomeCounters), Is.EqualTo(0));
-            Assert.That(sink.TotalIn(TelemetryBuckets.RolePickCounters), Is.EqualTo(0),
-                "A roster still being shuffled in the lobby must not inflate a role's count.");
-            Assert.That(sink.TotalIn(TelemetryBuckets.RoundTripsBuckets), Is.EqualTo(0));
+            Assert.That(sink.TotalIn(TelemetryBuckets.DeepestStoreyBuckets), Is.EqualTo(0),
+                "A race still being run must not file a depth — only the final figure answers the question.");
             Assert.That(sink.TotalIn(TelemetryBuckets.BackpedalShareBuckets), Is.EqualTo(0));
             Assert.That(sink.Summaries, Is.Empty);
             Assert.That(sink.FlushCount, Is.EqualTo(0));
 
-            Assert.That(recorder.Snapshot().Outcome, Is.EqualTo(MatchOutcome.InProgress));
+            Assert.That(recorder.Snapshot().Outcome, Is.EqualTo(RacerStatus.Running));
             Assert.That(recorder.IsComplete, Is.False);
         }
 
@@ -811,7 +754,7 @@ namespace HorrorGame.Core.Tests
             Assert.That(recorder.CurrentAggroSeconds,
                 Is.EqualTo(GameConstants.SprintStaminaSeconds).Within(1e-3f));
 
-            var summary = recorder.Complete(MatchOutcome.Wiped);
+            var summary = recorder.Complete(RacerStatus.Eliminated);
 
             Assert.That(summary.AggroEvents, Is.EqualTo(1));
             Assert.That(summary.TotalAggroSeconds,
@@ -840,7 +783,7 @@ namespace HorrorGame.Core.Tests
             recorder.SetAggroActive(false);
             recorder.SetAggroActive(true);
             recorder.Tick(6f);
-            var summary = recorder.Complete(MatchOutcome.Survived);
+            var summary = recorder.Complete(RacerStatus.Eliminated);
 
             Assert.That(summary.AggroEvents, Is.EqualTo(2));
             Assert.That(summary.TotalAggroSeconds, Is.EqualTo(6f).Within(1e-3f));
@@ -867,7 +810,7 @@ namespace HorrorGame.Core.Tests
                 recorder.RecordMovement(delta, true, true);
             }
 
-            var summary = recorder.Complete(MatchOutcome.Abandoned);
+            var summary = recorder.Complete(RacerStatus.Eliminated);
 
             Assert.That(summary.DurationSeconds, Is.EqualTo(0f));
             Assert.That(summary.TotalAggroSeconds, Is.EqualTo(0f));
@@ -875,7 +818,7 @@ namespace HorrorGame.Core.Tests
             Assert.That(summary.BackpedalSeconds, Is.EqualTo(0f));
             Assert.That(float.IsNaN(summary.BackpedalRatio), Is.False);
             Assert.That(float.IsNaN(summary.AverageAggroSeconds), Is.False);
-            Assert.That(sink.Count(TelemetryBuckets.OutcomeAbandon), Is.EqualTo(1));
+            Assert.That(sink.Count(TelemetryBuckets.OutcomeEliminated), Is.EqualTo(1));
         }
 
         /// <summary>
@@ -916,7 +859,7 @@ namespace HorrorGame.Core.Tests
             recorder.RecordMovement(10f, false, true);
             recorder.RecordMovement(10f, false, false);
 
-            var summary = recorder.Complete(MatchOutcome.Survived);
+            var summary = recorder.Complete(RacerStatus.Eliminated);
 
             Assert.That(summary.TotalMovingSeconds, Is.EqualTo(10f).Within(1e-3f));
             Assert.That(summary.BackpedalSeconds, Is.EqualTo(10f).Within(1e-3f));
@@ -943,7 +886,7 @@ namespace HorrorGame.Core.Tests
             recorder.RecordAggroEvent(-5f);
             recorder.RecordAggroEvent(8f);
 
-            var summary = recorder.Complete(MatchOutcome.Survived);
+            var summary = recorder.Complete(RacerStatus.Eliminated);
 
             Assert.That(summary.AggroEvents, Is.EqualTo(4), "The acquisitions were real even if the timings were not.");
             Assert.That(summary.TotalAggroSeconds, Is.EqualTo(8f).Within(1e-3f));
@@ -953,9 +896,10 @@ namespace HorrorGame.Core.Tests
         }
 
         /// <summary>
-        /// Completing twice reports once. "Everyone died" racing "the host left" is
-        /// an ordinary way to arrive here twice, and a double-counted match biases
-        /// every global average with no way to decrement a Steam counter back.
+        /// Completing twice reports once. "The local runner was caught" racing "the
+        /// last finisher arrived" is an ordinary way to arrive here twice, and a
+        /// double-counted race biases every global average with no way to decrement a
+        /// Steam counter back.
         /// </summary>
         [Test]
         public void Recorder_CompleteTwice_ReportsOnce()
@@ -963,11 +907,10 @@ namespace HorrorGame.Core.Tests
             var sink = new InMemoryTelemetrySink();
             var recorder = new MatchRecorder(sink, 42);
 
-            recorder.SetRoster(RoleId.Listener, RoleId.Observer, RoleId.Runner, RoleId.Flasher);
             recorder.Tick(10f);
 
-            var first = recorder.Complete(MatchOutcome.Wiped);
-            var second = recorder.Complete(MatchOutcome.FullVictory);
+            var first = recorder.Complete(RacerStatus.Eliminated);
+            var second = recorder.Complete(RacerStatus.Finished);
 
             Assert.That(recorder.IsComplete, Is.True);
             Assert.That(second.Outcome, Is.EqualTo(first.Outcome),
@@ -975,8 +918,7 @@ namespace HorrorGame.Core.Tests
             Assert.That(sink.Summaries.Count, Is.EqualTo(1));
             Assert.That(sink.FlushCount, Is.EqualTo(1));
             Assert.That(sink.TotalIn(TelemetryBuckets.OutcomeCounters), Is.EqualTo(1));
-            Assert.That(sink.TotalIn(TelemetryBuckets.RolePickCounters), Is.EqualTo(GameConstants.PlayersPerMatch));
-            Assert.That(recorder.Snapshot().Outcome, Is.EqualTo(MatchOutcome.Wiped));
+            Assert.That(recorder.Snapshot().Outcome, Is.EqualTo(RacerStatus.Eliminated));
         }
 
         /// <summary>Events arriving after the match closed cannot change a summary that was already sent.</summary>
@@ -985,19 +927,15 @@ namespace HorrorGame.Core.Tests
         {
             var sink = new InMemoryTelemetrySink();
             var recorder = new MatchRecorder(sink, 1);
-            var summary = recorder.Complete(MatchOutcome.Survived);
+            var summary = recorder.Complete(RacerStatus.Eliminated);
 
             recorder.Tick(100f);
             recorder.SetAggroActive(true);
             recorder.RecordAggroEvent(30f);
             recorder.RecordMovement(10f, true, true);
-            recorder.RecordRoundTrip();
-            recorder.RecordClueRead(true);
-            recorder.RecordBatteryUsed();
-            recorder.RecordPlayerDied();
-            recorder.RecordPlayerEscaped();
-            recorder.RecordObjectiveRecovered();
-            recorder.SetRoster(RoleId.Runner, RoleId.Runner, RoleId.Runner, RoleId.Runner);
+            recorder.RecordStoreyReached(7);
+            recorder.RecordRunnerEliminated();
+            recorder.RecordRunnerFinished();
 
             Assert.That(recorder.Snapshot(), Is.EqualTo(summary));
             Assert.That(sink.Summaries.Count, Is.EqualTo(1));
@@ -1021,32 +959,40 @@ namespace HorrorGame.Core.Tests
         }
 
         /// <summary>
-        /// Player counts are clamped at §11's four, and a zero-quantity event is
-        /// ignored entirely.
+        /// Runner counts are clamped at §11's twenty, and a storey the map cannot
+        /// produce is ignored rather than clamped into the deepest band.
         /// <para>
-        /// It also asserted that a nonsense 전리품 price was dropped without dropping the
-        /// sale. That half went with §08 — there is no sale.
+        /// The clamp is the point: a summary that says twenty-three runners finished
+        /// a twenty-person race is worse than one that says twenty, because nobody
+        /// aggregating it would notice. The storey is the opposite case and gets the
+        /// opposite treatment — inventing a B8 arrival out of a bad index would put
+        /// wiring bugs in exactly the band the whole histogram exists to read.
         /// </para>
         /// </summary>
         [Test]
-        public void Recorder_ClampsPlayerCounts_AndIgnoresNonsenseQuantities()
+        public void Recorder_ClampsRunnerCounts_AndIgnoresImpossibleStoreys()
         {
             var sink = new InMemoryTelemetrySink();
             var recorder = new MatchRecorder(sink, 1);
 
-            for (var i = 0; i < GameConstants.PlayersPerMatch + 3; i++)
+            for (var i = 0; i < GameConstants.RaceRunnersMax + 3; i++)
             {
-                recorder.RecordPlayerDied();
-                recorder.RecordPlayerEscaped();
+                recorder.RecordRunnerEliminated();
+                recorder.RecordRunnerFinished();
             }
 
-            recorder.RecordBatteryUsed(0);
+            recorder.RecordStoreyReached(3);
+            recorder.RecordStoreyReached(RaceState.Storeys);
+            recorder.RecordStoreyReached(-1);
+            recorder.RecordStoreyReached(1);
 
-            var summary = recorder.Complete(MatchOutcome.Wiped);
+            var summary = recorder.Complete(RacerStatus.Eliminated);
 
-            Assert.That(summary.PlayersDied, Is.EqualTo(GameConstants.PlayersPerMatch));
-            Assert.That(summary.PlayersEscaped, Is.EqualTo(GameConstants.PlayersPerMatch));
-            Assert.That(summary.BatteriesUsed, Is.EqualTo(0));
+            Assert.That(summary.RunnersEliminated, Is.EqualTo(GameConstants.RaceRunnersMax));
+            Assert.That(summary.RunnersFinished, Is.EqualTo(GameConstants.RaceRunnersMax));
+            Assert.That(summary.DeepestStorey, Is.EqualTo(3),
+                "the two out-of-range calls changed nothing, and going back UP a storey does not "
+                + "lower the deepest — §09's spectator flies the whole building after the runner dies");
         }
 
         // ====================================================================
@@ -1149,8 +1095,6 @@ namespace HorrorGame.Core.Tests
                 TelemetryPrivacy.NewSessionId(new DeterministicRandom(ScriptedSeed)),
                 ScriptedMapId);
 
-            recorder.SetRoster(RoleId.Listener, RoleId.Observer, RoleId.Runner, RoleId.Engineer);
-
             // Deltas that must not register at all.
             recorder.Tick(0f);
             recorder.Tick(-1f);
@@ -1179,24 +1123,17 @@ namespace HorrorGame.Core.Tests
             recorder.RecordMovement(50f, false, false);
             recorder.RecordMovement(0f, true, false);
 
-            recorder.RecordRoundTrip();
-            recorder.RecordRoundTrip();
-            recorder.RecordRoundTrip();
+            // Down to B4, then back up to B2 — the storey the summary must report is
+            // the deepest one ever reached, not the last one visited.
+            recorder.RecordStoreyReached(0);
+            recorder.RecordStoreyReached(1);
+            recorder.RecordStoreyReached(3);
+            recorder.RecordStoreyReached(1);
 
-            recorder.RecordClueRead(false);
-            recorder.RecordClueRead(false);
-            recorder.RecordClueRead(true);
-
-            for (var i = 0; i < GameConstants.EconomyReferenceCellsPerDescent; i++)
-            {
-                recorder.RecordBatteryUsed();
-            }
-
-            recorder.RecordPlayerDied();
-            recorder.RecordPlayerEscaped();
-            recorder.RecordPlayerEscaped();
-            recorder.RecordPlayerEscaped();
-            recorder.RecordObjectiveRecovered();
+            recorder.RecordRunnerEliminated();
+            recorder.RecordRunnerFinished();
+            recorder.RecordRunnerFinished();
+            recorder.RecordRunnerFinished();
 
             return recorder;
         }

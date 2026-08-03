@@ -161,8 +161,9 @@ namespace HorrorGame.Tests.PlayMode.Racing
 
         /// <summary>
         /// Metres above the storey's floor at which "the runner is on top of something"
-        /// stops being an escape and becomes a plinth. A <c>DeadEnd_Cap</c> ships with one
-        /// built in and <c>CharacterController.stepOffset</c> is 0.40 m
+        /// stops being an escape and becomes furniture. The building is full of dressing a
+        /// body can get onto — debris, planks, a toppled chair — and
+        /// <c>CharacterController.stepOffset</c> is 0.40 m
         /// (<see cref="GameConstants.PlayerStepOffsetMetres"/>), so a runner CAN climb onto
         /// it, and standing on it is 막힌 길 furniture rather than the outside of the
         /// building. Everything that is genuinely outside is at or below the floor: the zone
@@ -1361,8 +1362,8 @@ namespace HorrorGame.Tests.PlayMode.Racing
         /// <c>PlayerReachAudit</c> and the NavMesh audit ask, at the radius
         /// <see cref="FloorSnapMetres"/> argues for.
         /// <para>
-        /// A runner standing above the floor on a <c>DeadEnd_Cap</c>'s plinth is counted in
-        /// and tallied separately: they have climbed on the furniture, which is inside the
+        /// A runner standing above the floor on a piece of dressing is counted in and
+        /// tallied separately: they have climbed on the furniture, which is inside the
         /// building by definition, and their feet being 0.4 m up puts them further from the
         /// surface than a body on it. See <see cref="ClimbedAboveFloorMetres"/>.
         /// </para>

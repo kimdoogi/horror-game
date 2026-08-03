@@ -4,12 +4,10 @@ using System;
 using System.Collections.Generic;
 using HorrorGame.Audio;
 using HorrorGame.Core;
-using HorrorGame.Core.Abilities;
 using HorrorGame.Core.Ghost;
 using HorrorGame.Core.Map;
 using HorrorGame.Core.Match;
 using HorrorGame.Core.Monster;
-using HorrorGame.Core.Roles;
 using HorrorGame.Core.Session;
 using HorrorGame.Core.Voice;
 using HorrorGame.Gameplay.Ghost;
@@ -45,6 +43,20 @@ namespace HorrorGame.Gameplay.Match
     /// 궤짝, the 차량 and its 지상 apron, §01's 왕복 and 귀환, and the flag itself. A
     /// <c>bool</c> with one legal value is a lie about what the game is, so <c>_raceMode</c>
     /// went with the branch it guarded.
+    /// </para>
+    /// <para>
+    /// <b>§04 went next, and it went from here last.</b> That deletion left one survivor in
+    /// this file for a whole round: <c>BuildLineup()</c>, a private helper that assembled
+    /// four DISTINCT <c>RoleId</c>s out of <c>RoleSelection.AllRoles</c> purely so
+    /// <c>MatchState</c>'s constructor would accept them, and it ran on every single
+    /// <see cref="BeginMatch"/>. It was labelled a scaffold, which is why two sweeps read
+    /// past it. The owner's line is 「직업도 다 없애」 · 「캐릭터는 다 똑같이 생겨도되지」, so
+    /// there is no lineup to build: twenty identical runners start on the rim and the only
+    /// thing that separates them at the finish is the descent they just made. The floor's
+    /// 발소리 clarity used to be read through <c>ListenerAbility</c> — 청음사's class — and is
+    /// now read from <see cref="MapZone.ClarityOf"/>, which is the same table in §12's own
+    /// namespace and the one <c>VoiceRules</c> already asks. Nothing on this class knows
+    /// what a role is; do not give it one back to satisfy a constructor.
     /// </para>
     /// <para>
     /// <b>Two things that were never wired, found while deleting, and fixed here.</b>
@@ -146,8 +158,11 @@ namespace HorrorGame.Gameplay.Match
 
         private readonly Collider[] _doorSearch = new Collider[DoorSearchBuffer];
 
-        private MatchClock _clock = new MatchClock(startOnSurface: false);
-        private MatchState? _state;
+        private MatchClock _clock = new MatchClock();
+
+        /// <summary>§09's ghost, or null while the local runner is still descending.</summary>
+        private GhostState? _ghost;
+
         private MatchMap? _map;
         private DeterministicRandom? _rng;
 
@@ -236,30 +251,17 @@ namespace HorrorGame.Gameplay.Match
             get { return _clock; }
         }
 
-        /// <summary>
-        /// The seats, and §09's ghosts. Null before <see cref="BeginMatch"/>.
-        /// <para>
-        /// <b>The last co-operative object still standing, and it is here for one reason:
-        /// §09's ghost has to live somewhere.</b> <c>MatchState.TryKill</c> is what builds
-        /// the <see cref="GhostState"/> a caught runner spectates from, and
-        /// <c>MonsterKillTests</c> reads <c>State.PlayerAt(0).Ghost</c> as its evidence that
-        /// the creature can actually catch somebody — the reproduction for
-        /// 「괴물앞에있어도 안죽는데」. Nothing else on it is read from this file any more:
-        /// the objective, the loot flags, the injury and §01's surface standing all lost
-        /// their callers with the co-op path.
-        /// </para>
-        /// <para>
-        /// It does not fit a race yet and should not be left like this. Its constructor
-        /// still demands §11's four DISTINCT §04 roles (<c>RoleSelection.IsComplete</c>),
-        /// which a field of twenty identical runners cannot satisfy — see
-        /// <see cref="BuildLineup"/> for the scaffold that gets past it. Rewriting
-        /// <c>MatchState</c> for 2~20 identical seats is the next deletion, not this one.
-        /// </para>
-        /// </summary>
-        public MatchState? State
-        {
-            get { return _state; }
-        }
+        // DELETED with Core/Match/MatchState: the `State` property and the seat table
+        // behind it. It was "the last co-operative object still standing", kept because
+        // §09's ghost had to live somewhere — MatchState.TryKill was what minted it.
+        // Everything else on the type (목표물, 전리품, 부상, 지상/지하, 탈출, 포기, §02's
+        // four-way resolution) was the co-op game, and its constructor demanded four
+        // DISTINCT §04 roles, which is the only reason BuildLineup() ever existed.
+        //
+        // RaceState already answers every question the race asks of a field of 2~20:
+        // who is running, who finished in what place, who is out, when it ends. A seat
+        // table beside it is the exact defect that made the race unwinnable a week ago.
+        // The ghost is now one nullable field on this class, minted where it is used.
 
         /// <summary>The building the race is run in. Null before <see cref="BeginMatch"/>.</summary>
         public MatchMap? Map
@@ -335,7 +337,7 @@ namespace HorrorGame.Gameplay.Match
         /// </summary>
         public bool LocalPlayerIsGhost
         {
-            get { return _state != null && _state.PlayerAt(LocalSeat).IsGhost; }
+            get { return _ghost != null; }
         }
 
         /// <summary>
@@ -469,14 +471,13 @@ namespace HorrorGame.Gameplay.Match
             // seed lays out a different tower on the same 57.5 m square.
             _bounds.Reset();
 
-            // startOnSurface: false on both, and it is not a default being restated. §01's
-            // 지상 is where a co-operative team regrouped, shopped and re-supplied; a runner
-            // starts on the rim of B1 with the maze in front of them and nothing behind. The
-            // clock therefore counts basement seconds from tick one, and §07's 「시각은
-            // 지상에서만 알 수 있다」 means nobody in this building can read it — which is the
-            // rule, not a gap. RaceHud shows race time, which is a different number.
-            _state = new MatchState(BuildLineup(), startOnSurface: false);
-            _clock = new MatchClock(startOnSurface: false);
+            // No startOnSurface argument on either any more, and its absence is the
+            // point. §01's 지상 was where a co-operative team regrouped, shopped and
+            // re-supplied; a runner starts on the rim of B1 with the maze in front of
+            // them and nothing behind. MatchClock dropped the whole 지상 half of its
+            // surface, so there is no longer a flag to pass false to.
+            _ghost = null;
+            _clock = new MatchClock();
             _accumulator = 0d;
 
             MovePlayerToSpawn();
@@ -505,9 +506,10 @@ namespace HorrorGame.Gameplay.Match
             _running = false;
             _verdictHeldForGhost = false;
 
-            // §09 ends with the match and never outlives it: the spectator's cooldown is
-            // ticked from the step this call stops, so a ghost left flying afterwards
-            // would be one whose 45 s never comes round again.
+            // §09 ends with the match and never outlives it. A ghost left flying after
+            // the director stopped would be a camera in a building whose creatures have
+            // stopped moving — §09's whole argument for the seat is that there is
+            // something to watch.
             _ghosts?.End();
         }
 
@@ -600,14 +602,16 @@ namespace HorrorGame.Gameplay.Match
 
         private void StepFixed()
         {
-            var state = _state;
-            if (state == null)
+            // Hangs on the map, deliberately NOT on _ghost: _ghost is null for a runner
+            // who is still alive, which is most of the match, and this step is what keeps
+            // them alive. Whether the match is running at all is _running, tested by
+            // StepMatch before it gets here.
+            if (_map == null)
             {
                 return;
             }
 
             _clock.Tick(GameConstants.FixedStep);
-            state.Tick(GameConstants.FixedStep);
 
             if (_flashlight != null)
             {
@@ -879,12 +883,14 @@ namespace HorrorGame.Gameplay.Match
                 return null;
             }
 
-            // ListenerAbility is §04's 청음사 class and §04 is deleted, but the table it
-            // holds is a property of the FLOOR — how clearly 콘크리트, 물, 흙 carry a step —
-            // and §12 gives every storey its own surface. The clarity table has to live
-            // somewhere; that it currently lives in a role's file is a tidying job for
-            // whoever deletes §04's abilities, not a reason to copy the numbers here.
-            var clarity = ListenerAbility.ClarityOf(FloorSurfaces.Sample(here));
+            // §12's table, asked in §12's namespace. How clearly 콘크리트, 물, 흙 carry a
+            // step is a property of the FLOOR, and 하강 gives every storey its own surface.
+            // This used to be read through ListenerAbility — 청음사's class, §04, deleted
+            // with the roles — which meant a race with no classes in it still reached into
+            // one to decide how loud a footstep was. MapZone holds the identical table and
+            // is what VoiceRules already asks, so the runner's feet and the runner's voice
+            // now agree about the floor by construction rather than by coincidence.
+            var clarity = MapZone.ClarityOf(FloorSurfaces.Sample(here));
             var range = GameConstants.MonsterFootstepHearingRange * clarity * effort;
             if (range <= 0.1f)
             {
@@ -1496,7 +1502,7 @@ namespace HorrorGame.Gameplay.Match
         /// </para>
         /// <para>
         /// <b>A catch is 탈락, and the standings are where that is recorded.</b> Nothing
-        /// used to tell §02 about it: <c>MatchState.TryKill</c> ran, §09 took the camera,
+        /// used to tell §02 about it: the ghost was minted, §09 took the camera,
         /// and the runner stayed <c>RacerStatus.Running</c> in <c>RaceState</c> for the rest
         /// of the match — so the race could not close, <c>RaceHud</c>'s verdict line was
         /// unreachable, and a caught player watched a scoreboard that still had them in it.
@@ -1527,8 +1533,7 @@ namespace HorrorGame.Gameplay.Match
         /// </summary>
         private void CheckGrab()
         {
-            var state = _state;
-            if (state == null || _playerRoot == null || _creatures.Count == 0)
+            if (_playerRoot == null || _creatures.Count == 0)
             {
                 return;
             }
@@ -1545,9 +1550,9 @@ namespace HorrorGame.Gameplay.Match
                 }
 
                 // §09 leaves the body where it fell and it stays there for the rest of the
-                // match. A body is not catchable — MatchState.TryKill refuses a second kill
-                // anyway, but reaching it would play the grab again over a runner who is no
-                // longer there.
+                // match. A body is not catchable — the null check on _ghost below refuses a
+                // second kill anyway, but reaching it would play the grab again over a
+                // runner who is no longer there.
                 //
                 // A creature on another floor is never chasing this runner for the purposes
                 // of a catch, however close the flat distance says it is. See the remarks.
@@ -1602,7 +1607,10 @@ namespace HorrorGame.Gameplay.Match
                         continue;
 
                     case LungeEvent.Missed:
-                        Debug.Log("[Match] §04 주자 — 덮치기를 피했다, " + distance.ToString("0.00") + " m", this);
+                        // §06, not §04. 주자 is what everybody in this building is — it is
+                        // the whole field, not a class somebody picked — so the section that
+                        // owns this line is the creature's, and dodging is a §06 miss.
+                        Debug.Log("[Match] §06 덮치기를 피했다 — " + distance.ToString("0.00") + " m", this);
                         continue;
 
                     case LungeEvent.Hit:
@@ -1614,8 +1622,14 @@ namespace HorrorGame.Gameplay.Match
 
                 var where = _playerRoot.position;
 
-                if (state.TryKill(LocalSeat, where.ToVec3()))
+                if (_ghost == null)
                 {
+                    // §09 mints the spectator here. MatchState used to own this call so it
+                    // could also drop 전리품 and the 목표물; there is neither, so the ghost
+                    // is built where it is used. The null test is the "no second kill"
+                    // invariant MatchState.TryKill used to enforce.
+                    _ghost = new GhostState(where.ToVec3());
+
                     Debug.Log("[Match] §02 잡혔다 — 탈락, 순위 없음. " + where, this);
 
                     // §06 forgets a target that is now a body — see StepCreatures — and §09
@@ -1635,7 +1649,7 @@ namespace HorrorGame.Gameplay.Match
                     // RaceHud redraws at 5 Hz, so the standings are right long before
                     // anything is drawn from them.
                     monster.ForgetTarget(LocalSeat);
-                    EnterGhost(state.PlayerAt(LocalSeat).Ghost);
+                    EnterGhost(_ghost);
                     _raceDirector?.ReportCaught(LocalSeat, _clock.ElapsedSeconds);
                 }
 
@@ -1737,39 +1751,16 @@ namespace HorrorGame.Gameplay.Match
             }
         }
 
-        /// <summary>
-        /// A lineup <c>MatchState</c> will accept, for a game that no longer has roles.
-        /// <para>
-        /// <b>This is a scaffold and it should not outlive the next change.</b>
-        /// DESCENT-PIVOT §4 deletes §04 outright — 「5개 직업 → 전부 삭제. 20명이 완전히 같은
-        /// 몸으로 출발한다」 — because a race whose result can be explained by a pick teaches
-        /// the loser nothing. Every runner is 주자: <c>PlayerMotor</c> already defaults to
-        /// <see cref="RoleId.Runner"/> and gates 질주 5.6 m/s on it, which is the one ability
-        /// §01 says must survive, and nothing in this file reads a role for any other reason.
-        /// </para>
-        /// <para>
-        /// The three other slots exist only because <c>MatchState</c>'s constructor throws
-        /// on a <c>RoleSelection</c> that is not four DISTINCT roles, and
-        /// <c>MatchState</c> is still where §09's ghost lives (see <see cref="State"/>).
-        /// Filling them from <c>RoleSelection.AllRoles</c> is deterministic, so §13's replay
-        /// is unaffected, and no seat but <see cref="LocalSeat"/> is ever read.
-        /// </para>
-        /// </summary>
-        private static RoleSelection BuildLineup()
-        {
-            var roles = new List<RoleId> { RoleId.Runner };
-            var all = RoleSelection.AllRoles;
-
-            for (var i = 0; i < all.Count && roles.Count < GameConstants.PlayersPerMatch; i++)
-            {
-                if (!roles.Contains(all[i]))
-                {
-                    roles.Add(all[i]);
-                }
-            }
-
-            return RoleSelection.FromRoles(roles.ToArray());
-        }
+        // BuildLineup() was here. It made a RoleSelection of four DISTINCT §04 RoleIds —
+        // 주자 first, then whatever RoleSelection.AllRoles offered up to
+        // GameConstants.PlayersPerMatch, the CO-OP party of four — and handed it to
+        // MatchState's constructor on every BeginMatch. It was never played: no seat but
+        // LocalSeat was read and nothing in this file asked what role anybody had. It
+        // existed to satisfy a constructor, was documented as a scaffold, and survived two
+        // sweeps on the strength of that word while running in every shipped match.
+        //
+        // 「직업도 다 없애」 · 「캐릭터는 다 똑같이 생겨도되지」. Twenty identical bodies start
+        // on B1's rim. There is no lineup to build, so there is no method to keep.
 
         private void ResolveWiring()
         {

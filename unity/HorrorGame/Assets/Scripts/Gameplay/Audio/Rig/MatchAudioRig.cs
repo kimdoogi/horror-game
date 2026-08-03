@@ -51,11 +51,9 @@ namespace HorrorGame.Gameplay.Audio
         [SerializeField]
         private Transform? monster;
 
-        [Header("Levels")]
-        [Tooltip("Level of the per-zone electrical hum (§12's 전기 패널), 0..1. Low: it is " +
-                 "a landmark, not an event, and §12's floor alphabet has to win against it.")]
-        [SerializeField, Range(0f, 1f)]
-        private float landmarkLevel = 0.5f;
+        // DELETED with §12's 전기 패널: landmarkLevel, the mix level of the per-zone
+        // electrical hum. Its landmark, its clip and the method that placed it are all
+        // gone; this was the last thing left holding a number for it.
 
         private GameAudio? _mix;
         private ZoneAmbienceDirector? _zones;
@@ -67,7 +65,6 @@ namespace HorrorGame.Gameplay.Audio
         private FootstepAudio? _playerSteps;
         private FootstepAudio? _monsterSteps;
         private MonsterAudio? _monsterAudio;
-        private ListenerAudioDriver? _listenerDriver;
 
         private int _announcedTier = -1;
         private bool _built;
@@ -100,18 +97,14 @@ namespace HorrorGame.Gameplay.Audio
         /// </summary>
         public MonsterStateId MonsterState { get; set; } = MonsterStateId.Patrol;
 
-        /// <summary>Whether §04's role is active on the local player. §11 leaves one of the five out every match.</summary>
-        public bool LocalPlayerIsListener
-        {
-            get { return _listenerDriver != null && _listenerDriver.IsListener; }
-            set
-            {
-                if (_listenerDriver != null)
-                {
-                    _listenerDriver.IsListener = value;
-                }
-            }
-        }
+        // DELETED with §04: LocalPlayerIsListener and the ListenerDriver property
+        // behind it. ListenerAudioDriver stepped Core's 청음사 ability every frame —
+        // an acoustic fix on the creature with a seeded error radius — and handed the
+        // answer "to the HUD". There was no HUD: nothing in the project read Reading,
+        // HasReading, HeardFloor, IsSelfBlinded or Failure. It ran in every shipped
+        // match, computing a deleted role's estimate for nobody. What every runner
+        // actually hears is FootstepAudio through AudioOcclusion, which is real,
+        // wired, and unaffected by this removal.
 
         /// <summary>The clip set. Null means the whole mix is silent, which is a wiring bug, not a state.</summary>
         public MatchAudioLibrary? Library => library;
@@ -145,9 +138,6 @@ namespace HorrorGame.Gameplay.Audio
 
         /// <summary>§06's presence, breath and vocalisations.</summary>
         public MonsterAudio? MonsterVoice => _monsterAudio;
-
-        /// <summary>§04's 청음사, stepped against Core's own ability.</summary>
-        public ListenerAudioDriver? ListenerDriver => _listenerDriver;
 
         /// <summary>
         /// Points the mix at the monster. Called on spawn, and with null on despawn —
@@ -187,7 +177,7 @@ namespace HorrorGame.Gameplay.Audio
 
             _zones?.Configure(
                 value != null ? value.Surfaces : null,
-                value != null ? value.SurfaceBed : null,
+                null,
                 CollectIncidental());
 
             _threat?.Configure(
@@ -351,9 +341,11 @@ namespace HorrorGame.Gameplay.Audio
         private void BuildGlobalDirectors()
         {
             _zones = Ensure<ZoneAmbienceDirector>(gameObject);
+            // Null where SurfaceBed used to be: §01's 지상 bed is deleted, so §12's
+            // floor materials are the whole of what a zone sounds like.
             _zones.Configure(
                 library != null ? library.Surfaces : null,
-                library != null ? library.SurfaceBed : null,
+                null,
                 CollectIncidental());
 
             _threat = Ensure<ThreatBedDirector>(gameObject);
@@ -403,12 +395,11 @@ namespace HorrorGame.Gameplay.Audio
             _cues = Ensure<AudioCuePlayer>(host);
             _cues.Configure(library, _noise);
 
-            _listenerDriver = Ensure<ListenerAudioDriver>(host);
-
             // A child object rather than the body itself: FootstepAudio requires an
             // AudioSource, and the body may already carry one belonging to another
             // system. Two components fighting over one source is a footstep that cuts
-            // off a door, which §04 reads as a missing step.
+            // off a door, and §12 makes 발소리 the map — a step that never plays is a
+            // corridor the runner behind you cannot hear you in.
             var feet = ChildNamed(body, "audio_footsteps");
             _playerSteps = Ensure<FootstepAudio>(feet);
             _playerSteps.Configure(
@@ -432,38 +423,13 @@ namespace HorrorGame.Gameplay.Audio
             _monsterAudio.State = MonsterState;
         }
 
-        /// <summary>
-        /// Places a landmark loop. §03's 발전기 and §12's per-zone 전기 패널 — the only
-        /// continuous sounds in the mix that stay put while the player moves.
-        /// </summary>
-        /// <param name="where">World position.</param>
-        /// <param name="generator">True for §03's surface generator, false for a §12 zone panel.</param>
-        /// <param name="label">
-        /// Distinguishing suffix for the object's name — §12's zone letter, normally.
-        /// It only reaches the hierarchy and the census, and that is the point: five
-        /// identically named hums are five things nobody can tell apart in the one
-        /// report that exists to say which sound is coming from where.
-        /// </param>
-        public AmbienceLandmark? PlaceLandmark(Vector3 where, bool generator, string label)
-        {
-            var clip = library == null
-                ? null
-                : generator ? library.GeneratorLoop : library.ZoneHumLoop;
+        // DELETED with §03's 발전기 and §12's 전기 패널: PlaceLandmark(Vector3, bool,
+        // string). It hung a looping hum on a world position — the generator at the
+        // entrance, or one electrical panel per zone — so a player could navigate the
+        // dark by ear. Both clips and both fields are deleted. A per-zone landmark is a
+        // reasonable thing for a race to want; it is not this one, and it would need a
+        // sound that is not a 배전반.
 
-            if (clip == null)
-            {
-                return null;
-            }
-
-            var host = new GameObject(
-                (generator ? "audio_landmark_generator" : "audio_landmark_zone") + "_" + label);
-            host.transform.SetParent(transform, worldPositionStays: false);
-            host.transform.position = where;
-
-            var landmark = host.AddComponent<AmbienceLandmark>();
-            landmark.Configure(clip, AudioTuning.DefaultWorldAudibleRange, generator ? 1f : landmarkLevel);
-            return landmark;
-        }
 
         private static GameObject ChildNamed(Transform parent, string childName)
         {

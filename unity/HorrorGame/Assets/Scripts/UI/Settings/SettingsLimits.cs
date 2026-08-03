@@ -41,7 +41,7 @@ namespace HorrorGame.UI.Settings
     /// </para>
     /// <para>
     /// <b>Where the 20 % came from, and why it stayed.</b> It used to be read off
-    /// <c>GameConstants.ClueMinReadableLightQuality</c> — §03 put the light needed to
+    /// <c>GameConstants.MinSafeLightQuality</c> — the light needed to
     /// read a 단서 at 20 % of full, so the widest a display preference could move the
     /// picture was the same 20 %, which guaranteed the slider could never move a surface
     /// across §03's threshold. DESCENT-PIVOT §7 step 7 deleted the 단서 and that constant

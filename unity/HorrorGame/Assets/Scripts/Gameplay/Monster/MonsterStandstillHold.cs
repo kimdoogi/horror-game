@@ -76,7 +76,7 @@ namespace HorrorGame.Gameplay.Monster
         public void SetState(MonsterStateId state, bool isStunned)
         {
             // A flash outranks the hold. §04 buys the Flasher a visible window
-            // (GameConstants.FlashStunSeconds) and a creature frozen through its own
+            // (GameConstants.MonsterStunSeconds) and a creature frozen through its own
             // recoil would hide the one piece of feedback that ability has.
             var wanted = state == MonsterStateId.Standstill && !isStunned;
             if (wanted == _active)

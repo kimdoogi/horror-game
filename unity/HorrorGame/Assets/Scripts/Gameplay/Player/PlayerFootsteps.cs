@@ -183,7 +183,7 @@ namespace HorrorGame.Gameplay.Player
             // No animator: fall back to distance travelled. Deliberately not a timer —
             // distance keeps the cadence honest through every §05 multiplier, which a
             // fixed interval would not.
-            if (!_motor.IsGrounded || _motor.GroundSpeed <= GameConstants.ObserverStillSpeedThreshold)
+            if (!_motor.IsGrounded || _motor.GroundSpeed <= GameConstants.StillSpeedThreshold)
             {
                 _distanceSinceStep = 0f;
                 return;
@@ -356,7 +356,7 @@ namespace HorrorGame.Gameplay.Player
 
             // §04 sizes the Listener's world at 40 m, so a footstep that stops carrying
             // before then has removed information the role is built on.
-            source.maxDistance = GameConstants.ListenerHearingRange;
+            source.maxDistance = GameConstants.AudibleRangeMetres;
 
             for (var i = 0; i < _clipSets.Length; i++)
             {

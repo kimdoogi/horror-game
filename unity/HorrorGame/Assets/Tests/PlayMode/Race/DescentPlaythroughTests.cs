@@ -544,11 +544,16 @@ namespace HorrorGame.Tests.PlayMode.Racing
                 leg.DropPoint = dropPoint;
 
                 // Straight down from the drop point, and deliberately with no lift on the ray's
-                // origin. Chute.DropHeightMetres is 3.0 m and the kit's corridor gives exactly
-                // 3.00 m of clear height (MapKit.manifest corridor_clear.height), so the drop
-                // point IS the ceiling plane of the cell it drops into — half a metre of lift,
-                // the way EscapeTests.Underfoot takes it, would start this ray inside the ceiling
-                // slab and report the storey above.
+                // origin. A half-metre of lift, the way EscapeTests.Underfoot takes it, would
+                // start this ray above the runner's own head and could report the storey above.
+                //
+                // This comment used to say the drop point IS the ceiling plane, because
+                // Chute.DropHeightMetres was a typed-in 3.0 against the kit's 3.00 m of corridor
+                // clear (MapKit.manifest corridor_clear.height). That was true, and it was the
+                // bug: every runner was teleported into the slab with the shortest way out
+                // upward, back to the storey they had just left, and 0 of 238 swallowed runners
+                // ended up standing below. The constant now derives from the fall it is for —
+                // half a second, ½·g·t² — and is 1.226 m.
                 var reach = (RaceState.Storeys * StoreyPitchMetres) + 10f;
                 leg.DropColumnFound = FirstHit(player, dropPoint, Vector3.down, reach, out var under);
                 if (leg.DropColumnFound)
@@ -562,15 +567,19 @@ namespace HorrorGame.Tests.PlayMode.Racing
                         && leg.DropColumnStorey == leg.Storey + 1;
                 }
 
-                // Reported, not asserted, and the arithmetic says why. A standing body at the
-                // drop point needs DropHeightMetres + the rig's own height of room — 3.0 + 1.75 =
-                // 4.75 m — against a StoreyPitchMetres of 3.75 and 3.00 m of corridor clear. No
-                // building assembled from this kit can give that, so demanding it would paint the
-                // headline test red for a decision that lives in Chute.DropHeightMetres rather
-                // than in any map. What it is worth is the naming: the report prints the
-                // hierarchy path of everything the body would be inside, so a 'Map/Boundary/…'
-                // plate in that list is a shell standing in a storey it is supposed to be outside
-                // of, and the reader can tell that apart from the kit's own ceiling.
+                // Asserted now, and the arithmetic is why it can be. A standing body at the drop
+                // point needs DropHeightMetres + the rig's own height of room: 1.226 + 1.75 =
+                // 2.976 m against the kit's 3.00 m of corridor clear. It fits, with 24 mm to
+                // spare. While the constant was 3.0 this condition was unsatisfiable by any
+                // building assembled from this kit, so it was reported rather than demanded —
+                // and that is exactly how the drop-into-the-ceiling bug survived two rounds of
+                // people reading a green headline test.
+                //
+                // The naming is still worth having: the report prints the hierarchy path of
+                // everything the body would be inside, so a 'Map/Boundary/…' plate in that list
+                // is a shell standing in a storey it is meant to be outside of, a 'Map/Dressing/…'
+                // piece is scenery in a drop column, and the reader can tell both apart from the
+                // kit's own ceiling.
                 leg.DropPointInside = InsideAt(player, dropPoint);
 
                 // How much room the 착지 actually has over it, so the line above can be read
@@ -665,6 +674,34 @@ namespace HorrorGame.Tests.PlayMode.Racing
                           + " 칸) 남은 자리. RadialStorey의 d = 2 벽, 중심 방으로 들어가는 단 하나의 관문이다")
                     + ". 이 층이 막혀 있으면 §01의 하강은 그 아래로 존재하지 않는다 — 아무도 이 층의 "
                     + "투하구에 닿지 못하고, 밑의 층들은 도달할 수 없는 방이다.");
+            }
+
+            // ── Link two and a half: the drop point is open air ──────────────────
+            // Nothing may be inside the runner's body where the 투하구 puts it down. The
+            // ceiling was there for the whole of this project's life, a boundary plate was
+            // there for a round, and a rubble pile was there for a round after that. Each
+            // time the headline test was green because this was printed and not demanded.
+            for (var i = 0; i < _legs.Count; i++)
+            {
+                var leg = _legs[i];
+                if (leg.Storey >= RaceState.Storeys - 1 || !leg.HadChute)
+                {
+                    continue;
+                }
+
+                if (string.IsNullOrEmpty(leg.DropPointInside))
+                {
+                    continue;
+                }
+
+                broken.Add(
+                    "투하구 · B" + (leg.Storey + 1) + ": 낙하 지점에 몸이 들어갈 자리가 없다 — "
+                    + leg.DropPoint.ToString("0.00") + " 에 선 " + RigHeightMetres.ToString("0.00")
+                    + " m 짜리 몸이 " + leg.DropPointInside + " 안에 있다. 착지 + "
+                    + Chute.DropHeightMetres.ToString("0.000") + " m 에 몸 높이를 더하면 "
+                    + (Chute.DropHeightMetres + RigHeightMetres).ToString("0.000")
+                    + " m 이고, 키트의 복도 천장은 3.00 m 다. 물리는 가장 짧은 쪽으로 밀어내고, "
+                    + "그 쪽은 위 — 방금 떠나온 층이다. §01의 하강은 여기서 되감긴다.");
             }
 
             // ── Link three: a 투하구 drops one storey, onto the rim ───────────────

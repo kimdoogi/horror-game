@@ -212,7 +212,7 @@ namespace HorrorGame.Core.Presence
         /// Takes the toll owed to this player, once.
         /// <para>
         /// A one-shot handoff rather than a flag, matching <c>LightField</c>'s expired
-        /// flare and <c>EngineerAbility</c>'s outcome: the host may tick and read at
+        /// the host may tick and read at
         /// different rates, and a silence has to be applied exactly once. Missing it
         /// would leave a player who can still talk with a stage that says they cannot.
         /// </para>

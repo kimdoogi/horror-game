@@ -1,8 +1,6 @@
 #nullable enable
 
-using System.Globalization;
 using HorrorGame.Core.Ghost;
-using HorrorGame.UI.Readouts;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -11,12 +9,13 @@ namespace HorrorGame.UI.Screens
     /// <summary>
     /// What a dead player sees. §09.
     /// <para>
-    /// <b>One channel, and therefore one widget.</b> §09 gives the ghost a rattle
-    /// every forty-five seconds and nothing else, and the section's "최고의 순간" is
-    /// the moment the living walk the wrong way while the ghost knows better and
-    /// cannot say so. The cooldown is the largest thing on this overlay because the
-    /// wait <em>is</em> the experience — <em>"쿨타임 45초 안에 다시 시도할 수 없다 …
-    /// (유령의 절규)"</em>.
+    /// <b>No channel, and therefore no widget for one.</b> This overlay used to be
+    /// built around a cooldown bar: §09 gave the ghost a rattle every forty-five
+    /// seconds, and the wait <em>was</em> the experience. §11's 탈락자 rule deleted
+    /// the rattle — 「살아 있는 사람에게 개입할 수 없다」 — so the bar, its countdown,
+    /// its two failure messages and the 물건 prompt under it all went with it. What
+    /// replaced them is a line naming what the ghost is currently watching, because
+    /// the one key a spectator has now moves the camera rather than the world.
     /// </para>
     /// <para>
     /// <b>There is no voice element here, of any kind.</b> No microphone icon, no
@@ -55,10 +54,7 @@ namespace HorrorGame.UI.Screens
     {
         private RectTransform? _group;
         private Text? _title;
-        private Text? _rattleText;
-        private UiBar? _rattleBar;
-        private Text? _failureText;
-        private Text? _targetText;
+        private Text? _watchText;
         private Text? _keysText;
         private Text? _monsterTitle;
         private Text? _monsterState;
@@ -68,13 +64,11 @@ namespace HorrorGame.UI.Screens
         private UiBar? _verdictBar;
 
         private GhostState? _ghost;
-        private GhostSignalFailure _lastFailure = GhostSignalFailure.None;
 
-        private string _targetLabel = string.Empty;
-        private float _targetDistance;
+        private string _watchLabel = string.Empty;
         private bool _verdictWaiting;
         private float _verdictProgress01;
-        private string _rattleKeyLabel = "?";
+        private string _watchKeyLabel = "?";
         private string _endMatchKeyLabel = "?";
 
         /// <inheritdoc />
@@ -99,9 +93,9 @@ namespace HorrorGame.UI.Screens
         public void Bind(GhostState ghost)
         {
             _ghost = ghost;
-            _lastFailure = GhostSignalFailure.None;
+            _watchLabel = string.Empty;
             SetVisible(true);
-            Apply(GhostReadout.From(ghost, _lastFailure));
+            Redraw();
         }
 
         /// <summary>Stops drawing. The match is over, or the ghost is being handed to the end screen.</summary>
@@ -109,16 +103,6 @@ namespace HorrorGame.UI.Screens
         {
             _ghost = null;
             SetVisible(false);
-        }
-
-        /// <summary>
-        /// Records the outcome of a rattle attempt so the overlay can say which kind of
-        /// failure it was. §09 keeps the two apart because only one of them — 너무
-        /// 멀다 — is worth drifting somewhere to fix.
-        /// </summary>
-        public void NoteRattle(GhostRattle rattle)
-        {
-            _lastFailure = rattle.Failure;
         }
 
         /// <summary>
@@ -130,14 +114,14 @@ namespace HorrorGame.UI.Screens
         /// exists for exactly the same reason and says so.
         /// </para>
         /// </summary>
-        /// <param name="rattleKeyLabel">The key that shakes something. §09's only verb.</param>
+        /// <param name="watchKeyLabel">The key that cuts to the next vantage. §09's only verb.</param>
         /// <param name="endMatchKeyLabel">The key held to ask for §02's verdict, once there is one.</param>
         /// <param name="legend">The whole scheme in one faint line, for a player who has never been dead before.</param>
-        public void SetKeys(string rattleKeyLabel, string endMatchKeyLabel, string legend)
+        public void SetKeys(string watchKeyLabel, string endMatchKeyLabel, string legend)
         {
             EnsureBuilt();
 
-            _rattleKeyLabel = string.IsNullOrEmpty(rattleKeyLabel) ? "?" : rattleKeyLabel;
+            _watchKeyLabel = string.IsNullOrEmpty(watchKeyLabel) ? "?" : watchKeyLabel;
             _endMatchKeyLabel = string.IsNullOrEmpty(endMatchKeyLabel) ? "?" : endMatchKeyLabel;
 
             if (_keysText != null)
@@ -147,16 +131,18 @@ namespace HorrorGame.UI.Screens
         }
 
         /// <summary>
-        /// Names the 물건 the ghost is beside. §09 gives it one verb and it should know
-        /// what that verb is about to touch — 「[E] 은수저 · 1.2m」 rather than a key
-        /// prompt over nothing.
+        /// Names what the ghost is watching — a creature, the finish, its own body, or
+        /// nothing while it is flying free.
+        /// <para>
+        /// Replaces <c>SetRattleTarget</c>, which named the 물건 the ghost was standing
+        /// next to and about to shake. The verb changed from touching the world to
+        /// choosing where to look at it from, so the label did too.
+        /// </para>
         /// </summary>
-        /// <param name="label">What the object is called, or empty when there is none in range.</param>
-        /// <param name="distanceMetres">Straight-line metres. Straight because a ghost passes through walls.</param>
-        public void SetRattleTarget(string label, float distanceMetres)
+        /// <param name="label">Empty while the ghost is flying free rather than holding a shot.</param>
+        public void SetWatchSubject(string label)
         {
-            _targetLabel = label ?? string.Empty;
-            _targetDistance = distanceMetres;
+            _watchLabel = label ?? string.Empty;
         }
 
         /// <summary>
@@ -205,68 +191,42 @@ namespace HorrorGame.UI.Screens
             _verdictProgress01 = progress01;
         }
 
-        /// <summary>Draws one frame's readout. The client entry point.</summary>
-        public void Apply(GhostReadout readout)
+        /// <summary>
+        /// Draws one frame. Takes the ghost itself rather than a readout struct —
+        /// <c>GhostReadout</c> is deleted, because once the rattle went it carried one
+        /// field (<c>IsGhost</c>) that this class can read from a null check.
+        /// </summary>
+        public void Apply(GhostState? ghost)
         {
             EnsureBuilt();
 
-            if (_group == null || _title == null || _rattleText == null || _rattleBar == null
-                || _failureText == null)
+            if (_group == null || _title == null || _watchText == null)
             {
                 return;
             }
 
-            _group.gameObject.SetActive(readout.IsGhost);
-            if (!readout.IsGhost)
+            _group.gameObject.SetActive(ghost != null);
+            if (ghost == null)
             {
                 return;
             }
 
             _title.text = "유령";
 
-            // §09's 신호 row. The bar fills toward the next attempt rather than draining
-            // from the last one, because what the player is waiting for is the moment it
-            // becomes possible again.
-            _rattleBar.SetFill(readout.RattleCharge01);
-
-            if (readout.CanRattle)
+            // §09's whole surface now: 순위 없음, and no way to say anything about it.
+            // The second line is where the camera is, not what the ghost can do.
+            if (string.IsNullOrEmpty(_watchLabel))
             {
-                _rattleText.text = "신호 — 근처 물건을 흔들 수 있다";
-                _rattleText.color = UiStyle.Trade;
+                _watchText.text = "[" + _watchKeyLabel + "] 다른 곳에서 본다";
+                _watchText.color = UiStyle.InkFaint;
             }
             else
             {
-                _rattleText.text = "신호 " + readout.CooldownSecondsLeft.ToString(CultureInfo.InvariantCulture) + "초";
-                _rattleText.color = UiStyle.InkFaint;
+                _watchText.text = _watchLabel + "  ·  [" + _watchKeyLabel + "] 다음";
+                _watchText.color = UiStyle.InkStrong;
             }
 
-            _failureText.text = readout.FailureLabel;
-
-            DrawTarget(readout.CanRattle);
             DrawVerdict();
-        }
-
-        /// <summary>
-        /// The 물건 under the verb. Empty when there is nothing in range, because §09
-        /// splits 아직 흔들 수 없다 from 너무 멀다 and a prompt over nothing would blur
-        /// the two back together.
-        /// </summary>
-        private void DrawTarget(bool armed)
-        {
-            if (_targetText == null)
-            {
-                return;
-            }
-
-            if (string.IsNullOrEmpty(_targetLabel))
-            {
-                _targetText.text = string.Empty;
-                return;
-            }
-
-            _targetText.text = "[" + _rattleKeyLabel + "] " + _targetLabel + " · "
-                + _targetDistance.ToString("0.0", CultureInfo.InvariantCulture) + "m";
-            _targetText.color = armed ? UiStyle.InkStrong : UiStyle.InkFaint;
         }
 
         private void DrawVerdict()
@@ -301,7 +261,7 @@ namespace HorrorGame.UI.Screens
                 return;
             }
 
-            Apply(GhostReadout.From(_ghost, _lastFailure));
+            Apply(_ghost);
         }
 
         /// <summary>Pulls from the bound ghost each frame, for host and offline play.</summary>
@@ -320,26 +280,13 @@ namespace HorrorGame.UI.Screens
             UiFactory.Place((RectTransform)_title.transform,
                 new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -UiStyle.ScreenMargin), new Vector2(400f, 28f));
 
-            var bar = UiFactory.CreateBar("RattleBar", group, 280f, UiStyle.BarHeight);
-            UiFactory.Place(bar.Root,
-                new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, UiStyle.ScreenMargin), new Vector2(280f, UiStyle.BarHeight));
-            _rattleBar = bar;
-
-            _rattleText = UiFactory.CreateText("RattleText", group, Font, string.Empty, UiStyle.TextSize, UiStyle.InkFaint, TextAnchor.LowerCenter);
-            UiFactory.Place((RectTransform)_rattleText.transform,
-                new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, UiStyle.ScreenMargin + UiStyle.LineGap), new Vector2(640f, 28f));
-
-            _failureText = UiFactory.CreateText("Failure", group, Font, string.Empty, UiStyle.TextSizeSmall, UiStyle.Spent, TextAnchor.LowerCenter);
-            UiFactory.Place((RectTransform)_failureText.transform,
-                new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, UiStyle.ScreenMargin + (UiStyle.LineGap * 2f)), new Vector2(640f, 22f));
-
-            // Directly over the cooldown bar: the object and the wait are one decision —
-            // "can I shake this, and may I yet" — and reading them in two corners is how
-            // a ghost misses its window.
-            _targetText = UiFactory.CreateText("Target", group, Font, string.Empty, UiStyle.TextSizeSmall, UiStyle.InkFaint, TextAnchor.LowerCenter);
-            UiFactory.Place((RectTransform)_targetText.transform,
+            // Where the RattleBar and its countdown, failure line and target prompt used
+            // to sit — four widgets for one verb. One line replaces all four, because
+            // the verb no longer has a cooldown, a range or a way to fail.
+            _watchText = UiFactory.CreateText("Watch", group, Font, string.Empty, UiStyle.TextSize, UiStyle.InkFaint, TextAnchor.LowerCenter);
+            UiFactory.Place((RectTransform)_watchText.transform,
                 new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
-                new Vector2(0f, UiStyle.ScreenMargin + (UiStyle.LineGap * 3f)), new Vector2(640f, 22f));
+                new Vector2(0f, UiStyle.ScreenMargin + UiStyle.LineGap), new Vector2(640f, 28f));
 
             BuildMonsterWatch(group);
             BuildVerdictWait(group);
@@ -359,7 +306,7 @@ namespace HorrorGame.UI.Screens
         {
             // Twice the usual margin. 추격 is drawn at title size and right-aligned, and at
             // the standard inset the glyph box ran within a few pixels of the frame edge —
-            // measured on ghost_25_just_rattled at 1280 × 720.
+            // measured at 1280 × 720.
             const float WatchMargin = UiStyle.ScreenMargin * 2f;
 
             _monsterTitle = UiFactory.CreateText("MonsterTitle", group, Font, "괴물", UiStyle.TextSizeSmall, UiStyle.InkFaint, TextAnchor.UpperRight);

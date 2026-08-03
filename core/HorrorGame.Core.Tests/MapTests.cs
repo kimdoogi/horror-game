@@ -62,9 +62,6 @@ namespace HorrorGame.Core.Tests
 
         private const int Seed = 20260730;
 
-        /// <summary>§08 credits waiting at a 막힌 길 — §12 requires some, not an amount.</summary>
-        private static int DeadEndReward => GameConstants.LootValueTrinket;
-
         /// <summary>A zone box whose XZ diagonal sits in the middle of §12's 30~40 m band.</summary>
         private static float ZoneSide =>
             (GameConstants.ZoneDiagonalMin + GameConstants.ZoneDiagonalMax) * 0.5f / MathF.Sqrt(2f);
@@ -287,10 +284,6 @@ namespace HorrorGame.Core.Tests
             var deadEnds = EveryNode(map).Count(map.IsDeadEnd);
             Assert.That(deadEnds / (float)map.Nodes.Length,
                 Is.GreaterThan(GameConstants.DeadEndRatioMax));
-            Assert.That(EveryNode(map).Where(map.IsDeadEnd)
-                    .All(n => map.Nodes[n].DeadEndRewardValue > 0), Is.True,
-                "Every added 막힌 길 carries loot, so only the ratio clause is under test.");
-
             var result = AssertOnlyFailure(report, MapValidator.RuleDeadEnds,
                 "At this density a Runner breaking aggro is picking a passage blind.");
             Assert.That(result.Detail, Does.Contain("많으면 운에 죽음"));
@@ -359,9 +352,9 @@ namespace HorrorGame.Core.Tests
                 + GameConstants.AggroReleaseLineOfSightBreak + " s of cover a release needs.");
             Assert.That(gain / GameConstants.MonsterBaseSpeed,
                 Is.LessThan(GameConstants.AggroReleaseLineOfSightBreak),
-                "Stated as §12 states it: the detour costs the monster less time than the release "
-                + "requires, so the Engineer spent " + GameConstants.EngineerDoorLockSeconds
-                + " s and a material on nothing.");
+                "Stated as §12 states it: the detour costs the creature less time than a release "
+                + "requires, so the runner who stopped to shut the door spent "
+                + GameConstants.DoorShutSeconds + " s on nothing.");
 
             for (var z = 0; z < map.Zones.Length; z++)
             {
@@ -403,7 +396,7 @@ namespace HorrorGame.Core.Tests
 
         /// <summary>
         /// The min side of §12's 진입점 rule, which the sketch map cannot break on its
-        /// own: taking a doorway out of it necessarily leaves an unrewarded 막힌 길 or a
+        /// own: taking a doorway out of it necessarily leaves a 막힌 길 or a
         /// zone with no 전기 패널, so the rules are coupled. Checked on a two-zone map
         /// instead, where a single passage is the bridge §12 is warning about.
         /// </summary>
@@ -1117,11 +1110,10 @@ namespace HorrorGame.Core.Tests
             var justEnough = DetourPair(GameConstants.SingleCornerMinDistance + JustInside);
 
             Assert.That(tooShort.IsBottleneck(0), Is.False,
-                "Locking this door forces a detour the monster clears in under "
+                "Shutting this door forces a detour the creature clears in under "
                 + GameConstants.AggroReleaseLineOfSightBreak
-                + " s, so it does not buy even one aggro release — and the Engineer spent "
-                + GameConstants.EngineerDoorLockSeconds + " s and "
-                + GameConstants.EngineerDoorLockMaterialCost + " material on it.");
+                + " s, so it does not buy even one aggro release — and the runner spent "
+                + GameConstants.DoorShutSeconds + " s standing still to do it.");
             Assert.That(justEnough.IsBottleneck(0), Is.True);
 
             Assert.That(justEnough.CutsALoop(0), Is.True,
@@ -1307,9 +1299,10 @@ namespace HorrorGame.Core.Tests
             {
                 Assert.That(zone.Diagonal,
                     Is.InRange(GameConstants.ZoneDiagonalMin, GameConstants.ZoneDiagonalMax));
-                Assert.That(zone.Diagonal, Is.GreaterThan(GameConstants.ListenerErrorRadiusMax * 2f),
-                    "A zone smaller than the Listener's own error radius would make a fix name the "
-                    + "wrong zone, and §04's whole contribution is naming the right one.");
+                Assert.That(zone.Diagonal, Is.GreaterThan(GameConstants.MonsterFootstepHearingRange * 0.25f),
+                    "§12 sizes a zone so a footstep names a room rather than the whole storey. A zone "
+                    + "much smaller than the creature's own hearing would make every step ambiguous, "
+                    + "and 소리가 지도다 stops being true.");
             }
 
             Assert.That(GameConstants.SprintMaxTravelDistance / GameConstants.ZoneDiagonalMax,
@@ -1460,7 +1453,7 @@ namespace HorrorGame.Core.Tests
                 + "giving the monster anything to guess.");
 
             var zones = new[] { new MapZone(0, "A", FloorMaterial.Wood, Vec3.Zero, new Vec3(20f, 0f, 20f)) };
-            var nodes = new[] { new MapNode(0, 0, Vec3.Zero, MapNodeKind.None, 0, null) };
+            var nodes = new[] { new MapNode(0, 0, Vec3.Zero, MapNodeKind.None, null) };
             var edges = new[] { new MapEdge(0, 0, 0, 1f, false, null) };
             Assert.That(() => new MapGraph(zones, nodes, edges, "손으로 만든 맵"), Throws.ArgumentException);
         }
@@ -1646,20 +1639,19 @@ namespace HorrorGame.Core.Tests
                 flaw != Flaw.ZoneWithNoLoop,
                 flaw == Flaw.StraightCorridorOverTwentyMetres);
 
-            var gateAne = Attach(map, a, 2, g, g, maze, "A 북동 통로", 0);
-            var gateAnw = Attach(map, a, 3, -g, g, maze, "A 북서 통로", 0);
-            var gateAse = Attach(map, a, 1, g, -g, maze, "A 남동 통로", 0);
+            var gateAne = Attach(map, a, 2, g, g, maze, "A 북동 통로");
+            var gateAnw = Attach(map, a, 3, -g, g, maze, "A 북서 통로");
+            var gateAse = Attach(map, a, 1, g, -g, maze, "A 남동 통로");
             Attach(
                 map, a, 0, -g, -g,
                 MapNodeKind.None,
-                "A 창고",
-                DeadEndReward);
-            Attach(map, a, 3, -g, -g, MapNodeKind.None, "A 다락", DeadEndReward);
+                "A 창고");
+            Attach(map, a, 3, -g, -g, MapNodeKind.None, "A 다락");
 
             if (flaw == Flaw.TooManyDeadEnds)
             {
-                Attach(map, a, 1, g, g, MapNodeKind.None, "A 광", DeadEndReward);
-                Attach(map, a, 2, g, -g, MapNodeKind.None, "A 곳간", DeadEndReward);
+                Attach(map, a, 1, g, g, MapNodeKind.None, "A 광");
+                Attach(map, a, 2, g, -g, MapNodeKind.None, "A 곳간");
             }
 
             // B 타일 — 개방 공간 (홀), top left.
@@ -1667,11 +1659,11 @@ namespace HorrorGame.Core.Tests
                 map, "B 타일", FloorMaterial.Tile, new Vec3(0f, 0f, side), MapNodeKind.OpenSpace,
                 true, true, false, true, false);
 
-            var gateBsw = Attach(map, b, 0, -g, -g, hallGate, "B 남서 통로", 0);
-            var gateBse = Attach(map, b, 1, g, -g, hallGate, "B 남동 통로", 0);
-            var gateBne = Attach(map, b, 2, g, g, hallGate, "B 북동 통로", 0);
-            Attach(map, b, 3, -g, g, MapNodeKind.None, "B 창고", DeadEndReward);
-            Attach(map, b, 3, -g, -g, MapNodeKind.None, "B 배전실", DeadEndReward);
+            var gateBsw = Attach(map, b, 0, -g, -g, hallGate, "B 남서 통로");
+            var gateBse = Attach(map, b, 1, g, -g, hallGate, "B 남동 통로");
+            var gateBne = Attach(map, b, 2, g, g, hallGate, "B 북동 통로");
+            Attach(map, b, 3, -g, g, MapNodeKind.None, "B 창고");
+            Attach(map, b, 3, -g, -g, MapNodeKind.None, "B 배전실");
 
             // C 자갈 — 단서 구역, top right.
             var cFloor = flaw == Flaw.TwoZonesShareAFloor
@@ -1681,27 +1673,26 @@ namespace HorrorGame.Core.Tests
                 map, "C 자갈", cFloor, new Vec3(side, 0f, side), MapNodeKind.None,
                 true, true, false, true, false);
 
-            var gateCsw = Attach(map, c, 0, -g, -g, maze, "C 남서 통로", 0);
-            var gateCnw = Attach(map, c, 3, -g, g, maze, "C 북서 통로", 0);
-            var gateCse = Attach(map, c, 1, g, -g, maze, "C 남동 통로", 0);
-            Attach(map, c, 2, g, g, MapNodeKind.None, "C 창고", DeadEndReward);
-            Attach(map, c, 1, g, g, MapNodeKind.None, "C 자재실", DeadEndReward);
+            var gateCsw = Attach(map, c, 0, -g, -g, maze, "C 남서 통로");
+            var gateCnw = Attach(map, c, 3, -g, g, maze, "C 북서 통로");
+            var gateCse = Attach(map, c, 1, g, -g, maze, "C 남동 통로");
+            Attach(map, c, 2, g, g, MapNodeKind.None, "C 창고");
+            Attach(map, c, 1, g, g, MapNodeKind.None, "C 자재실");
 
             // D 콘크리트 — 출구 구역, bottom right.
             var d = AddZoneRing(
                 map, "D 콘크리트", FloorMaterial.Concrete, new Vec3(side, 0f, 0f), MapNodeKind.None,
                 true, true, false, true, false);
 
-            var gateDnw = Attach(map, d, 3, -g, g, maze, "D 북서 통로", 0);
-            var gateDne = Attach(map, d, 2, g, g, maze, "D 북동 통로", 0);
-            var gateDsw = Attach(map, d, 0, -g, -g, maze, "D 남서 통로", 0);
-            Attach(map, d, 1, g, -g, MapNodeKind.None, "D 창고", DeadEndReward);
-            Attach(map, d, 0, g, -g, MapNodeKind.None, "D 자재실", DeadEndReward);
+            var gateDnw = Attach(map, d, 3, -g, g, maze, "D 북서 통로");
+            var gateDne = Attach(map, d, 2, g, g, maze, "D 북동 통로");
+            var gateDsw = Attach(map, d, 0, -g, -g, maze, "D 남서 통로");
+            Attach(map, d, 1, g, -g, MapNodeKind.None, "D 창고");
+            Attach(map, d, 0, g, -g, MapNodeKind.None, "D 자재실");
             Attach(
                 map, d, 1, -g, -g,
                 MapNodeKind.None,
-                "D 모퉁이",
-                DeadEndReward);
+                "D 모퉁이");
 
             var exit = map.AddNode(
                 d.Zone,
@@ -1767,36 +1758,36 @@ namespace HorrorGame.Core.Tests
 
             var a = AddZoneRing(map, "A 나무", FloorMaterial.Wood, new Vec3(0f, 0f, 0f), maze,
                 true, true, false, true, false);
-            var gateAse = Attach(map, a, 1, g, -g, maze, "A 남동 통로", 0);
-            var gateAne = Attach(map, a, 2, g, g, maze, "A 북동 통로", 0);
-            Attach(map, a, 0, -g, -g, maze, "A 창고", DeadEndReward);
-            Attach(map, a, 0, g, -g, maze, "A 곳간", DeadEndReward);
-            Attach(map, a, 3, -g, -g, maze, "A 다락", DeadEndReward);
-            Attach(map, a, 3, -g, g, maze, "A 광", DeadEndReward);
+            var gateAse = Attach(map, a, 1, g, -g, maze, "A 남동 통로");
+            var gateAne = Attach(map, a, 2, g, g, maze, "A 북동 통로");
+            Attach(map, a, 0, -g, -g, maze, "A 창고");
+            Attach(map, a, 0, g, -g, maze, "A 곳간");
+            Attach(map, a, 3, -g, -g, maze, "A 다락");
+            Attach(map, a, 3, -g, g, maze, "A 광");
 
             var b = AddZoneRing(map, "B 타일", FloorMaterial.Tile, new Vec3(side, 0f, 0f), hall,
                 true, true, false, true, false);
-            var gateBsw = Attach(map, b, 0, -g, -g, hall, "B 남서 통로", 0);
-            var gateBnw = Attach(map, b, 3, -g, g, hall, "B 북서 통로", 0);
-            var gateBse = Attach(map, b, 1, g, -g, hall, "B 남동 통로", 0);
-            var gateBne = Attach(map, b, 2, g, g, hall, "B 북동 통로", 0);
-            Attach(map, b, 0, g, -g, hall, "B 창고", DeadEndReward);
-            Attach(map, b, 3, g, g, hall, "B 배전실", DeadEndReward);
+            var gateBsw = Attach(map, b, 0, -g, -g, hall, "B 남서 통로");
+            var gateBnw = Attach(map, b, 3, -g, g, hall, "B 북서 통로");
+            var gateBse = Attach(map, b, 1, g, -g, hall, "B 남동 통로");
+            var gateBne = Attach(map, b, 2, g, g, hall, "B 북동 통로");
+            Attach(map, b, 0, g, -g, hall, "B 창고");
+            Attach(map, b, 3, g, g, hall, "B 배전실");
 
             var c = AddZoneRing(map, "C 자갈", FloorMaterial.Gravel, new Vec3(side * 2f, 0f, 0f), hall,
                 true, true, false, true, false);
-            var gateCsw = Attach(map, c, 0, -g, -g, hall, "C 남서 통로", 0);
-            var gateCnw = Attach(map, c, 3, -g, g, hall, "C 북서 통로", 0);
-            var gateCse = Attach(map, c, 1, g, -g, hall, "C 남동 통로", 0);
-            var gateCne = Attach(map, c, 2, g, g, hall, "C 북동 통로", 0);
-            Attach(map, c, 0, g, -g, hall, "C 창고", DeadEndReward);
+            var gateCsw = Attach(map, c, 0, -g, -g, hall, "C 남서 통로");
+            var gateCnw = Attach(map, c, 3, -g, g, hall, "C 북서 통로");
+            var gateCse = Attach(map, c, 1, g, -g, hall, "C 남동 통로");
+            var gateCne = Attach(map, c, 2, g, g, hall, "C 북동 통로");
+            Attach(map, c, 0, g, -g, hall, "C 창고");
 
             var d = AddZoneRing(map, "D 콘크리트", FloorMaterial.Concrete, new Vec3(side * 3f, 0f, 0f), hall,
                 true, true, false, true, false);
-            var gateDsw = Attach(map, d, 0, -g, -g, hall, "D 남서 통로", 0);
-            var gateDnw = Attach(map, d, 3, -g, g, hall, "D 북서 통로", 0);
-            Attach(map, d, 1, g, -g, hall, "D 창고", DeadEndReward);
-            Attach(map, d, 1, -g, -g, MapNodeKind.None, "D 모퉁이", DeadEndReward);
+            var gateDsw = Attach(map, d, 0, -g, -g, hall, "D 남서 통로");
+            var gateDnw = Attach(map, d, 3, -g, g, hall, "D 북서 통로");
+            Attach(map, d, 1, g, -g, hall, "D 창고");
+            Attach(map, d, 1, -g, -g, MapNodeKind.None, "D 모퉁이");
 
             var exit = map.AddNode(
                 d.Zone,
@@ -1915,11 +1906,10 @@ namespace HorrorGame.Core.Tests
             float dx,
             float dz,
             MapNodeKind kind,
-            string name,
-            int reward)
+            string name)
         {
             var at = block.CornerPositions[cornerIndex];
-            var id = map.AddNode(block.Zone, new Vec3(at.X + dx, 0f, at.Z + dz), kind, name, reward);
+            var id = map.AddNode(block.Zone, new Vec3(at.X + dx, 0f, at.Z + dz), kind, name);
             map.Connect(block.Corners[cornerIndex], id);
             return id;
         }
@@ -1965,7 +1955,7 @@ namespace HorrorGame.Core.Tests
 
             for (var i = 0; i < nodeCount; i++)
             {
-                var id = builder.AddNode(0, new Vec3(x, 0f, z), kind, null, DeadEndReward);
+                var id = builder.AddNode(0, new Vec3(x, 0f, z), kind, null);
                 if (previous >= 0)
                 {
                     builder.Connect(previous, id);

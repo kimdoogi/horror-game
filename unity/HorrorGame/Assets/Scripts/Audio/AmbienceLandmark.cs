@@ -31,7 +31,7 @@ namespace HorrorGame.Audio
         private AudioClip? loop;
 
         [Tooltip("Audible radius, metres. §12 caps a straight corridor at 20 m, so a " +
-                 "landmark heard much further than that would carry through the map's " +
+                 "landmark heard much further than that would sound through the map's " +
                  "own sight-line rules.")]
         [SerializeField]
         private float audibleRange = AudioTuning.DefaultWorldAudibleRange;

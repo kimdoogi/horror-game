@@ -128,10 +128,9 @@ namespace HorrorGame.Gameplay.PlayerEditor
                     report,
                     PlayerRigBones.Find(instance.transform, PlayerRigBones.FlashlightMount) != null,
                     PlayerRigBones.FlashlightMount + " bone present (§05: the beam is a pointing device)");
-                failures += Check(
-                    report,
-                    PlayerRigBones.Find(instance.transform, PlayerRigBones.ObjectiveMount) != null,
-                    PlayerRigBones.ObjectiveMount + " bone present (§03 carry)");
+                // DELETED with §03: a check that the rig carried an ObjectiveMount bone,
+                // labelled "(§03 carry)". It FAILED the whole player-asset validation
+                // unless a bone existed for a 목표물 that does not.
                 failures += Check(
                     report,
                     instance.GetComponentInChildren<Animator>() != null,

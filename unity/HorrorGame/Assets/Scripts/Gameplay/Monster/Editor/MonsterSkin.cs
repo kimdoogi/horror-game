@@ -166,7 +166,7 @@ namespace HorrorGame.Gameplay.MonsterEditor
         /// Fresnel exponent. Lower is a wider band of edge.
         /// <para>
         /// This was authored at 2.2 on the argument that at
-        /// <see cref="GameConstants.ObserverRange"/> the creature is only about forty
+        /// <see cref="GameConstants.HallClearSightMin"/> the creature is only about forty
         /// pixels tall, so a tight rim would be sub-pixel and average away against the
         /// wall. Plausible, and the measurement says the opposite at every distance. A
         /// broad Fresnel does not only light the edge: its tail reaches the chest and the
@@ -274,7 +274,7 @@ namespace HorrorGame.Gameplay.MonsterEditor
         /// </para>
         /// <para>
         /// Faint, and the number is bounded from both ends. Each lens is 5 cm, which is
-        /// two pixels across at <see cref="GameConstants.ObserverRange"/>, so it has to
+        /// two pixels across at <see cref="GameConstants.HallClearSightMin"/>, so it has to
         /// beat the corridor's own luminance by enough to survive being averaged with the
         /// wall — that is the floor. The ceiling is §03: a creature carrying a lamp is a
         /// creature that unlocks the room it walks into, and the last review specifically

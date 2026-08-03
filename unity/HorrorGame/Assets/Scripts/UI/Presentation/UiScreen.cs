@@ -27,7 +27,7 @@ namespace HorrorGame.UI
     public abstract class UiScreen : MonoBehaviour
     {
         [SerializeField]
-        [Tooltip("Face to draw with. Leave empty for the engine's built-in font; supply one carrying Korean glyphs for a shipping build.")]
+        [Tooltip("Face to draw with. Leave empty for the engine's built-in font; supply one that contains Korean characters for a shipping build.")]
         private Font? _font;
 
         private Canvas? _canvas;

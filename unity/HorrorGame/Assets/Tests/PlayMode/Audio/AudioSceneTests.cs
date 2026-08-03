@@ -264,7 +264,9 @@ namespace HorrorGame.Tests.PlayMode.Audio
 
             var host = Spawn("[Ambience]");
             var zones = host.AddComponent<ZoneAmbienceDirector>();
-            zones.Configure(_surfaces, _library!.SurfaceBed, System.Array.Empty<AudioClip?>());
+            // Null where SurfaceBed was: §01's 지상 bed is deleted, so what a zone sounds
+            // like is §12's floor material and nothing else.
+            zones.Configure(_surfaces, null, System.Array.Empty<AudioClip?>());
 
             _listener!.transform.position = new Vector3(1f, 1.6f, 0f);
             yield return Settle();
@@ -407,7 +409,7 @@ namespace HorrorGame.Tests.PlayMode.Audio
 
             var source = emitter.AddComponent<AudioSource>();
             source.playOnAwake = false;
-            GameAudio.Configure(source, AudioBus.Footsteps, true, GameConstants.ListenerHearingRange);
+            GameAudio.Configure(source, AudioBus.Footsteps, true, GameConstants.AudibleRangeMetres);
 
             var occluder = emitter.AddComponent<SoundOccluder>();
             occluder.SetBus(AudioBus.Footsteps);
@@ -501,10 +503,13 @@ namespace HorrorGame.Tests.PlayMode.Audio
             Assert.That(rig.PlayerSteps, Is.Not.Null);
             Assert.That(rig.MonsterSteps, Is.Not.Null);
             Assert.That(rig.MonsterVoice, Is.Not.Null);
-            Assert.That(rig.ListenerDriver, Is.Not.Null,
-                "the occlusion driver needs stepping every frame. It was §04's 청음사 feed until "
-                + "DESCENT-PIVOT §7 step 7 deleted 직업; it is now what every runner hears through "
-                + "§12's walls, which is the same code and twenty times the audience.");
+            // DELETED with §04: an assertion that rig.ListenerDriver was not null. Its
+            // own message claimed the driver "is now what every runner hears through
+            // §12's walls" — it was not. ListenerAudioDriver stepped 청음사's ability
+            // and published a fix no code in the project read. The sentence was written
+            // to keep a survivor rather than to describe one, which is the exact bug
+            // this round exists to end. Occlusion is asserted where it is real: the
+            // AudioOcclusion / FootstepAudio path below.
 
             var census = AudioSceneCensus.Take();
 

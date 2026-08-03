@@ -139,7 +139,7 @@ namespace HorrorGame.Tests.EditMode.Audio
         [Test]
         public void Rolloff_ReachesSilenceAtTheAbilitysRangeLimit()
         {
-            var curve = RolloffCurves.For(GameConstants.ListenerHearingRange);
+            var curve = RolloffCurves.For(GameConstants.AudibleRangeMetres);
 
             Assert.That(curve.Evaluate(1f), Is.EqualTo(0f).Within(0.001f),
                 "Unity holds the last curve value past maxDistance, so a curve that ends "
@@ -152,7 +152,7 @@ namespace HorrorGame.Tests.EditMode.Audio
         [Test]
         public void Rolloff_NeverGetsLouderWithDistance()
         {
-            var curve = RolloffCurves.For(GameConstants.ListenerHearingRange);
+            var curve = RolloffCurves.For(GameConstants.AudibleRangeMetres);
             var previous = float.PositiveInfinity;
 
             for (var i = 0; i <= 100; i++)
@@ -168,11 +168,11 @@ namespace HorrorGame.Tests.EditMode.Audio
         [Test]
         public void Rolloff_IsShallowerThanFreeField_SoTheListenersRangeIsUsable()
         {
-            var curve = RolloffCurves.For(GameConstants.ListenerHearingRange);
+            var curve = RolloffCurves.For(GameConstants.AudibleRangeMetres);
 
             // Unity's Logarithmic mode is amplitude = reference / distance.
             var freeField = AudioTuning.RolloffReferenceDistance / 25f;
-            var ours = curve.Evaluate(25f / GameConstants.ListenerHearingRange);
+            var ours = curve.Evaluate(25f / GameConstants.AudibleRangeMetres);
 
             Assert.That(ours, Is.GreaterThan(freeField),
                 "§04 puts the Listener's range at 40 m and §12 caps a corridor at 20 m — a "
@@ -183,9 +183,9 @@ namespace HorrorGame.Tests.EditMode.Audio
         [Test]
         public void Rolloff_StillLosesMostOfItsLevelAcrossTheRange()
         {
-            var curve = RolloffCurves.For(GameConstants.ListenerHearingRange);
-            var near = curve.Evaluate(5f / GameConstants.ListenerHearingRange);
-            var far = curve.Evaluate(30f / GameConstants.ListenerHearingRange);
+            var curve = RolloffCurves.For(GameConstants.AudibleRangeMetres);
+            var near = curve.Evaluate(5f / GameConstants.AudibleRangeMetres);
+            var far = curve.Evaluate(30f / GameConstants.AudibleRangeMetres);
 
             Assert.That(far, Is.LessThan(near * 0.6f),
                 "Precision is the thing distance is allowed to take (F-003). A rolloff shallow "
@@ -217,20 +217,21 @@ namespace HorrorGame.Tests.EditMode.Audio
         }
 
         [Test]
-        public void DoorNoise_ClearsTheThreshold_AndStaysUnderTheFlare()
+        public void DoorNoise_ClearsTheThreshold_AndStaysUnderALanding()
         {
             Assert.That(AudioTuning.SelfNoiseDoor,
                 Is.GreaterThan(GameConstants.ListenerSelfNoiseThreshold),
-                "§04 names the door specifically: 문을 열면 정보가 끊긴다.");
+                "§12-B: 문을 열면 정보가 끊긴다. Opening a door has to cost the runner what they "
+                + "can hear, or shutting one behind you is free.");
 
+            // Was bounded above by FlareIgniteNoiseLevel (0.70) and EngineerTrapNoiseLevel
+            // (1.0) — §08's 조명탄 and §04's 소음 함정, both deleted. A landing is the
+            // loudest thing left that a runner can choose to make, so it is the ceiling:
+            // a door that were louder than dropping onto a floor would make the quiet
+            // route through §12-B pointless.
             Assert.That(AudioTuning.SelfNoiseDoor,
-                Is.LessThan(GameConstants.FlareIgniteNoiseLevel),
-                "§08 prices a 조명탄's noise at 0.70 and §04's trap saturates the scale at 1.0. "
-                + "A door must sit below both or those two numbers stop meaning anything.");
-
-            Assert.That(GameConstants.FlareIgniteNoiseLevel,
-                Is.LessThan(GameConstants.EngineerTrapNoiseLevel),
-                "The 소음 함정's whole job is to be the loudest thing in the zone (§04).");
+                Is.LessThan(GameConstants.PlayerLandingNoiseLevel),
+                "A door must stay under a landing, or there is no quiet way through a gate.");
         }
 
         [Test]
@@ -332,9 +333,9 @@ namespace HorrorGame.Tests.EditMode.Audio
             const float ZoneBedDba = -38.9f;
             const float OcclusionLossDb = -7.3f;
 
-            var curve = RolloffCurves.For(GameConstants.ListenerHearingRange);
+            var curve = RolloffCurves.For(GameConstants.AudibleRangeMetres);
             var rolloffDb = AudioOcclusion.LinearToDecibels(
-                curve.Evaluate(25f / GameConstants.ListenerHearingRange));
+                curve.Evaluate(25f / GameConstants.AudibleRangeMetres));
 
             var step = MonsterStepDba + AudioTuning.TrimFootstepsDb + OcclusionLossDb + rolloffDb;
             var bed = ZoneBedDba + AudioTuning.TrimAmbienceDb;

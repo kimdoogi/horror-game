@@ -7,7 +7,7 @@ namespace HorrorGame.Audio
     /// <para>
     /// <b>Why these are not in <c>GameConstants</c>.</b> ARCHITECTURE §2 puts every
     /// tuned number there, and the design numbers this layer needs <em>are</em> read
-    /// from there and only from there — <c>ListenerHearingRange</c>,
+    /// from there and only from there — <c>AudibleRangeMetres</c>,
     /// <c>ListenerSelfNoiseThreshold</c>, <c>VoiceCutoffDistance</c>,
     /// <c>ThreatTierCount</c>. What is below is a different kind of number: it is
     /// gain staging, measured off the shipped WAVs, and it changes how loud the game
@@ -249,7 +249,7 @@ namespace HorrorGame.Audio
         /// Unity's Logarithmic mode is p = 1 — free-field inverse distance, 6 dB per
         /// doubling. A basement is not a free field: corridors guide sound and rooms
         /// return it, so measured indoor decay is much shallower. It also has to be
-        /// shallower here, because <c>GameConstants.ListenerHearingRange</c> is 40 m
+        /// shallower here, because <c>GameConstants.AudibleRangeMetres</c> is 40 m
         /// and at p = 1 a monster footstep arrives 22 dB under the zone bed there —
         /// §04's headline range would be silent.
         /// </para>
@@ -328,7 +328,7 @@ namespace HorrorGame.Audio
 
         /// <summary>
         /// Distance, metres, at which the monster starts contributing to danger.
-        /// Read as a fraction of <c>GameConstants.ListenerHearingRange</c> would be
+        /// Read as a fraction of <c>GameConstants.AudibleRangeMetres</c> would be
         /// tidier, but the two answer different questions — this is "when does the
         /// body react", and 25 m is where §12 guarantees the monster could already
         /// see you down a legal sight line.
@@ -475,23 +475,10 @@ namespace HorrorGame.Audio
         // §03's round trip.
         // ====================================================================
 
-        /// <summary>
-        /// Light remaining, seconds, at which the low-cell warning fires.
-        /// <para>
-        /// Read straight off §07's cost table, which prices 나가서 배터리 교체 at ~1분.
-        /// The warning is only useful if it lands while the walk back is still
-        /// affordable, so the threshold <em>is</em> the walk: told with a minute left, a
-        /// player can still choose to spend it, which is the §10 dilemma §03 builds the
-        /// whole round trip out of. Told with ten seconds left they are simply informed
-        /// that they are about to be in the dark.
-        /// </para>
-        /// <para>
-        /// A gameplay threshold rather than a mix value, and it belongs in
-        /// <c>GameConstants</c> beside <c>BatterySecondsPerCell</c>; it is here only
-        /// because this layer does not own that file. §07 / §03.
-        /// </para>
-        /// </summary>
-        public const float BatteryWarningSeconds = 60f;
+        // DELETED with §08's battery: BatteryWarningSeconds. It said how long before a
+        // cell died the warning cue should start, and its own doc admitted it "belongs in
+        // GameConstants beside BatterySecondsPerCell". That constant went with the cell.
+        // The torch is issued once and simply works; what it costs is being seen.
 
         // ====================================================================
         // Voice.

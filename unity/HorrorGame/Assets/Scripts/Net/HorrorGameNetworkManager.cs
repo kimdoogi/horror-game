@@ -1,7 +1,6 @@
 #nullable enable
 
 using HorrorGame.Core;
-using HorrorGame.Core.Roles;
 using HorrorGame.Net.Host;
 using HorrorGame.Steam;
 using kcp2k;
@@ -461,15 +460,14 @@ namespace HorrorGame.Net
         /// no prefab — and there is none. §01's runner is added in
         /// <see cref="OnServerReady"/> from <see cref="NetRunner"/> instead. This
         /// override is kept because the day a runner prefab exists it becomes the
-        /// better path, and because deleting it would delete the role assignment
+        /// better path, and because deleting it would delete the seat assignment
         /// below with it.
         /// </para>
         /// <para>
-        /// The role comes from the lobby's <c>RoleSelection</c>, which is the core's
-        /// copy and the only authoritative one. A player who has not picked yet
-        /// spawns with <see cref="RoleId.None"/> and is filled in when they do —
-        /// §11's choice belongs in the lobby, and blocking the spawn on it would mean
-        /// a player who is deciding cannot see the others.
+        /// The seat index comes from the lobby, which is the host's copy and the only
+        /// authoritative one. It is a runner's whole identity now that §04 is deleted:
+        /// §02's standings key on it, and a spawn that arrived without one would be a
+        /// runner the results cannot name.
         /// </para>
         /// </summary>
         public override void OnServerAddPlayer(NetworkConnectionToClient conn)
@@ -490,9 +488,7 @@ namespace HorrorGame.Net
                 return;
             }
 
-            var seatIndex = lobby.SeatIndexOf(conn.connectionId);
-            var role = seatIndex >= 0 && seatIndex < lobby.Seats.Count ? lobby.Seats[seatIndex].Role : RoleId.None;
-            player.AssignRole(seatIndex, role);
+            player.AssignSeat(lobby.SeatIndexOf(conn.connectionId));
         }
 
         /// <inheritdoc />
@@ -545,8 +541,12 @@ namespace HorrorGame.Net
                 return false;
             }
 
+            // Was `lobby.SettledSelection() == null` — §11's four seats each holding a
+            // distinct 직업 was the start condition, and readiness was "a courtesy".
+            // With §04 deleted there is no lineup to settle, so readiness is the whole
+            // condition and somebody has to be sitting down for it to mean anything.
             var lobby = _lobby ?? NetLobby.Instance;
-            if (lobby == null || lobby.SettledSelection() == null)
+            if (lobby == null || !lobby.EveryoneReady)
             {
                 return false;
             }

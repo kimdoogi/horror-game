@@ -51,7 +51,7 @@ namespace HorrorGame.Gameplay.Player
         private PlayerFirstPersonView? _view;
 
         [Header("Presentation")]
-        [Tooltip("Beam brightness. A look value: §03's numbers are reach, cone and battery, not lumens. "
+        [Tooltip("Beam brightness. A look value: §03's numbers are reach and cone, not lumens. "
             + "Defaults to HorrorGame.Rendering.FlashlightBeam, which is also what the review "
             + "screenshots render — change it here and the shots stop describing the game.")]
         [SerializeField]

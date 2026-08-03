@@ -183,11 +183,9 @@ namespace HorrorGame.Gameplay.PlayerEditor
                         Debug.LogWarning(string.Format(CultureInfo.InvariantCulture,
                             "[PlayerBodyShot] wanted {0:0} m and the longest clear run here "
                             + "is {1:0.0} m, so this frame is {2:0.0} m and is named for it. "
-                            + "GameConstants.ObserverRange is {3:0} m; until a stand with "
-                            + "{4:0.0} m of run is found, §04's 관측자 range is not being "
-                            + "photographed at all.",
-                            wanted, stand.ClearMetres, distance, GameConstants.ObserverRange,
-                            wanted + 1.2f));
+                            + "Until a stand with {3:0.0} m of run is found, the far band is "
+                            + "not being photographed at all.",
+                            wanted, stand.ClearMetres, distance, wanted + 1.2f));
                     }
                     var pixels = Render(camera, Path.Combine(root, name + ".png"));
                     lines.Add(Measure(name, distance, camera, subject, pixels));

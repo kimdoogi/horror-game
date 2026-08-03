@@ -18,7 +18,7 @@ namespace HorrorGame.EditorTools.Dressing
     /// line is broken and the aggro is released. Dressing can only damage the first
     /// one — filling a hall with crates turns the Runner's opening move into a
     /// suicide, and §04's Observer, who needs
-    /// <see cref="GameConstants.ObserverRange"/> of safe sight, stops having a job.
+    /// <see cref="GameConstants.HallClearSightMin"/> of safe sight, stops having a job.
     /// So the hall's longest clear line is measured after placement and the scatter
     /// fails if it has dropped below that number.
     /// </para>
@@ -163,8 +163,8 @@ namespace HorrorGame.EditorTools.Dressing
             {
                 text.Append("§12 개방 공간: ").Append(HallCells).Append(" cells; clear sight at eye height ")
                     .Append(ShortestHallLine.ToString("0.0")).Append("–").Append(LongestHallLine.ToString("0.0"))
-                    .Append(" m (needs ≥ ").Append(GameConstants.ObserverRange)
-                    .Append(" m for §04's Observer and §12's 멀리서 어그로).\n");
+                    .Append(" m (needs ≥ ").Append(GameConstants.HallClearSightMin)
+                    .Append(" m for §12's 멀리서 어그로).\n");
             }
             else
             {

@@ -48,7 +48,9 @@ namespace HorrorGame.EditorTools.SceneGen
         /// </summary>
         ChamberOpen3x3,
 
-        /// <summary>§12 막힌 길 — plinth and alcove built in, which is where the 보상 goes.</summary>
+        /// <summary>§12 막힌 길 — a 2.5 x 5 m stub, clear to the back wall. The 전리품 plinth
+        /// that used to stand in it is deleted: 경주에서 잘못 든 길의 대가는 시간뿐, and it took
+        /// the NavMesh out of the back of every dead end (tools/blender/gen_mapkit.py).</summary>
         DeadEndCap,
 
         /// <summary>§12 개방 공간, 20 m sight line.</summary>

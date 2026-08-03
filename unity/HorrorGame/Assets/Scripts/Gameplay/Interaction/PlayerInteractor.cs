@@ -189,7 +189,7 @@ namespace HorrorGame.Gameplay.Interaction
         /// The cast length used to be the longer of the read range and the hands-on
         /// range, because a mark could be read from further away than a breaker could be
         /// worked on. With the clue chain gone the door is the only interactable and
-        /// <see cref="GameConstants.EngineerReachDistance"/> is its reach, so that is how
+        /// <see cref="GameConstants.InteractReachMetres"/> is its reach, so that is how
         /// far the ray needs to travel. Each candidate is still re-checked against its
         /// own <see cref="Interactable.ReachMetres"/>, so a subclass with a shorter reach
         /// is honoured without shortening the cast for everything else.
@@ -206,7 +206,7 @@ namespace HorrorGame.Gameplay.Interaction
             var hits = Physics.RaycastAll(
                 eye.position,
                 eye.forward,
-                GameConstants.EngineerReachDistance,
+                GameConstants.InteractReachMetres,
                 ~0,
                 QueryTriggerInteraction.Collide);
 

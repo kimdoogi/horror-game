@@ -421,7 +421,7 @@ namespace HorrorGame.EditorTools
         /// <summary>
         /// Animation clips that are events and must <em>not</em> loop. A looping death or a
         /// looping 섬광수 stun would repeat for as long as the state lasts, which for
-        /// <c>Stunned</c> is <c>GameConstants.FlashStunSeconds</c> and for <c>Death</c> is
+        /// <c>Stunned</c> is <c>GameConstants.MonsterStunSeconds</c> and for <c>Death</c> is
         /// the rest of the match (§09 — death is the ghost state, not an ending).
         /// </summary>
         public static readonly HashSet<string> OneShotAnimationClips = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -462,28 +462,17 @@ namespace HorrorGame.EditorTools
             { "Debris", "A scattered pile. A hull turns it into a solid mound the player cannot cross." },
         };
 
-        /// <summary>
-        /// Non-diegetic clips that live in a positional folder for authoring reasons.
-        /// ASSETS.md §2.4 places both at the surface vehicle's shop UI, not in the world.
-        /// </summary>
-        private static readonly HashSet<string> NonDiegeticInItems = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "shop_purchase_confirm",
-            "loot_sell_credit",
-        };
-
-        /// <summary>
-        /// The only positional clips in the UI folder: §09's ghost channel. The ghost cannot
-        /// speak, so a rattle inside <c>GameConstants.GhostRattleRange</c> is the entire
-        /// bandwidth of the role, and it is only information if it localises.
-        /// </summary>
-        private static readonly HashSet<string> PositionalInUi = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "ghost_rattle_01",
-            "ghost_rattle_02",
-            "ghost_rattle_03",
-            "ghost_rattle_04",
-        };
+        // DELETED with §08 and §09.
+        //
+        // NonDiegeticInItems held shop_purchase_confirm and loot_sell_credit — two
+        // clips that lived in the positional Items folder but belonged to the shop
+        // UI at the surface vehicle. There is no shop and no vehicle.
+        //
+        // PositionalInUi held ghost_rattle_01..04, "the only positional clips in the
+        // UI folder", because a rattle was only information if it localised. §11's
+        // 탈락자 rule deleted the channel, so the UI folder now has NO positional
+        // clips at all and the branch that asked went with the set: every clip under
+        // Audio/UI is an interface cue by construction.
 
         /// <summary>
         /// Positional beds that loop without saying so in their filename. ASSETS.md §2.2
@@ -656,15 +645,8 @@ namespace HorrorGame.EditorTools
 
             if (folder.Equals("Items", StringComparison.Ordinal))
             {
-                if (NonDiegeticInItems.Contains(name))
-                {
-                    return AudioRole.InterfaceCue;
-                }
-
-                // Short item loops (flare burn, zone hum, safe dial) stay one-shots for
-                // load-type purposes: a 3 s loop gains nothing from staying compressed and
-                // §08 makes the flare's noise a continuous cost the player is paying, so it
-                // must not stutter at the seam.
+                // Short item loops stay one-shots for load-type purposes: a 3 s loop
+                // gains nothing from staying compressed and must not stutter at the seam.
                 return AudioRole.PositionalOneShot;
             }
 
@@ -687,7 +669,7 @@ namespace HorrorGame.EditorTools
 
             if (folder.Equals("UI", StringComparison.Ordinal))
             {
-                return PositionalInUi.Contains(name) ? AudioRole.PositionalOneShot : AudioRole.InterfaceCue;
+                return AudioRole.InterfaceCue;
             }
 
             // An unrecognised folder under Assets/Audio is treated as non-diegetic, which

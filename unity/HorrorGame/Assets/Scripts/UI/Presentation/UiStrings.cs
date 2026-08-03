@@ -30,18 +30,8 @@ namespace HorrorGame.UI
         /// </summary>
         public const string Unknown = "—";
 
-        /// <summary>
-        /// Why the rattle did not land. §09 distinguishes the two, because only one of
-        /// them — 너무 멀다 — is worth drifting somewhere to fix.
-        /// </summary>
-        public static string RattleFailure(HorrorGame.Core.Ghost.GhostSignalFailure failure)
-        {
-            switch (failure)
-            {
-                case HorrorGame.Core.Ghost.GhostSignalFailure.OnCooldown: return "아직 흔들 수 없다";
-                case HorrorGame.Core.Ghost.GhostSignalFailure.OutOfRange: return "너무 멀다";
-                default: return string.Empty;
-            }
-        }
+        // DELETED with §09's 신호: RattleFailure(GhostSignalFailure). It turned the
+        // two ways a rattle could be refused into 「아직 흔들 수 없다」 and 「너무
+        // 멀다」. There is no rattle, so there is no refusal to word.
     }
 }

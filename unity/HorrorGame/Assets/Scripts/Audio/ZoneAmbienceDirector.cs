@@ -37,7 +37,8 @@ namespace HorrorGame.Audio
         private SurfaceAudioLibrary? library;
 
         [Tooltip("amb_surface_vehicle_loop — played above ground, where §07 says the " +
-                 "team can read the clock and §08 puts the shop.")]
+                 "TOMBSTONE: §01 had no 지상 to stand on once the game became a race, so nothing "
+                 + "sets IsOnSurface and this clip is null. Kept as the hook, not as a feature.")]
         [SerializeField]
         private AudioClip? surfaceBed;
 

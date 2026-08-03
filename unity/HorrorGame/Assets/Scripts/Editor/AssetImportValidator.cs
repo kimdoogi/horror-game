@@ -508,37 +508,22 @@ namespace HorrorGame.EditorTools
                     continue;
                 }
 
-                if (Mathf.Abs(clip.length - GameConstants.FlashStunSeconds) > 0.02f)
+                if (Mathf.Abs(clip.length - GameConstants.MonsterStunSeconds) > 0.02f)
                 {
-                    report.Fail(path, $"Runs {clip.length:0.###} s but GameConstants.FlashStunSeconds is "
-                        + $"{GameConstants.FlashStunSeconds:0.###} s. ASSETS.md §2.2 mirrors the two on purpose: the "
+                    report.Fail(path, $"Runs {clip.length:0.###} s but GameConstants.MonsterStunSeconds is "
+                        + $"{GameConstants.MonsterStunSeconds:0.###} s. ASSETS.md §2.2 mirrors the two on purpose: the "
                         + "clip is how long the stun sounds and the constant is how long it lasts, so a gap between "
                         + "them is the monster audibly recovering before or after it actually does. Regenerate with "
                         + "tools/audio/gen_monster_audio.py.");
                 }
             }
 
-            // §09 gives the ghost one channel and nothing else. Four rattles exist so a repeat
-            // is not a tell, and they only carry information if the team can turn toward them.
-            for (var i = 1; i <= 4; i++)
-            {
-                var path = $"{AssetImportPolicy.AudioRoot}/UI/ghost_rattle_{i:00}.wav";
-                var clip = AssetDatabase.LoadAssetAtPath<AudioClip>(path);
-                if (clip == null)
-                {
-                    report.Fail(path, "Missing. §09 makes the rattle the ghost's only channel, on a "
-                        + $"{GameConstants.GhostRattleCooldownSeconds:0} s cooldown inside "
-                        + $"{GameConstants.GhostRattleRange:0} m.");
-                    continue;
-                }
-
-                if (clip.channels != 1)
-                {
-                    report.Fail(path, $"Imported with {clip.channels} channels. §09's rattle is the ghost's only "
-                        + $"channel and its range is {GameConstants.GhostRattleRange:0} m — a clip that does not "
-                        + "attenuate over 4 m conveys nothing at all, and a dead player has no other way to speak.");
-                }
-            }
+            // DELETED with §09's 신호: the four-clip mono check on ghost_rattle_01..04.
+            // It required each to be mono so it would attenuate over the 4 m rattle
+            // range, on the argument that "a dead player has no other way to speak".
+            // §11's 탈락자 rule removed the channel entirely — 「살아 있는 사람에게
+            // 개입할 수 없다」 — so there is no way to speak at all, and the four clips
+            // are orphans listed for deletion in the same commit's report.
         }
 
         private static bool IsKnownAudioFolder(string folder)
@@ -975,8 +960,8 @@ namespace HorrorGame.EditorTools
                 {
                     report.Fail(path, $"Clip '{clip.name}' is a one-shot but Loop Time is on. §09 makes death a "
                         + "persistent ghost state rather than an ending, so a looping Death replays for the rest of "
-                        + "the match; a looping Stunned outlasts GameConstants.FlashStunSeconds "
-                        + $"({GameConstants.FlashStunSeconds:0.#} s).");
+                        + "the match; a looping Stunned outlasts GameConstants.MonsterStunSeconds "
+                        + $"({GameConstants.MonsterStunSeconds:0.#} s).");
                 }
             }
         }

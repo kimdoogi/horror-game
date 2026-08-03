@@ -296,9 +296,8 @@ namespace HorrorGame.Gameplay.PlayerEditor
             AssignClip(driver, "_run", clips, "Run");
             AssignClip(driver, "_crouch", clips, "Crouch");
             AssignClip(driver, "_crouchWalk", clips, "CrouchWalk");
-            AssignClip(driver, "_carry", clips, "Carry");
-            AssignClip(driver, "_carryIdle", clips, "CarryIdle");
-            AssignClip(driver, "_carryHeavy", clips, "CarryHeavy");
+            // DELETED with §03/§08: the three carry clips. PlayerAnimatorDriver no
+            // longer has fields for them and PlayerAnimationState no longer has poses.
             AssignClip(driver, "_death", clips, "Death");
         }
 

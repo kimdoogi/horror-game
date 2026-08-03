@@ -165,7 +165,7 @@ namespace HorrorGame.Audio
             _source.playOnAwake = false;
             _source.loop = false;
 
-            GameAudio.Configure(_source, AudioBus.Footsteps, true, GameConstants.ListenerHearingRange);
+            GameAudio.Configure(_source, AudioBus.Footsteps, true, GameConstants.AudibleRangeMetres);
 
             _occluder.SetBus(AudioBus.Footsteps);
             _occluder.BaseVolume = 1f;

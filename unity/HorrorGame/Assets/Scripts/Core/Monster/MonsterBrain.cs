@@ -240,7 +240,7 @@ namespace HorrorGame.Core.Monster
 
         /// <summary>
         /// Suspends the state machine for <paramref name="seconds"/> — the Flasher's
-        /// 기절 (§04), <see cref="GameConstants.FlashStunSeconds"/> long.
+        /// 기절 (§04), <see cref="GameConstants.MonsterStunSeconds"/> long.
         /// <para>
         /// Suspend means suspend: state, its elapsed time, the aggro-release timer,
         /// perception and movement all freeze, and resume untouched. Freezing the

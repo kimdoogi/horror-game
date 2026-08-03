@@ -109,7 +109,7 @@ namespace HorrorGame.Tests.PlayMode.Presence
             subject.RefreshSceneLights();
 
             var lit = subject.LightQuality();
-            Assert.That(lit, Is.GreaterThanOrEqualTo(GameConstants.ClueMinReadableLightQuality),
+            Assert.That(lit, Is.GreaterThanOrEqualTo(GameConstants.MinSafeLightQuality),
                 "standing under a §12 practical has to clear §03's readable threshold, or the 그늘 "
                 + "pools in a lit room and the mechanic is inverted");
 

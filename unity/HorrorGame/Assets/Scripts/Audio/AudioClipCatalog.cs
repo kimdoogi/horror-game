@@ -97,54 +97,35 @@ namespace HorrorGame.Audio
         /// <summary>Every one-shot, as the cue it answers and the file stems it draws from.</summary>
         private static readonly (AudioCueId Cue, string Folder, string[] Stems)[] CueTable =
         {
+            // §03's one held object. The torch is free now; what it costs is being seen.
             (AudioCueId.FlashlightOn, "Items", new[] { "flashlight_on_01", "flashlight_on_02" }),
             (AudioCueId.FlashlightOff, "Items", new[] { "flashlight_off_01", "flashlight_off_02" }),
-            (AudioCueId.BatteryLow, "Items", new[] { "battery_low_warning" }),
-            (AudioCueId.BatteryDead, "Items", new[] { "battery_dead" }),
-            (AudioCueId.BatteryInsert, "Items", new[] { "battery_insert_01", "battery_insert_02" }),
 
+            // §12-B. The race's only interaction with the building.
             (AudioCueId.DoorOpen, "Items", new[] { "door_open_01", "door_open_02" }),
             (AudioCueId.DoorClose, "Items", new[] { "door_close_01", "door_close_02" }),
             (AudioCueId.DoorLock, "Items", new[] { "door_lock_01", "door_lock_02" }),
-            (AudioCueId.BarricadePlace, "Items", new[] { "barricade_place_01", "barricade_place_02" }),
-            (AudioCueId.BarricadeBreak, "Items", new[] { "barricade_break_01", "barricade_break_02" }),
 
-            (AudioCueId.LootPickupMetal, "Items", new[] { "loot_pickup_metal_small_01", "loot_pickup_metal_small_02" }),
-            (AudioCueId.LootPickupGlass, "Items", new[] { "loot_pickup_glass_jewel_01", "loot_pickup_glass_jewel_02" }),
-            (AudioCueId.LootPickupPaper, "Items", new[] { "loot_pickup_paper_01", "loot_pickup_paper_02" }),
-            (AudioCueId.LootPickupHeavy, "Items", new[] { "loot_pickup_wood_heavy_01", "loot_pickup_wood_heavy_02" }),
-            (AudioCueId.LootSell, "Items", new[] { "loot_sell_credit" }),
-            (AudioCueId.SafeDial, "Items", new[] { "safe_dial_turn_loop" }),
-            (AudioCueId.SafeOpen, "Items", new[] { "safe_open" }),
-
-            (AudioCueId.FlareIgnite, "Items", new[] { "flare_ignite" }),
-            (AudioCueId.FlareDie, "Items", new[] { "flare_die" }),
-            (AudioCueId.NoiseTrapArm, "Items", new[] { "noisetrap_arm" }),
-            (AudioCueId.NoiseTrapTrigger, "Items", new[] { "noisetrap_trigger" }),
-            (AudioCueId.BreakerThrow, "Items", new[] { "breaker_throw" }),
-            (AudioCueId.DetectorPing, "Items", new[] { "detector_ping" }),
-            (AudioCueId.ChalkMark, "Items", new[] { "chalk_mark_01", "chalk_mark_02", "chalk_mark_03" }),
-            (AudioCueId.RopeDeploy, "Items", new[] { "rope_deploy" }),
-            (AudioCueId.MufflerEquip, "Items", new[] { "muffler_equip" }),
-            (AudioCueId.ShopPurchase, "Items", new[] { "shop_purchase_confirm" }),
-
-            (AudioCueId.ClueReadSuccess, "UI", new[] { "clue_read_success" }),
-            (AudioCueId.ClueReadFailed, "UI", new[] { "clue_read_failed" }),
-            (AudioCueId.ObjectiveFound, "UI", new[] { "objective_found" }),
-            (AudioCueId.ObjectivePickup, "UI", new[] { "objective_pickup" }),
-            (AudioCueId.ShopOpen, "UI", new[] { "shop_open" }),
-            (AudioCueId.ShopClose, "UI", new[] { "shop_close" }),
-            (AudioCueId.ShopDenied, "UI", new[] { "shop_denied" }),
+            // 투하구, eight times a race — the whole of 층 이동 (§01).
             (AudioCueId.Descend, "UI", new[] { "descend_basement" }),
-            (AudioCueId.SurfaceReached, "UI", new[] { "surface_reached" }),
+
+            // §02's two verdicts and the transition into §09.
             (AudioCueId.EscapeSuccess, "UI", new[] { "escape_success" }),
             (AudioCueId.MatchFailure, "UI", new[] { "match_failure_wipe" }),
             (AudioCueId.DeathTransition, "UI", new[] { "death_transition_01", "death_transition_02" }),
-            (AudioCueId.GhostRattle, "UI",
-                new[] { "ghost_rattle_01", "ghost_rattle_02", "ghost_rattle_03", "ghost_rattle_04" }),
-            (AudioCueId.GhostRattleReady, "UI", new[] { "ghost_rattle_ready" }),
+
+            // §13 근접 음성.
             (AudioCueId.VoiceActivity, "UI", new[] { "voice_activity_blip" }),
             (AudioCueId.VoiceOutOfRange, "UI", new[] { "voice_out_of_range" }),
+
+            // DELETED — 32 rows for systems that no longer exist. Battery ×3 (§08's
+            // cell), Barricade ×2 / NoiseTrap ×2 / BreakerThrow / ChalkMark /
+            // RopeDeploy / MufflerEquip / DetectorPing (§04 직업), Loot ×5 and Safe ×2
+            // and Shop ×4 (§08 경제), Clue ×2 and Objective ×2 (§03), Flare ×2,
+            // SurfaceReached (지상), GhostRattle ×2 (§09's 신호). Their .wav files are
+            // listed in the same commit's report as orphans; AudioCueId keeps the
+            // numbering sparse on purpose so the surviving rows do not silently
+            // re-point at the wrong clip in MatchAudioLibrary.asset.
         };
 
         /// <summary>Loads a clip from a project-relative asset path, or null.</summary>
@@ -316,11 +297,10 @@ namespace HorrorGame.Audio
 
             library.SetThreatBeds(beds, stingers);
 
-            library.SetBeds(
-                LoadOne("Ambience", "amb_surface_vehicle_loop", load, missing, ref loaded),
-                LoadOne("Ambience", "amb_generator_hum_loop", load, missing, ref loaded),
-                LoadOne("Items", "zone_hum_loop", load, missing, ref loaded),
-                LoadOne("Items", "flare_burn_loop", load, missing, ref loaded));
+            // DELETED: library.SetBeds(...). It loaded amb_surface_vehicle_loop,
+            // amb_generator_hum_loop and zone_hum_loop — §01's 지상, §03's 발전기 and
+            // §12's 전기 패널. All three clips are gone from Assets/Audio with the
+            // systems that placed them.
 
             library.SetHeartbeat(
                 LoadOne("UI", "heartbeat_low", load, missing, ref loaded),

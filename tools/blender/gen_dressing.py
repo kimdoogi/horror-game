@@ -38,10 +38,13 @@ materials in the project — galvanised pipe, dust sheets, loose paper, enamel
 signage and standing water — and the flashlight is what finds them. A corridor
 dressed only in browns and rusts stays exactly as invisible as an empty one.
 
-**§03's water is diegetic.** The document's worked example of a clue is literally
-*"그것은 물이 있는 층에 있다"*, so puddles, drips, stains and a floor drain are not
-atmosphere: they are the thing a clue can point at. They are concentrated in one
-zone by the scatter tool so that "the floor with water" names somewhere.
+**Water is atmosphere now, not information.** It used to be §03's worked example
+of a clue — *"그것은 물이 있는 층에 있다"* — so puddles, drips, stains and a floor
+drain were the thing a clue could point at. 단서 is deleted and the destination
+is announced at the start, so they are back to being what they look like: the
+kit's only mirror, and the reason a torch beam has somewhere to bounce. The
+scatter tool still concentrates them in one zone, which now buys a storey a
+memorable look rather than a name.
 
 **§12 makes floor material a gameplay channel**, and the Listener has to be able
 to learn it. The floor tint is somebody else's file, but which *props* a zone
@@ -50,39 +53,23 @@ institutional steel / wet gravel plant / utility concrete) give a player a secon
 visual way to know which zone they are standing in.
 
 
-§03's CONFUSION PAIRS ARE A GEOMETRY REQUIREMENT
+THE SIGNAGE SET USED TO BE §03's CONFUSION PAIRS
 ================================================
 
-§03 plants 혼동쌍 deliberately and lists the *condition* each one needs, not the
-glyph. `gen_props.py` covers three of them on the dedicated clue props; signage is
-scattered everywhere, so it covers the same ground under the conditions a sign
-creates. Each signage piece carries a single flat face with material
-``Clue_Face`` mapped exactly 0..1 — the seam §13's host-rendered glyph lands on —
-and each one is built for one condition:
+Four pieces — Dress_PipeLabel, Dress_HangingSign, Dress_WallSign,
+Dress_DoorPlate — each carried a single flat ``Clue_Face`` quad mapped exactly
+0..1, the seam §13's host-rendered glyph landed on, and each was *built* for one
+misread condition: a pipe label symmetric under a half-turn about its own face
+normal so 6 is 9 from the far end of the corridor; a double-sided hanging sign
+with the back face's UVs mirrored so 좌 is 우 depending which way you came; a
+glossy enamel field that blows out under a close beam for ㅁ↔ㅇ; a 0.18 m plate
+read at a glancing angle for 1↔7. Two of the four were asserted to a millimetre.
 
-======================  =================================================  =========
-Piece                   Viewing condition it creates                       Pair
-======================  =================================================  =========
-Dress_PipeLabel         A plate on a pipe with **no up-cue**: symmetric      6 ↔ 9
-                        under a half-turn about its own face normal, so
-                        a player reading it from the other end of the
-                        corridor is reading it upside down and cannot
-                        tell. Asserted numerically, not eyeballed.
-Dress_HangingSign       **Double-sided**, both faces on the same            좌 ↔ 우
-                        ``Clue_Face`` material with the back face's UVs
-                        mirrored in U. Whatever the host stamps reads
-                        correctly from the front and reversed from the
-                        back, and the sign hangs on chains so which side
-                        you meet first is an accident of your route.
-                        Mirror symmetry is asserted.
-Dress_WallSign          A glossy enamel field (roughness 0.30) in a         ㅁ ↔ ㅇ
-                        bright bezel. §03 files ㅁ↔ㅇ under "흐릿할 때";
-                        a beam held close on gloss blows the face out
-                        instead of resolving it.
-Dress_DoorPlate         0.18 m across at 1.42 m, matte, read in passing     1 ↔ 7
-                        at a glancing angle — §03's 손글씨체 condition
-                        reproduced by size and viewing angle.
-======================  =================================================  =========
+All of it is deleted. 경주는 목적지를 처음부터 알려 준다 — there is no chain to
+narrow, no glyph to stamp, and therefore nothing a runner can misread. What is
+left is the *plate*: painted steel, an enamel field, bolts, chains. A basement
+with signage in it looks like a basement, which is §12's job for the kit, and
+the scatter tool no longer stamps 526 readable surfaces into a race.
 
 
 CONVENTIONS THIS FILE GUARANTEES
@@ -192,8 +179,12 @@ RUBBER = "Dress_Rubber"
 GRIME = "Dress_Grime"
 BRASS_FITTING = "Dress_BrassFitting"
 
-CLUE_FACE = gen_props.CLUE_FACE
-"""§13's seam, reused verbatim: the host renders one clue's glyph and stamps it here."""
+# DELETED: CLUE_FACE. It was `gen_props.CLUE_FACE` — §13's seam, the surface the
+# host rendered one clue's glyph onto and stamped here. §03 단서 is deleted:
+# 목적지가 이미 알려져 있으니 좁혀 갈 것이 없다. Four Sign pieces carried one each
+# and the scatter tool stamped 526 of them into the shipped scene; the enamel
+# field they sat on is still there, so a sign is still a sign, with nothing
+# written on it that a runner has to read.
 
 MATERIALS: dict[str, MaterialSpec] = {
     # Painted steel is metallic=0. Paint is a dielectric coat over the metal, and
@@ -265,127 +256,16 @@ def rads(degrees):
 # ── Measurement helpers ─────────────────────────────────────────────────────
 
 
-def rotational_symmetry_error_axis(obj: bpy.types.Object, axis: str, centre: Vector) -> float:
-    """Worst distance from a 180°-rotated vertex to the nearest real vertex, metres.
-
-    `gen_props.rotational_symmetry_error` hard-codes the Z axis because the clue
-    plate it guards lies flat on a pedestal. A sign on a wall or under a pipe has
-    to be symmetric about its own **face normal** instead: that is the rotation a
-    player performs by walking to the other end of the corridor and looking back,
-    and §03 puts 6↔9 behind exactly that ("뒤집힌 각도에서"). Any asymmetric detail
-    — one bolt, a border on one side — restores the up-cue and the pair dies.
-    """
-    pts = [obj.matrix_world @ v.co for v in obj.data.vertices]
-    worst = 0.0
-    for p in pts:
-        d = p - centre
-        if axis == "X":
-            q = centre + Vector((d.x, -d.y, -d.z))
-        elif axis == "Y":
-            q = centre + Vector((-d.x, d.y, -d.z))
-        else:
-            q = centre + Vector((-d.x, -d.y, d.z))
-        best = math.inf
-        for r in pts:
-            dist = (r - q).length_squared
-            if dist < best:
-                best = dist
-                if best < 1e-12:
-                    break
-        worst = max(worst, math.sqrt(best))
-    return worst
-
-
-def mirror_symmetry_error(obj: bpy.types.Object, axis: str, plane: float) -> float:
-    """Worst distance from a mirrored vertex to the nearest real vertex, metres.
-
-    §03 lists 좌↔우 under "거울 · 반사면". A double-sided sign is the other way to
-    produce it: if the two faces are geometric mirrors and share one ``Clue_Face``
-    material with the back's UVs flipped, the host stamps one glyph and a player
-    who arrives from the far side reads it reversed. That only works if the plate
-    really is symmetric, so it is measured rather than assumed.
-    """
-    idx = {"X": 0, "Y": 1, "Z": 2}[axis]
-    pts = [obj.matrix_world @ v.co for v in obj.data.vertices]
-    worst = 0.0
-    for p in pts:
-        q = p.copy()
-        q[idx] = 2.0 * plane - p[idx]
-        best = math.inf
-        for r in pts:
-            dist = (r - q).length_squared
-            if dist < best:
-                best = dist
-                if best < 1e-12:
-                    break
-        worst = max(worst, math.sqrt(best))
-    return worst
-
-
-def map_clue_faces(obj: bpy.types.Object) -> list[dict]:
-    """Maps every ``Clue_Face`` island to 0..1 in UV and measures it.
-
-    `gen_props.map_face_uv_unit` averages the normals of all the material's
-    polygons, which is right for a one-sided clue and wrong for a double-sided
-    sign: two opposed quads average to nothing and the basis collapses. So the
-    polygons are grouped by facing first, each group gets its own unit mapping,
-    and the group facing **+Y** — the back of a piece authored facing −Y — is
-    flipped in U. That flip is the entire 좌↔우 mechanism: one glyph, two sides,
-    one of them reversed.
-    """
-    idx = gen_props.material_index(obj, CLUE_FACE)
-    if idx is None:
-        return []
-
-    me = obj.data
-    polys = [p for p in me.polygons if p.material_index == idx]
-    if not polys:
-        return []
-
-    groups: list[tuple[Vector, list]] = []
-    for p in polys:
-        n = p.normal.normalized()
-        for gn, members in groups:
-            if gn.dot(n) > 0.99:
-                members.append(p)
-                break
-        else:
-            groups.append((n, [p]))
-
-    if not me.uv_layers:
-        me.uv_layers.new(name="UVMap")
-    layer = me.uv_layers.active
-
-    out: list[dict] = []
-    for normal, members in groups:
-        u, v = gen_props._face_basis(normal)
-        coords = []
-        for p in members:
-            for li in p.loop_indices:
-                co = me.vertices[me.loops[li].vertex_index].co
-                coords.append((li, co.dot(u), co.dot(v)))
-        umin = min(c[1] for c in coords)
-        umax = max(c[1] for c in coords)
-        vmin = min(c[2] for c in coords)
-        vmax = max(c[2] for c in coords)
-        du = max(umax - umin, 1e-6)
-        dv = max(vmax - vmin, 1e-6)
-        # A face pointing +Y is the back of a piece authored facing −Y.
-        mirrored = normal.y > 0.5
-        for li, cu, cv in coords:
-            s = (cu - umin) / du
-            layer.data[li].uv = (1.0 - s if mirrored else s, (cv - vmin) / dv)
-        flat = max(abs((me.vertices[me.loops[li].vertex_index].co - members[0].center).dot(normal))
-                   for p in members for li in p.loop_indices)
-        out.append({"width": du, "height": dv, "polys": len(members),
-                    "flatness": flat, "mirrored": mirrored,
-                    "normal": (normal.x, normal.y, normal.z)})
-    return out
-
-
-# ── Shared sub-assemblies ───────────────────────────────────────────────────
-
-
+# DELETED: `rotational_symmetry_error_axis` and `mirror_symmetry_error`. The
+# first measured a half-turn about an arbitrary axis (gen_props' version
+# hard-codes Z, and a wall label's face normal is Y); the second measured a
+# plate against its own mirror plane. Both existed only to assert §03's 6↔9 and
+# 좌↔우 misread conditions to a millimetre. gen_props.rotational_symmetry_error
+# is still imported for the Z-axis case and is untouched.
+# DELETED: `map_clue_faces`. It grouped a piece's Clue_Face polygons by facing,
+# gave each group its own 0..1 UV mapping and flipped U on the group facing +Y —
+# the entire 좌↔우 mechanism: one glyph, two sides, one of them reversed. With no
+# glyph the mapping has nothing to map and the flip nothing to reverse.
 def _crate(f: Frame, side: float, height: float, wood: str = TIMBER_PALE,
            batten: str = TIMBER_DARK) -> None:
     """One packing crate: a body plus corner battens and a lid.
@@ -1354,13 +1234,15 @@ def build_cobweb_corner() -> PropBuild:
 
 
 # ══════════════════════════════════════════════════════════════════════════
-#  SIGNAGE — §03's 혼동쌍 by construction. Each piece carries one `Clue_Face`
-#  island mapped 0..1, which is where §13's host-rendered glyph lands.
+#  SIGNAGE — blank plates. Each of these carried one `Clue_Face` island mapped
+#  0..1 for §13's host-rendered glyph; §03 단서 is deleted and so is the glyph.
+#  They are kept as what is left when the writing goes: painted steel, an enamel
+#  field, bolts and chains. §12 wants a corridor to read as a place.
 # ══════════════════════════════════════════════════════════════════════════
 
 
 def build_wall_sign() -> PropBuild:
-    """An enamel sign at 1.42–1.78 m. WALL mount. §03's ㅁ↔ㅇ, "흐릿할 때".
+    """An enamel sign at 1.42–1.78 m. WALL mount.
 
     The face is a **glossy** enamel field (roughness 0.30) in a bright bezel. §03
     files ㅁ↔ㅇ under blur, and gloss is how a flashlight produces blur: held close
@@ -1380,23 +1262,20 @@ def build_wall_sign() -> PropBuild:
         b.box((0.034, 0.016, H), (sx * (W / 2 - 0.017), -0.032, 1.600), mat=STEEL_BARE,
               nobevel=True)
     b.box((W - 0.060, 0.012, H - 0.060), (0.0, -0.032, 1.600), mat=ENAMEL, nobevel=True)
-    b.quad(W - 0.090, H - 0.090, (0.0, -0.040, 1.600), rot=(90.0, 0.0, 0.0), mat=CLUE_FACE,
-           role="clue_face")
     for (sx, sz) in ((-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)):
         b.cyl(0.010, 0.014, (sx * (W / 2 - 0.026), -0.040, 1.600 + sz * (H / 2 - 0.026)),
               rot=(90.0, 0.0, 0.0), verts=6, mat=STEEL_BARE, nobevel=True)
-    b.meta["confusion_pair"] = "ㅁ ↔ ㅇ (흐릿할 때)"
     return b
 
 
 def build_hanging_sign() -> PropBuild:
     """A double-sided sign on two chains. CEILING mount. §03's 좌↔우.
 
-    Both faces carry the same ``Clue_Face`` material, and `map_clue_faces` flips
-    the back face's U. One glyph from the host (§13) therefore reads correctly
-    from one side and **reversed** from the other, and which side a player meets
-    is decided by which corridor they came down. §03 lists 좌↔우 under 거울 ·
-    반사면; a sign you can walk behind is the same failure without a mirror.
+    Both faces used to carry a ``Clue_Face`` quad, one of them UV-mirrored, so a
+    single host-stamped glyph read correctly from one side and reversed from the
+    other — §03's 좌↔우 without a mirror. The glyph is deleted; the plate is
+    symmetric in Y about its own mid-plane and stays that way, because neither
+    face being "the front" is what lets the scatterer hang it in any corridor.
 
     The plate is asserted mirror-symmetric about its own plane, because a single
     bracket on one side would tell a player which face is the front and the pair
@@ -1421,15 +1300,9 @@ def build_hanging_sign() -> PropBuild:
               nobevel=True)
         b.box((W, 0.008, 0.026), (0.0, sy * 0.016, zc - H / 2 + 0.013), mat=STEEL_BARE,
               nobevel=True)
-    b.quad(W - 0.080, H - 0.080, (0.0, -0.024, zc), rot=(90.0, 0.0, 0.0), mat=CLUE_FACE,
-           role="clue_face_front")
-    b.quad(W - 0.080, H - 0.080, (0.0, 0.024, zc), rot=(-90.0, 0.0, 0.0), mat=CLUE_FACE,
-           role="clue_face_back")
     for sx in (-1.0, 1.0):
         b.cyl(0.012, 0.048, (sx * (W / 2 - 0.030), 0.0, zc + H / 2 + 0.008), verts=6,
               mat=STEEL_BARE, nobevel=True)
-    b.meta["confusion_pair"] = "좌 ↔ 우 (거울 · 반사면)"
-    b.meta["mirror_plane_y"] = 0.0
     return b
 
 
@@ -1463,36 +1336,28 @@ def build_pipe_label() -> PropBuild:
         b.cyl(0.078, 0.024, (sx * 0.130, y, zc), rot=(0.0, 90.0, 0.0), verts=12,
               mat=STEEL_BARE, nobevel=True)
     b.box((0.320, 0.014, 0.170), (0.0, y - 0.076, zc), mat=ENAMEL, nobevel=True)
-    b.quad(0.280, 0.130, (0.0, y - 0.085, zc), rot=(90.0, 0.0, 0.0), mat=CLUE_FACE,
-           role="clue_face")
     for (sx, sz) in ((-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)):
         b.cyl(0.009, 0.014, (sx * 0.140, y - 0.086, zc + sz * 0.070), rot=(90.0, 0.0, 0.0),
               verts=6, mat=STEEL_BARE, nobevel=True)
-    b.meta["confusion_pair"] = "6 ↔ 9 (뒤집힌 각도에서)"
-    b.meta["symmetry_axis"] = "Y"
-    b.meta["symmetry_centre"] = (0.0, y - 0.080, zc)
     return b
 
 
 def build_door_plate() -> PropBuild:
     """A stencilled number plate at 1.42 m. WALL mount. §03's 1↔7, 손글씨체.
 
-    0.20 m across and matte (roughness 0.75 on the ``Clue_Face`` material): a
-    player walking past reads it at a glancing angle in a moving beam, which is
-    the condition where an ascender and a serif are the same smudge. It is the
-    cheapest clue surface in the kit and therefore the one that can be everywhere,
-    which is what makes a misremembered door number a plausible way to lose."""
+    0.20 m across on a brass back with an enamel field. It was §03's 1↔7 — the
+    cheapest readable surface in the kit and therefore the one that could be
+    everywhere, read at a glancing angle in a moving beam where an ascender and a
+    serif are the same smudge. Nothing is written on it now; it is the smallest
+    piece in the kit and the one that makes a doorway look like a doorway."""
     b = PropBuild("Dress_DoorPlate")
     W, H = 0.200, 0.140
     back = b.box((W, 0.010, H), (0.0, -0.005, 1.420), mat=BRASS_FITTING, nobevel=True)
     b.pivot_part = back
     b.box((W - 0.024, 0.008, H - 0.024), (0.0, -0.012, 1.420), mat=ENAMEL, nobevel=True)
-    b.quad(W - 0.040, H - 0.040, (0.0, -0.018, 1.420), rot=(90.0, 0.0, 0.0), mat=CLUE_FACE,
-           role="clue_face")
     for sx in (-1.0, 1.0):
         b.cyl(0.007, 0.012, (sx * (W / 2 - 0.016), -0.018, 1.420), rot=(90.0, 0.0, 0.0),
               verts=6, mat=STEEL_BARE, nobevel=True)
-    b.meta["confusion_pair"] = "1 ↔ 7 (손글씨체)"
     return b
 
 
@@ -1626,19 +1491,23 @@ PIECES: list[Piece] = [
     Piece("Dress_CobwebCorner", build_cobweb_corner, "Corner", (0.964, 0.964, 0.725),
           mount="CORNER", palettes=("storage", "wet"), weight=1.0, max_tris=900,
           solid=False),
-    # ── Signage — §03's 혼동쌍 ──────────────────────────────────────────────
-    Piece("Dress_WallSign", build_wall_sign, "Sign", (0.520, 0.047, 0.360), mount="WALL",
-          weight=1.0, max_tris=800, solid=False, checks=("clue_face",),
-          note="ㅁ↔ㅇ via a glossy field"),
-    Piece("Dress_HangingSign", build_hanging_sign, "Sign", (0.800, 0.090, 0.930),
+    # ── Signage ────────────────────────────────────────────────────────────
+    # These four were §03's 혼동쌍 fittings and each carried a Clue_Face the host
+    # stamped a glyph onto: ㅁ↔ㅇ on a glossy field, 좌↔우 on a mirrored back
+    # face, 6↔9 on a plate with no up-cue, 1↔7 on a matte plate read in passing.
+    # 단서 is deleted, so the glyph faces and the four misread checks that made
+    # them misreadable went with it. The enamel plate under each one is kept:
+    # a basement with signage in it looks like a basement, and §12 wants a
+    # corridor to read as a place. Nothing on them is information.
+    Piece("Dress_WallSign", build_wall_sign, "Sign", (0.520, 0.045, 0.360), mount="WALL",
+          weight=1.0, max_tris=800, solid=False, note="wall plate, blank"),
+    Piece("Dress_HangingSign", build_hanging_sign, "Sign", (0.800, 0.086, 0.930),
           mount="CEILING", weight=0.7, max_tris=1600, solid=False,
-          checks=("clue_face", "two_sided", "mirror"), note="좌↔우 via a mirrored back face"),
-    Piece("Dress_PipeLabel", build_pipe_label, "Sign", (1.100, 0.226, 0.191), mount="WALL",
-          weight=0.9, max_tris=1200, solid=False, checks=("clue_face", "half_turn"),
-          note="6↔9 via a plate with no up-cue"),
-    Piece("Dress_DoorPlate", build_door_plate, "Sign", (0.200, 0.028, 0.140), mount="WALL",
-          weight=1.1, max_tris=400, solid=False, checks=("clue_face",),
-          note="1↔7 via a small matte plate read in passing"),
+          note="double-sided plate on two chains, blank"),
+    Piece("Dress_PipeLabel", build_pipe_label, "Sign", (1.100, 0.224, 0.191), mount="WALL",
+          weight=0.9, max_tris=1200, solid=False, note="labelled pipe band, blank"),
+    Piece("Dress_DoorPlate", build_door_plate, "Sign", (0.200, 0.026, 0.140), mount="WALL",
+          weight=1.1, max_tris=400, solid=False, note="door number plate, blank"),
 ]
 
 
@@ -1696,14 +1565,6 @@ def emit(piece: Piece) -> None:
     sharp = gen_props.apply_smooth(obj, 30.0)
     blendkit.uv_smart_project(obj)
 
-    faces = map_clue_faces(obj)
-    half_turn = mirror = None
-    if "half_turn" in piece.checks:
-        centre = Vector(b.meta["symmetry_centre"]) + shift  # type: ignore[arg-type]
-        half_turn = rotational_symmetry_error_axis(obj, str(b.meta["symmetry_axis"]), centre)
-    if "mirror" in piece.checks:
-        mirror = mirror_symmetry_error(obj, "Y", float(b.meta["mirror_plane_y"]) + shift.y)
-
     path = blendkit.out_path("Dressing", piece.name + ".fbx")
     blendkit.export_fbx(path, objects=[obj], with_animation=False)
 
@@ -1751,23 +1612,11 @@ def emit(piece: Piece) -> None:
         if abs(lo[2]) > 0.004:
             blendkit.fail(f"{piece.name}: floor piece's base is at z={lo[2]:.4f}, must be 0")
 
-    if "clue_face" in piece.checks:
-        if not faces:
-            blendkit.fail(f"{piece.name}: no '{CLUE_FACE}' polygons — §03's glyph has nowhere to go")
-        for f in faces:
-            if f["flatness"] > 0.001:
-                blendkit.fail(f"{piece.name}: a clue face is {f['flatness'] * 1000:.2f} mm out of "
-                              "plane — a glyph would distort")
-    if "two_sided" in piece.checks:
-        if len(faces) != 2 or sum(1 for f in faces if f["mirrored"]) != 1:
-            blendkit.fail(f"{piece.name}: expected two opposed clue faces with exactly one "
-                          f"mirrored, got {len(faces)} — §03's 좌↔우 needs a back that reverses")
-
     ROWS.append({
         "name": piece.name, "group": piece.group, "mount": piece.mount, "size": size,
         "bounds_min": lo, "bounds_max": hi, "tris": report.triangles,
         "verts": report.vertices, "bytes": report.bytes, "path": path,
-        "materials": used, "faces": faces, "half_turn": half_turn, "mirror": mirror,
+        "materials": used,
         "sharp": sharp, "bevel_skipped": bevel_skipped, "piece": piece,
         "emissive": gen_props.emissive_material_count(obj),
     })
@@ -1776,14 +1625,6 @@ def emit(piece: Piece) -> None:
     extra = [f"piece={piece.name}", f"group={piece.group}", f"mount={piece.mount}",
              f"size={size[0]:.3f}x{size[1]:.3f}x{size[2]:.3f}m",
              f"tris={report.triangles}", f"emissive={ROWS[-1]['emissive']}"]
-    if faces:
-        extra.append("clue_faces=" + ",".join(
-            f"{f['width']:.3f}x{f['height']:.3f}{'(mirrored)' if f['mirrored'] else ''}"
-            for f in faces))
-    if half_turn is not None:
-        extra.append(f"half_turn_error_mm={half_turn * 1000:.3f}")
-    if mirror is not None:
-        extra.append(f"mirror_error_mm={mirror * 1000:.3f}")
     print("DRESS_DETAIL " + " ".join(extra))
 
 
@@ -1825,7 +1666,6 @@ def write_manifest(rows: list[dict]) -> str:
             "triangles": r["tris"],
             "emissive_materials": r["emissive"],
             "materials": r["materials"],
-            "clue_faces": len(r["faces"]),
             "note": piece.note,
         })
 
@@ -1849,8 +1689,7 @@ def write_manifest(rows: list[dict]) -> str:
                 "metallic": spec.metallic,
                 "emission": spec.emission,
             }
-            for spec in sorted(list(MATERIALS.values()) + [gen_props.MATERIALS[CLUE_FACE]],
-                               key=lambda s: s.name)
+            for spec in sorted(MATERIALS.values(), key=lambda s: s.name)
         ],
         "pieces": pieces,
     }
@@ -1883,48 +1722,13 @@ def main() -> None:
 
     lines: list[str] = []
 
-    # §03's confusion pairs, asserted rather than asserted-in-a-comment.
-    for r in ROWS:
-        piece: Piece = r["piece"]
-        if "half_turn" in piece.checks:
-            err = r["half_turn"]
-            if err > 0.0015:
-                blendkit.fail(f"{piece.name} is {err * 1000:.2f} mm off a half-turn about its "
-                              "face normal — an up-cue that large tells a player which way is "
-                              "up and §03's 6↔9 stops happening")
-            lines.append(f"{piece.name}: half-turn symmetric to {err * 1000:.3f} mm — "
-                         "§03's 6↔9 stands  OK")
-        if "mirror" in piece.checks:
-            err = r["mirror"]
-            if err > 0.0015:
-                blendkit.fail(f"{piece.name} is {err * 1000:.2f} mm off mirror symmetry — one "
-                              "face reads as the front and §03's 좌↔우 collapses")
-            lines.append(f"{piece.name}: mirror symmetric to {err * 1000:.3f} mm; "
-                         f"{sum(1 for f in r['faces'] if f['mirrored'])} of {len(r['faces'])} "
-                         "clue faces reversed in UV — §03's 좌↔우 stands  OK")
-        if "clue_face" in piece.checks:
-            for f in r["faces"]:
-                lines.append(f"{piece.name}: readable face "
-                             f"{f['width'] * 100:.1f}x{f['height'] * 100:.1f} cm, UV 0..1, "
-                             f"material '{CLUE_FACE}'"
-                             f"{' (mirrored)' if f['mirrored'] else ''}  OK")
-
-    # All four §03 pairs have to be covered by the signage set, or the kit only
-    # looks like it addresses the design.
-    pairs = {"6 ↔ 9", "1 ↔ 7", "ㅁ ↔ ㅇ", "좌 ↔ 우"}
-    if all(p.group == "Sign" or p.group != "Sign" for p in todo) and \
-            len([p for p in todo if p.group == "Sign"]) == \
-            len([p for p in PIECES if p.group == "Sign"]):
-        covered = set()
-        for name in ("Dress_PipeLabel", "Dress_DoorPlate", "Dress_WallSign",
-                     "Dress_HangingSign"):
-            covered.add({"Dress_PipeLabel": "6 ↔ 9", "Dress_DoorPlate": "1 ↔ 7",
-                         "Dress_WallSign": "ㅁ ↔ ㅇ", "Dress_HangingSign": "좌 ↔ 우"}[name])
-        missing = pairs - covered
-        if missing:
-            blendkit.fail(f"§03's confusion pairs with no signage condition: {missing}")
-        lines.append("all four §03 혼동쌍 have a signage piece that creates their "
-                     "condition  OK")
+    # DELETED with §03 단서: the four 혼동쌍 assertions and the coverage check.
+    # They proved the signage set could make a glyph *misread* — Dress_PipeLabel
+    # half-turn symmetric to a millimetre so 6 is 9 from the far end,
+    # Dress_HangingSign mirror symmetric so the back face reverses, every
+    # Clue_Face flat and UV 0..1 so a stamped glyph would not distort. The
+    # geometry those checks guarded is gone with the material, and there is
+    # nothing to misread in a race that announces its finish at the start.
 
     # Nothing on the floor may be tall enough to trip a fleeing player (§05, §06).
     for r in ROWS:

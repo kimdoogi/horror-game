@@ -286,60 +286,17 @@ namespace HorrorGame.Core.Tests
         }
 
         // ====================================================================
-        // §08 — load, objective and bag, stacked on top of §05.
+        // §08 — DELETED. Two tests stood here:
+        //   Resolve_StacksLoadObjectiveAndBagMultiplicatively
+        //   CarryingTheObjective_LeavesEvenTheRunnerBelowTheMonster
+        // Together they pinned §05's product against §03's 목표물 and §08's 가방:
+        // that the penalties multiply rather than cancel, and that a carrier can
+        // never outrun the creature so "2인 1조 호송" stays compulsory. Both facts
+        // are about things a runner carries, and a runner carries nothing. What is
+        // left of the product — direction × stance — is pinned by the §05 tests
+        // above and by MarginVersusMonster below, which is the assertion that
+        // actually decides whether the race is survivable.
         // ====================================================================
-
-        /// <summary>
-        /// §08: "§05 배율에 곱연산으로 적용된다." Every penalty multiplies, so combining
-        /// them can never cancel one out. The combination below is deliberately
-        /// impossible in play (§03 forbids carrying loot and the objective at once) —
-        /// the point is that the arithmetic is a plain product with no special cases.
-        /// </summary>
-        [Test]
-        public void Resolve_StacksLoadObjectiveAndBagMultiplicatively()
-        {
-            var context = new MovementContext(
-                GameConstants.RunSpeed, GameConstants.WeightMulLight, carryingObjective: true, bagEquipped: true);
-
-            var expected = GameConstants.RunSpeed
-                           * GameConstants.MulDiagonal
-                           * GameConstants.WeightMulLight
-                           * GameConstants.ObjectiveCarrySpeedMultiplier
-                           * GameConstants.BagSpeedMultiplier;
-
-            Assert.That(SpeedResolver.Resolve(new MoveInput(1f, 1f), context),
-                Is.EqualTo(expected).Within(1e-4f));
-
-            Assert.That(SpeedResolver.ContextMultiplier(context),
-                Is.EqualTo(GameConstants.WeightMulLight
-                           * GameConstants.ObjectiveCarrySpeedMultiplier
-                           * GameConstants.BagSpeedMultiplier).Within(1e-5f),
-                "The §08 half of the product must be readable on its own — the shop shows it before you buy.");
-        }
-
-        /// <summary>
-        /// §03 makes the objective carrier dependent on the team: both hands full,
-        /// no flashlight, no sprint. The numbers have to agree — a carrier who could
-        /// outrun the monster would not need the "2인 1조 호송" §03 builds the last
-        /// round trip around.
-        /// </summary>
-        [Test]
-        public void CarryingTheObjective_LeavesEvenTheRunnerBelowTheMonster()
-        {
-            var carrying = new MovementContext(GameConstants.RunnerSprintSpeed, 1f, carryingObjective: true);
-            var input = new MoveInput(1f, 0f, sprintHeld: true);
-
-            Assert.That(SpeedResolver.SelectBaseSpeed(input, carrying, sprintUnlocked: true, staminaReady: true),
-                Is.EqualTo(GameConstants.RunSpeed),
-                "§03: 주자가 들면 질주 불가 — carrying vetoes the sprint even for a Runner with a full bar.");
-
-            var actual = new MovementContext(
-                SpeedResolver.SelectBaseSpeed(input, carrying, true, true), 1f, carryingObjective: true);
-            var margin = SpeedResolver.MarginVersusMonster(input, actual, GameConstants.MonsterBaseSpeed);
-
-            Assert.That(margin.IsLosingGround, Is.True,
-                "The carrier must never be able to escape on their own: " + margin);
-        }
 
         /// <summary>
         /// Analogue deflection scales the speed without touching the table. A stick
@@ -464,24 +421,24 @@ namespace HorrorGame.Core.Tests
 
         /// <summary>
         /// §06's ladder is chosen by Shift plus permission: walk without it, run with
-        /// it, sprint only when the role, the load and the bar all allow it. §08's
-        /// weight-16 rule and §06's empty bar arrive here as the same veto, which is
-        /// why they read as one rule to the player.
+        /// it, sprint only when the bar allows it. The 직업 and 하중 vetoes that used
+        /// to sit alongside the bar are gone with §04 and §08, so the bar is now the
+        /// only thing that can refuse a sprint — which is what makes 12 s a number a
+        /// player can feel rather than one of three reasons Shift did nothing.
         /// </summary>
         [Test]
         public void SelectBaseSpeed_WalksRunsAndSprintsOnlyWhenAllowed()
         {
-            var context = MovementContext.Unloaded(GameConstants.RunnerSprintSpeed);
             var walking = new MoveInput(1f, 0f);
             var shift = new MoveInput(1f, 0f, sprintHeld: true);
 
-            Assert.That(SpeedResolver.SelectBaseSpeed(walking, context, true, true),
+            Assert.That(SpeedResolver.SelectBaseSpeed(walking, true, true),
                 Is.EqualTo(GameConstants.WalkSpeed));
-            Assert.That(SpeedResolver.SelectBaseSpeed(shift, context, sprintUnlocked: false, staminaReady: true),
-                Is.EqualTo(GameConstants.RunSpeed), "Every non-Runner role runs; only the Runner sprints (§04).");
-            Assert.That(SpeedResolver.SelectBaseSpeed(shift, context, sprintUnlocked: true, staminaReady: false),
-                Is.EqualTo(GameConstants.RunSpeed), "An empty bar drops the Runner to a run, not to a walk.");
-            Assert.That(SpeedResolver.SelectBaseSpeed(shift, context, sprintUnlocked: true, staminaReady: true),
+            Assert.That(SpeedResolver.SelectBaseSpeed(shift, sprintUnlocked: false, staminaReady: true),
+                Is.EqualTo(GameConstants.RunSpeed), "A runner without the sprint unlocked still runs — §05 never drops anyone to a walk for it.");
+            Assert.That(SpeedResolver.SelectBaseSpeed(shift, sprintUnlocked: true, staminaReady: false),
+                Is.EqualTo(GameConstants.RunSpeed), "An empty bar drops the runner to a run, not to a walk.");
+            Assert.That(SpeedResolver.SelectBaseSpeed(shift, sprintUnlocked: true, staminaReady: true),
                 Is.EqualTo(GameConstants.RunnerSprintSpeed));
         }
 

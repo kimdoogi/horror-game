@@ -1,0 +1,28 @@
+{
+    "name": "HorrorGame.Gameplay",
+    "rootNamespace": "HorrorGame.Gameplay",
+    "references": [
+        "HorrorGame.Core",
+        "HorrorGame.Audio",
+        "HorrorGame.Gameplay.Audio",
+        "HorrorGame.Gameplay.Monster",
+        "HorrorGame.Gameplay.Player",
+        "HorrorGame.Net",
+        "HorrorGame.Steam",
+        "HorrorGame.UI",
+        "Mirror",
+        "Unity.InputSystem",
+        "Unity.RenderPipelines.Core.Runtime",
+        "Unity.RenderPipelines.Universal.Runtime",
+        "UnityEngine.UI"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

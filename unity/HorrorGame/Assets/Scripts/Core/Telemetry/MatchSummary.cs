@@ -1,10 +1,9 @@
-using HorrorGame.Core.Match;
-using HorrorGame.Core.Roles;
+using HorrorGame.Core.Race;
 
 namespace HorrorGame.Core.Telemetry
 {
     /// <summary>
-    /// One match, reduced to the numbers that answer §16's open balance questions.
+    /// One race, reduced to the numbers that answer §16's open balance questions.
     /// <para>
     /// Deliberately flat and small. §13 chose bucket counters over a database
     /// precisely so this could be a value type handed to Steam Stats, written to a
@@ -13,10 +12,20 @@ namespace HorrorGame.Core.Telemetry
     /// cannot answer from the document alone.
     /// </para>
     /// <para>No player-identifying data. §13: anonymous session id only.</para>
+    /// <para>
+    /// DELETED with the co-op game: <c>Role0</c>–<c>Role3</c> (§04 직업 — twenty
+    /// identical runners have no role to spread), <c>CluesRead</c> /
+    /// <c>ClueMisreads</c> (§03 단서), <c>BatteriesUsed</c> (§08's battery
+    /// economy), <c>ObjectiveRecovered</c> (§03 목표물), and before them
+    /// <c>CreditsEarned</c> / <c>CreditsSpent</c> / <c>LootSold</c>. A telemetry
+    /// field no code path can raise is a zero that reads like a measurement — that
+    /// is the trap, and it is why these went rather than being left at their
+    /// defaults.
+    /// </para>
     /// </summary>
     public struct MatchSummary
     {
-        /// <summary>The match seed. Replaying it reproduces the layout exactly.</summary>
+        /// <summary>The race seed. Replaying it reproduces the layout exactly.</summary>
         public int Seed;
 
         /// <summary>Anonymous per-session id. Never a Steam ID, never a name.</summary>
@@ -25,44 +34,31 @@ namespace HorrorGame.Core.Telemetry
         /// <summary>Map identifier.</summary>
         public string? MapId;
 
-        /// <summary>How it ended. §02.</summary>
-        public MatchOutcome Outcome;
+        /// <summary>How the local runner's race ended. §02 — 완주, 탈락, or still running.</summary>
+        public RacerStatus Outcome;
 
-        /// <summary>Wall-clock length, seconds. Checked against §01's 25–35 min target.</summary>
+        /// <summary>Wall-clock length, seconds. §01's target for a full descent.</summary>
         public float DurationSeconds;
 
-        /// <summary>Descents into the basement. §03 expects 2–5; §07's curve is tuned against this.</summary>
-        public int RoundTrips;
+        /// <summary>
+        /// Deepest storey reached, 0 (B1's rim) to <see cref="RaceState.Storeys"/>.
+        /// <para>
+        /// This is the race's central measurement and it replaces the co-op
+        /// <c>RoundTrips</c>. §01 makes going down the whole game, so "how far did
+        /// they get" is what says whether the building is too long, too hard or
+        /// too short. A distribution piled on B1 and B2 means §06 or §12-A is
+        /// eating the field before the race has a shape.
+        /// </para>
+        /// </summary>
+        public int DeepestStorey;
 
-        /// <summary>Players who got out alive, 0–4. §02.</summary>
-        public int PlayersEscaped;
+        /// <summary>Runners who reached the middle of B8. §02 완주.</summary>
+        public int RunnersFinished;
 
-        /// <summary>Deaths, 0–4. §09.</summary>
-        public int PlayersDied;
+        /// <summary>Runners the creature caught. §02 탈락 — out and unranked.</summary>
+        public int RunnersEliminated;
 
-        /// <summary>The four roles taken. §11 uses the spread to check no role is compulsory.</summary>
-        public RoleId Role0;
-
-        /// <summary>See <see cref="Role0"/>.</summary>
-        public RoleId Role1;
-
-        /// <summary>See <see cref="Role0"/>.</summary>
-        public RoleId Role2;
-
-        /// <summary>See <see cref="Role0"/>.</summary>
-        public RoleId Role3;
-
-        // DELETED with §08: CreditsEarned, CreditsSpent, LootSold. They were the
-        // shop's ledger, and a race has no currency to earn, spend or sell into.
-        // MatchRecorder no longer has a method that could set them.
-
-        /// <summary>Clues read. §03 — if this is far below <see cref="GameConstants.CluesRequiredToLocate"/>, clue reading is too dangerous.</summary>
-        public int CluesRead;
-
-        /// <summary>Clues misremembered and acted on wrongly. §03 wants this non-zero — it is the intended failure mode.</summary>
-        public int ClueMisreads;
-
-        /// <summary>Times the monster acquired a target. §06.</summary>
+        /// <summary>Times a creature acquired a target. §06.</summary>
         public int AggroEvents;
 
         /// <summary>Total seconds under active chase. Bucketed to validate the 12 m release distance. §13.</summary>
@@ -76,12 +72,6 @@ namespace HorrorGame.Core.Telemetry
 
         /// <summary>Seconds spent moving at all — the denominator for <see cref="BackpedalSeconds"/>.</summary>
         public float TotalMovingSeconds;
-
-        /// <summary>Batteries consumed. §16-5 — sets the round-trip rhythm.</summary>
-        public int BatteriesUsed;
-
-        /// <summary>Whether the objective left the basement. §02.</summary>
-        public bool ObjectiveRecovered;
 
         /// <summary>Backward-movement share of all movement, 0–1. §05's peek dilemma is working when this stays low but non-zero.</summary>
         public float BackpedalRatio =>

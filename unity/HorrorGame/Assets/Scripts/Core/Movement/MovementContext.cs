@@ -37,29 +37,20 @@ namespace HorrorGame.Core.Movement
         /// </summary>
         public float LoadMultiplier;
 
-        /// <summary>
-        /// Carrying the objective. §03: both hands are used, so there is no
-        /// flashlight and no sprint, and §05 applies
-        /// <see cref="GameConstants.ObjectiveCarrySpeedMultiplier"/> on top. This is
-        /// what makes "누가 들 것인가" the last real decision of a match.
-        /// </summary>
-        public bool CarryingObjective;
+        // DELETED with §03 and §08: CarryingObjective and BagEquipped, and the two
+        // optional constructor parameters that set them. They were the last two
+        // reasons a runner could be slower than another runner. A race starts twenty
+        // people who are identical — 「캐릭터는 다 똑같이 생겨도되지」 — so the only
+        // thing that separates two runners is the route they picked and whether they
+        // stopped to shut a door. Re-adding either means re-adding a thing to carry.
 
-        /// <summary>Bag equipped: +5 capacity for −10% speed (§08).</summary>
-        public bool BagEquipped;
-
-        /// <summary>Builds a full context.</summary>
+        /// <summary>Builds a context.</summary>
         /// <param name="baseSpeed">Walk, run or sprint speed, m/s (§06).</param>
-        /// <param name="loadMultiplier">§08 weight multiplier; 1 = unloaded.</param>
-        /// <param name="carryingObjective">§03 objective carry.</param>
-        /// <param name="bagEquipped">§08 bag.</param>
-        public MovementContext(
-            float baseSpeed, float loadMultiplier, bool carryingObjective = false, bool bagEquipped = false)
+        /// <param name="loadMultiplier">Stance multiplier; 1 = upright and unencumbered.</param>
+        public MovementContext(float baseSpeed, float loadMultiplier)
         {
             BaseSpeed = baseSpeed;
             LoadMultiplier = loadMultiplier;
-            CarryingObjective = carryingObjective;
-            BagEquipped = bagEquipped;
         }
 
         /// <summary>

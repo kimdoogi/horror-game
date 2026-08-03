@@ -71,7 +71,7 @@ namespace HorrorGame.Gameplay.Presence
 
         [Header("Standing")]
         [SerializeField]
-        [Tooltip("§01's 지상. Set by the match when the player crosses the apron.")]
+        [Tooltip("TOMBSTONE: §01's 지상, set when a player climbed back out of the basement. A race starts on B1 and ends in B8, so nothing sets this any more.")]
         private bool _onSurface;
 
         [SerializeField]
@@ -140,7 +140,7 @@ namespace HorrorGame.Gameplay.Presence
         /// <summary>
         /// How lit this player is, 0–1, on §03's scale — the same scale
         /// <c>LightField.SampleAt</c> answers on and the same threshold
-        /// <c>GameConstants.ClueMinReadableLightQuality</c> gates a clue read with.
+        /// <c>GameConstants.MinSafeLightQuality</c> gates safety with.
         /// </summary>
         public float LightQuality()
         {
@@ -240,7 +240,7 @@ namespace HorrorGame.Gameplay.Presence
             // A lamp on the other side of a wall does not light you, and §12's building is
             // mostly wall. Skipped for anything already too dim to matter, because this is
             // the only raycast in the whole system and it runs per light per player.
-            if (quality >= GameConstants.ClueMinReadableLightQuality * 0.5f
+            if (quality >= GameConstants.MinSafeLightQuality * 0.5f
                 && Physics.Linecast(light.transform.position, point, _lightBlockers,
                     QueryTriggerInteraction.Ignore))
             {

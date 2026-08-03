@@ -39,7 +39,7 @@ namespace HorrorGame.Net
     [AddComponentMenu("HorrorGame/Net/Net Interest Scope")]
     public sealed class NetInterestScope : MonoBehaviour
     {
-        [Tooltip("Secret for the objective and clue props; Perception for players and the monster.")]
+        [Tooltip("Secret for anything only its owner may know; Perception for players and the monster.")]
         [SerializeField]
         private NetInterestClass _interestClass = NetInterestClass.Perception;
 
@@ -55,20 +55,20 @@ namespace HorrorGame.Net
         /// another player or the monster is worth sending.
         /// <para>
         /// Derived, not chosen. The candidates are §04's 청음사 hearing range
-        /// (<see cref="GameConstants.ListenerHearingRange"/>), §13's voice cutoff
+        /// (<see cref="GameConstants.AudibleRangeMetres"/>), §13's voice cutoff
         /// (<see cref="GameConstants.VoiceCutoffDistance"/>) and §12's largest zone
         /// diagonal (<see cref="GameConstants.ZoneDiagonalMax"/>) — the point past
         /// which two players are not even in the same room. The largest of the three
         /// wins, because culling below any of them would delete something a player is
-        /// entitled to perceive: a footstep the Listener should have heard, a voice
-        /// that should still have carried, a teammate across the same hall.
+        /// entitled to perceive: a footstep that should have been heard, a voice that
+        /// should still have carried, a runner across the same hall.
         /// </para>
         /// </summary>
         public static float PerceptionRange
         {
             get
             {
-                var range = GameConstants.ListenerHearingRange;
+                var range = GameConstants.AudibleRangeMetres;
                 if (GameConstants.VoiceCutoffDistance > range)
                 {
                     range = GameConstants.VoiceCutoffDistance;
@@ -87,14 +87,16 @@ namespace HorrorGame.Net
         /// How far a secret is worth sending: the furthest a player can light
         /// something up.
         /// <para>
-        /// §03 makes darkness the lock on the objective — "목표와 위험이 같은 스위치에
-        /// 걸린다" — so the honest network answer is that an unlit object is not
-        /// there. The radius is the best light in the game: an upgraded flashlight
-        /// (§08) at <see cref="GameConstants.FlashlightRange"/> ×
-        /// <see cref="GameConstants.UpgradedFlashlightRangeMultiplier"/>, or a
-        /// zone light at <see cref="GameConstants.ZoneLightRadius"/>, whichever
-        /// reaches further. Anything shorter would let a team buy the upgrade and
-        /// find that it does not work.
+        /// Darkness is the lock on the maze, so the honest network answer is that an
+        /// unlit object is not there. The radius is the best light in the game: the
+        /// torch at <see cref="GameConstants.FlashlightRange"/>, or a zone light at
+        /// <see cref="GameConstants.ZoneLightRadius"/>, whichever reaches further.
+        /// </para>
+        /// <para>
+        /// The torch used to be multiplied by <c>UpgradedFlashlightRangeMultiplier</c>
+        /// here — §08 sold a beam of twice the radius, and a radius shorter than the
+        /// upgrade would have let a team buy it and find it did not work. There is one
+        /// grade of torch now, so there is nothing to multiply by.
         /// </para>
         /// <para>
         /// This is also the answer to ARCHITECTURE §4's warning that "sending it but
@@ -107,7 +109,7 @@ namespace HorrorGame.Net
         {
             get
             {
-                var lit = GameConstants.FlashlightRange * GameConstants.UpgradedFlashlightRangeMultiplier;
+                var lit = GameConstants.FlashlightRange;
                 return lit > GameConstants.ZoneLightRadius ? lit : GameConstants.ZoneLightRadius;
             }
         }

@@ -85,8 +85,10 @@ namespace HorrorGame.EditorTools
         }
 
         /// <summary>
-        /// Layout, then dressing, then atmosphere. Stops at the first failure and
-        /// returns everything logged up to that point.
+        /// Layout, then dressing, then a second audit of the dressed building, then
+        /// atmosphere. Stops at the first failure and returns everything logged up to
+        /// that point. The audit that decides the return value is the one that ran
+        /// after the dressing rebake — see the comment on it.
         /// </summary>
         /// <param name="mapSeed">Fixes the layout. Same seed, same rooms.</param>
         /// <param name="dressSeed">Fixes the scatter. Same seed, same crates.</param>
@@ -115,6 +117,37 @@ namespace HorrorGame.EditorTools
             AssetDatabase.SaveAssets();
             log.Add(dressing);
 
+            // ── the audit again, on the building that actually loads ────────────────
+            //
+            // docs/BLOCKERS.md B-009 recurring through a different pass. The layout
+            // stage above prints its NavMesh and player-traversal numbers BEFORE any
+            // dressing exists. Then <see cref="DressingScatter"/> includes every solid
+            // piece in the bake (it sets ignoreFromBuild only on the non-solid ones)
+            // and rebakes to SceneGenPaths.NavMeshRoot + "/NavMesh_" + sceneName +
+            // ".asset" — byte-for-byte the path MapSceneBuilder wrote. So the asset the
+            // layout gate measured is overwritten by a surface with two thousand solid
+            // props eroded into it, and the green audit in the log describes a building
+            // with no crates in it. Two rounds read that log and believed it, which is
+            // the same wrong-instrument failure as reading the DLLs for a scene defect.
+            //
+            // So: measure again, here, after the scatter and its rebake, and let THIS
+            // audit decide the pipeline's exit code. It costs a fraction of the scatter
+            // and it is the only audit whose subject is the scene the game loads.
+            log.Add("── audit, after dressing (the surface the game actually loads) ──");
+            var dressedConnectivity = NavMeshConnectivity.Audit(scene);
+            log.Add(dressedConnectivity.Describe());
+            var dressedReach = PlayerTraversal.Audit(scene);
+            log.Add(dressedReach.Describe());
+
+            var auditedAfterDressing = dressedConnectivity.Passed && dressedReach.Passed;
+            if (!auditedAfterDressing)
+            {
+                log.Add(
+                    "The layout stage's audit above passed and this one did not. The difference between them "
+                    + "is the dressing, and this one is the one that counts — it read the rebaked NavMesh, "
+                    + "which is the asset the scene references.");
+            }
+
             // The atmosphere pass runs even when the scatter reported a failure.
             // The scatter's gate is about NavMesh reachability, which has nothing to
             // do with what the air looks like, and the scatter saves its scene
@@ -128,7 +161,7 @@ namespace HorrorGame.EditorTools
             log.Add("§07 tier " + tierIndex + " baked into every Map_ scene.");
 
             report = string.Join("\n", log);
-            return dressed;
+            return dressed && auditedAfterDressing;
         }
 
         private static int IntArg(string flag, int fallback)

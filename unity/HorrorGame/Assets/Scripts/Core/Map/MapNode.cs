@@ -123,18 +123,13 @@ namespace HorrorGame.Core.Map
         /// <param name="zoneId">Index into <see cref="MapGraph.Zones"/>.</param>
         /// <param name="position">Metres, world space. §12's map is 100 × 100 m.</param>
         /// <param name="kind">What §12 requirements this place satisfies.</param>
-        /// <param name="deadEndRewardValue">
-        /// Value of the 전리품 · 자재 stashed here, in the credits of §08. §12
-        /// requires every 막힌 길 to carry one; anywhere else it may be zero.
-        /// </param>
         /// <param name="name">Human label used in validator failures. Optional.</param>
-        public MapNode(int id, int zoneId, Vec3 position, MapNodeKind kind, int deadEndRewardValue, string? name)
+        public MapNode(int id, int zoneId, Vec3 position, MapNodeKind kind, string? name)
         {
             Id = id;
             ZoneId = zoneId;
             Position = position;
             Kind = kind;
-            DeadEndRewardValue = deadEndRewardValue;
             Name = name;
         }
 
@@ -156,13 +151,14 @@ namespace HorrorGame.Core.Map
         /// <summary>What §12 role requirements this place answers.</summary>
         public MapNodeKind Kind { get; }
 
-        /// <summary>
-        /// Reward waiting here, in §08 credits. §12: "막힌 길 보상 — 전리품 · 자재 …
-        /// 위험을 감수할 이유." A dead end with nothing in it is a trap with no
-        /// upside, which is the failure mode §12's 20~25% band is guarding against
-        /// from the other side.
-        /// </summary>
-        public int DeadEndRewardValue { get; }
+        // DELETED with §08: DeadEndRewardValue, an int of 상점 credits carried by
+        // every node in the graph. §12 justified it as "막힌 길 보상 — 전리품 · 자재
+        // … 위험을 감수할 이유": a dead end had to pay, or it was a trap with no
+        // upside. A race pays for a wrong turn in the only currency it has, which is
+        // TIME — the runner who guessed right is already further down — so the
+        // reason to risk a passage is that it might be the way in, and there is
+        // nothing to leave at the end of one. MapSketch had already stopped drawing
+        // a value; this removes the field that was still shipping a zero.
 
         /// <summary>Optional label, used verbatim in validator failure text so a designer can find the place.</summary>
         public string? Name { get; }

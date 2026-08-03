@@ -65,7 +65,7 @@ namespace HorrorGame.Gameplay.Player
         [SerializeField]
         private float _forearmDrop = 62f;
 
-        [Tooltip("0 leaves the clip pose alone, 1 applies the full drop. A dial rather than a bool so a carry state can keep its arms up.")]
+        [Tooltip("0 leaves the clip pose alone, 1 applies the full drop. A dial rather than a bool so a pose that wants the arms up can keep them there.")]
         [Range(0f, 1f)]
         [SerializeField]
         private float _weight = 1f;

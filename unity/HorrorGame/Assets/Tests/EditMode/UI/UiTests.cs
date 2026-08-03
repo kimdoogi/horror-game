@@ -10,7 +10,6 @@ using HorrorGame.Core.Ghost;
 using HorrorGame.Core.Math;
 using HorrorGame.Gameplay.Player;
 using HorrorGame.UI;
-using HorrorGame.UI.Readouts;
 using HorrorGame.UI.Screens;
 using HorrorGame.UI.Settings;
 using HorrorGame.UI.Shell;
@@ -112,9 +111,16 @@ namespace HorrorGame.Tests.EditMode.UI
         [Test]
         public void GhostUi_HasNoVoiceWidgetToDisable()
         {
-            var banned = new[] { "voice", "mic", "speak", "talk", "mute", "chat", "radio", "push" };
+            // The rattle words ride along for the same reason they do in
+            // GhostSessionTests: this scan is what catches 신호 being re-added under
+            // its old name, and §11's 탈락자 rule forbids it outright.
+            var banned = new[]
+            {
+                "voice", "mic", "speak", "talk", "mute", "chat", "radio", "push",
+                "rattle", "shake", "signal",
+            };
 
-            foreach (var type in new[] { typeof(GhostReadout), typeof(GhostOverlay) })
+            foreach (var type in new[] { typeof(GhostOverlay) })
             {
                 foreach (var name in NamesOf(type))
                 {
@@ -131,43 +137,21 @@ namespace HorrorGame.Tests.EditMode.UI
             }
         }
 
-        [Test]
-        public void Ghost_ShowsTheWait_BecauseTheWaitIsTheExperience()
-        {
-            var ghost = new GhostState(new Vec3(0f, 0f, 0f));
+        // ====================================================================
+        // DELETED with §09's 신호. Two tests stood here:
+        //   Ghost_ShowsTheWait_BecauseTheWaitIsTheExperience
+        //   Ghost_TellsTheTwoFailuresApart
+        // They pinned the cooldown bar and the two failure strings — 「아직 흔들 수
+        // 없다」 and 「너무 멀다」 — on GhostReadout, which was the largest thing on
+        // the ghost's overlay because "the wait WAS the experience".
+        //
+        // §11's 탈락자 deleted the verb, so there is no wait to show and no failure to
+        // word. GhostReadout itself is deleted with them: once the rattle went it
+        // carried a single field, IsGhost, which GhostOverlay reads from a null check.
+        // What the overlay draws instead is the vantage the spectator is watching from,
+        // asserted in GhostSessionTests where the camera actually moves.
+        // ====================================================================
 
-            GhostRattle rattle;
-            Assert.That(ghost.TryRattle(new Vec3(1f, 0f, 0f), out rattle), Is.True,
-                "§09 starts a ghost off cooldown: the seconds right after it watched itself die are the most informative it will ever have.");
-
-            var justRattled = GhostReadout.From(ghost, rattle.Failure);
-            Assert.That(justRattled.CanRattle, Is.False);
-            Assert.That(justRattled.CooldownSecondsLeft, Is.EqualTo((int)GameConstants.GhostRattleCooldownSeconds),
-                "§09's 45 초 is the ghost's entire outbound bandwidth, so the countdown is the largest thing on its overlay.");
-
-            ghost.Tick(GameConstants.GhostRattleCooldownSeconds);
-            Assert.That(GhostReadout.From(ghost, GhostSignalFailure.None).CanRattle, Is.True);
-        }
-
-        [Test]
-        public void Ghost_TellsTheTwoFailuresApart()
-        {
-            var ghost = new GhostState(new Vec3(0f, 0f, 0f));
-
-            GhostRattle first;
-            ghost.TryRattle(new Vec3(1f, 0f, 0f), out first);
-
-            GhostRattle again;
-            ghost.TryRattle(new Vec3(1f, 0f, 0f), out again);
-            Assert.That(GhostReadout.From(ghost, again.Failure).FailureLabel, Is.EqualTo("아직 흔들 수 없다"));
-
-            ghost.Tick(GameConstants.GhostRattleCooldownSeconds);
-            GhostRattle far;
-            ghost.TryRattle(new Vec3(GameConstants.GhostRattleRange * 4f, 0f, 0f), out far);
-
-            Assert.That(GhostReadout.From(ghost, far.Failure).FailureLabel, Is.EqualTo("너무 멀다"),
-                "§09 keeps the two apart because only one of them — being too far — is worth drifting somewhere to fix.");
-        }
         // ====================================================================
         // Settings — §05's clamp, §03's dark, and a file that has to survive a restart.
         // ====================================================================

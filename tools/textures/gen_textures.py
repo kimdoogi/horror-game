@@ -2426,7 +2426,7 @@ DECALS: Tuple[DecalSpec, ...] = (
     DecalSpec("Decal_Puddle", build_decal_puddle, seed=7501, size_metres=1.70,
               note="Standing water — §03's 물이 있는 층. Smooth enough to mirror the room."),
     DecalSpec("Decal_Drip", build_decal_drip, seed=7601, size_metres=0.70,
-              note="Spatter under a leak. Near-field detail that rewards walking in."),
+              note="Spatter under a leak. Near-field detail that repays walking in."),
     DecalSpec("Decal_Soot", build_decal_soot, seed=7701, size_metres=1.10,
               note="Burn halo on the soffit above a bare bulb."),
     DecalSpec("Decal_Rust", build_decal_rust, seed=7801, size_metres=0.85,

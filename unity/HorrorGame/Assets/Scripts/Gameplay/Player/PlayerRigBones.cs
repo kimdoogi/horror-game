@@ -5,10 +5,10 @@ using UnityEngine;
 namespace HorrorGame.Gameplay.Player
 {
     /// <summary>
-    /// Finds the attachment bones <c>Player.fbx</c> carries for §05 and §03.
+    /// Finds the attachment bones <c>Player.fbx</c> carries for §05.
     /// <para>
-    /// The rig has four non-standard bones — <c>HeadCameraAnchor</c>,
-    /// <c>FlashlightMount</c>, <c>ObjectiveMount</c>, <c>BackpackMount</c> — which are
+    /// The rig has three non-standard bones — <c>HeadCameraAnchor</c>,
+    /// <c>FlashlightMount</c>, <c>BackpackMount</c> — which are
     /// not part of Unity's humanoid map and therefore cannot be reached through
     /// <see cref="Animator.GetBoneTransform"/>. They have to be found by name.
     /// </para>
@@ -27,8 +27,10 @@ namespace HorrorGame.Gameplay.Player
         /// <summary>Where the flashlight hangs. §05: the beam is a pointing device other players read.</summary>
         public const string FlashlightMount = "FlashlightMount";
 
-        /// <summary>Where the §03 objective sits while carried. Both hands are on it.</summary>
-        public const string ObjectiveMount = "ObjectiveMount";
+        // DELETED with §03: ObjectiveMount, the bone the 목표물 hung from while a pair
+        // walked it out. Nothing is carried, so nothing mounts there. The bone is still
+        // in Player.fbx and Ghost.fbx and is listed as an orphan in this round's report;
+        // it costs nothing at runtime once no code looks it up.
 
         /// <summary>Where §08's bag sits.</summary>
         public const string BackpackMount = "BackpackMount";

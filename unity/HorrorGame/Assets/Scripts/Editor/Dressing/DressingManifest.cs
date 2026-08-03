@@ -16,8 +16,9 @@ namespace HorrorGame.EditorTools.Dressing
     /// here. That is the same argument <see cref="SceneGen.MapKitCatalogue"/> makes
     /// about the MapKit and it matters more for dressing, because dressing is
     /// placed against a clearance budget: a re-export that makes a shelf 8 cm
-    /// deeper has to make the scatterer stop fitting it beside §08's two-person
-    /// carry channel, and it only can if it never knew the old figure.
+    /// deeper has to make the scatterer stop fitting it inside the clear channel
+    /// (<see cref="DressingScatter.ClearChannel"/>), and it only can if it never knew
+    /// the old figure.
     /// </para>
     /// <para>
     /// Fields are flat scalars because <see cref="JsonUtility"/> cannot deserialise
@@ -32,9 +33,38 @@ namespace HorrorGame.EditorTools.Dressing
         /// <summary>Path of the manifest the Blender generator writes.</summary>
         public const string ManifestPath = KitRoot + "/Dressing.manifest.json";
 
-        /// <summary>Loads and validates the manifest, or returns null with a reason.</summary>
-        public static DressingKit? Load(out string error)
+        /// <summary>
+        /// The material §13's host stamped a clue's glyph onto, and the name of the seam
+        /// that carried §03's whole confusion table into the scene.
+        /// <para>
+        /// Kept as a string rather than deleted, because deleting it is what lets it come
+        /// back: <c>gen_dressing.py</c> still builds the four signage pieces and still
+        /// writes this material into the manifest, and a scatterer that had simply
+        /// forgotten the word would place all 436 of them again the next time somebody
+        /// re-ran the kit. It is refused by name in <see cref="Load"/> instead.
+        /// </para>
+        /// </summary>
+        public const string ClueFaceMaterial = "Clue_Face";
+
+        /// <summary>
+        /// Loads and validates the manifest, or returns null with a reason.
+        /// <para>
+        /// <b>Pieces that serve a deleted system are refused here rather than left
+        /// unpicked.</b> §03's clue chain is gone — game-design.md v1.0: 「목적지가
+        /// 처음부터 알려진 경주에서 성립하지 않아 통째로 걷어냈다」 — and the kit's four
+        /// signage pieces exist only to carry the <c>Clue_Face</c> island the host stamps
+        /// a glyph on. Run 11 put 526 of those surfaces into the scene on every
+        /// regeneration while a sweep of the shipped DLLs reported the co-op game gone,
+        /// because scene content is not assembly metadata and the sweep could not see it.
+        /// A pass that merely stopped picking them would come back the first time the
+        /// Blender kit was re-run; a loader that refuses them cannot.
+        /// </para>
+        /// </summary>
+        /// <param name="error">Why the load failed, when it returns null.</param>
+        /// <param name="tombstone">What was refused and why. Empty when nothing was.</param>
+        public static DressingKit? Load(out string error, out string tombstone)
         {
+            tombstone = string.Empty;
             var text = AssetDatabase.LoadAssetAtPath<TextAsset>(ManifestPath);
             if (text == null)
             {
@@ -61,6 +91,8 @@ namespace HorrorGame.EditorTools.Dressing
                 return null;
             }
 
+            tombstone = RefuseDeletedSystems(kit);
+
             var missing = new List<string>();
             foreach (var piece in kit.pieces)
             {
@@ -79,6 +111,65 @@ namespace HorrorGame.EditorTools.Dressing
 
             error = string.Empty;
             return kit;
+        }
+
+        /// <summary>
+        /// Drops every piece and material that only exists for a deleted system, and says
+        /// what it dropped. The kit is edited in place, so nothing downstream can pick one.
+        /// </summary>
+        private static string RefuseDeletedSystems(DressingKit kit)
+        {
+            var refusedPieces = new List<string>();
+            var keptPieces = new List<DressingPiece>();
+            foreach (var piece in kit.pieces)
+            {
+                // Two tests, because the manifest states the fact twice and a re-export
+                // could change either half: the count of Clue_Face islands the generator
+                // measured, and the material slot the FBX actually carries.
+                var carriesClue = piece.clue_faces > 0;
+                for (var i = 0; !carriesClue && i < piece.materials.Length; i++)
+                {
+                    carriesClue = string.Equals(piece.materials[i], ClueFaceMaterial, StringComparison.Ordinal);
+                }
+
+                if (carriesClue)
+                {
+                    refusedPieces.Add(piece.name);
+                    continue;
+                }
+
+                keptPieces.Add(piece);
+            }
+
+            var refusedMaterials = new List<string>();
+            var keptMaterials = new List<DressingMaterial>();
+            foreach (var material in kit.materials)
+            {
+                if (string.Equals(material.name, ClueFaceMaterial, StringComparison.Ordinal))
+                {
+                    refusedMaterials.Add(material.name);
+                    continue;
+                }
+
+                keptMaterials.Add(material);
+            }
+
+            if (refusedPieces.Count == 0 && refusedMaterials.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            kit.pieces = keptPieces.ToArray();
+            kit.materials = keptMaterials.ToArray();
+
+            return "§03 tombstone: " + refusedPieces.Count + " kit piece(s) and "
+                + refusedMaterials.Count + " material(s) refused at load — "
+                + string.Join(", ", refusedPieces)
+                + ". They carry the " + ClueFaceMaterial
+                + " island §13's host stamped a clue's glyph onto, and gen_dressing.py builds them as "
+                + "\"§03's 혼동쌍 by construction\": ㅁ↔ㅇ, 좌↔우, 6↔9, 1↔7. There is no clue chain to "
+                + "confuse anybody about. Delete them from tools/blender/gen_dressing.py and this "
+                + "line goes quiet; until then it is what stops them coming back.";
         }
     }
 

@@ -6,6 +6,7 @@ using System.Text;
 using HorrorGame.EditorTools.Audio;
 using HorrorGame.EditorTools.Dressing;
 using HorrorGame.EditorTools.SceneGen;
+using HorrorGame.Gameplay.Interaction;
 using HorrorGame.Gameplay.Match;
 using HorrorGame.Gameplay.Monster;
 using HorrorGame.Gameplay.Player;
@@ -19,7 +20,7 @@ namespace HorrorGame.EditorTools.Playtest
     /// One menu item that gets a person who has never seen this project into a playable
     /// match. §14.
     /// <para>
-    /// <b>The problem this solves is not technical.</b> Every piece of §01's loop works
+    /// <b>The problem this solves is not technical.</b> Every piece of §01's descent works
     /// and has for a while; what stops it being played is that reaching it takes three
     /// menu items in an order nobody wrote down, and the failure when they are run in the
     /// wrong order is a scene that loads and then does nothing. §14 says the two questions
@@ -31,7 +32,7 @@ namespace HorrorGame.EditorTools.Playtest
     /// <b>Four steps, each of which can refuse.</b> The map is regenerated when it is
     /// missing or older than the kit it is built from; the solo scene is assembled from
     /// it; the audio mix is wired in, because §14's fifth question is answered entirely
-    /// by ear; and the finished scene is inspected for the four components a match needs
+    /// by ear; and the finished scene is inspected for the three components a match needs
     /// before Play mode is entered. A step that fails reports which one it was and what to
     /// do about it, and Play mode is never entered after one.
     /// </para>
@@ -166,7 +167,8 @@ namespace HorrorGame.EditorTools.Playtest
             log.AppendLine("      MatchMap 읽기 성공");
 
             // ---------------------------------------------------------------
-            // 2 · 장면 — the throwaway solo scene: player, monster, MatchDirector, screens.
+            // 2 · 장면 — the throwaway solo scene: runner, creature, MatchDirector. No screen
+            // is added here any more; MatchDirector builds RaceHud, which is the race's own.
             // ---------------------------------------------------------------
             step = "장면 조립";
             if (!SoloPlaytest.BuildScene())
@@ -190,7 +192,12 @@ namespace HorrorGame.EditorTools.Playtest
             {
                 // Not fatal. A silent match still answers §14's questions 1 to 4, and
                 // stopping here would hand back nothing at all.
-                log.AppendLine("소리  배선 실패 — 무음으로 진행합니다. §14 Q5(청음사)는 이 판에서 답할 수 없습니다.");
+                //
+                // The parenthesis used to read (청음사). §14 Q5 is 「발소리의 방향·거리를
+                // 구별할 수 있는가」 and it is asked of everybody — it was §04's 청음사 only
+                // while one 직업 had hearing as an ability, and there are no 직업.
+                log.AppendLine(
+                    "소리  배선 실패 — 무음으로 진행합니다. §14 Q5(발소리의 방향·거리)는 이 판에서 답할 수 없습니다.");
                 Debug.LogWarning("[StartPlaytest] 오디오 라이브러리를 만들지 못했습니다. "
                     + "HorrorGame ▸ Audio ▸ Rebuild Audio Libraries 를 실행해 보세요.");
             }
@@ -216,10 +223,31 @@ namespace HorrorGame.EditorTools.Playtest
                 return false;
             }
 
-            log.AppendLine("점검  MatchDirector · 플레이어 리그 · 괴물 · 안내 화면 모두 있습니다");
+            log.AppendLine("점검  MatchDirector · 플레이어 리그 · 괴물 셋 다 있습니다");
             log.AppendLine();
-            log.AppendLine("Play 시작. 화면 아래 한 줄이 다음에 할 일을 알려줍니다.");
-            log.AppendLine("F1  조작 카드 다시 보기      F2  §14 검증 질문 다섯 개");
+
+            // DELETED with the co-op tutor, and this is the second half of the same removal
+            // as Inspect()'s 안내 화면 check. These two lines read:
+            //
+            //     "Play 시작. 화면 아래 한 줄이 다음에 할 일을 알려줍니다."
+            //     "F1  조작 카드 다시 보기      F2  §14 검증 질문 다섯 개"
+            //
+            // Both were PlaytestGuidanceScreen: the bottom line was the next step of §01's
+            // 왕복 (내려가라 · 단서를 읽어라 · 목표물을 들고 올라와라 · 팔아라), and F1/F2 were
+            // its two overlays. The screen is gone, so the bottom line does not exist and
+            // neither key does anything. Telling a tester to press a dead key is worse than
+            // telling them nothing: they press it, see nothing, and start debugging the
+            // build. What replaces it is a description of 하강 itself, and the storey count
+            // and the interact key in it are read from the generator and the input map so
+            // that this cannot drift the way the last one did.
+            log.AppendLine("Play 시작 — 하강. 선착순 미로탈출이고, 그게 전부다.");
+            log.AppendLine("경주  B1 외곽에서 출발 → 층 한가운데로 파고들어 투하구에 들어가면 아래층 외곽에 떨어진다.");
+            log.AppendLine("      " + DescentMap.Storeys + "개 층, 관문은 4 → 2 → 1로 좁아진다. B"
+                + DescentMap.Storeys + " 한가운데에 제일 먼저 닿으면 이긴다.");
+            log.AppendLine("괴물  층마다 한 마리, 자기 층에서 나가지 않는다. 잡히면 탈락 — 순위 없이 끝이고 경주는 계속된다.");
+            log.AppendLine("조작  WASD 이동 · 마우스 시야 · Shift 질주 · C 웅크리기 · Space 도약 · F 손전등 · "
+                + PlayerInteractor.InteractKeyLabel + " 문(길게 누르면 닫는다)");
+            log.AppendLine("화면  MatchDirector가 띄우는 RaceHud 하나뿐이다 — 깊이 게이지 · 순위 · 경과 시간.");
 
             step = "준비";
             report = log.ToString();
@@ -288,8 +316,13 @@ namespace HorrorGame.EditorTools.Playtest
         }
 
         /// <summary>
-        /// The four things the scene has to carry. Checked by type on the open scene
+        /// The three things the scene has to carry. Checked by type on the open scene
         /// rather than trusted, because two broken hand-overs have already happened here.
+        /// <para>
+        /// It was four while <c>PlaytestGuidanceScreen</c> existed. See the tombstone below
+        /// for why the fourth went, and <see cref="Prepare"/> for the two lines of printed
+        /// guidance that went with it.
+        /// </para>
         /// </summary>
         private static bool Inspect(out string missing)
         {

@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using HorrorGame.Core;
+using HorrorGame.Core.Race;
 using HorrorGame.Core.Math;
 using HorrorGame.Core.Session;
 using NUnit.Framework;
@@ -162,56 +163,24 @@ namespace HorrorGame.Core.Tests
             Assert.That(needed, Is.EqualTo(GameConstants.SingleCornerMinDistance).Within(0.01f));
         }
 
-        /// <summary>
-        /// §08: "욕심이 곧 속도 저하이고, 속도 저하가 곧 죽음이다." Carrying weight must
-        /// cost the Runner its escape.
-        /// </summary>
-        [Test]
-        public void HeavyLoad_CostsTheRunnerItsEscape()
-        {
-            Assert.That(GameConstants.RunnerSprintSpeed * GameConstants.WeightMulHeavy,
-                Is.LessThan(GameConstants.MonsterBaseSpeed));
-            Assert.That(GameConstants.RunnerSprintSpeed * GameConstants.WeightMulOverloaded,
-                Is.LessThan(GameConstants.MonsterBaseSpeed));
-        }
+        // ====================================================================
+        // DELETED with §08's carry weight. Two tests stood here:
+        //   HeavyLoad_CostsTheRunnerItsEscape
+        //   WeightBands_AreACliffForTheRunner_NotAGradient
+        //
+        // The second was a genuine FINDING and it is worth recording why it can go
+        // rather than just that it did. It pinned that §08's four weight bands were
+        // not the gradual slowdown the table implied: 5.6 × 0.85 = 4.76 m/s is
+        // already under the creature's 4.8, so the moment a runner passed weight 5
+        // the remaining three bands were identical from their point of view. Three
+        // quarters of the table described one outcome — "drop it or die".
+        //
+        // The pivot resolved the contradiction by deleting the table. Nobody picks
+        // anything up, so there is no weight, no cliff and no gradient. The margin
+        // that decides whether a runner lives is now direction and stance alone,
+        // and it is asserted in MovementTests against MarginVersusMonster.
+        // ====================================================================
 
-        /// <summary>
-        /// Records a contradiction between §06 and §08 that the document does not
-        /// acknowledge, so a later retune cannot erase it silently.
-        /// <para>
-        /// §08 lays out four weight bands, which reads as a gradual slowdown. Run
-        /// the numbers against §06 and it is not gradual: 5.6 × 0.85 = 4.76 m/s,
-        /// already below the monster's 4.8. The moment a Runner exceeds weight 5 it
-        /// stops being able to escape, and bands two through four are identical
-        /// from its point of view — three quarters of the table describe the same
-        /// outcome.
-        /// </para>
-        /// <para>
-        /// That may well be the right game: "drop the loot or die" is a strong
-        /// moment, and §08 does say greed should kill. But it is a cliff, not the
-        /// curve the table implies, and it belongs to §16-2 — the open question the
-        /// document itself calls the current bottleneck. The simulator sweeps this
-        /// ratio; see docs/BALANCE-FINDINGS.md.
-        /// </para>
-        /// <para>
-        /// This test asserts the cliff exists. If someone deliberately retunes for
-        /// a gradient, this test fails and the decision gets made on purpose.
-        /// </para>
-        /// </summary>
-        [Test]
-        public void WeightBands_AreACliffForTheRunner_NotAGradient()
-        {
-            var atLightBand = GameConstants.RunnerSprintSpeed * GameConstants.WeightMulLight;
-
-            Assert.That(atLightBand, Is.LessThan(GameConstants.MonsterBaseSpeed),
-                "§08's first penalty band already puts the Runner below monster speed. If this now "
-                + "passes, the weight table was retuned into a gradient — update docs/BALANCE-FINDINGS.md "
-                + "and §16-2 to match.");
-
-            Assert.That(GameConstants.WeightFreeMax * 1f, Is.EqualTo(5f),
-                "The cliff sits exactly at the weight of one 대형 전리품 (§08), which is why picking up "
-                + "a single chest ends the Runner's escape.");
-        }
 
         /// <summary>§07: a match must be able to reach the late threat tiers.</summary>
         [Test]
@@ -345,8 +314,10 @@ namespace HorrorGame.Core.Tests
                 var f = rng.NextFloat(GameConstants.StandstillIntervalMin, GameConstants.StandstillIntervalMax);
                 Assert.That(f, Is.InRange(GameConstants.StandstillIntervalMin, GameConstants.StandstillIntervalMax));
 
-                var n = rng.NextInt(0, GameConstants.RoleCount);
-                Assert.That(n, Is.InRange(0, GameConstants.RoleCount - 1));
+                // Was GameConstants.RoleCount (§04's five 직업). Any small closed
+                // range exercises the bound; the race's own is the storey count.
+                var n = rng.NextInt(0, RaceState.Storeys);
+                Assert.That(n, Is.InRange(0, RaceState.Storeys - 1));
             }
         }
 

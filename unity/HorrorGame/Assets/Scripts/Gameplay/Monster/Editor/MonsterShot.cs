@@ -52,6 +52,20 @@ namespace HorrorGame.Gameplay.MonsterEditor
     /// </summary>
     public static class MonsterShot
     {
+        /// <summary>
+        /// The distance this rig measures the creature's visibility at, metres.
+        /// <para>
+        /// Was <c>GameConstants.ObserverRange</c> — §04's 관측자 read the creature from
+        /// 15 m, so "can you see it at all at 15 m" was the role's working distance.
+        /// The role is deleted and the distance is kept because it is still the right
+        /// question asked for a different reason: §06 releases aggro at 12 m
+        /// (<c>AggroReleaseDistance</c>), so 15 m is just outside the range where a
+        /// runner has already broken away — the furthest a creature still matters to
+        /// somebody who has not escaped yet.
+        /// </para>
+        /// </summary>
+        private const float ObserverEraShotMetres = 15f;
+
         private const string OutputDir = "Shots";
         private const int Width = 1280;
         private const int Height = 720;
@@ -678,7 +692,7 @@ namespace HorrorGame.Gameplay.MonsterEditor
         /// the map evidence was ambiguous. 12 m is
         /// <see cref="GameConstants.FlashlightRange"/> exactly — the beam's last metre —
         /// and it is also §06's aggro-release distance, so it is the range a 주자 has to
-        /// judge from. 15 m is <see cref="GameConstants.ObserverRange"/>: §12 requires
+        /// judge from. 15 m is <see cref="ObserverEraShotMetres"/>: §12 requires
         /// 1~2 관측 지점 per zone giving "15m 거리에서 안전하게 괴물을 볼 수 있는 지점",
         /// and §04 makes the 관측자 the one role §11 says cannot be replaced by an item.
         /// 20 m is §12's cap on a straight run — the longest sight line a legal map is
@@ -1331,7 +1345,7 @@ namespace HorrorGame.Gameplay.MonsterEditor
                           + " → " + (r.Passes ? "PASS" : "FAIL " + r.Why));
             }
 
-            var observer = readings.Where(r => Mathf.Approximately(r.Distance, GameConstants.ObserverRange)).ToList();
+            var observer = readings.Where(r => Mathf.Approximately(r.Distance, ObserverEraShotMetres)).ToList();
             if (observer.Count == 0)
             {
                 // Not an error. The staged rig always has 15 m; the map rig photographs the
@@ -1339,8 +1353,8 @@ namespace HorrorGame.Gameplay.MonsterEditor
                 // regenerated layout can legitimately have nowhere to stand 15 m apart. The
                 // honest report is the distance that was actually available.
                 var furthest = readings.OrderByDescending(r => r.Distance).FirstOrDefault();
-                Debug.LogWarning("[MonsterShot] nothing was shot at ObserverRange ("
-                                 + GameConstants.ObserverRange + " m); the longest lane this scene "
+                Debug.LogWarning("[MonsterShot] nothing was shot at the reference distance ("
+                                 + ObserverEraShotMetres + " m); the longest lane this scene "
                                  + "offered reached " + furthest.Distance.ToString("0.0") + " m, which "
                                  + (furthest.Passes ? "passes" : "FAILS " + furthest.Why) + ".");
                 return;
@@ -1350,15 +1364,15 @@ namespace HorrorGame.Gameplay.MonsterEditor
 
             if (failed.Count > 0)
             {
-                Debug.LogWarning("[MonsterShot] §04's 관측자 works at " + GameConstants.ObserverRange
+                Debug.LogWarning("[MonsterShot] the reference distance is " + ObserverEraShotMetres
                                  + " m and " + failed.Count + " of " + observer.Count
                                  + " frames at that distance are below the visibility floor: "
                                  + string.Join(", ", failed.Select(f => f.Label + " (" + f.Why + ")")));
             }
             else
             {
-                Debug.Log("[MonsterShot] §04's 관측자 range passes: every frame at "
-                          + GameConstants.ObserverRange + " m is above the visibility floor.");
+                Debug.Log("[MonsterShot] reference-distance visibility passes: every frame at "
+                          + ObserverEraShotMetres + " m is above the visibility floor.");
             }
         }
 

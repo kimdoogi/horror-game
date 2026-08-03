@@ -219,6 +219,148 @@ namespace HorrorGame.EditorTools.Dressing
             max = hi - (HasWall(cell, positive) ? WallInset : 0f);
         }
 
+        /// <summary>
+        /// Float slack the band tests allow, metres.
+        /// <para>
+        /// The same argument <c>MapSceneBuilder.ShellSeamToleranceMetres</c> makes: a
+        /// piece seated flush against a wall has its footprint and the wall's plane
+        /// arriving from different arithmetic — one from a renderer's world bounds, the
+        /// other from a cell index times the grid — and comparing them exactly reports
+        /// hundreds of rounding bits as defects. A centimetre is two orders of magnitude
+        /// under the 0.60 m a 0.30 m capsule needs to pass, so nothing a runner can use
+        /// hides inside it.
+        /// </para>
+        /// </summary>
+        public const float SeamToleranceMetres = 0.01f;
+
+        /// <summary>The strip of a cell a player may use, both axes, as a world-space XZ rectangle.</summary>
+        public Rect ClearRect(CellKey cell)
+        {
+            Band(cell, acrossX: true, out var xMin, out var xMax);
+            Band(cell, acrossX: false, out var zMin, out var zMax);
+            return Rect.MinMaxRect(xMin, zMin, xMax, zMax);
+        }
+
+        /// <summary>
+        /// The clear band of a cell widened across every open edge into its neighbour's.
+        /// <para>
+        /// What a piece anchored in this cell is allowed to reach, as opposed to what it
+        /// is allowed to stand in. A 1.84 m workbench in a 2.20 m corridor has to be able
+        /// to lie across a cell boundary or it cannot be placed at all, and the boundary
+        /// between two walkable cells is not a surface — it is a line on a floor.
+        /// </para>
+        /// </summary>
+        public Rect ReachRect(CellKey cell)
+        {
+            var clear = ClearRect(cell);
+            var xMin = clear.xMin;
+            var xMax = clear.xMax;
+            var zMin = clear.yMin;
+            var zMax = clear.yMax;
+
+            var west = cell.Step(MapDirection.West);
+            if (IsWalkable(west))
+            {
+                xMin = Mathf.Min(xMin, ClearRect(west).xMin);
+            }
+
+            var east = cell.Step(MapDirection.East);
+            if (IsWalkable(east))
+            {
+                xMax = Mathf.Max(xMax, ClearRect(east).xMax);
+            }
+
+            var south = cell.Step(MapDirection.South);
+            if (IsWalkable(south))
+            {
+                zMin = Mathf.Min(zMin, ClearRect(south).yMin);
+            }
+
+            var north = cell.Step(MapDirection.North);
+            if (IsWalkable(north))
+            {
+                zMax = Mathf.Max(zMax, ClearRect(north).yMax);
+            }
+
+            return Rect.MinMaxRect(xMin, zMin, xMax, zMax);
+        }
+
+        /// <summary>
+        /// Whether a footprint lies entirely on floor a runner stands on, inside the
+        /// clear section of every cell it touches.
+        /// <para>
+        /// <b>This is the rule run 11 did not have, and its absence re-opened the
+        /// building.</b> A FLOOR-mounted piece is pivoted at its own footprint CENTRE
+        /// (<c>gen_props.pivot_shift</c>), and the bulk pass anchors it on the wall FACE,
+        /// so half of every crate stood inside the wall and 969 of 2086 solid pieces
+        /// reached past the 0.15 m leaf into the ground between corridors. That is a
+        /// solid surface outside the maze for a capsule to be pushed onto, and the escape
+        /// sweep found seventeen ways onto it — 「나갈 수 있는 맵은 게임이 아니다」.
+        /// </para>
+        /// <para>
+        /// Keyed on the walkable surface itself rather than on the shells or the caps,
+        /// because that is the thing all of them are made of: a piece inside the clear
+        /// band cannot be standing on a cap, leaning on a shell plate, or bridging a
+        /// storey seam, whatever those are built from this week.
+        /// </para>
+        /// </summary>
+        /// <param name="footprint">World-space XZ rectangle of the piece.</param>
+        /// <param name="level">Storey the piece stands on.</param>
+        /// <param name="worstMetres">How far the worst corner reaches outside, metres.</param>
+        /// <param name="where">The cell it reached into, for the failure line.</param>
+        public bool InsideTheClearBand(Rect footprint, int level, out float worstMetres, out string where)
+        {
+            worstMetres = 0f;
+            where = string.Empty;
+
+            var grid = MapKitCatalogue.GridMetres;
+            var x0 = Mathf.FloorToInt(footprint.xMin / grid);
+            var x1 = Mathf.FloorToInt((footprint.xMax - SeamToleranceMetres) / grid);
+            var z0 = Mathf.FloorToInt(footprint.yMin / grid);
+            var z1 = Mathf.FloorToInt((footprint.yMax - SeamToleranceMetres) / grid);
+
+            for (var x = x0; x <= x1; x++)
+            {
+                for (var z = z0; z <= z1; z++)
+                {
+                    var cell = new CellKey(new MapCell(x, z), level);
+                    var square = Rect.MinMaxRect(x * grid, z * grid, (x + 1) * grid, (z + 1) * grid);
+                    var lapX = Mathf.Min(footprint.xMax, square.xMax) - Mathf.Max(footprint.xMin, square.xMin);
+                    var lapZ = Mathf.Min(footprint.yMax, square.yMax) - Mathf.Max(footprint.yMin, square.yMin);
+                    if (lapX <= SeamToleranceMetres || lapZ <= SeamToleranceMetres)
+                    {
+                        continue;
+                    }
+
+                    float outside;
+                    if (!IsWalkable(cell))
+                    {
+                        // Off the map entirely. How far in it reaches is the shallower of
+                        // the two overlaps: that is the depth a body would have to be
+                        // pushed for the piece to be the thing it stood on.
+                        outside = Mathf.Min(lapX, lapZ);
+                    }
+                    else
+                    {
+                        var clear = ClearRect(cell);
+                        outside = Mathf.Max(
+                            Mathf.Max(clear.xMin - Mathf.Max(footprint.xMin, square.xMin),
+                                Mathf.Min(footprint.xMax, square.xMax) - clear.xMax),
+                            Mathf.Max(clear.yMin - Mathf.Max(footprint.yMin, square.yMin),
+                                Mathf.Min(footprint.yMax, square.yMax) - clear.yMax));
+                    }
+
+                    if (outside > worstMetres)
+                    {
+                        worstMetres = outside;
+                        where = cell.ToString() + (IsWalkable(cell) ? " (into its wall)" : " (off the map)");
+                    }
+                }
+            }
+
+            return worstMetres <= SeamToleranceMetres;
+        }
+
         /// <summary>World position of the middle of a cell's wall face, at floor level.</summary>
         public Vector3 WallFace(CellKey cell, MapDirection direction)
         {
@@ -425,7 +567,24 @@ namespace HorrorGame.EditorTools.Dressing
             /// <summary>Whether any covering piece is the §12 개방 공간 hall.</summary>
             public bool IsHall => Pieces.Any(p => p.StartsWith("HallOpen", StringComparison.Ordinal));
 
-            /// <summary>Whether any covering piece is a doorway — never dressed, it is a §04 bottleneck.</summary>
+            /// <summary>
+            /// Whether any covering piece is a doorway tile — never dressed.
+            /// <para>
+            /// <b>This has not fired since the map became a tower of concentric mazes,
+            /// and believing it did is how eight doors ended up with dressing in their
+            /// swing.</b> <c>MapSceneBuilder</c> builds a §12 문 as a marker with a hinge
+            /// and a leaf, not as a <c>Doorway_Frame</c> tile — the generated scene
+            /// contains no tile whose name starts with either string — so every cell this
+            /// was meant to protect looked like ordinary corridor to the pass. A barrel
+            /// was measured standing on the far jamb of B7's door: 「§12 문 8개 — 닫을 수
+            /// 있다」 is not true of a door with a barrel in it.
+            /// </para>
+            /// <para>
+            /// Kept, because a map built from doorway tiles is still a map this tool has
+            /// to dress. The thing that actually protects a door now is
+            /// <see cref="KeepOut"/>, which reads the hinge out of the scene.
+            /// </para>
+            /// </summary>
             public bool IsDoorway => Pieces.Any(p => p.StartsWith("Doorway", StringComparison.Ordinal)
                                                     || p.StartsWith("DoorPanel", StringComparison.Ordinal));
 

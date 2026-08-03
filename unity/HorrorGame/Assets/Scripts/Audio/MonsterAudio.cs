@@ -170,7 +170,7 @@ namespace HorrorGame.Audio
             _bedMatch = AudioOcclusion.DecibelsToLinear(AudioTuning.MonsterBedMatchDb);
 
             _presence = new AudioBedVoice(
-                gameObject, "monster_presence", AudioBus.Monster, true, GameConstants.ListenerHearingRange, true);
+                gameObject, "monster_presence", AudioBus.Monster, true, GameConstants.AudibleRangeMetres, true);
             _presence.SetClip(presenceBed);
 
             _breath = new AudioBedVoice(
@@ -182,7 +182,7 @@ namespace HorrorGame.Audio
             _oneShots = child.AddComponent<AudioSource>();
             _oneShots.playOnAwake = false;
             _oneShots.loop = false;
-            GameAudio.Configure(_oneShots, AudioBus.Monster, true, GameConstants.ListenerHearingRange);
+            GameAudio.Configure(_oneShots, AudioBus.Monster, true, GameConstants.AudibleRangeMetres);
 
             _oneShotOccluder = child.AddComponent<SoundOccluder>();
             _oneShotOccluder.SetBus(AudioBus.Monster);

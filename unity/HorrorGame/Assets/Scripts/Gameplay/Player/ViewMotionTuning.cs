@@ -132,7 +132,7 @@ namespace HorrorGame.Gameplay.Player
         /// </summary>
         public static float StrideIdleSpeed
         {
-            get { return GameConstants.ObserverStillSpeedThreshold; }
+            get { return GameConstants.StillSpeedThreshold; }
         }
 
         // ====================================================================

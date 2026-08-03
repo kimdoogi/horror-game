@@ -1,0 +1,246 @@
+# ============================================================================
+# 하강 — DESCENT-PIVOT §3 「버린다」가 지운 어휘.
+#
+# WHY THIS IS A DATA FILE AND NOT A C# ARRAY
+# ------------------------------------------------------------------------
+# Two instruments read it, and they cannot share code:
+#
+#   * Assets/Tests/EditMode/Pivot/PivotTombstoneTests.cs — reflects over every
+#     assembly the player build ships, plus PivotAssetTombstoneTests.cs which
+#     walks Assets/ for scenes, prefabs, .asset files and audio clips. Runs
+#     inside the editor, so it takes Unity's project lock.
+#   * core/HorrorGame.Core.Tests/PivotDeletionTests.cs — sees only
+#     HorrorGame.Core, but runs in two seconds with no editor and no lock, so
+#     it is the one that actually runs on every change.
+#
+# Unity compiles nothing outside Assets/ and the dotnet solution references
+# nothing inside it, so the two guards each carry their own copy of the
+# tokeniser. That duplication is deliberate and it is self-detecting: the
+# `token|` and `probe|` rows at the bottom of this file are executed by BOTH
+# implementations, so a tokeniser that drifts turns its own side red.
+#
+# WHAT THIS FILE IS NOT
+# ------------------------------------------------------------------------
+# It is NOT a roll of the 72 members that survived the last pivot. Such a list
+# is green the day it is written and stale a month later. These are the *nouns*
+# of the deleted designs, and they go stale only when the design does.
+#
+# It is NOT a substring list. Every reader tokenises identifiers first —
+# 「advance」 does not contain 「van」, 「include」 does not contain 「clue」,
+# 「SortOrderPanel」 is not a 배전반. See the `probe|` rows: those three are in
+# there because this repository has already cried wolf on all three.
+#
+# FORMAT
+# ------------------------------------------------------------------------
+#   solo|word|section|reason
+#       The token alone is proof. Matched whole, never as a substring.
+#   compound|word|mate mate mate|section|reason
+#       The token is ambiguous on its own. It counts only when one of the
+#       mates appears beside it in the same identifier, or in the name of the
+#       type / file that declares it.
+#   korean|noun|section|reason
+#       Hangul has no case and no word boundary inside an identifier, so these
+#       are matched by containment within a Hangul run. Each one is checked
+#       against the `race|` rows so it cannot swallow a word the race needs.
+#   race|noun
+#       Vocabulary the race DOES need. No race noun may CONTAIN a korean| noun —
+#       that is the direction that produces a false alarm. The reverse nesting is
+#       harmless and there is one on purpose: 목표물 ⊃ 목표, and the matcher looks
+#       for 목표물 inside the text, so a scene saying 목표 지점 does not fire.
+#   token|input|expected tokens
+#       Pins the tokeniser itself.
+#   probe|identifier|expected words or -|why this probe exists
+#       Pins the matcher over an identifier, in code.
+#   assetprobe|raw text run|expected words or -|why this probe exists
+#       Pins the matcher over a run of text lifted out of asset YAML, where an
+#       extra rule applies: a run beginning `m_` is Unity's own serialised key
+#       and is skipped. Our own serialised fields are `_`-prefixed.
+#
+# ADDING A WORD
+# ------------------------------------------------------------------------
+# The reason field is the test. If you cannot finish the sentence "the race
+# does not need this because ...", the word does not belong here. If you are
+# here because a guard is red, the question is not "how do I make it pass" but
+# "what did I just add to a 선착순 미로탈출게임 that has no currency, no search
+# and nothing to carry".
+# ============================================================================
+
+# ---------------------------------------------------------------------------
+# §03 단서 사슬 — 「목적지가 처음부터 알려져 있다」
+# A race announces the finish at the start: the middle of B8. A chain that
+# narrows a search cannot exist where there is no search.
+# ---------------------------------------------------------------------------
+solo|clue|§03 단서|단서 자체. 목적지가 이미 알려져 있으니 좁혀 갈 것이 없다.
+solo|clues|§03 단서|clue 의 복수형. 「몇 개를 모아야 한다」는 계산 자체가 사라졌다.
+solo|glyph|§03 단서|단서에 새겨진 문양. 읽을 것이 없으면 새길 것도 없다.
+solo|glyphs|§03 단서|glyph 의 복수형. 문양표도 함께 갔다.
+solo|misread|§03 단서|오독 모델. 읽기가 없으면 잘못 읽기도 없다.
+solo|misreads|§03 단서|misread 의 복수형. 오독 횟수를 세던 §13 계측도 함께 갔다.
+solo|site|§03 단서|후보 지점. 경주의 위치는 노드·구역·층이지 후보 지점이 아니다.
+solo|sites|§03 단서|site 의 복수형. 구역마다 후보를 몇 개 놓던 규칙이 사라졌다.
+
+# ---------------------------------------------------------------------------
+# §08 경제 — 「통화가 없다」
+# There is no resupply in a race and no second descent to spend between.
+# ---------------------------------------------------------------------------
+solo|loot|§08 경제|전리품. 팔 곳도 살 것도 없다.
+solo|wallet|§08 경제|지갑. 담을 통화가 없다.
+solo|credit|§08 경제|크레딧. 그 통화 자체.
+solo|credits|§08 경제|credit 의 복수형. 잔액도 정산도 없다.
+solo|shop|§08 경제|상점. 하강 사이에 보급이 없다.
+solo|vendor|§08 경제|상인. 상점과 함께 갔다.
+solo|markup|§08 경제|상인 이문. 가격이 없으면 이문도 없다.
+solo|restock|§08 경제|재입고. 재고가 없다.
+solo|purchase|§08 경제|구매. 살 곳이 없으니 사는 행위도 없다.
+solo|purchased|§08 경제|구매. 과거형이 살아남기 쉬워 따로 적는다.
+solo|buy|§08 경제|산다. purchase 와 달리 짧아서 눈에 안 띄므로 따로 적는다.
+solo|sell|§08 경제|판다. 팔 물건도 받을 통화도 없다.
+solo|sold|§08 경제|팔렸다. sell 의 과거형이 상태 이름으로 살아남기 쉽다.
+solo|price|§08 경제|가격. 경로 비용은 cost 라고 부르므로 이 낱말은 통화 전용이다.
+solo|economy|§08 경제|경제 그 자체. 균형 시뮬레이터의 기준값들이 이 이름으로 남아 있었다.
+solo|payout|§08 경제|분배. 나눌 수익이 없다.
+solo|inventory|§08 경제|소지품. 주자는 손전등 말고 드는 것이 없다.
+solo|hauler|§08 경제|운반 담당. 역할이 아니라 전원이 주자다.
+solo|haulers|§08 경제|hauler 의 복수형. 한 번 하강에 운반 몇 명이라는 기준이 사라졌다.
+solo|trinket|§08 경제|전리품의 가장 싼 등급 이름. 값과 무게를 함께 지고 있었다.
+solo|timepiece|§08 경제|전리품의 시계 등급 이름. 값과 무게를 함께 지고 있었다.
+compound|safe|open opened opens dial crack cracked document documents access material materials engineer loot code combination lock locked turn|§08 경제|금고. 「안전한」이라는 형용사로도 쓰이므로 (PresenceDensity.SafeLightQuality, PlayerMotor.SafePeekAngleDegrees, PresenceReading.Safe01) 이웃 토큰이 있어야 금고로 센다.
+compound|safes|open opened opens dial crack cracked document documents access material materials engineer loot code combination lock locked turn|§08 경제|safe 의 복수형. 「연 금고 목록」이 이 이름으로 남아 있었다.
+
+# ---------------------------------------------------------------------------
+# §08 상점 재고 — the shop's shelf
+# Every one of these was a thing you bought. Without a shop you cannot have one,
+# so the item is as deleted as the counter it stood on.
+# ---------------------------------------------------------------------------
+solo|bag|§08 재고|가방. 적재량을 늘리는 물건이고, 적재량이 없다.
+solo|chalk|§08 재고|분필. 길을 표시하는 물건이고, 표시할 탐색이 없다.
+solo|bait|§08 재고|미끼. 괴물을 유인해 파는 물건이었고, 살 곳이 없다.
+solo|detector|§08 재고|탐지기. 찾을 것이 없으면 탐지할 것도 없다.
+solo|rope|§08 재고|밧줄. 내려가는 길은 투하구다.
+solo|suppressor|§08 재고|소음기. 발소리를 돈으로 줄이던 물건이다.
+solo|blueprint|§08 재고|설계도. 지도를 미리 파는 물건이었다.
+solo|upgraded|§08 재고|상위 손전등. 등급이 하나뿐이면 「업그레이드된」 것이 없다.
+compound|flare|ignite ignited burn burning die deploy shop cost seconds noise item substitute lit|§08 재고|조명탄. 괴물의 볏이 「벌어진다(flare)」에도 쓰이므로 (MonsterAcquireTell._crestFlareDegrees) 이웃 토큰이 있어야 조명탄으로 센다.
+compound|flares|ignite ignited burn burning die deploy shop cost seconds noise item substitute lit|§08 재고|flare 의 복수형. 소지 개수를 세던 이름이다.
+
+# ---------------------------------------------------------------------------
+# §01 협동 임무 구조 — the four-player job
+# 20 runners racing each other do not escort anything, do not share a van and
+# do not carry a thing between them.
+# ---------------------------------------------------------------------------
+solo|objective|§01 임무|목표물. 회수해서 지고 나올 물건이 없다.
+solo|escort|§03 목표물|2인 1조 호송. 들 것이 없으므로 호송할 것도 없다.
+solo|van|§01 임무|승합차. 출발선은 B1 바깥 테두리이고 도착선은 B8 한가운데다.
+solo|crate|§01 임무|궤짝. 2인 운반용 대형 화물.
+solo|breaker|§01 임무|배전반. 불을 밝히는 일이 게임에서 빠졌다. 「panel」은 UI의 정당한 낱말이므로 쓰지 않는다.
+solo|battery|§01 임무|배터리 경제. 셀을 사고 아끼는 계산이 사라졌다.
+solo|batteries|§01 임무|battery 의 복수형. 한 하강에 셀을 몇 개 쓰는지 세던 계측이다.
+solo|carry|§01 임무|운반. 손에 드는 것이 없으므로 무게-속도 구간도 함께 갔다.
+solo|carrying|§01 임무|carry 의 진행형. 「지금 무엇을 들고 있는가」라는 상태가 없다.
+solo|carrier|§01 임무|운반자. 목표물을 누가 지고 있는지 가리키던 이름이다.
+solo|carriers|§01 임무|carrier 의 복수형. 2인 공유 운반의 인원 한도였다.
+solo|extract|§01 임무|회수·탈출 지점으로의 반출. 경주는 도착하는 것이지 반출하는 것이 아니다.
+solo|extraction|§01 임무|extract 의 명사형. 반출 지점이라는 개념이 통째로 없다.
+solo|rattle|§09 신호|유령이 근처 물건을 흔들던 것. §11 탈락자가 금지한다 — 「살아 있는 사람에게 개입할 수 없다」. §12는 소리를 지도로 쓰므로 놓인 소리는 맵 전체를 보는 자가 위조한 발소리다.
+solo|rattles|§09 신호|rattle 의 복수형. 45초 쿨타임은 유령 셋을 가정한 값이었고 §11의 판은 스무 명이다.
+solo|signal|§09 신호|신호의 영어 이름. 유령에게서 나가는 채널이 이제 하나도 없다는 것이 지금의 규칙이다.
+solo|flasher|§04 직업|섬광수. 직업이 삭제됐다 — 「캐릭터는 다 똑같이 생겨도되지」.
+# NOT ADDED, and measured rather than assumed: role / roles. §04 직업 is exactly what
+# they name, and both are clean in the shipped assemblies today — but AssetImportPolicy
+# stamps `role=PositionalOneShot` into the userData of every audio .meta in the project,
+# so adding them turned the asset walk into 242 rows of the importer talking about
+# itself. A guard whose output cannot be acted on is a guard that gets muted. §04 is
+# caught by `flasher` and by the type names that went with it; if 직업 ever comes back
+# it comes back as a type, not as a word buried in an importer stamp.
+solo|lineup|§11 로비|네 자리가 서로 다른 직업 넷을 쥐는 것이 시작 조건이었다. 경주는 준비 완료만 본다.
+solo|reward|§12 막힌 길|막힌 길 보상. 경주에서 잘못 든 길의 대가는 시간뿐이고, 길 끝에 놓아 줄 것이 없다.
+solo|rewards|§12 막힌 길|reward 의 복수형.
+solo|roundtrip|§03 왕복|내려갔다 지상으로 돌아오는 것. 하강은 편도다 — 투하구는 길이 아니라 낙하다.
+solo|injury|§03 부상|지상에서만 치료됐다. 지상이 없다.
+solo|injured|§03 부상|injury 의 형용사형.
+solo|apron|§01 지상|지상 앞마당. 승합차가 서 있던 곳이다.
+
+# ---------------------------------------------------------------------------
+# Korean nouns. Matched by containment inside a Hangul run, because Korean
+# identifiers have no internal boundary to tokenise on.
+# ---------------------------------------------------------------------------
+korean|전리품|§08 경제|loot 의 한국어. 자산 이름과 매니페스트 설명에 남는다.
+korean|단서|§03 단서|clue 의 한국어. 모델 이름과 매니페스트 설명에 남는다.
+korean|상점|§08 경제|shop 의 한국어. 화면 이름과 소리 설명에 남는다.
+korean|배전반|§01 임무|breaker panel 의 한국어.
+korean|금고|§08 경제|safe 의 한국어. 「안전한」과 달리 한국어에서는 형용사와 겹치지 않는다.
+korean|지갑|§08 경제|wallet 의 한국어.
+korean|크레딧|§08 경제|credit 의 한국어.
+korean|목표물|§01 임무|objective 의 한국어. 「목표」만으로는 목적지에도 쓰이므로 「목표물」 세 글자를 본다.
+korean|승합차|§01 임무|van 의 한국어. 차량 모델과 재질 설명에 남는다.
+korean|소지품|§08 경제|inventory 의 한국어.
+
+# The race's own Korean vocabulary. Nothing above may be a substring of these,
+# and none of these may contain anything above.
+race|투하구
+race|주자
+race|탈락
+race|하강
+race|지하
+race|미로
+race|괴물
+race|관문
+race|결승
+race|도착
+race|어둠
+race|근접음성
+race|목표
+
+# ---------------------------------------------------------------------------
+# Tokeniser probes. Both implementations run these.
+# ---------------------------------------------------------------------------
+token|LootKept|loot kept
+token|_carryHeavy|carry heavy
+token|get_OpenedSafes|get opened safes
+token|Safe01|safe 01
+token|IDValue|id value
+token|m_ExtractAmbientOcclusion|m extract ambient occlusion
+token|amb_zone_e_carpet_loop|amb zone e carpet loop
+token|투하구Chute|투하구 chute
+token|SHOP_COST_BAG|shop cost bag
+token|<CandidateDirectories>d__8|candidate directories d 8
+
+# ---------------------------------------------------------------------------
+# Matcher probes — the negatives first, because they are why this guard
+# tokenises instead of grepping.
+# ---------------------------------------------------------------------------
+probe|Advance|-|「van」은 「advance」 안에 들어 있다. 배포된 어셈블리에 Advance* 식별자가 11개 있고 부분 문자열 검색은 전부 잘못 잡는다.
+probe|TryAdvanceGaitCycle|-|위와 같음. 보행 주기 전진.
+probe|MinWaypointAdvanceSqr|-|위와 같음. 경로점 전진 거리.
+probe|include|-|「clue」는 「include」 안에 들어 있다.
+probe|IncludeChildren|-|위와 같음.
+probe|SortOrderPanel|-|「panel」은 UI 패널이다. 배전반은 breaker 로만 잡는다.
+probe|PanelWidth|-|위와 같음.
+probe|Safe01|-|「안전한」의 safe. 이웃이 없으면 금고가 아니다.
+probe|SafeLightQuality|-|그늘이 안전한 밝기. 금고가 아니다.
+probe|SafePeekAngleDegrees|-|고개를 안전하게 내미는 각도. 금고가 아니다.
+probe|crestFlareDegrees|-|괴물의 볏이 벌어지는 각도. 조명탄이 아니다.
+probe|CandidateDirectories|-|Steam appid 파일의 후보 경로. 후보 지점이 아니다.
+probe|DockSite|site|MapSketch 의 접합 자리는 후보 지점이 아닌데 낱말은 같다. 이 줄은 site 가 넓은 낱말이라는 사실을 눈에 보이게 남겨 두려고 있다 — 그래서 이 파수꾼은 배포되지 않는 에디터 전용 어셈블리를 훑지 않는다.
+probe|LootKept|loot|MatchResolution 에 남아 있던 전리품 정산. 지난 회차에 살아남은 72개 중 하나.
+probe|CreditCost|credit|RoleGap 에 남아 있던 크레딧 값. 지난 회차 생존자.
+probe|ShopCostBag|bag shop|GameConstants 의 상점 가격. 70개 중 하나.
+probe|_cluesRead|clues|MatchRecorder 의 비공개 필드. 필드는 형식이 아니므로 예전 파수꾼에게는 보이지 않았다.
+probe|get_OpenedSafes|safes|접근자 이름. safes 는 opened 를 이웃으로 두어야 금고로 센다.
+probe|EngineerSafeMaterialCost|safe|engineer 와 material 이 이웃이므로 금고다.
+probe|FlareIgnite|flare|ignite 가 이웃이므로 조명탄이다.
+probe|ObjectiveMount|objective|PlayerRigBones 의 뼈 이름. 목표물을 지는 자리.
+probe|LootSell|loot sell|AudioCueId 의 한 줄. 14줄 중 하나.
+probe|투하구Chute|-|경주가 쓰는 낱말. 한국어 명사 검사가 이것을 삼키면 안 된다.
+probe|전리품_Chest|전리품|한국어 명사는 한글 덩어리 안에서 포함으로 잡는다.
+
+# ---------------------------------------------------------------------------
+# Asset probes — the extra `m_` rule, checked separately from the code side.
+# ---------------------------------------------------------------------------
+assetprobe|m_ExtractAmbientOcclusion|-|Unity 자신의 직렬화 키. 씬 4개에 들어 있고, m_ 접두사가 없으면 extract 로 울린다. 우리 필드는 언제나 _ 접두사다.
+assetprobe|m_ObjectHideFlags|-|위와 같음.
+assetprobe|_carryIdle|carry|우리 직렬화 필드. Map_FirstSketch_Solo.unity 안에 실제로 있다.
+assetprobe|Loot_Trinket_SilverSpoons|loot trinket|Resources/InteractableProps.asset 이 이름으로 참조하는 프리팹.
+assetprobe|Prop_VanBody|van|Vehicle.fbx 의 재질 이름.
+assetprobe|Safe_Open|safe|금고 모델. open 이 이웃이다.
+assetprobe|Prop_FlareBurn|flare|조명탄 재질. burn 이 이웃이다.

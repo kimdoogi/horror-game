@@ -78,7 +78,7 @@
       "mean_alpha": 0.0159,
       "roughness_mean": 0.4193,
       "metallic": 0.0,
-      "note": "Spatter under a leak. Near-field detail that rewards walking in.",
+      "note": "Spatter under a leak. Near-field detail that repays walking in.",
       "maps": {
         "albedo": "Decals/Decal_Drip_albedo.png",
         "normal": "Decals/Decal_Drip_normal.png",

@@ -128,6 +128,75 @@ MonoBehaviour:
       - {fileID: 8300000, guid: 5fdd13bed6826422e889d0de90784d89, type: 3}
       gain: 1
     ambienceBed: {fileID: 8300000, guid: e0bb643e4eeaf4e5c8932a508f6e57f2, type: 3}
+  - material: 8
+    playerWalk:
+      clips:
+      - {fileID: 8300000, guid: 9375ffa53522a4f66bb0402016df596d, type: 3}
+      - {fileID: 8300000, guid: 9f9b751b3222c48849653e6e88f62d3f, type: 3}
+      - {fileID: 8300000, guid: 2b8d7249777f44369bcd0837aa2a9515, type: 3}
+      - {fileID: 8300000, guid: a953a28b79e79486b948ae9e85a8f84b, type: 3}
+      gain: 1
+    playerRun:
+      clips:
+      - {fileID: 8300000, guid: 1933ceb9befb04e6ba38de0d2492525a, type: 3}
+      - {fileID: 8300000, guid: cf0f541263b8a4db9b97015c077a2e4a, type: 3}
+      - {fileID: 8300000, guid: 1f1c705df79b442709005ff62bd502e5, type: 3}
+      - {fileID: 8300000, guid: 48ebffb9440b14701ab206a78ef3cd22, type: 3}
+      gain: 1
+    monsterStep:
+      clips:
+      - {fileID: 8300000, guid: fbc48faa44381449caf99c4a46385e58, type: 3}
+      - {fileID: 8300000, guid: 646f61869859d496cac92435c9fccaf7, type: 3}
+      - {fileID: 8300000, guid: 3a824a5ba2cb04cd0a133b0ca216f77b, type: 3}
+      - {fileID: 8300000, guid: 1e458c741d5ca4768a9904b6f0fc8991, type: 3}
+      gain: 1
+    ambienceBed: {fileID: 8300000, guid: 948c4b78f8dd54506808e6dff09bb78a, type: 3}
+  - material: 6
+    playerWalk:
+      clips:
+      - {fileID: 8300000, guid: 39bbd047980964fd98307aa6826dd612, type: 3}
+      - {fileID: 8300000, guid: 5597409d8e1ee44afb8eca548cd37af4, type: 3}
+      - {fileID: 8300000, guid: e43a75ed90e3844cb93ab47087794675, type: 3}
+      - {fileID: 8300000, guid: 1cb10b795dc0d43569f5328ec8f69234, type: 3}
+      gain: 1
+    playerRun:
+      clips:
+      - {fileID: 8300000, guid: ce94c3d37826645b090c2086e1da4b71, type: 3}
+      - {fileID: 8300000, guid: fd4acacd873f146128e9e22f2f38d7ba, type: 3}
+      - {fileID: 8300000, guid: 0afe73785edfe4494a09d1e1e75126f4, type: 3}
+      - {fileID: 8300000, guid: f3509cdc57afb43568c444e277e325b0, type: 3}
+      gain: 1
+    monsterStep:
+      clips:
+      - {fileID: 8300000, guid: ef0c0cc3851df4b948104e8866231fd1, type: 3}
+      - {fileID: 8300000, guid: 45ae51a2f4e57489eb91fe3ee565c78d, type: 3}
+      - {fileID: 8300000, guid: 786418dbe419742ed849062f19871992, type: 3}
+      - {fileID: 8300000, guid: e50e49b8e0ede431a992140e165b16b6, type: 3}
+      gain: 1
+    ambienceBed: {fileID: 8300000, guid: 5c1ba68bd0069451387546e5a706fce0, type: 3}
+  - material: 7
+    playerWalk:
+      clips:
+      - {fileID: 8300000, guid: 8e38f9b8f0a2d4111a8ae4c8255fa218, type: 3}
+      - {fileID: 8300000, guid: 8043c9cf856f44cf887cdb2335075bce, type: 3}
+      - {fileID: 8300000, guid: 650d79c8688c443bf877badab1c8a1d3, type: 3}
+      - {fileID: 8300000, guid: 3002feada933942749003c7ebaad7f69, type: 3}
+      gain: 1
+    playerRun:
+      clips:
+      - {fileID: 8300000, guid: bc9cf9899184142329eebf07f1326673, type: 3}
+      - {fileID: 8300000, guid: 89f6b5db96bc84033ac45306ebf17bc9, type: 3}
+      - {fileID: 8300000, guid: 66821a3d463db4841a74580833a60470, type: 3}
+      - {fileID: 8300000, guid: 4123facc831984975954c7515d208337, type: 3}
+      gain: 1
+    monsterStep:
+      clips:
+      - {fileID: 8300000, guid: 446cfdff76b0744ca90fb5cdcb336e58, type: 3}
+      - {fileID: 8300000, guid: 9eff99377573c4adcbab489f00f0bd04, type: 3}
+      - {fileID: 8300000, guid: daaa36a9dab38456386117ee83df35c4, type: 3}
+      - {fileID: 8300000, guid: 7c61128402ab14005aaffdad7e390904, type: 3}
+      gain: 1
+    ambienceBed: {fileID: 8300000, guid: 9c81f4096e2a74398b24c9924d229203, type: 3}
   fallback:
     material: 0
     playerWalk:

@@ -32,8 +32,7 @@ namespace HorrorGame.Core.Movement
     {
         /// <summary>
         /// The player's speed this frame in m/s: base speed × the §05 directional
-        /// multiplier × the §08 load, objective and bag multipliers × analogue
-        /// deflection.
+        /// multiplier × the stance multiplier × analogue deflection.
         /// <para>
         /// This is a scalar. Multiply it by a <em>unit</em> direction to get a
         /// velocity — the deflection is already accounted for here, so scaling the
@@ -42,7 +41,7 @@ namespace HorrorGame.Core.Movement
         /// </para>
         /// </summary>
         /// <param name="input">This frame's intent, camera-local.</param>
-        /// <param name="context">Base speed and the §08 penalties.</param>
+        /// <param name="context">Base speed and the stance multiplier.</param>
         public static float Resolve(MoveInput input, MovementContext context)
         {
             var baseSpeed = context.BaseSpeed;
@@ -117,36 +116,46 @@ namespace HorrorGame.Core.Movement
         }
 
         /// <summary>
-        /// The §08 half of the product: load × objective carry × bag, all
-        /// multiplicative ("§05 배율에 곱연산으로 적용된다"). Exposed separately because
-        /// the shop UI needs to show what an item costs in speed before it is bought.
+        /// The non-directional half of the product — everything that scales speed
+        /// without regard to which way the player is facing. In the race that is the
+        /// stance and nothing else: <c>PlayerMotor.BuildContext</c> fills
+        /// <see cref="MovementContext.LoadMultiplier"/> from
+        /// <c>PlayerStance.SpeedMultiplier</c>, so this returns 1 standing and
+        /// <see cref="GameConstants.CrouchSpeedMultiplier"/> crouched.
         /// <para>
-        /// A negative or NaN load multiplier resolves to 0 rather than to backwards
-        /// or undefined movement — the economy owns that number and movement must
-        /// not turn a bug there into a player walking in reverse.
+        /// Kept as its own step rather than folded into <see cref="Resolve"/> because
+        /// §08 stated the composition rule for every penalty at once — "§05 배율에
+        /// 곱연산으로 적용된다" — and this is that product. A player crouching backwards
+        /// pays 후진's 65% on top of the crouch, and anything the race adds later
+        /// (a limp, mud, a 투하구 landing) multiplies in here without touching §05.
+        /// </para>
+        /// <para>
+        /// <b>Two co-op factors used to be multiplied in here and are gone.</b>
+        /// <c>CarryingObjective</c> applied <c>ObjectiveCarrySpeedMultiplier</c> and
+        /// <c>BagEquipped</c> applied <c>BagSpeedMultiplier</c>. Both flags are
+        /// hard-coded to <c>false</c> by the only caller that builds a context, so both
+        /// branches were unreachable — a dead objective and a dead shop item costing
+        /// two compares on every movement resolve of a footrace. Nobody carries
+        /// anything in 하강; do not reintroduce a factor here without a race reason.
+        /// </para>
+        /// <para>
+        /// A negative or NaN multiplier resolves to 0 rather than to backwards or
+        /// undefined movement: whatever feeds this number, a bug there must not become
+        /// a player walking in reverse.
         /// </para>
         /// </summary>
-        /// <param name="context">The context whose penalties to combine.</param>
+        /// <param name="context">The context whose non-directional multiplier to sanitise.</param>
         public static float ContextMultiplier(MovementContext context)
         {
             var load = context.LoadMultiplier;
             if (float.IsNaN(load) || load < 0f)
             {
-                load = 0f;
-            }
-            else if (float.IsInfinity(load))
-            {
-                load = 0f;
+                return 0f;
             }
 
-            if (context.CarryingObjective)
+            if (float.IsInfinity(load))
             {
-                load *= GameConstants.ObjectiveCarrySpeedMultiplier;
-            }
-
-            if (context.BagEquipped)
-            {
-                load *= GameConstants.BagSpeedMultiplier;
+                return 0f;
             }
 
             return load;
@@ -154,34 +163,29 @@ namespace HorrorGame.Core.Movement
 
         /// <summary>
         /// Picks the §06 base speed for an input: walk without Shift, run with it,
-        /// sprint only when the role and the stamina bar both allow it.
+        /// sprint only when the stamina bar allows it.
         /// <para>
-        /// Takes bools rather than a role or an inventory so movement keeps its
-        /// distance from both systems. Callers pass
-        /// <paramref name="sprintUnlocked"/> = <c>role == RoleId.Runner &amp;&amp;
-        /// inventory.CanSprint</c> (§04, and §08's weight-16 rule) and
-        /// <paramref name="staminaReady"/> = <see cref="StaminaState.SprintAvailable"/>.
+        /// Takes bools rather than a role so movement keeps its distance from that
+        /// system. Callers pass <paramref name="staminaReady"/> =
+        /// <see cref="StaminaState.SprintAvailable"/>.
         /// </para>
         /// <para>
-        /// Carrying the objective forbids sprinting outright (§03: "주자가 들면 질주
-        /// 불가"), but not running — the escort is slow, not crawling.
+        /// <b>The <c>MovementContext</c> parameter is gone.</b> It was read for one
+        /// thing — <c>CarryingObjective</c>, which capped a carrier at
+        /// <see cref="GameConstants.RunSpeed"/> because §03 said "주자가 들면 질주 불가".
+        /// Nothing is carried in the race and the flag is hard-coded to <c>false</c>,
+        /// so the branch was unreachable and the parameter fed only it. Base speed in
+        /// 하강 is a function of the key held and the bar, and of nothing else.
         /// </para>
         /// </summary>
         /// <param name="input">This frame's intent; only <see cref="MoveInput.SprintHeld"/> is read.</param>
-        /// <param name="context">Read for <see cref="MovementContext.CarryingObjective"/>.</param>
-        /// <param name="sprintUnlocked">Whether this player's role and load permit sprinting at all.</param>
+        /// <param name="sprintUnlocked">Whether this player may sprint at all.</param>
         /// <param name="staminaReady">Whether the stamina bar would grant a sprint right now.</param>
-        public static float SelectBaseSpeed(
-            MoveInput input, MovementContext context, bool sprintUnlocked, bool staminaReady)
+        public static float SelectBaseSpeed(MoveInput input, bool sprintUnlocked, bool staminaReady)
         {
             if (!input.SprintHeld)
             {
                 return GameConstants.WalkSpeed;
-            }
-
-            if (context.CarryingObjective)
-            {
-                return GameConstants.RunSpeed;
             }
 
             return sprintUnlocked && staminaReady ? GameConstants.RunnerSprintSpeed : GameConstants.RunSpeed;
@@ -193,7 +197,7 @@ namespace HorrorGame.Core.Movement
         /// chase readout and §13's telemetry both consume.
         /// </summary>
         /// <param name="input">This frame's intent.</param>
-        /// <param name="context">Base speed and the §08 penalties.</param>
+        /// <param name="context">Base speed and the stance multiplier.</param>
         /// <param name="monsterSpeed">The monster's current speed from the §07 threat tier, m/s.</param>
         public static ChaseMargin MarginVersusMonster(MoveInput input, MovementContext context, float monsterSpeed) =>
             new ChaseMargin(Resolve(input, context), monsterSpeed);
@@ -208,7 +212,7 @@ namespace HorrorGame.Core.Movement
         /// </para>
         /// </summary>
         /// <param name="input">This frame's intent, camera-local.</param>
-        /// <param name="context">Base speed and the §08 penalties.</param>
+        /// <param name="context">Base speed and the stance multiplier.</param>
         /// <param name="cameraYawDegrees">Camera yaw, degrees clockwise from +Z (see <see cref="MathX.DirectionFromYaw"/>).</param>
         public static Vec3 ResolveVelocity(MoveInput input, MovementContext context, float cameraYawDegrees)
         {

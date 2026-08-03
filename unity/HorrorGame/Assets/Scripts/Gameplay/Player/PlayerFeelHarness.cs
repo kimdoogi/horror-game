@@ -4,7 +4,6 @@ using System.Globalization;
 using HorrorGame.Core;
 using HorrorGame.Core.Map;
 using HorrorGame.Core.Movement;
-using HorrorGame.Core.Roles;
 using HorrorGame.Core.Threat;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -585,7 +584,12 @@ namespace HorrorGame.Gameplay.Player
             {
                 Line(" ", Color.white);
                 Line("WASD move · mouse look · Shift run · F light", Color.grey);
-                Line("[ ] fov   O objective   B bag   L loot   R reset", Color.grey);
+                // O/B/L are gone with §08 — they set 목표물 운반, 가방 and 전리품 weight,
+                // and nothing reads any of them since the pivot. The literal outlived the
+                // keys and shipped into HorrorGame.Gameplay.Player.dll, where neither
+                // tombstone could see it: one guard reads member names, the other reads
+                // assets, and a string inside a method is neither.
+                Line("[ ] fov   R reset", Color.grey);
                 Line("P pause pacer   V view motion 100/50/0   1-5 hold §07 tier", Color.grey);
                 Line("Tab cursor   F1 help", Color.grey);
             }

@@ -29,17 +29,22 @@ namespace HorrorGame.Core.Presence
     public static class PresenceDensity
     {
         /// <summary>
-        /// Light quality at or above which no 그늘 forms at all. Exactly §03's
-        /// <see cref="GameConstants.ClueMinReadableLightQuality"/>.
+        /// Light quality at or above which no 그늘 forms at all. Exactly
+        /// <see cref="GameConstants.MinSafeLightQuality"/>.
         /// <para>
-        /// The same threshold, deliberately, not a similar one. §03's argument is that
-        /// one switch answers two questions — "목표와 위험이 같은 스위치에 걸린다" — and
-        /// this makes it three: light enough to read by *is* light enough to be safe in
-        /// *is* light enough for the monster to notice. A player never has to learn a
-        /// second brightness.
+        /// The same threshold, deliberately, not a similar one. The game asks the
+        /// player to learn exactly one brightness: light enough to be safe from the
+        /// 그늘 *is* light enough for §06 to notice you. Two numbers here would make
+        /// the dark two different dangers with two different edges, and neither would
+        /// ever be learnable in a corridor.
+        /// </para>
+        /// <para>
+        /// It was <c>ClueMinReadableLightQuality</c> while §03's argument for it was
+        /// "목표와 위험이 같은 스위치에 걸린다" — one switch answering reading and
+        /// safety together. There is nothing to read now; the value did not move.
         /// </para>
         /// </summary>
-        public static float SafeLightQuality => GameConstants.ClueMinReadableLightQuality;
+        public static float SafeLightQuality => GameConstants.MinSafeLightQuality;
 
         /// <summary>
         /// Inside this many metres of the monster there is no 그늘 at all. §06's own

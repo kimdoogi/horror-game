@@ -3,13 +3,13 @@
 
 using System;
 using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using HorrorGame.Core;
 using HorrorGame.Core.Ghost;
-using HorrorGame.Core.Match;
 using HorrorGame.Core.Monster;
 using HorrorGame.Gameplay.Ghost;
-using HorrorGame.Gameplay.Interaction;
 using HorrorGame.Gameplay.Match;
 using HorrorGame.Gameplay.Race;
 using HorrorGame.Gameplay.Monster;
@@ -183,95 +183,156 @@ namespace HorrorGame.Tests.PlayMode.Ghosts
             Assert.That(director.IsRunning, Is.False, "the match kept stepping after §02's screen went up.");
         }
 
+        // ====================================================================
+        // DELETED with §09's 신호. Two tests stood here:
+        //   The_rattle_is_the_only_channel_and_it_costs_forty_five_seconds
+        //   Reaching_for_nothing_does_not_cost_the_wait
+        // They pinned the 45 s cooldown, that it was driven by the match's own fixed
+        // step, and that a reach at nothing did not burn the wait.
+        //
+        // §11's 탈락자 rule deleted the verb: 「살아 있는 사람에게 개입할 수 없다 —
+        // 경주에서 죽은 사람이 산 사람을 도우면 그건 팀이다」. In a game where §12
+        // makes 소리 the map, a placed noise is a forged footstep dropped by the only
+        // entity with 맵 전체 시야, and the 45 s was priced for three ghosts rather
+        // than §11's field of twenty.
+        //
+        // The replacement is The_ghost_changes_where_it_watches_from_and_the_world_
+        // does_not_move, below: it asserts the new verb moves a camera and NOTHING
+        // else, which is the property the deletion was for.
+        // ====================================================================
+
         /// <summary>
-        /// §09's 신호 row. One rattle, then forty-five seconds of nothing, then one more —
-        /// and a failed attempt costs the ghost none of that wait.
+        /// §09's replacement verb, and the property the rattle was deleted for.
+        /// <para>
+        /// The one key a spectator has now CUTS the camera — creature, finish, own body,
+        /// free flight — and that is all it does. A rattle was a runner's footstep forged
+        /// by somebody who could see the whole building (§12: 소리 → 바닥 재질이 지도다),
+        /// so the test that it cannot come back is the test that pressing the key changes
+        /// nothing but the view.
+        /// </para>
+        /// <para>
+        /// <b>Control first, then the verb.</b> "Nothing moved" is not assertable on its
+        /// own: §06's creatures patrol whether or not anybody is watching, and their audio
+        /// bed rides along with them. So the run is split — the same number of steps with
+        /// the key untouched, then with it pressed every step — and the claim is that
+        /// pressing it adds NOTHING to the set of things that moved. That is exactly the
+        /// property a rattle would have broken, and it survives the world being alive.
+        /// </para>
         /// </summary>
         [UnityTest]
-        public IEnumerator The_rattle_is_the_only_channel_and_it_costs_forty_five_seconds()
+        public IEnumerator The_ghost_changes_where_it_watches_from_and_the_world_does_not_move()
         {
             var run = new Run();
             yield return run.Start();
             yield return run.Die();
 
             var ghosts = run.Ghosts;
-            var ghost = ghosts.Ghost!;
 
-            Assert.That(ghost.CanRattle, Is.True,
-                "§09 starts a ghost armed: the seconds right after it watched itself die are the most informative it will ever have.");
+            // The eye is REPARENTED OUT of the session in Begin (SetParent(null)), so it
+            // is not a child of GhostSession and GetComponentInChildren does not see it.
+            // Take whichever camera is actually enabled — that is the one the ghost flies,
+            // and moving it IS the verb, so it cannot be evidence against it.
+            var eye = UnityEngine.Object.FindObjectsByType<Camera>(
+                    FindObjectsInactive.Exclude, FindObjectsSortMode.None)
+                .FirstOrDefault(c => c.isActiveAndEnabled);
+            Assert.That(eye, Is.Not.Null, "§09 took the camera away and did not leave one running.");
 
-            // Flown to something worth shaking, because §12's corridors are largely bare
-            // and where a player falls very often has nothing in it. This is the flight
-            // §09 gives the ghost instead of a voice.
-            var thing = FindSomethingToShake(ghost.Position.ToVector3());
-            Assert.That(thing, Is.Not.Null, "this map has no Interactable at all, so §09's one verb cannot be exercised.");
-            run.Fly(thing!.transform.position - (Vector3.forward * 1.2f));
+            const int Rounds = 16;
+            const float StepSeconds = GameConstants.FixedStep * 2f;
 
-            var found = ghosts.LookForSomethingToShake();
-            Assert.That(found.Found, Is.True,
-                "the ghost is standing next to " + thing!.name + " and GhostRattleTarget found nothing to shake.");
-            Assert.That(found.Distance, Is.LessThanOrEqualTo(GameConstants.GhostRattleRange));
+            // Everything in the scene except the ghost's own camera rig — moving that IS
+            // the verb, so it cannot be evidence against it.
+            var watched = new List<Transform>();
+            foreach (var t in UnityEngine.Object.FindObjectsByType<Transform>(
+                FindObjectsInactive.Include, FindObjectsSortMode.None))
+            {
+                // The eye, everything above it, and everything hung under it — the
+                // first-person hands ride on the camera and follow it by construction.
+                if (t == eye!.transform || eye.transform.IsChildOf(t) || t.IsChildOf(eye.transform))
+                {
+                    continue;
+                }
 
-            Assert.That(ghosts.TryRattle(out var first), Is.True, "the first rattle was refused: " + first.Failure);
-            Assert.That(first.Occurred, Is.True);
-            Assert.That(ghost.RattleCount, Is.EqualTo(1));
-            Assert.That(ghost.RattleCooldownRemaining,
-                Is.EqualTo(GameConstants.GhostRattleCooldownSeconds).Within(1e-3f),
-                "§09: 쿨타임 45초.");
+                watched.Add(t);
+            }
 
-            // Immediately again — the whole of 「쿨타임 45초 안에 다시 시도할 수 없다」.
-            Assert.That(ghosts.TryRattle(out var tooSoon), Is.False);
-            Assert.That(tooSoon.Failure, Is.EqualTo(GhostSignalFailure.OnCooldown));
-            Assert.That(ghost.RattleCount, Is.EqualTo(1), "a refused attempt still moved the counter.");
+            Assert.That(watched.Count, Is.GreaterThan(50),
+                "the scene is nearly empty, so 'nothing moved' would be true of nothing.");
 
-            // One tick short of the wait. The cooldown is Core's and is stepped by
-            // MatchState.Tick off the host's fixed step, so this drives the real clock
-            // rather than poking the field.
-            run.RunSeconds(GameConstants.GhostRattleCooldownSeconds - 0.5f);
-            Assert.That(ghost.CanRattle, Is.False,
-                "the 45 s came round early — the cooldown is not being driven by the match's own step.");
-            Assert.That(ghosts.TryRattle(out var stillTooSoon), Is.False);
-            Assert.That(stillTooSoon.Failure, Is.EqualTo(GhostSignalFailure.OnCooldown));
+            // ── control: the same time passing, with the key untouched ──────────
+            var movedByTheWorld = MoversOver(run, watched, Rounds, StepSeconds, cut: null);
 
-            run.RunSeconds(1f);
-            Assert.That(ghost.CanRattle, Is.True, "the 45 s never came round at all.");
+            // ── the verb: identical stepping, cutting on every round ────────────
+            var labels = new List<string>();
+            var movedWithTheVerb = MoversOver(run, watched, Rounds, StepSeconds, cut: () =>
+            {
+                ghosts.CutToNextVantage();
+                labels.Add(ghosts.WatchLabel);
+            });
 
-            ghosts.LookForSomethingToShake();
-            Assert.That(ghosts.TryRattle(out var second), Is.True, "the second rattle was refused: " + second.Failure);
-            Assert.That(ghost.RattleCount, Is.EqualTo(2));
+            Assert.That(labels.Distinct().Count(), Is.GreaterThan(1),
+                "the cut key never changed what the ghost was watching — §09's one verb does nothing.");
+            Assert.That(labels, Does.Contain(string.Empty),
+                "the cycle never came back to free flight, so a ghost that cuts once is stuck in a shot.");
+
+            var addedByTheVerb = movedWithTheVerb.Except(movedByTheWorld).ToList();
+            Assert.That(addedByTheVerb, Is.Empty,
+                "§11 탈락자: pressing §09's one key moved something the same seconds did not move on their "
+                + "own — " + string.Join(", ", addedByTheVerb) + ". The dead cannot touch the race; that is "
+                + "the whole reason 신호 was deleted.");
 
             yield return null;
         }
 
         /// <summary>
-        /// A rattle that lands nowhere near anything does not arm the cooldown. §09's
-        /// ghost is already being punished by the wait; charging it another forty-five
-        /// seconds for pressing the key beside an empty corridor would add a trap on top
-        /// of a penalty.
+        /// Names every watched transform that moved while the run was stepped, optionally
+        /// pressing something on each round. Position and rotation both, because a rattle
+        /// that only spun a thing would still be a channel.
         /// </summary>
-        [UnityTest]
-        public IEnumerator Reaching_for_nothing_does_not_cost_the_wait()
+        private static HashSet<string> MoversOver(
+            Run run, List<Transform> watched, int rounds, float stepSeconds, Action? cut)
         {
-            var run = new Run();
-            yield return run.Start();
-            yield return run.Die();
+            var before = new List<(Vector3 P, Quaternion R)>(watched.Count);
+            foreach (var t in watched)
+            {
+                before.Add(t == null ? (Vector3.zero, Quaternion.identity) : (t.position, t.rotation));
+            }
 
-            var ghosts = run.Ghosts;
-            var ghost = ghosts.Ghost!;
+            for (var i = 0; i < rounds; i++)
+            {
+                cut?.Invoke();
+                run.RunSeconds(stepSeconds);
+            }
 
-            // Far outside the building, where §12 has nothing at all.
-            run.Fly(new Vector3(0f, 400f, 0f));
+            var movers = new HashSet<string>(StringComparer.Ordinal);
+            for (var i = 0; i < watched.Count; i++)
+            {
+                var t = watched[i];
+                if (t == null)
+                {
+                    continue;
+                }
 
-            Assert.That(ghosts.LookForSomethingToShake().Found, Is.False,
-                "there is geometry 400 m above the map, so this case is not being exercised.");
+                if (Vector3.Distance(t.position, before[i].P) > 0.001f
+                    || Quaternion.Angle(t.rotation, before[i].R) > 0.05f)
+                {
+                    movers.Add(Path(t));
+                }
+            }
 
-            Assert.That(ghosts.TryRattle(out var nothing), Is.False);
-            Assert.That(nothing.Failure, Is.EqualTo(GhostSignalFailure.OutOfRange),
-                "§09 keeps 너무 멀다 and 아직 흔들 수 없다 apart; only one of them is worth flying somewhere to fix.");
-            Assert.That(ghost.CanRattle, Is.True, "a missed reach spent the 45 s.");
-            Assert.That(ghost.RattleCount, Is.Zero);
+            return movers;
+        }
 
-            yield return null;
+        /// <summary>Full hierarchy path, so two objects with the same name are told apart.</summary>
+        private static string Path(Transform t)
+        {
+            var name = t.name;
+            for (var p = t.parent; p != null; p = p.parent)
+            {
+                name = p.name + "/" + name;
+            }
+
+            return name;
         }
 
         // ====================================================================
@@ -290,22 +351,23 @@ namespace HorrorGame.Tests.PlayMode.Ghosts
             yield return run.Start();
             yield return run.Die();
 
-            var state = run.Director.State!;
-            var player = state.PlayerAt(run.Director.LocalPlayerIndex);
+            Assert.That(run.Director.LocalPlayerIsGhost, Is.True, "the runner was not caught.");
+            Assert.That(run.Ghosts.Ghost!.CanSpeak, Is.False, "§09 말하기: 불가능.");
 
-            Assert.That(player.MayTransmitVoice, Is.False,
-                "§09 말하기: 불가능, and §13 gates it at the sender — 전부 받아놓고 볼륨만 0으로 재생하면 클라이언트 조작으로 다 들린다.");
-            Assert.That(player.Ghost!.CanSpeak, Is.False, "§09 말하기: 불가능.");
-
-            // The scan is pointed at the layer THIS pass added and nowhere else.
-            // MatchTests.Section09_Ghost_CannotSpeakAtAll already holds the line inside
-            // GhostState, and UiTests.GhostUi_HasNoVoiceWidgetToDisable holds it across
-            // the readout and the overlay. Re-running those here is not extra safety, it
-            // is a second copy of a rule that can now disagree with the first — the first
-            // draft of this test did exactly that and failed on GhostState.CanSpeak, which
-            // is §09's own row written down rather than a channel on offer.
-            var banned = new[] { "voice", "mic", "speak", "talk", "mute", "chat", "radio", "push", "message", "say" };
-            var added = new[] { typeof(GhostSession), typeof(GhostRattleTarget) };
+            // The scan is pointed at the gameplay layer, which is where a channel would
+            // have to be opened for §09's silence to stop being structural.
+            //
+            // The rattle words are on this list on purpose. That reflection scan is the
+            // one instrument in the project that catches somebody re-adding 신호 under
+            // the old name, and the design's argument against it (§11 탈락자) is stronger
+            // than the argument that put it there (§09's "유령에게는 그럴 이유가 딱히
+            // 없다" — a claim about motive, and a design controls capability).
+            var banned = new[]
+            {
+                "voice", "mic", "speak", "talk", "mute", "chat", "radio", "push", "message", "say",
+                "rattle", "shake", "흔들", "signal", "신호",
+            };
+            var added = new[] { typeof(GhostSession) };
 
             foreach (var type in added)
             {
@@ -334,22 +396,10 @@ namespace HorrorGame.Tests.PlayMode.Ghosts
                         parameter.ParameterType == typeof(string) || parameter.ParameterType == typeof(object),
                         Is.False,
                         "§09: GhostSession." + method.Name + " takes a " + parameter.ParameterType.Name
-                        + ". Its entire outbound bandwidth is one rattle every "
-                        + GameConstants.GhostRattleCooldownSeconds + " s, and a rattle can only ever mean 'here'.");
+                        + ". Its outbound bandwidth is now ZERO — after the rattle went there is "
+                        + "nothing a ghost can send at all — and a payload parameter is where that "
+                        + "would stop being true.");
                 }
-            }
-
-            // The one outbound thing there is, and the shape of it is the argument: a
-            // place, a distance, a wait, and a reason it failed. No text, no recipient.
-            foreach (var field in typeof(GhostRattle).GetFields(BindingFlags.Public | BindingFlags.Instance))
-            {
-                Assert.That(
-                    field.FieldType == typeof(bool) || field.FieldType == typeof(float)
-                    || field.FieldType == typeof(GhostSignalFailure)
-                    || field.FieldType == typeof(HorrorGame.Core.Math.Vec3),
-                    Is.True,
-                    "§09: GhostRattle." + field.Name + " is a " + field.FieldType.Name
-                    + ". A rattle can only ever mean 'here'; a field that could carry more is a second channel.");
             }
         }
 
@@ -379,17 +429,17 @@ namespace HorrorGame.Tests.PlayMode.Ghosts
             yield return run.Die();
 
             var director = run.Director;
-            var state = director.State!;
             var race = director.Race!;
             var index = director.LocalPlayerIndex;
 
-            Assert.That(state.PlayerAt(index).Ghost!.CanEscape, Is.False,
+            Assert.That(run.Ghosts.Ghost!.CanEscape, Is.False,
                 "§09 탈출: 불가능 — 사망 페널티가 명확해진다.");
             Assert.That(race.ExitOf(index), Is.EqualTo(RaceExit.Caught),
                 "§02: 잡히면 탈락. Anything else here is a caught runner still in the standings.");
 
-            Assert.That(state.TryExtract(index), Is.False,
-                "MatchState let a ghost extract.");
+            // DELETED: an assertion that MatchState.TryExtract refused a ghost. It needs
+            // no replacement — a race has no extraction, so there is no call that could
+            // be refused.
 
             // Flying does not finish a race. §09's ghost passes through walls, so it can be
             // at the finish in seconds; the body it left behind is what the race measures,
@@ -401,7 +451,6 @@ namespace HorrorGame.Tests.PlayMode.Ghosts
             Assert.That(race.ExitOf(index), Is.EqualTo(RaceExit.Caught),
                 "flying the ghost's camera to the middle of B8 converted a 탈락 into a placing. §09 is a "
                 + "view, not a body — the race must keep measuring the corpse.");
-            Assert.That(state.PlayerAt(index).HasEscaped, Is.False);
 
             yield return null;
         }
@@ -436,24 +485,6 @@ namespace HorrorGame.Tests.PlayMode.Ghosts
             }
         }
 
-        private static Interactable? FindSomethingToShake(Vector3 from)
-        {
-            var best = (Interactable?)null;
-            var bestDistance = float.PositiveInfinity;
-
-            foreach (var thing in UnityEngine.Object.FindObjectsByType<Interactable>(
-                FindObjectsInactive.Exclude, FindObjectsSortMode.None))
-            {
-                var distance = Vector3.Distance(thing.transform.position, from);
-                if (distance < bestDistance)
-                {
-                    bestDistance = distance;
-                    best = thing;
-                }
-            }
-
-            return best;
-        }
 
         /// <summary>
         /// One solo match, driven by hand.

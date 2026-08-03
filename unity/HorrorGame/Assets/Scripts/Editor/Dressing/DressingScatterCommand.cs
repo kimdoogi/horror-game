@@ -89,7 +89,7 @@ namespace HorrorGame.EditorTools.Dressing
         ///   -executeMethod HorrorGame.EditorTools.Dressing.DressingScatterCommand.ScatterFromCommandLine \
         ///   -dressScene Assets/Scenes/Map_FirstSketch.unity -dressSeed 4703
         /// </code>
-        /// Exits non-zero when a §08 or §12 constraint could not be met, so a build job
+        /// Exits non-zero when a §02, §06 or §12 constraint could not be met, so a build job
         /// notices a scatter that sealed a route rather than shipping it.
         /// </summary>
         public static void ScatterFromCommandLine()

@@ -869,7 +869,7 @@ namespace HorrorGame.EditorTools.SceneGen
             {
                 _marks.TryGetValue(cell, out var mark);
                 var name = string.IsNullOrEmpty(mark.Name) ? _zones[zoneOf[cell]].Name + cell.ToString() : mark.Name;
-                nodeIdOf[cell] = builder.AddNode(zoneOf[cell], cell.Centre, KindOf(mark, cell), name, 0);
+                nodeIdOf[cell] = builder.AddNode(zoneOf[cell], cell.Centre, KindOf(mark, cell), name);
             }
 
             var edgeCells = new List<List<MapCell>>();
@@ -913,7 +913,7 @@ namespace HorrorGame.EditorTools.SceneGen
                 // value; a race pays for a dead end in the only currency it has, which is
                 // time. The parameter survives because MapNode carries it and MapValidator
                 // still reads it — see CheckDeadEnds.
-                finalBuilder.AddNode(zoneOf[cell], cell.Centre, KindOf(mark, cell), name, 0);
+                finalBuilder.AddNode(zoneOf[cell], cell.Centre, KindOf(mark, cell), name);
             }
 
             var doorEdgeCells = new HashSet<MapCell>(_doorCells);

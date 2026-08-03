@@ -146,6 +146,20 @@ namespace HorrorGame.Gameplay.Monster
         }
 
         /// <summary>
+        /// Distance at which the rim light reaches full strength, metres.
+        /// <para>
+        /// Was <c>GameConstants.ObserverRange</c> — §04's 관측자 worked at 15 m, so the
+        /// rim was tuned to be fully up by the time the role could see the creature.
+        /// The role is deleted and the number stays, because it is a MEASURED result
+        /// rather than a borrowed one: the falloff was read off renders at 3, 8 and
+        /// 20 m and 15 m is where the rim finishes arriving without washing out the
+        /// near range. Local to this file now, since nothing else in the design has an
+        /// opinion about it.
+        /// </para>
+        /// </summary>
+        private const float RimFullMetres = 15f;
+
+        /// <summary>
         /// How much rim the creature carries at a viewing distance, 0–1 of
         /// <see cref="_rimStrength"/>.
         /// <para>
@@ -155,7 +169,7 @@ namespace HorrorGame.Gameplay.Monster
         /// </para>
         /// <para>
         /// §04's 관측자 reads the monster's gaze — "누가 표적인지" — from
-        /// <see cref="GameConstants.ObserverRange"/>, 15 m. §03's beam reaches
+        /// <see cref="GameConstants.HallClearSightMin"/>, 15 m. §03's beam reaches
         /// <see cref="GameConstants.FlashlightRange"/>, 12 m. The three metres between
         /// those two numbers are a design requirement to see the creature where no light
         /// of the player's can reach it, and §11 calls the Observer the one role that
@@ -194,8 +208,7 @@ namespace HorrorGame.Gameplay.Monster
         public float RimAt(float distanceMetres)
         {
             var beam = GameConstants.FlashlightRange;
-            var observer = GameConstants.ObserverRange;
-            return Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(beam * 0.25f, observer, distanceMetres));
+            return Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(beam * 0.25f, RimFullMetres, distanceMetres));
         }
 
         /// <summary>

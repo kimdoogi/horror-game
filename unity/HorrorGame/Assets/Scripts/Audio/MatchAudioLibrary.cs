@@ -72,30 +72,25 @@ namespace HorrorGame.Audio
         [SerializeField]
         private AudioClip?[] tierStingers = new AudioClip?[Core.GameConstants.ThreatTierCount];
 
-        [Header("§03 — above ground")]
-        [Tooltip("amb_surface_vehicle_loop. The safe half of §03's round trip must not sound like the basement.")]
-        [SerializeField]
-        private AudioClip? surfaceBed;
+        // DELETED with §01's 지상: surfaceBed (amb_surface_vehicle_loop). "The safe half
+        // of §03's round trip must not sound like the basement" — there is no safe half
+        // and no round trip. A race starts on the rim of B1 and ends in the middle of B8.
 
         [Tooltip("sfx_creak_distant_* and sfx_water_drip_*. §06's silence only frightens in a room that is otherwise alive.")]
         [SerializeField]
         private AudioClipBank incidental = new AudioClipBank();
 
-        [Header("Landmarks — loops pinned to a place, not to the player")]
-        [Tooltip("amb_generator_hum_loop. §03 puts a 발전기 at the entrance; it is the " +
-                 "loudest thing on the surface and the audible edge of the safe half.")]
-        [SerializeField]
-        private AudioClip? generatorLoop;
+        // DELETED with §03's 발전기 and §12's 전기 패널: generatorLoop and zoneHumLoop,
+        // the two "loops pinned to a place, not to the player". The generator was the
+        // 지상 landmark a player walked toward when their cell died; the zone hum was the
+        // 정비공's electrical panel in every zone. Neither exists. If the race wants a
+        // per-zone audio landmark to navigate the dark by, that is a new feature with a
+        // new clip and a reason of its own — not a 배전반 nobody can throw.
 
-        [Tooltip("zone_hum_loop. §12 gives every zone an electrical panel for 정비공; a " +
-                 "hum at each one is a landmark a player can navigate by in the dark.")]
-        [SerializeField]
-        private AudioClip? zoneHumLoop;
-
-        [Tooltip("flare_burn_loop. Played by whatever spawns §08's 조명탄 — this layer " +
-                 "holds the clip so the prop does not have to know about the mix.")]
-        [SerializeField]
-        private AudioClip? flareBurnLoop;
+        // DELETED with §08's 조명탄: the flareBurnLoop clip slot, its FlareBurnLoop
+        // property and its audit line. It was held here "for whatever spawns the
+        // flare"; nothing ever did, because flares are unbuyable and there is no
+        // shop to buy them from.
 
         [Header("Heartbeat — the body, not the monster")]
         [SerializeField] private AudioClip? heartbeatLow;
@@ -131,20 +126,8 @@ namespace HorrorGame.Audio
         /// <summary>§07's tier stingers. Gated on <c>MatchClock.IsTimeReadable</c> by the director.</summary>
         public AudioClip?[] TierStingers => tierStingers;
 
-        /// <summary>The above-ground bed. §03.</summary>
-        public AudioClip? SurfaceBed => surfaceBed;
-
         /// <summary>§12's scattered creaks and drips.</summary>
         public AudioClipBank Incidental => incidental;
-
-        /// <summary>§03's 지상 발전기, as a loop pinned to the entrance.</summary>
-        public AudioClip? GeneratorLoop => generatorLoop;
-
-        /// <summary>§12's per-zone electrical panel, as a loop pinned to the zone.</summary>
-        public AudioClip? ZoneHumLoop => zoneHumLoop;
-
-        /// <summary>§08's 조명탄 while it burns. Held here for whoever spawns the prop.</summary>
-        public AudioClip? FlareBurnLoop => flareBurnLoop;
 
         /// <summary>Quietest heartbeat layer.</summary>
         public AudioClip? HeartbeatLow => heartbeatLow;
@@ -197,14 +180,6 @@ namespace HorrorGame.Audio
             tierStingers = Resize(stingers, Core.GameConstants.ThreatTierCount);
         }
 
-        /// <summary>Replaces the loops that are not tied to §12's surfaces.</summary>
-        public void SetBeds(AudioClip? surface, AudioClip? generator, AudioClip? zoneHum, AudioClip? flareBurn)
-        {
-            surfaceBed = surface;
-            generatorLoop = generator;
-            zoneHumLoop = zoneHum;
-            flareBurnLoop = flareBurn;
-        }
 
         /// <summary>Replaces the three heartbeat layers.</summary>
         public void SetHeartbeat(AudioClip? lowLayer, AudioClip? midLayer, AudioClip? highLayer)
@@ -284,14 +259,10 @@ namespace HorrorGame.Audio
             var clips = 0;
             var gaps = 0;
 
-            CheckBed(surfaceBed, "amb_surface_vehicle_loop (§03's surface)", report, ref clips, ref gaps);
             CheckBed(heartbeatLow, "heartbeat_low", report, ref clips, ref gaps);
             CheckBed(heartbeatMid, "heartbeat_mid", report, ref clips, ref gaps);
             CheckBed(heartbeatHigh, "heartbeat_high", report, ref clips, ref gaps);
             CheckBed(monsterPresenceBed, "monster_presence_bed", report, ref clips, ref gaps);
-            CheckBed(generatorLoop, "amb_generator_hum_loop (§03's 발전기)", report, ref clips, ref gaps);
-            CheckBed(zoneHumLoop, "zone_hum_loop (§12's 전기 패널)", report, ref clips, ref gaps);
-            CheckBed(flareBurnLoop, "flare_burn_loop (§08's 조명탄)", report, ref clips, ref gaps);
 
             for (var i = 0; i < Core.GameConstants.ThreatTierCount; i++)
             {
@@ -309,13 +280,17 @@ namespace HorrorGame.Audio
             CheckBank(monsterStuns, "monster_stun", report, ref clips, ref gaps);
             CheckBank(monsterGrabs, "monster_grab", report, ref clips, ref gaps);
 
-            for (var id = 1; id < AudioCues.Count; id++)
+            // Walks AudioCues.All rather than 1..AudioCues.Count. The enum is sparse on
+            // purpose — 32 co-op cues were deleted without renumbering the survivors, so
+            // the library asset's raw `cue:` ints still point at the right clips — and a
+            // counting loop would report every one of those 32 holes as a missing cue.
+            foreach (var cue in AudioCues.All)
             {
-                var bank = For((AudioCueId)id);
+                var bank = For(cue);
                 if (bank == null || bank.IsEmpty)
                 {
                     gaps++;
-                    report.AppendLine("  missing cue: " + (AudioCueId)id);
+                    report.AppendLine("  missing cue: " + cue);
                     continue;
                 }
 

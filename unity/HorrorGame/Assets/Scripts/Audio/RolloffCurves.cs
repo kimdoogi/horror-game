@@ -25,7 +25,7 @@ namespace HorrorGame.Audio
     /// </para>
     /// <para>
     /// The range itself is never invented here. Callers pass one of the design's own
-    /// distances: <c>GameConstants.ListenerHearingRange</c> for anything the 청음사
+    /// distances: <c>GameConstants.AudibleRangeMetres</c> for anything the 청음사
     /// reads, <c>GameConstants.VoiceCutoffDistance</c> for §13's voice — which is
     /// already what <c>AudioSourceVoiceOutput</c> does — and
     /// <see cref="AudioTuning.DefaultWorldAudibleRange"/> for props.

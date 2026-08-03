@@ -25,7 +25,6 @@ MonoBehaviour:
   - {fileID: 8300000, guid: 37a49bef7f39f4dd782102ee069b01f5, type: 3}
   - {fileID: 8300000, guid: 6ee0d343a7f3b45bba041d1a19d8ad08, type: 3}
   - {fileID: 8300000, guid: 5ff2634b986d44fc4a509c453f0aaa20, type: 3}
-  surfaceBed: {fileID: 8300000, guid: f8926f47941c54af688735a353f97b69, type: 3}
   incidental:
     clips:
     - {fileID: 8300000, guid: d9852910c14e240c6bfc30cc8ac3bd53, type: 3}
@@ -38,9 +37,6 @@ MonoBehaviour:
     - {fileID: 8300000, guid: 19377d4854cde4706b31320c8f9766fa, type: 3}
     - {fileID: 8300000, guid: 1a446ccfa373f42f1aa3be9233e780a7, type: 3}
     gain: 1
-  generatorLoop: {fileID: 8300000, guid: 6b851ae15be7b4ac9bfb42a959834ba0, type: 3}
-  zoneHumLoop: {fileID: 8300000, guid: 561e3abe9907545a598b06fd9bea6951, type: 3}
-  flareBurnLoop: {fileID: 8300000, guid: 8e4949ab151ad4df080d6d76d3a37500, type: 3}
   heartbeatLow: {fileID: 8300000, guid: 5d73e4b762c7347179170427c58d966f, type: 3}
   heartbeatMid: {fileID: 8300000, guid: ca9a922eae9904187b84fcd632783e7f, type: 3}
   heartbeatHigh: {fileID: 8300000, guid: 90c2785369fb74167bfd1f193fa970e0, type: 3}
@@ -90,22 +86,6 @@ MonoBehaviour:
       - {fileID: 8300000, guid: 8bb5e01ad759344a594d06cee34d03ee, type: 3}
       - {fileID: 8300000, guid: 418cff1ca8baa4b12bf7774429db150c, type: 3}
       gain: 1
-  - cue: 3
-    clips:
-      clips:
-      - {fileID: 8300000, guid: 858f0f6caef6842d597d42a5ad22ee71, type: 3}
-      gain: 1
-  - cue: 4
-    clips:
-      clips:
-      - {fileID: 8300000, guid: d6ecbbba8c0674b3c82d02a308dd969b, type: 3}
-      gain: 1
-  - cue: 5
-    clips:
-      clips:
-      - {fileID: 8300000, guid: e346168febe4a4fc98b04b6a7e6bf9c3, type: 3}
-      - {fileID: 8300000, guid: 4f0a6be75bdaf45089595ff2e6f7a090, type: 3}
-      gain: 1
   - cue: 6
     clips:
       clips:
@@ -124,153 +104,10 @@ MonoBehaviour:
       - {fileID: 8300000, guid: 89c96ea208d2b432485aa2c827c27c8c, type: 3}
       - {fileID: 8300000, guid: 590c9dca0fded4191ba33250b6fd1dd0, type: 3}
       gain: 1
-  - cue: 9
-    clips:
-      clips:
-      - {fileID: 8300000, guid: b98bd288c975240ea8a802560ec1027a, type: 3}
-      - {fileID: 8300000, guid: 110a70976c8a5482c9a172e48f916230, type: 3}
-      gain: 1
-  - cue: 10
-    clips:
-      clips:
-      - {fileID: 8300000, guid: d6c3e95db954a4574873fe3d8fefdf3f, type: 3}
-      - {fileID: 8300000, guid: 355e298b190b647cba11fc60597d7749, type: 3}
-      gain: 1
-  - cue: 11
-    clips:
-      clips:
-      - {fileID: 8300000, guid: 0c83fe1d1182644889462ab590eb115a, type: 3}
-      - {fileID: 8300000, guid: 178d02d5b6a6848e691dfb6e05d18b93, type: 3}
-      gain: 1
-  - cue: 12
-    clips:
-      clips:
-      - {fileID: 8300000, guid: 7f091846133874f4e9369a983ad7270f, type: 3}
-      - {fileID: 8300000, guid: 693b78d61d8944bdfac230944d99adf3, type: 3}
-      gain: 1
-  - cue: 13
-    clips:
-      clips:
-      - {fileID: 8300000, guid: 12aa1b8490af741e593306ef5558ab8f, type: 3}
-      - {fileID: 8300000, guid: 74555cded9e8d44919c0515cfa48d8a3, type: 3}
-      gain: 1
-  - cue: 14
-    clips:
-      clips:
-      - {fileID: 8300000, guid: 2a2ecdf91a0ec403b929befd5d6e95f8, type: 3}
-      - {fileID: 8300000, guid: 50a36e6b5884346ad860a5009bba290a, type: 3}
-      gain: 1
-  - cue: 15
-    clips:
-      clips:
-      - {fileID: 8300000, guid: 5c9b711cdd44f431faa0d8663a7d2282, type: 3}
-      gain: 1
-  - cue: 16
-    clips:
-      clips:
-      - {fileID: 8300000, guid: ac2cf717ec230441eb26a5ad5a41bdce, type: 3}
-      gain: 1
-  - cue: 17
-    clips:
-      clips:
-      - {fileID: 8300000, guid: 380bc22ac86124631800292572bcf559, type: 3}
-      gain: 1
-  - cue: 31
-    clips:
-      clips:
-      - {fileID: 8300000, guid: 863fdca1317b04a24b785244f646a592, type: 3}
-      gain: 1
-  - cue: 32
-    clips:
-      clips:
-      - {fileID: 8300000, guid: 9a0188884c1cb4eb580dac81e4997742, type: 3}
-      gain: 1
-  - cue: 33
-    clips:
-      clips:
-      - {fileID: 8300000, guid: 3b02d9ac6cde44c54b7ba49010164804, type: 3}
-      gain: 1
-  - cue: 34
-    clips:
-      clips:
-      - {fileID: 8300000, guid: da4a7c8c7e3f3472dad9e7f1dc43f263, type: 3}
-      gain: 1
-  - cue: 35
-    clips:
-      clips:
-      - {fileID: 8300000, guid: 0e7deaf58aaa04b0a9844da587071ae1, type: 3}
-      gain: 1
-  - cue: 36
-    clips:
-      clips:
-      - {fileID: 8300000, guid: 526eb2cbf18b740cb8c1439c98821f93, type: 3}
-      gain: 1
-  - cue: 37
-    clips:
-      clips:
-      - {fileID: 8300000, guid: 9e972b897868943eab73ceb3834260b2, type: 3}
-      - {fileID: 8300000, guid: bd92ac4c90c104a5f83d635609439c2f, type: 3}
-      - {fileID: 8300000, guid: 187587b37d564456a8cc5e93c5aab61b, type: 3}
-      gain: 1
-  - cue: 38
-    clips:
-      clips:
-      - {fileID: 8300000, guid: bd35f559ac80b4574a8e105f2f9003c6, type: 3}
-      gain: 1
-  - cue: 39
-    clips:
-      clips:
-      - {fileID: 8300000, guid: c6f4bcf37c94a43259b3ab1c9cdc24b5, type: 3}
-      gain: 1
-  - cue: 24
-    clips:
-      clips:
-      - {fileID: 8300000, guid: d88523a174b8a4a5bbf19811d194b036, type: 3}
-      gain: 1
-  - cue: 18
-    clips:
-      clips:
-      - {fileID: 8300000, guid: c6d553d2211734d44a1a5c98b380af1b, type: 3}
-      gain: 1
-  - cue: 19
-    clips:
-      clips:
-      - {fileID: 8300000, guid: c8eb71e18c0614eee94a0ae0d8ac1696, type: 3}
-      gain: 1
-  - cue: 20
-    clips:
-      clips:
-      - {fileID: 8300000, guid: fe8f945bce0394792b9c999249765ffb, type: 3}
-      gain: 1
-  - cue: 21
-    clips:
-      clips:
-      - {fileID: 8300000, guid: f50d445c342954c25a906a4654199bdc, type: 3}
-      gain: 1
-  - cue: 22
-    clips:
-      clips:
-      - {fileID: 8300000, guid: 43f91b6e51fa1462897a4e73c93e7ae4, type: 3}
-      gain: 1
-  - cue: 23
-    clips:
-      clips:
-      - {fileID: 8300000, guid: bf1f55a33c59a47b9b3670b072053f02, type: 3}
-      gain: 1
-  - cue: 25
-    clips:
-      clips:
-      - {fileID: 8300000, guid: 9d50447d603f34483854ff313c98a0d7, type: 3}
-      gain: 1
   - cue: 26
     clips:
       clips:
       - {fileID: 8300000, guid: 01c65d88ccbc349fb81228a6c8696968, type: 3}
-      gain: 1
-  - cue: 27
-    clips:
-      clips:
-      - {fileID: 8300000, guid: 559b5b60aac2547a9ad19408374c2545, type: 3}
       gain: 1
   - cue: 28
     clips:
@@ -287,19 +124,6 @@ MonoBehaviour:
       clips:
       - {fileID: 8300000, guid: 812091a62859e466bb29ea2f3c1abe5a, type: 3}
       - {fileID: 8300000, guid: 7029d3844cb71433f84dd022f3b768f6, type: 3}
-      gain: 1
-  - cue: 40
-    clips:
-      clips:
-      - {fileID: 8300000, guid: e730c61d1fe6448ed98b7cd12ccb91cb, type: 3}
-      - {fileID: 8300000, guid: b7f55d236a46b46958df683c57cf1eab, type: 3}
-      - {fileID: 8300000, guid: 012fac6fdad08403887fd018943ab9a6, type: 3}
-      - {fileID: 8300000, guid: 16db999abbace400089160821456fc93, type: 3}
-      gain: 1
-  - cue: 41
-    clips:
-      clips:
-      - {fileID: 8300000, guid: 679fb5b41c3874236aca827fa6342fb9, type: 3}
       gain: 1
   - cue: 42
     clips:

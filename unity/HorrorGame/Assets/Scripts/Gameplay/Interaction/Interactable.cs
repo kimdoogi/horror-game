@@ -28,7 +28,7 @@ namespace HorrorGame.Gameplay.Interaction
     /// </para>
     /// <para>
     /// Reach is a design number, not a preference:
-    /// <see cref="GameConstants.EngineerReachDistance"/> is arm's length at the thing
+    /// <see cref="GameConstants.InteractReachMetres"/> is arm's length at the thing
     /// being worked on, and it is the default because it is the shortest reach anything
     /// quotes.
     /// </para>
@@ -63,7 +63,7 @@ namespace HorrorGame.Gameplay.Interaction
         /// </summary>
         public virtual float ReachMetres
         {
-            get { return GameConstants.EngineerReachDistance; }
+            get { return GameConstants.InteractReachMetres; }
         }
 
         /// <summary>Whether the interact key does anything at all right now.</summary>

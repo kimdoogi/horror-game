@@ -28,9 +28,11 @@ So each dimension below is a *consequence*, not a taste:
   *required* by §12 (개방 공간 시야 15~25m), not merely tolerated.
 * **Loops.** §12: "순환로 개수 — 구역당 1+, 전체 3+ / 트리 구조는 사형선고." A tree
   graph cannot be built from a kit whose junctions are a T and a 4-way, so both ship.
-* **Dead ends carry a reward.** §12 wants 20-25% dead ends "위험을 감수할 이유"로.
-  ``DeadEnd_Cap`` therefore has a loot plinth and a lit alcove built in — the reward
-  is part of the geometry, not level dressing someone may forget.
+* **Dead ends are clear to the back wall.** §12 wants 20-25% dead ends. It used to
+  pair that with a 보상, so ``DeadEnd_Cap`` shipped a plinth to put it on; 경주에서 잘못 든
+  길의 대가는 시간뿐, and the plinth pinched the 2.20 m stub to 0.68 m and 0.53 m —
+  narrower than the NavMesh agent's own diameter, so the creature could not enter the
+  back of any dead end and a runner could. It is deleted; the wall alcove stays.
 * **Floor material is a gameplay channel.** §12: "구역별로 바닥 재질이 달라야 청음사가
   위치를 판별할 수 있다. 아트 결정이 아니라 시스템 결정이다. 재질 경계를 명확히 할 것."
   All five surfaces ship with the contractual ``Floor_Wood`` / ``Floor_Tile`` /
@@ -689,11 +691,27 @@ def build_chamber() -> list:
 
 
 def build_dead_end() -> list:
-    """A 2.5 x 5 m dead end whose reward is part of the geometry.
+    """A 2.5 x 5 m dead end. Clear all the way to the back wall.
 
-    §12 wants 막힌 길 비율 20~25% and pairs it with 막힌 길 보상 = 전리품 · 자재,
-    reason: "위험을 감수할 이유". A cap with no reward is the failure mode this piece
-    exists to make impossible — the loot plinth and the alcove ship with it.
+    §12 wants 막힌 길 비율 20~25%. It used to pair that with 막힌 길 보상 = 전리품 ·
+    자재 ("위험을 감수할 이유"), so this piece shipped with a plinth standing in
+    the middle of its far end.
+
+    TOMBSTONE — the plinth is deleted, and not for tidiness. 경주에서 잘못 든 길의
+    대가는 시간뿐: there is no 전리품, so it held nothing. What it still did was
+    geometry. The plinth frame spanned x 0.83~1.82 of a 2.20 m clear stub, leaving
+    0.68 m on one side and 0.53 m on the other. Recast erodes agentRadius (0.50 m)
+    off both, so neither gap carried any NavMesh — the last half-metre of EVERY dead
+    end on all eight storeys was a pocket the creature could not path into, while a
+    0.30 m runner walked straight past. R12's escape sweep found it as four 「밖」
+    verdicts at DeadEndCap tiles on B2, B6 and B7 (「NavMesh 없음 (반경 0.75 m)」),
+    and the NavMesh audit could not: the pocket is under minRegionArea (π·0.5² =
+    0.79 m²), so Recast deletes it outright rather than leaving an island to count.
+    A nook the hazard cannot enter is a safe spot in a game whose only hazard is the
+    creature.
+
+    The alcove stays. It is a recess cut INTO the north wall — it takes nothing off
+    the floor, and a dead end with no feature in it reads as an unfinished corridor.
     """
     depth = 2 * GRID
     objs: list = []
@@ -717,7 +735,7 @@ def build_dead_end() -> list:
                      mat("Trim_Painted")))
     # Two more shelves and their brackets inside the niche. A 1.25 x 1.35 m
     # recessed rectangle lit head-on is a bright blank panel; shelves break it into
-    # bands and give the loot somewhere it plausibly came from.
+    # bands and give whatever stood on them somewhere they plausibly came from.
     for k, z in enumerate((1.02, 1.48)):
         objs.append(slab(f"N_Rack{k}", 0.74, 1.91, ny0 - 0.02, ny1 - 0.08,
                          z, z + 0.035, st, raw=True))
@@ -725,33 +743,14 @@ def build_dead_end() -> list:
             objs.append(slab(f"N_Brk{k}{j}", cx - 0.025, cx + 0.025,
                              ny1 - 0.30, ny1 - 0.08, z - 0.16, z, st, raw=True))
     # A cased surround, so a beam finds the alcove from the far end of the corridor.
-    # §12 pairs 막힌 길 with 보상 "위험을 감수할 이유" — an unmarked reward is not one.
+    # A dead end the torch cannot tell from a corridor is a dead end the runner walks
+    # the whole length of twice, and §12 prices a wrong turn in seconds, not in walls.
     objs += opening_frame("N_Case", wall_of(0, GRID, ny0, ny1, "-Y"),
                           0.70, 1.95, 1.90, width=0.075)
-    # The plinth: where the 전리품 sits. An open steel rack rather than a solid
-    # block — a plain box lit head-on by a torch reads as a white rectangle with no
-    # depth, and this is the object §12's 막힌 길 보상 rule exists to make the player
-    # walk into a dead end for. Legs, rails and a slatted deck give it a silhouette
-    # and let the beam pass through it, which is what makes it look like an object
-    # in a room rather than a shape painted on the floor.
-    px0, px1 = 0.86, 1.79
-    py0, py1 = depth - 1.08, depth - 0.47
-    deck = 0.60
-    for k, (lx, ly) in enumerate(((px0, py0), (px1 - 0.07, py0),
-                                  (px0, py1 - 0.07), (px1 - 0.07, py1 - 0.07))):
-        objs.append(slab(f"PlinthLeg{k}", lx, lx + 0.07, ly, ly + 0.07,
-                         0.0, deck, st))
-    for k, z in enumerate((0.16, 0.44)):
-        objs.append(slab(f"PlinthRailA{k}", px0, px1, py0, py0 + 0.035, z, z + 0.055,
-                         st, raw=True))
-        objs.append(slab(f"PlinthRailB{k}", px0, px1, py1 - 0.035, py1, z, z + 0.055,
-                         st, raw=True))
-    objs.append(slab("PlinthFrame", px0 - 0.03, px1 + 0.03, py0 - 0.03, py1 + 0.03,
-                     deck, deck + 0.045, st))
-    for k in range(5):
-        sy = py0 + (k + 0.5) * (py1 - py0) / 5.0
-        objs.append(slab(f"PlinthSlat{k}", px0, px1, sy - 0.045, sy + 0.045,
-                         deck + 0.045, deck + 0.065, st, raw=True))
+
+    # TOMBSTONE: the 전리품 plinth stood here — four legs, two rails, a frame and five
+    # slats, x 0.83~1.82 by y depth-1.11~depth-0.44, deck at 0.60 m. See the docstring:
+    # it held nothing and it took the NavMesh out of the back of every dead end.
 
     corridor_services(objs, "Y", 0.0, depth - 0.30, WALL_T, GRID - WALL_T)
     east = wall_of(GRID - WALL_T, GRID, 0, depth, "-X")
@@ -1566,7 +1565,7 @@ PIECES: list[PieceSpec] = [
     PieceSpec("DeadEnd_Cap", build_dead_end, (GRID, 2 * GRID), 2 * GRID, 4200,
               "deadend", "Floor_Concrete",
               [{"edge": "-Y", "centre": [GRID / 2, 0.0], "width": CLEAR_W, "height": CLEAR_H, "level": 0.0}],
-              "§12 막힌 길 20~25%, each with a reward — plinth + alcove built in."),
+              "§12 막힌 길 20~25%. 경주에서 잘못 든 길의 대가는 시간뿐 — the plinth that stood in the middle of it is deleted (it stood in the NavMesh too); the wall alcove stays and holds nothing."),
     PieceSpec("Hall_Open_20x20", build_hall, (8 * GRID, 8 * GRID), 8 * GRID, 16000,
               "open", "Floor_Tile",
               [{"edge": e, "centre": c, "width": CLEAR_W, "height": CLEAR_H, "level": 0.0}
@@ -1598,7 +1597,7 @@ PIECES: list[PieceSpec] = [
               "PROP, not a grid tile. Hinge on origin. Two leaves fill one Doorway_Frame."),
     PieceSpec("WallPanel_Electrical", build_electrical_panel, None, 0.62, 2000,
               "prop", "-", [],
-              "PROP. §12 전기 패널 구역당 1개 — §04's Engineer lights the clue."),
+              "PROP. Wall furniture, one per zone. It was §12's 전기 패널 — §04's 정비공 threw it to light a zone, and reading was the point of the light. 직업이 삭제됐고 읽을 것도 없으므로 이제는 벽에 붙은 물건이다."),
     PieceSpec("FloorTile_Wood", build_tile_wood, (TILE, TILE), TILE, 5000,
               "floor", "Floor_Wood", [], "§12 구역 A — 삐걱. Plank relief."),
     PieceSpec("FloorTile_Tile", build_tile_tile, (TILE, TILE), TILE, 6000,

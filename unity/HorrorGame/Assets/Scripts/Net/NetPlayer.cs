@@ -2,7 +2,6 @@
 
 using System;
 using HorrorGame.Core;
-using HorrorGame.Core.Roles;
 using Mirror;
 using UnityEngine;
 
@@ -64,8 +63,8 @@ namespace HorrorGame.Net
         [SyncVar]
         private byte _staminaSteps;
 
-        [SyncVar]
-        private RoleId _role;
+        // DELETED with §04: the replicated _role SyncVar. Every runner is identical,
+        // so there is nothing about a seat's identity worth a byte on the wire.
 
         [SyncVar]
         private int _seatIndex = -1;
@@ -107,9 +106,6 @@ namespace HorrorGame.Net
         public bool FlashlightOn => _flashlightOn;
 
         /// <summary>§05's 운반 상태.</summary>
-
-        /// <summary>This player's role. Public knowledge — §11 makes the lineup the match's premise.</summary>
-        public RoleId Role => _role;
 
         /// <summary>Lobby seat this player occupies, or -1 before assignment.</summary>
         public int SeatIndex => _seatIndex;
@@ -192,15 +188,14 @@ namespace HorrorGame.Net
         public void UnbindLocalSource() => _source = null;
 
         /// <summary>
-        /// Host-side assignment of §11's role and the lobby seat behind it. Roles are
-        /// not secret — the whole point of §11 is that everyone knows which one is
-        /// missing.
+        /// Host-side assignment of the lobby seat this player runs from. Was
+        /// <c>AssignRole(int, RoleId)</c>; §04 is deleted, so the seat index is the
+        /// whole of a runner's identity — it is what §02's standings key on.
         /// </summary>
         [Server]
-        public void AssignRole(int seatIndex, RoleId role)
+        public void AssignSeat(int seatIndex)
         {
             _seatIndex = seatIndex;
-            _role = role;
         }
 
         /// <summary>

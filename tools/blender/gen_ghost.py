@@ -33,10 +33,12 @@ So the four restrictions are built, one by one, into geometry:
 * **cannot escape** → there is nothing to walk with. The coverall ends in a torn hem
   below the knee (``HEM_Z``) and what continues to the floor is two thin trailing
   wisps, not legs. It is the right height and it cannot take a step.
-* **can only rattle something** → the hands are the brightest part of the model by a
+* **can reach and touch nothing** → the hands are the brightest part of the model by a
   factor of three, and they are the **same built hands the living player has**
-  (``gen_player_ai.build_hand``). §09 leaves exactly one channel open and it is worked
-  with hands, so that is where the eye is sent.
+  (``gen_player_ai.build_hand``). They were bright because §09 left exactly one channel
+  open — 흔들기 — and it was worked with hands. §11 closed that channel, so the hands
+  now say the opposite thing and say it better: this figure is all reach and no grip,
+  and the eye is still sent to the part that cannot do anything.
 * **sees the whole map** → ``HeadCameraAnchor`` is on the rig, in the same place and
   with the same forward axis as the player's, so the free-flying view §09 describes
   attaches to the same bone the living use and needs nothing new.
@@ -81,7 +83,9 @@ WHAT IS LOAD-BEARING
   the hang comes from the clips. ``verify_bind`` asserts it.
 * Clip names must be in ``AssetImportPolicy.LoopingAnimationClips`` or
   ``OneShotAnimationClips`` or the validator warns that their loop flag is a guess —
-  ``Drift`` is in the first, ``Rattle`` and ``Wail`` in the second.
+  ``Drift`` is in the first and ``Wail`` in the second. ``Rattle`` was in the second
+  and is deleted; its entry in that set is now unused and is listed in this round's
+  report as a line to remove.
 * Slot 0 is ``Ghost_Role``, matching the player's contract, so anything that swaps
   ``renderer.materials[0]`` per ``RoleId`` works on this model unchanged.
 """
@@ -579,33 +583,16 @@ def drift_clip(rig: bpy.types.Object):
     return blendkit.make_action(rig, "Drift", poses, loop=True)
 
 
-def rattle_clip(rig: bpy.types.Object):
-    """§09's one action: 「근처 물건을 아주 약하게 흔든다」, on a 45 s cooldown.
-
-    Built as a **reach that costs something**. The figure gathers, throws both hands
-    forward, and the recoil takes it backwards — because the design's own note is that
-    the signal is 「아주 약하게」 and one attempt uses everything there is. A ghost that
-    waves casually would make the 45 s cooldown look arbitrary.
-    """
-    poses = [
-        gpm.make_pose(1, hang(), hips_world=(0.0, 0.0, gpm.HIP_Z)),
-        gpm.make_pose(11, hang(**gpm.merge(       # gather
-            gpm.torso(lean=6.0),
-            gpm.arm(1, up_down=48.0, up_swing=-16.0, lo_down=54.0, lo_swing=-10.0),
-            gpm.arm(-1, up_down=50.0, up_swing=16.0, lo_down=56.0, lo_swing=10.0))),
-            hips_world=(0.0, 0.05, gpm.HIP_Z - 0.03)),
-        gpm.make_pose(19, hang(**gpm.merge(       # throw
-            gpm.torso(lean=-22.0),
-            gpm.head(lean=-4.0, neck=-2.0),
-            gpm.arm(1, up_down=18.0, up_swing=64.0, lo_down=-14.0, lo_swing=42.0),
-            gpm.arm(-1, up_down=18.0, up_swing=-64.0, lo_down=-14.0, lo_swing=-42.0))),
-            hips_world=(0.0, -0.10, gpm.HIP_Z + 0.02)),
-        gpm.make_pose(34, hang(**gpm.torso(lean=2.0)),
-                      hips_world=(0.0, 0.06, gpm.HIP_Z - 0.02)),   # recoil
-        gpm.make_pose(56, hang(), hips_world=(0.0, 0.0, gpm.HIP_Z)),
-    ]
-    return blendkit.make_action(rig, "Rattle", poses, loop=False)
-
+# DELETED with §09's 신호: `rattle_clip`. It was 「근처 물건을 아주 약하게 흔든다」
+# on a 45 s cooldown, built as a reach that costs everything the figure has —
+# gather, throw, recoil — because the design's own note is 「아주 약하게」 and one
+# attempt used it all up. §11's 탈락자 rule deleted the channel: 「살아 있는
+# 사람에게 개입할 수 없다」, and §12 uses sound as a map, so a placed noise is a
+# forged footstep from somebody who can see the whole floor. GhostState's
+# TryRattle / CanRattle / RattleCooldownRemaining, GameConstants'
+# GhostRattleCooldownSeconds and GhostRattleRange, GhostOverlay's RattleBar and
+# the four ghost_rattle_*.wav clips all went in the round that made the ghost
+# watch-only. This clip on the rig was the last trace of it.
 
 def wail_clip(rig: bpy.types.Object):
     """The thing §09 says cannot happen: 「말하기 불가능」, attempted.
@@ -636,8 +623,14 @@ def wail_clip(rig: bpy.types.Object):
     return blendkit.make_action(rig, "Wail", poses, loop=False)
 
 
-CLIPS = (("Drift", drift_clip, True), ("Rattle", rattle_clip, False),
-         ("Wail", wail_clip, False))
+CLIPS = (("Drift", drift_clip, True), ("Wail", wail_clip, False))
+"""Two clips, and the second is a failure.
+
+`Drift` is the hover the ghost is always in — 탈출 불가능, and no way to travel of
+its own. `Wail` is 「말하기 불가능」 attempted: head back, shoulders heaving, no
+sound, because there is no sound to make. Neither reaches a living runner, which
+after §11 is the whole specification for a 탈락자.
+"""
 
 
 # ── Materials and the manifest ──────────────────────────────────────────────

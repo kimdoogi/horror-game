@@ -582,10 +582,10 @@ namespace HorrorGame.Core.Tests
             var frozenAt = brain.Position;
             var elapsedBefore = brain.StateElapsedSeconds;
 
-            brain.Stun(GameConstants.FlashStunSeconds);
+            brain.Stun(GameConstants.MonsterStunSeconds);
             Assert.That(brain.IsStunned, Is.True);
 
-            Advance(brain, GameConstants.FlashStunSeconds, Input());
+            Advance(brain, GameConstants.MonsterStunSeconds, Input());
             Assert.That(brain.State, Is.EqualTo(MonsterStateId.Alert),
                 "§04: 기절 suspends the state machine — the 3 s give-up must not have run down.");
             Assert.That(brain.StateElapsedSeconds, Is.EqualTo(elapsedBefore).Within(MathX.Epsilon));
@@ -611,8 +611,8 @@ namespace HorrorGame.Core.Tests
             var brain = ChasingBrain(world, out _);
             world.LineOfSight = false;
 
-            brain.Stun(GameConstants.FlashStunSeconds);
-            AdvanceHolding(brain, GameConstants.FlashStunSeconds, HoldDistance);
+            brain.Stun(GameConstants.MonsterStunSeconds);
+            AdvanceHolding(brain, GameConstants.MonsterStunSeconds, HoldDistance);
 
             Assert.That(brain.State, Is.EqualTo(MonsterStateId.Chase));
             Assert.That(brain.LineOfSightBrokenSeconds, Is.EqualTo(0f).Within(MathX.Epsilon),
@@ -626,17 +626,17 @@ namespace HorrorGame.Core.Tests
             var world = new OpenRoom();
             var brain = ChasingBrain(world, out _);
 
-            brain.Stun(GameConstants.FlashStunSeconds);
-            Advance(brain, GameConstants.FlashStunSeconds * 0.5f, Input());
-            brain.Stun(GameConstants.FlashStunSeconds);
+            brain.Stun(GameConstants.MonsterStunSeconds);
+            Advance(brain, GameConstants.MonsterStunSeconds * 0.5f, Input());
+            brain.Stun(GameConstants.MonsterStunSeconds);
 
             Assert.That(brain.StunSecondsRemaining,
-                Is.EqualTo(GameConstants.FlashStunSeconds).Within(GameConstants.FixedStep),
+                Is.EqualTo(GameConstants.MonsterStunSeconds).Within(GameConstants.FixedStep),
                 "Two Flashers must not be able to chain the monster indefinitely.");
 
-            brain.Stun(GameConstants.FlashStunSeconds * 0.25f);
+            brain.Stun(GameConstants.MonsterStunSeconds * 0.25f);
             Assert.That(brain.StunSecondsRemaining,
-                Is.EqualTo(GameConstants.FlashStunSeconds).Within(GameConstants.FixedStep),
+                Is.EqualTo(GameConstants.MonsterStunSeconds).Within(GameConstants.FixedStep),
                 "A shorter flash during a longer one changes nothing.");
         }
 
@@ -648,7 +648,7 @@ namespace HorrorGame.Core.Tests
             var brain = NewBrain(world);
 
             brain.Stun(0f);
-            brain.Stun(-GameConstants.FlashStunSeconds);
+            brain.Stun(-GameConstants.MonsterStunSeconds);
 
             Assert.That(brain.IsStunned, Is.False);
         }
@@ -804,7 +804,13 @@ namespace HorrorGame.Core.Tests
             // In range as the crow flies, but quieter than the distance it must carry.
             var faint = new[]
             {
-                new MonsterSoundCue(new Vec3(0f, 0f, GameConstants.MapExtent), GameConstants.GhostRattleRange),
+                // Was GhostRattleRange (4 m) borrowed as a loudness — the rattle is
+                // deleted, and it was never a noise level anyway. What is under test is
+                // a cue too quiet to carry the distance, so it is stated as one: a
+                // crouched landing, the quietest thing the race actually makes.
+                new MonsterSoundCue(
+                    new Vec3(0f, 0f, GameConstants.MapExtent),
+                    GameConstants.PlayerLandingNoiseLevel * GameConstants.CrouchNoiseMultiplier),
             };
 
             Advance(brain, 1f, Input().WithSounds(faint));

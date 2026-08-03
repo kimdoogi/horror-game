@@ -113,7 +113,7 @@ namespace HorrorGame.Gameplay.Monster
 
         [Header("Events")]
         [SerializeField]
-        [Tooltip("§04's flash — monster_stun_01..02, authored to FlashStunSeconds.")]
+        [Tooltip("§04's flash — monster_stun_01..02, authored to MonsterStunSeconds.")]
         private MonsterStateCue _stunned = new MonsterStateCue();
 
         [SerializeField]

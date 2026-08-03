@@ -7,7 +7,6 @@ using System.Text;
 using HorrorGame.Core;
 using HorrorGame.Core.Map;
 using HorrorGame.Core.Math;
-using HorrorGame.Core.Roles;
 using HorrorGame.Core.Session;
 using HorrorGame.Net;
 using HorrorGame.Net.Host;
@@ -147,15 +146,29 @@ namespace HorrorGame.Tests.PlayMode.Net
         }
 
         // ------------------------------------------------------------------
-        // §11 — four players, five roles, exactly one absent
+        // §11 — the seats, and only the seats
         // ------------------------------------------------------------------
 
         /// <summary>
-        /// §11's structure, enforced by the core and replicated by the lobby: four
-        /// seats take four distinct roles and exactly one of §04's five is left over.
+        /// The lobby seats players and refuses one too many. That is the whole of what
+        /// it decides now.
+        /// <para>
+        /// REPLACES TheLobbySeatsFourOfFiveRolesAndLeavesExactlyOneAbsent and
+        /// TwoPlayersCannotTakeTheSameRole. Both were about §04's five 직업 — that four
+        /// seats took four distinct ones and the fifth's absence "became the match's
+        /// character", and that a duplicate claim was refused. §04 v1.1 deleted 직업:
+        /// 「캐릭터는 다 똑같이 생겨도되지」. Twenty identical runners have nothing to
+        /// claim and nothing to duplicate.
+        /// </para>
+        /// <para>
+        /// The readiness assertion below is not decoration. <c>ServerSetReady</c> gated
+        /// readiness on <c>seat.Role != RoleId.None</c>, and with roles deleted every
+        /// seat held None for ever — so a lobby that compiled fine could never start a
+        /// race. This is the test that would have caught that.
+        /// </para>
         /// </summary>
         [UnityTest]
-        public IEnumerator TheLobbySeatsFourOfFiveRolesAndLeavesExactlyOneAbsent()
+        public IEnumerator TheLobbySeatsPlayersAndARunnerCanReadyWithoutPickingAnything()
         {
             NetworkServer.Listen(GameConstants.PlayersPerMatch);
 
@@ -163,66 +176,34 @@ namespace HorrorGame.Tests.PlayMode.Net
             yield return null;
 
             Assert.That(lobby.Seats.Count, Is.EqualTo(GameConstants.PlayersPerMatch));
-            Assert.That(GameConstants.RoleCount - GameConstants.PlayersPerMatch, Is.EqualTo(1),
-                "§11's whole premise is that exactly one role is missing.");
 
-            var picks = new[] { RoleId.Listener, RoleId.Observer, RoleId.Runner, RoleId.Engineer };
-            for (var i = 0; i < picks.Length; i++)
+            var conns = new NetworkConnectionToClient[GameConstants.PlayersPerMatch];
+            for (var i = 0; i < conns.Length; i++)
             {
-                var conn = new NetworkConnectionToClient(10 + i) { isAuthenticated = true };
-                NetworkServer.AddConnection(conn);
+                conns[i] = new NetworkConnectionToClient(10 + i) { isAuthenticated = true };
+                NetworkServer.AddConnection(conns[i]);
 
-                var seat = lobby.TrySeat(conn.connectionId, "Player" + i);
-                Assert.That(seat, Is.EqualTo(i));
-
-                lobby.ServerClaimRole(conn, picks[i]);
+                Assert.That(lobby.TrySeat(conns[i].connectionId, "Player" + i), Is.EqualTo(i));
             }
 
-            Assert.That(lobby.LineupComplete, Is.True);
-            Assert.That(
-                lobby.MissingRole,
-                Is.EqualTo(RoleId.Flasher),
-                "Four roles claimed leaves §04's fifth on the table, and §11 makes that absence the match's "
-                + "character.");
+            Assert.That(lobby.ServerSetReady(conns[0], true), Is.True);
+            Assert.That(lobby.Seats[0].Ready, Is.True,
+                "a runner readied up without picking anything, because there is nothing to pick. If this "
+                + "fails, readiness is still gated on a §04 role and no race can ever start.");
 
-            // DELETED with §08: the 돈으로 메우기 assertion. §11 let a party that was one
-            // role short buy the gap shut — 섬광수's absence covered by a 조명탄 off the
-            // shop shelf. There is no currency and no shelf.
+            Assert.That(lobby.EveryoneReady, Is.False, "three seats have not readied.");
 
-            // A fifth arrival has nowhere to sit. §11 fixes the party at four.
-            var fifth = new NetworkConnectionToClient(99) { isAuthenticated = true };
-            NetworkServer.AddConnection(fifth);
-            Assert.That(lobby.TrySeat(fifth.connectionId, "Fifth"), Is.EqualTo(-1));
-        }
+            for (var i = 1; i < conns.Length; i++)
+            {
+                lobby.ServerSetReady(conns[i], true);
+            }
 
-        /// <summary>
-        /// §11 forbids duplicates: two 정비공 would leave two roles absent and the
-        /// "5개 중 4개" structure would stop holding.
-        /// </summary>
-        [UnityTest]
-        public IEnumerator TwoPlayersCannotTakeTheSameRole()
-        {
-            NetworkServer.Listen(GameConstants.PlayersPerMatch);
+            Assert.That(lobby.EveryoneReady, Is.True);
 
-            var lobby = SpawnLobby();
-            yield return null;
-
-            var first = new NetworkConnectionToClient(21) { isAuthenticated = true };
-            var second = new NetworkConnectionToClient(22) { isAuthenticated = true };
-            NetworkServer.AddConnection(first);
-            NetworkServer.AddConnection(second);
-
-            lobby.TrySeat(first.connectionId, "A");
-            lobby.TrySeat(second.connectionId, "B");
-
-            lobby.ServerClaimRole(first, RoleId.Engineer);
-            Assert.That(lobby.ServerClaimRole(second, RoleId.Engineer), Is.False);
-
-            Assert.That(lobby.Seats[0].Role, Is.EqualTo(RoleId.Engineer));
-            Assert.That(
-                lobby.Seats[1].Role,
-                Is.EqualTo(RoleId.None),
-                "§11 allows no duplicates — the second claim must simply fail, leaving that player to choose again.");
+            // One too many has nowhere to sit.
+            var extra = new NetworkConnectionToClient(99) { isAuthenticated = true };
+            NetworkServer.AddConnection(extra);
+            Assert.That(lobby.TrySeat(extra.connectionId, "Extra"), Is.EqualTo(-1));
         }
 
         // ------------------------------------------------------------------

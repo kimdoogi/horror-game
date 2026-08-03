@@ -1,15 +1,14 @@
 #nullable enable
 
+using System.Collections.Generic;
 using System.Globalization;
-using HorrorGame.Audio;
 using HorrorGame.Core;
 using HorrorGame.Core.Ghost;
 using HorrorGame.Core.Monster;
-using HorrorGame.Gameplay.Audio;
 using HorrorGame.Gameplay.Interaction;
 using HorrorGame.Gameplay.Monster;
 using HorrorGame.Gameplay.Player;
-using HorrorGame.UI;
+using HorrorGame.Gameplay.Race;
 using HorrorGame.UI.Screens;
 using HorrorGame.UI.Shell;
 using UnityEngine;
@@ -18,53 +17,73 @@ using UnityEngine.InputSystem;
 namespace HorrorGame.Gameplay.Ghost
 {
     /// <summary>
-    /// The match seen from a dead player's seat. §09 — 사망 처리 — 유령.
+    /// The race seen from an eliminated runner's seat. §09 — 탈락 처리 — 유령.
     /// <para>
-    /// <b>What this class is for.</b> §09's rules were already written — <c>GhostState</c>
-    /// holds them, <c>GhostFreeCamera</c> flies, <c>GhostOverlay</c> draws — and nothing
-    /// connected them, so a solo death went straight to §02's 패배 screen and the section
-    /// did not exist in the game. This is the connection: it takes the body's camera away
-    /// from the living rig, gives it to the ghost, and drives §09's one verb.
+    /// <b>What this class is for.</b> §02 says 「잡힌다 → 탈락. 순위 없음」 and then says
+    /// the match does not stop; §09 says the eliminated runner watches the rest of it.
+    /// This is that seat: it takes the body's camera away from the living rig, gives it
+    /// to the ghost, and lets the ghost choose where in the building to watch from.
     /// </para>
     /// <para>
-    /// <b>Four restrictions, and each is held by construction rather than by a check.</b>
+    /// <b>삭제됨 — 신호(흔들기).</b> §09's table gave the ghost one outbound verb: shake a
+    /// nearby object, 45 s cooldown. That was a co-operative consolation — a dead
+    /// teammate who could still warn three living ones kept a four-player team whole —
+    /// and it does not survive the race. Four reasons, in the design's own words:
     /// </para>
-    /// <list type="bullet">
+    /// <list type="number">
     /// <item><description>
-    /// <b>말하기: 불가능.</b> There is no outbound path here of any kind — no channel
-    /// opened, none closed, no key that would have transmitted. Core's <c>GhostState</c>
-    /// has no method that accepts a message and <c>PlayerState.MayTransmitVoice</c> is
-    /// already false for the dead; this class adds nothing that could be un-gated. §13
-    /// settles the alternative for anyone who would rather gate it at the receiver:
-    /// cutting a channel at the receiver is not cutting it.
+    /// §11 already forbids it in one sentence — 「살아 있는 사람에게 개입할 수 없다 —
+    /// 경주에서 죽은 사람이 산 사람을 도우면 그건 팀이다」. §09's own note argued the
+    /// rattle was harmless because 「유령에게는 그럴 이유가 딱히 없다」, which is a claim
+    /// about <em>motive</em>. A design can only control capability. The field is a Steam
+    /// lobby (<see cref="RaceParty"/>) — twenty people who queued together — so the
+    /// moment two of them are friends, the motive is there.
     /// </description></item>
     /// <item><description>
-    /// <b>탈출: 불가능.</b> Nothing here calls <c>MatchState.TryExtract</c>, and it would
-    /// be refused if it did — <c>PlayerState.Extract</c> takes only a player standing on
-    /// the surface, and a ghost stands in <c>PlayerStanding.Dead</c> for the rest of the
-    /// match. <see cref="TryEndTheMatch"/> shows §02's verdict; it does not change it, and
-    /// it does nothing at all while anybody is still alive.
+    /// It writes to the one channel the race reads. §12 makes 「소리 → 바닥 재질이
+    /// 지도다」 and the pivot keeps 발소리 · 폐색 precisely so that 「남의 위치를 소리로
+    /// 안다」. In this game position <em>is</em> sound. A placed noise from a ghost is a
+    /// forged footstep, and it is placed by the one entity in the match with 맵 전체
+    /// 시야. §09 bans speech because 「죽은 사람이 정보를 주면 경주가 망가진다」; a
+    /// coordinate is information whether it arrives as a word or as a bang.
     /// </description></item>
     /// <item><description>
-    /// <b>신호: 쿨타임 45초.</b> The cooldown is Core's and is ticked by
-    /// <c>MatchState.Tick</c> off the host's fixed step. This class never writes it: it
-    /// calls <c>GhostState.TryRattle</c> and does what it is told, so a rattle cannot be
-    /// bought by a long frame or a dropped one.
+    /// The 45 s was priced for at most three ghosts. §11's design target is 11~20
+    /// runners, and a race thins: ten ghosts at minute eight is one free noise somewhere
+    /// in the building every 4.5 s, and they will cluster where the race is being
+    /// decided — §11's 마지막 관문 하나. There is no cooldown that makes nineteen
+    /// transmitters quiet, because the problem scales with the field and the cooldown
+    /// does not.
     /// </description></item>
     /// <item><description>
-    /// <b>시야: 맵 전체 (벽 통과).</b> The camera is unparented from the rig and driven
-    /// directly, with no collider and no cast. See <see cref="GhostViewGrade"/> for why
-    /// the picture is lifted with exposure rather than with a light.
+    /// It reverses 탈락. §02: 「탈락에는 순위가 없다. 이것이 완주와 탈락을 가르는
+    /// 전부다」. The point of unranked is that being caught takes you out of the result;
+    /// a verb that lets the eliminated nudge somebody else's place puts them back into
+    /// everyone's result but their own. <c>MatchDirector.EnterGhost</c> reached the same
+    /// verdict and wrote down that the rattle was this file's to delete.
     /// </description></item>
     /// </list>
     /// <para>
-    /// <b>Solo is a special case of the four-player rule, not a mode.</b> Everything here
-    /// is written per seat: it binds the local player's own <c>GhostState</c>, forgets
-    /// that seat as a target for §06, and asks the host whether §02 has finished. With
-    /// three teammates alive §02 has not finished, so the ghost simply watches — which is
-    /// the section as designed. With nobody left it has, and the ghost is offered the end
-    /// screen instead of being thrown at it. No branch in this file asks how many people
-    /// are playing.
+    /// <b>What replaced it, and why the seat is not simply deleted.</b> 「탈락하면
+    /// 지루하다」 is worse in a race than it ever was in co-op: the first runner caught
+    /// can be caught two minutes into a twenty-minute match, and §02 keeps that match
+    /// running without them. But free flight alone is not 「할 게 있다」 in an unlit
+    /// eight-storey tower with no map — a spectator who cannot find anything is a
+    /// spectator watching corridors. So the one key is now a <em>cut</em>: it moves the
+    /// camera between the places the race is decided — every creature in the building
+    /// (§14's Q1, 「추격이 재밌는가?」, which has no other instrument in a build) and B8's
+    /// 도착점 (§02's only question) — and the ghost's own body, which is the one address
+    /// in the tower that is theirs. Nothing it does reaches a living runner. It moves no
+    /// object and plays no sound: after §09 takes the seat, this player is silent in the
+    /// world for the rest of the match, by construction rather than by a check.
+    /// </para>
+    /// <para>
+    /// <b>Solo is a special case of the twenty-player rule, not a mode.</b> Everything
+    /// here is written per seat: it binds the local player's own <c>GhostState</c>,
+    /// forgets that seat as a target for §06, and asks the host whether §02 has finished.
+    /// While anybody is still running §02 has not finished, so the ghost simply watches.
+    /// With nobody left it has, and the ghost is offered the end screen instead of being
+    /// thrown at it. No branch in this file asks how many people are playing.
     /// </para>
     /// </summary>
     [DisallowMultipleComponent]
@@ -74,12 +93,13 @@ namespace HorrorGame.Gameplay.Ghost
         /// <summary>
         /// §09's one verb, on the key the player already learned. Reusing
         /// <c>PlayerInteractor.InteractKey</c> rather than inventing a binding: the ghost
-        /// has exactly one thing it can do to the world and it is the same gesture —
-        /// look at a thing, press the key — that picked up every 전리품 it ever carried.
+        /// has exactly one thing it can do and it is the same gesture — press the key,
+        /// something happens to what you are looking at — that opened every 문 it ever
+        /// went through. It no longer touches the world; it moves the eye.
         /// </summary>
-        public const Key RattleKey = PlayerInteractor.InteractKey;
+        public const Key WatchKey = PlayerInteractor.InteractKey;
 
-        /// <summary>Rise. §09's ghost leaves a storey by going up through it rather than by finding a stairwell.</summary>
+        /// <summary>Rise. §09's ghost leaves a storey by going up through it rather than by finding a 투하구.</summary>
         public const Key AscendKey = Key.Space;
 
         /// <summary>Sink.</summary>
@@ -90,64 +110,88 @@ namespace HorrorGame.Gameplay.Ghost
 
         /// <summary>
         /// Ask for §02's verdict once it has been reached. Held rather than pressed, and
-        /// deliberately nowhere near <see cref="RattleKey"/>: <c>MatchDirector</c>'s own
-        /// note on 탈출 says binding a terminal decision to a single press "would let one
-        /// mistimed keystroke end four people's match."
+        /// deliberately nowhere near <see cref="WatchKey"/>: <c>MatchDirector</c>'s own
+        /// note on the end of a match says binding a terminal decision to a single press
+        /// "would let one mistimed keystroke end four people's match."
         /// </summary>
         public const Key EndMatchKey = Key.Enter;
 
         /// <summary>
         /// How long <see cref="EndMatchKey"/> must be held, seconds.
         /// <para>
-        /// <c>GameConstants.ClueReadSeconds</c> rather than a number of this file's own:
-        /// §03 already decided how long this game makes a player hold something to prove
-        /// they meant it, and a second answer to that question would be a second feel.
+        /// <b>What the hold is for.</b> It is the only exit from §09 — 복귀: 불가능, and
+        /// the match does not restart — so the press has to be a decision rather than a
+        /// keystroke. Nothing else about it is a feel question: the ghost is not moving,
+        /// nothing is chasing it, and the standings on the other side of the key are
+        /// already final.
+        /// </para>
+        /// <para>
+        /// <b>What decides the number.</b> <c>GameConstants.DoorShutSeconds</c> — 1.1 s,
+        /// §12-B. That is the interval this game has already decided is long enough to
+        /// mean it: the beat a runner stands still for to shut a 관문 they can never
+        /// re-open. Committing to something irreversible while standing still is the same
+        /// act here, and a second answer to it would be a second feel.
+        /// </para>
+        /// <para>
+        /// It used to read <c>GameConstants.ClueReadSeconds</c>. §03's clue chain is gone,
+        /// and a race feature quoting a deleted system's constant is how the constant
+        /// survives the system.
         /// </para>
         /// </summary>
         public static float EndMatchHoldSeconds
         {
-            get { return GameConstants.ClueReadSeconds; }
+            get { return GameConstants.DoorShutSeconds; }
         }
 
         /// <summary>
-        /// §09's whole control scheme in one line, for a player who has never been dead
-        /// before. Built from the key constants above rather than typed out, so a rebind
-        /// cannot leave the overlay lying.
+        /// §09's whole control scheme in one line, for a player who has never been
+        /// eliminated before. Built from the key constants above rather than typed out,
+        /// so a rebind cannot leave the overlay lying.
         /// </summary>
         public static string KeyLegend
         {
             get
             {
                 return "WASD 이동 · " + AscendKey + "/" + DescendKey + " 상하 · "
-                       + BoostKey + " 가속 · " + RattleKey + " 신호";
+                       + BoostKey + " 가속 · " + WatchKey + " 시점";
             }
         }
 
         /// <summary>
-        /// How far a rattled object visibly moves, metres.
+        /// How far a watched subject is framed from, metres.
         /// <para>
-        /// §09 says 아주 약하게 — the point of the scene is that the living are not sure
-        /// («바람이겠지»), so a shove would be the wrong signal as surely as no movement
-        /// at all. A centimetre for a third of a second is a drawing amplitude, not a
-        /// tuned value; it is what <c>Interactable.FloorClearanceMetres</c> is to a
-        /// dropped piece.
+        /// <c>GameConstants.MonsterSightRange</c> — 20 m, §06's own reach. The frame is
+        /// therefore exactly the danger: a runner who appears at the edge of the shot is
+        /// a runner entering the radius inside which §06 can see them. A spectator
+        /// distance chosen for looks would have had to be tuned against the map; this one
+        /// is read off the only circle the design draws around a creature.
         /// </para>
         /// </summary>
-        private const float RattleShakeMetres = 0.01f;
+        private const float WatchStandOffMetres = GameConstants.MonsterSightRange;
 
-        /// <summary>Seconds the shake lasts. See <see cref="RattleShakeMetres"/>.</summary>
-        private const float RattleShakeSeconds = 0.35f;
+        /// <summary>
+        /// Height the shot sits at above the subject's feet, metres.
+        /// <para>
+        /// The standing eye height every rig and capture tool in this project uses. The
+        /// chase is watched from the height of the person being chased — an overhead
+        /// vantage would show a maze solved, which is the one thing §12 spends its whole
+        /// rule set making impossible to see.
+        /// </para>
+        /// </summary>
+        private const float WatchEyeHeightMetres = 1.63f;
 
-        /// <summary>Colliders one rattle search may consider. A ceiling on the work, not on the rule.</summary>
-        private const int OverlapBudget = 64;
+        /// <summary>
+        /// Not watching anything — free flight. §09's default and the state a ghost
+        /// returns to by pressing a movement key.
+        /// </summary>
+        private const int FreeFlight = -1;
 
-        private readonly Collider[] _overlap = new Collider[OverlapBudget];
+        private readonly List<Vantage> _vantages = new List<Vantage>();
 
         private GhostState? _ghost;
         private GhostFreeCamera? _fly;
         private GhostOverlay? _overlay;
         private GhostViewGrade? _grade;
-        private MatchAudioRig? _audio;
         private MonsterAgent? _monster;
 
         private Camera? _eye;
@@ -170,39 +214,43 @@ namespace HorrorGame.Gameplay.Ghost
         private bool _restoreViewMotion;
         private bool _restoreInteractor;
 
-        private GhostRattleTarget _target;
-        private Transform? _shaking;
-        private Vector3 _shakeOrigin;
-        private float _shakeRemaining;
+        private int _vantage = FreeFlight;
         private float _endHeld;
         private bool _verdictReached;
-        private bool _wasReadyToRattle = true;
 
-        /// <summary>Whether the local player is dead and flying. §09.</summary>
+        /// <summary>Whether the local player is eliminated and flying. §09.</summary>
         public bool IsActive
         {
             get { return _ghost != null; }
         }
 
-        /// <summary>The dead player's core state, or null while they are alive.</summary>
+        /// <summary>The eliminated player's core state, or null while they are still running.</summary>
         public GhostState? Ghost
         {
             get { return _ghost; }
         }
 
         /// <summary>
-        /// The 물건 the ghost is beside as of the last frame, or
-        /// <see cref="GhostRattleTarget.None"/>. Call <see cref="LookForSomethingToShake"/>
-        /// if the ghost has just been moved by something other than a frame.
+        /// What the camera is locked onto, or <see cref="string.Empty"/> in free flight.
+        /// The overlay and the capture rig both read it; nothing acts on it.
         /// </summary>
-        public GhostRattleTarget Target
+        public string WatchLabel
         {
-            get { return _target; }
+            get
+            {
+                return _vantage >= 0 && _vantage < _vantages.Count ? _vantages[_vantage].Label : string.Empty;
+            }
+        }
+
+        /// <summary>Whether a vantage is holding the camera rather than the player flying it.</summary>
+        public bool IsWatching
+        {
+            get { return _vantage != FreeFlight; }
         }
 
         /// <summary>
         /// Whether §02 has reached a verdict that is waiting on this ghost. False while
-        /// anybody is still in play, which is the four-player case and needs no branch.
+        /// anybody is still in play, which needs no branch.
         /// </summary>
         public bool VerdictIsWaiting
         {
@@ -232,8 +280,8 @@ namespace HorrorGame.Gameplay.Ghost
         /// </para>
         /// </summary>
         /// <param name="ghost">The core state minted by <c>MatchState.TryKill</c>.</param>
-        /// <param name="bodyRoot">The dead player's rig, so a ghost cannot rattle its own corpse.</param>
-        /// <param name="monster">§06's antagonist, for the watch readout. Optional.</param>
+        /// <param name="bodyRoot">The eliminated runner's rig — the ghost's own address in the building.</param>
+        /// <param name="monster">The creature on the storey they were caught on, for the watch readout. Optional.</param>
         /// <returns>False when there is no camera to fly, in which case nothing was changed.</returns>
         public bool Begin(GhostState ghost, Transform? bodyRoot, MonsterAgent? monster)
         {
@@ -250,20 +298,21 @@ namespace HorrorGame.Gameplay.Ghost
             if (eye == null)
             {
                 Debug.LogError(
-                    "[Ghost] §09 needs a camera to fly and the player rig has none, so the death "
-                    + "would have been a black screen. The match was left alive.", this);
+                    "[Ghost] §09 needs a camera to fly and the player rig has none, so 탈락 "
+                    + "would have been a black screen. The race was left running.", this);
                 return false;
             }
 
             _ghost = ghost;
             _verdictReached = false;
             _endHeld = 0f;
-            _wasReadyToRattle = ghost.CanRattle;
+            _vantage = FreeFlight;
+            _vantages.Clear();
 
             SuppressTheLiving(true);
 
             // Where the eye already is, so §09's best seconds — the ones right after it
-            // watched the thing that killed it — are not thrown away by a respawn snap.
+            // watched the thing that caught it — are not thrown away by a camera snap.
             var from = eye.transform.position;
             var facing = eye.transform.rotation;
 
@@ -274,21 +323,20 @@ namespace HorrorGame.Gameplay.Ghost
 
             Fly.Bind(ghost, eye, from, facing);
             Overlay.Bind(ghost);
-            Overlay.SetKeys(RattleKey.ToString(), EndMatchKey.ToString(), KeyLegend);
+            Overlay.SetKeys(WatchKey.ToString(), EndMatchKey.ToString(), KeyLegend);
             _grade = GhostViewGrade.Raise(transform);
 
             Debug.Log(
-                "[Ghost] §09 유령 — 몸은 " + ghost.DeathPosition.ToVector3().ToString("F1", CultureInfo.InvariantCulture)
-                + "에 남았다. 말할 수 없고 나갈 수 없다. ["
-                + RattleKey + "] 신호 · 쿨타임 "
-                + GameConstants.GhostRattleCooldownSeconds.ToString("0", CultureInfo.InvariantCulture) + "초.", this);
+                "[Ghost] §09 탈락 — 몸은 " + ghost.DeathPosition.ToVector3().ToString("F1", CultureInfo.InvariantCulture)
+                + "에 남았다. 순위 없음, 말할 수 없고 나갈 수 없다. ["
+                + WatchKey + "] 시점 전환 · 경주는 계속된다.", this);
 
             return true;
         }
 
         /// <summary>
         /// Gives the camera back and stops drawing. Called when the match ends or a new
-        /// one is laid out; §09 has no other exit — 탈출: 불가능.
+        /// one is laid out; §09 has no other exit — 복귀: 불가능.
         /// </summary>
         public void End()
         {
@@ -298,10 +346,10 @@ namespace HorrorGame.Gameplay.Ghost
             }
 
             _ghost = null;
-            _target = GhostRattleTarget.None;
             _verdictReached = false;
             _endHeld = 0f;
-            EndShake();
+            _vantage = FreeFlight;
+            _vantages.Clear();
 
             _fly?.Unbind();
             _overlay?.Unbind();
@@ -341,20 +389,54 @@ namespace HorrorGame.Gameplay.Ghost
         }
 
         /// <summary>
-        /// Searches now and returns what it found. <see cref="Update"/> calls this every
-        /// frame; a test or a capture rig that has just flown the ghost somewhere has to
-        /// call it itself, because neither of those runs frames.
+        /// Cuts to the next vantage, wrapping through free flight. §09's one verb.
+        /// <para>
+        /// Public so a test or a capture rig can press it without a keyboard, and because
+        /// the shape of it is the balance argument: it takes no argument, returns no
+        /// handle on anything in the world, and the only thing it writes is this
+        /// component's own camera. There is no overload that touches a 물건.
+        /// </para>
+        /// <para>
+        /// The list is rebuilt on every press rather than cached. A creature can be
+        /// destroyed, a storey's creature can be spawned late, and §02's 도착점 is bound
+        /// after the map is laid out — a spectator holding a stale list would cut to a
+        /// hole in the building.
+        /// </para>
         /// </summary>
-        public GhostRattleTarget LookForSomethingToShake()
+        /// <returns>False when there is no ghost, in which case nothing moved.</returns>
+        public bool CutToNextVantage()
         {
-            RefreshTarget();
-            return _target;
+            var ghost = _ghost;
+            if (ghost == null)
+            {
+                return false;
+            }
+
+            CollectVantages();
+
+            // Free flight is the wrap point rather than an entry in the list, so the key
+            // always returns the camera to the player rather than trapping it in a
+            // carousel of shots.
+            _vantage = _vantage + 1 >= _vantages.Count ? FreeFlight : _vantage + 1;
+
+            if (_vantage == FreeFlight)
+            {
+                Debug.Log("[Ghost] §09 시점 — 자유 비행.", this);
+                return true;
+            }
+
+            HoldTheShot();
+
+            Debug.Log(
+                "[Ghost] §09 시점 — " + _vantages[_vantage].Label
+                + ". 경주에는 아무것도 하지 않는다.", this);
+
+            return true;
         }
 
         /// <summary>
         /// Re-reads the world and redraws §09's overlay. Everything <see cref="Update"/>
-        /// pushes into it — the 물건 under the verb, §06's state, §02's offer — and then
-        /// the overlay's own draw.
+        /// pushes into it — §06's state, §02's offer — and then the overlay's own draw.
         /// <para>
         /// Public for the same reason <c>GhostOverlay.Redraw</c> is: outside play mode
         /// neither <c>Update</c> nor <c>LateUpdate</c> fires, so a capture rig that did
@@ -365,71 +447,13 @@ namespace HorrorGame.Gameplay.Ghost
         /// </summary>
         public void DrawOverlay()
         {
-            RefreshTarget();
             DrawTheWatch();
             _overlay?.Redraw();
         }
 
         /// <summary>
-        /// Shakes whatever the ghost is beside. §09's 신호 row, and the only thing that
-        /// leaves a ghost.
-        /// <para>
-        /// Public so a test can press the verb without a keyboard, and because the shape
-        /// of it is the balance argument: it takes no argument and returns a
-        /// <c>GhostRattle</c>, which carries a place and nothing else. There is no
-        /// overload that takes a payload.
-        /// </para>
-        /// </summary>
-        public bool TryRattle(out GhostRattle rattle)
-        {
-            var ghost = _ghost;
-            if (ghost == null)
-            {
-                rattle = new GhostRattle(false, Vector3.zero.ToVec3(), 0f, 0f, GhostSignalFailure.OutOfRange);
-                return false;
-            }
-
-            RefreshTarget();
-
-            var target = _target;
-            if (!target.Found)
-            {
-                // Nothing to shake is 너무 멀다 from the player's side: §09 splits the two
-                // failures because only this one is worth drifting somewhere to fix.
-                rattle = new GhostRattle(
-                    false, ghost.Position, float.PositiveInfinity, ghost.RattleCooldownRemaining,
-                    ghost.CanRattle ? GhostSignalFailure.OutOfRange : GhostSignalFailure.OnCooldown);
-                _overlay?.NoteRattle(rattle);
-                return false;
-            }
-
-            var landed = ghost.TryRattle(target.Position.ToVec3(), out rattle);
-            _overlay?.NoteRattle(rattle);
-
-            if (!landed)
-            {
-                return false;
-            }
-
-            // The living end of §09. Positional, on the world bus, at the object rather
-            // than at the ghost — the whole scene is somebody in another room turning
-            // round and asking 「방금 뭔가 흔들렸어?」, and a sound that arrived at the
-            // ghost would not put them in the right room.
-            Audio?.PlayAt(AudioCueId.GhostRattle, target.Position);
-            BeginShake(target);
-
-            Debug.Log(
-                "[Ghost] §09 신호 — " + target.Label + " at "
-                + target.Position.ToString("F1", CultureInfo.InvariantCulture)
-                + ", 다음 신호까지 " + GameConstants.GhostRattleCooldownSeconds.ToString("0", CultureInfo.InvariantCulture)
-                + "초. 말할 수는 없다.", this);
-
-            return true;
-        }
-
-        /// <summary>
         /// Asks for §02's already-decided verdict. Refused while §02 is still counting,
-        /// which is what makes this safe in a four-player match: three living teammates
+        /// which is what makes this safe in a twenty-player race: nineteen living runners
         /// mean there is no verdict to ask for.
         /// </summary>
         /// <returns>False when nothing was waiting.</returns>
@@ -457,19 +481,17 @@ namespace HorrorGame.Gameplay.Ghost
                 return;
             }
 
-            var delta = Time.unscaledDeltaTime;
-            AdvanceShake(delta);
-
             if (MatchPause.IsPaused)
             {
                 // A paused match must not be flown through. MatchPause stops the host's
-                // FixedUpdate, so the 45 s is not running either and a rattle taken here
-                // would be free.
+                // FixedUpdate, so §06 is frozen and a shot taken here would be a
+                // photograph rather than a watch.
                 return;
             }
 
+            var delta = Time.unscaledDeltaTime;
+
             DriveTheCamera(delta);
-            RefreshTarget();
             ReadTheKeys(delta);
             DrawTheWatch();
 
@@ -477,7 +499,7 @@ namespace HorrorGame.Gameplay.Ghost
         }
 
         // ------------------------------------------------------------------
-        // Flying.
+        // Flying, and the shots that hold the camera instead.
         // ------------------------------------------------------------------
 
         private void DriveTheCamera(float deltaSeconds)
@@ -494,6 +516,23 @@ namespace HorrorGame.Gameplay.Ghost
                     Axis(keyboard, Key.W, Key.S) + Axis(keyboard, Key.UpArrow, Key.DownArrow));
             }
 
+            if (_vantage != FreeFlight)
+            {
+                if (move.sqrMagnitude > 0f)
+                {
+                    // Touching the stick releases the shot, from exactly where the shot
+                    // was. The alternative — a second key to let go — is a control a
+                    // spectator has to be taught; this one teaches itself the first time
+                    // somebody presses W.
+                    _vantage = FreeFlight;
+                }
+                else
+                {
+                    HoldTheShot();
+                    return;
+                }
+            }
+
             var look = mouse != null ? mouse.delta.ReadValue() : Vector2.zero;
             var boost = keyboard != null && keyboard[BoostKey].isPressed;
 
@@ -505,8 +544,82 @@ namespace HorrorGame.Gameplay.Ghost
             return (keyboard[positive].isPressed ? 1f : 0f) - (keyboard[negative].isPressed ? 1f : 0f);
         }
 
+        /// <summary>
+        /// Puts the camera on the current vantage for this frame.
+        /// <para>
+        /// Written through <c>GhostFreeCamera.Bind</c> rather than onto the transform,
+        /// because the free camera keeps its own yaw and pitch: a shot that moved the
+        /// transform behind its back would snap the view the instant the player pressed W
+        /// to take over. Bind is the documented way to hand it an explicit eye pose, and
+        /// a cut is exactly that.
+        /// </para>
+        /// </summary>
+        private void HoldTheShot()
+        {
+            var ghost = _ghost;
+            var eye = _eye;
+            if (ghost == null || eye == null || _vantage < 0 || _vantage >= _vantages.Count)
+            {
+                return;
+            }
+
+            var vantage = _vantages[_vantage];
+            var subject = vantage.Resolve();
+            if (!subject.HasValue)
+            {
+                // The creature was destroyed, or the storey it was on was torn down. Fall
+                // back to flying rather than to a shot of nothing.
+                _vantage = FreeFlight;
+                return;
+            }
+
+            var target = subject.Value + (Vector3.up * WatchEyeHeightMetres);
+            var approach = vantage.Approach(target, eye.transform.position);
+            var from = target + (approach * WatchStandOffMetres);
+
+            Fly.Bind(ghost, eye, from, Quaternion.LookRotation(target - from, Vector3.up));
+        }
+
+        /// <summary>
+        /// Rebuilds the list of places worth watching from. The order is the argument:
+        /// the creatures first because §14 says 「추격이 재밌는가?」 is the question that
+        /// decides this project, then §02's 도착점 because it is the only place the race
+        /// can actually end, then the ghost's own body last because it is the only one of
+        /// the three that is about the player rather than about the race.
+        /// </summary>
+        private void CollectVantages()
+        {
+            _vantages.Clear();
+
+            var creatures = FindObjectsByType<MonsterAgent>(FindObjectsSortMode.InstanceID);
+            for (var i = 0; i < creatures.Length; i++)
+            {
+                var creature = creatures[i];
+                if (creature == null)
+                {
+                    continue;
+                }
+
+                _vantages.Add(Vantage.Following(
+                    creature.transform,
+                    creatures.Length > 1 ? "괴물 " + (i + 1) : "괴물"));
+            }
+
+            var race = Race;
+            if (race != null && race.FinishFound)
+            {
+                _vantages.Add(Vantage.Fixed(race.Finish, "B8 도착점"));
+            }
+
+            var ghost = _ghost;
+            if (ghost != null)
+            {
+                _vantages.Add(Vantage.Fixed(ghost.DeathPosition.ToVector3(), "내 시신"));
+            }
+        }
+
         // ------------------------------------------------------------------
-        // §09's one verb, and the one request.
+        // §09's one request.
         // ------------------------------------------------------------------
 
         private void ReadTheKeys(float deltaSeconds)
@@ -517,24 +630,9 @@ namespace HorrorGame.Gameplay.Ghost
                 return;
             }
 
-            var ghost = _ghost;
-            if (ghost != null)
+            if (keyboard[WatchKey].wasPressedThisFrame)
             {
-                // The moment the 45 s runs out, said out loud. §09 makes the wait the
-                // experience; a wait whose end the player has to watch a bar for is a
-                // wait spent looking at a bar instead of at the building.
-                var ready = ghost.CanRattle;
-                if (ready && !_wasReadyToRattle)
-                {
-                    Audio?.Play(AudioCueId.GhostRattleReady);
-                }
-
-                _wasReadyToRattle = ready;
-            }
-
-            if (keyboard[RattleKey].wasPressedThisFrame)
-            {
-                TryRattle(out _);
+                CutToNextVantage();
             }
 
             if (!_verdictReached)
@@ -558,73 +656,6 @@ namespace HorrorGame.Gameplay.Ghost
             }
         }
 
-        private void RefreshTarget()
-        {
-            var ghost = _ghost;
-            if (ghost == null)
-            {
-                _target = GhostRattleTarget.None;
-                return;
-            }
-
-            _target = GhostRattleTarget.Find(
-                ghost.Position.ToVector3(),
-                _bodyRoot,
-                _monster != null ? _monster.transform : null,
-                _overlap);
-        }
-
-        private void BeginShake(GhostRattleTarget target)
-        {
-            EndShake();
-
-            if (!target.Movable || target.Body == null)
-            {
-                return;
-            }
-
-            _shaking = target.Body;
-            _shakeOrigin = target.Body.position;
-            _shakeRemaining = RattleShakeSeconds;
-        }
-
-        private void AdvanceShake(float deltaSeconds)
-        {
-            var shaking = _shaking;
-            if (shaking == null)
-            {
-                return;
-            }
-
-            _shakeRemaining -= deltaSeconds;
-            if (_shakeRemaining <= 0f)
-            {
-                EndShake();
-                return;
-            }
-
-            // A decaying wobble across the object's own axes. §09's 아주 약하게: the
-            // living have to be able to miss it, which is the whole of 「바람이겠지」.
-            var fade = Mathf.Clamp01(_shakeRemaining / RattleShakeSeconds);
-            var phase = (RattleShakeSeconds - _shakeRemaining) * 60f;
-            var offset = new Vector3(Mathf.Sin(phase), Mathf.Sin(phase * 0.7f) * 0.35f, Mathf.Cos(phase * 1.3f))
-                         * (RattleShakeMetres * fade);
-
-            shaking.position = _shakeOrigin + offset;
-        }
-
-        private void EndShake()
-        {
-            var shaking = _shaking;
-            if (shaking != null)
-            {
-                shaking.position = _shakeOrigin;
-            }
-
-            _shaking = null;
-            _shakeRemaining = 0f;
-        }
-
         // ------------------------------------------------------------------
         // What a ghost is given to look at.
         // ------------------------------------------------------------------
@@ -632,15 +663,20 @@ namespace HorrorGame.Gameplay.Ghost
         /// <summary>
         /// Pushes §06's state onto the overlay, as words rather than as objects.
         /// <para>
-        /// <b>Why the dead get the monster's state at all.</b> Two reasons, and the second
-        /// is why it is here rather than in an editor gizmo. §09 answers 죽으면 지루하다
-        /// with 볼 게 있고 할 게 있다, and a monster you can follow through five storeys is
-        /// the thing there is to watch. And it is free: the ghost cannot say a word about
-        /// what it sees, which is the same argument §09 uses to give it the whole map.
-        /// <c>MonsterDebugView</c> draws the same numbers with <c>Gizmos</c>, which exist
-        /// only in the editor and only when the monster is selected — so the one question
-        /// §14 says decides the project, 「추격이 재밌는가?」, could not be watched in a
-        /// build at all.
+        /// <b>Why the eliminated get the creature's state at all.</b> Two reasons, and the
+        /// second is why it is here rather than in an editor gizmo. §09 answers 탈락하면
+        /// 지루하다 with 볼 게 있고 할 게 있다, and a creature you can follow through eight
+        /// storeys is the thing there is to watch. And it is free: the ghost cannot say a
+        /// word about what it sees and cannot touch a thing it sees, which is the same
+        /// argument §09 uses to give it the whole map. <c>MonsterDebugView</c> draws the
+        /// same numbers with <c>Gizmos</c>, which exist only in the editor and only when
+        /// the creature is selected — so the one question §14 says decides the project,
+        /// 「추격이 재밌는가?」, could not be watched in a build at all.
+        /// </para>
+        /// <para>
+        /// The creature described is the one being watched, falling back to the one that
+        /// caught this player. A readout naming a different creature from the one in
+        /// frame is worse than no readout.
         /// </para>
         /// <para>
         /// Formatted here and handed over as strings so the UI assembly never learns what
@@ -657,10 +693,13 @@ namespace HorrorGame.Gameplay.Ghost
                 return;
             }
 
-            overlay.SetRattleTarget(_target.Found ? _target.Label : string.Empty, _target.Distance);
             overlay.SetVerdictWait(_verdictReached, EndMatchProgress01);
 
-            var monster = _monster;
+            // What the one key is currently holding. Empty while flying free, which is
+            // the state the ghost returns to on any movement key.
+            overlay.SetWatchSubject(WatchLabel);
+
+            var monster = WatchedCreature();
             if (monster == null)
             {
                 overlay.SetMonsterWatch(false, string.Empty, string.Empty, string.Empty);
@@ -689,7 +728,26 @@ namespace HorrorGame.Gameplay.Ghost
             overlay.SetMonsterWatch(true, state, where, clock);
         }
 
-        /// <summary>§06's five states in the document's own words. Not in <c>UiStrings</c> because no living screen shows them — §04's 관측자 sees a cone, not a label.</summary>
+        /// <summary>The creature in frame, or the one that caught this player when the camera is elsewhere.</summary>
+        private MonsterAgent? WatchedCreature()
+        {
+            if (_vantage >= 0 && _vantage < _vantages.Count)
+            {
+                var followed = _vantages[_vantage].Follow;
+                if (followed != null)
+                {
+                    var agent = followed.GetComponentInParent<MonsterAgent>();
+                    if (agent != null)
+                    {
+                        return agent;
+                    }
+                }
+            }
+
+            return _monster;
+        }
+
+        /// <summary>§06's five states in the document's own words. Not in <c>UiStrings</c> because no living screen shows them — a runner sees a silhouette, not a label.</summary>
         private static string StateName(MonsterStateId state)
         {
             switch (state)
@@ -762,7 +820,7 @@ namespace HorrorGame.Gameplay.Ghost
 
                 // The mouse stays captured while the ghost has it: §09's ghost flies with
                 // it, and a cursor that reappeared over the world would be the first
-                // thing a dead player did wrong.
+                // thing an eliminated player did wrong.
                 _input.LockCursor = suppressed || _restoreCursorLocked;
             }
 
@@ -788,9 +846,11 @@ namespace HorrorGame.Gameplay.Ghost
 
             if (_interactor != null)
             {
-                // §08's hands are empty and §03's crosshair belongs to the living. Left
+                // §12-B's doors belong to the living and so does the crosshair. Left
                 // running it would keep casting from a camera that is now somewhere else
-                // in the building and offering to pick things up through walls.
+                // in the building and offering to shut a 관문 through a wall — which is
+                // the single most direct way an eliminated runner could still decide
+                // somebody else's place.
                 _interactor.enabled = suppressed ? false : _restoreInteractor;
             }
         }
@@ -854,22 +914,116 @@ namespace HorrorGame.Gameplay.Ghost
             }
         }
 
-        private MatchAudioRig? Audio
+        /// <summary>
+        /// §02's rules, for the one thing a spectator wants from them: where the 도착점
+        /// is. Found rather than injected, the same way the audio rig used to be — the
+        /// ghost is a passenger in a race that was already running when it arrived, and a
+        /// constructor argument would make <c>MatchDirector</c> responsible for wiring a
+        /// camera position.
+        /// </summary>
+        private RaceDirector? Race
         {
-            get
-            {
-                if (_audio == null)
-                {
-                    _audio = FindFirstObjectByType<MatchAudioRig>();
-                }
-
-                return _audio;
-            }
+            get { return FindFirstObjectByType<RaceDirector>(); }
         }
 
         private void OnDestroy()
         {
             End();
+        }
+
+        /// <summary>
+        /// One place the ghost can watch from: either a thing that moves, or a coordinate
+        /// that does not.
+        /// <para>
+        /// Deliberately a pair of cases and not an interface. A vantage carries no verb
+        /// and no payload — it is a position and a word — which is the whole of what §09
+        /// is allowed to be after the rattle came out.
+        /// </para>
+        /// </summary>
+        private readonly struct Vantage
+        {
+            private readonly Vector3 _point;
+            private readonly bool _tracks;
+
+            private Vantage(Transform? follow, Vector3 point, bool tracks, string label)
+            {
+                Follow = follow;
+                _point = point;
+                _tracks = tracks;
+                Label = label;
+            }
+
+            /// <summary>The thing being followed, or null for a fixed coordinate.</summary>
+            public Transform? Follow { get; }
+
+            /// <summary>What to call it. Korean, because §09's overlay is.</summary>
+            public string Label { get; }
+
+            /// <summary>A vantage that tracks something as it moves. §06's creatures.</summary>
+            public static Vantage Following(Transform body, string label)
+            {
+                return new Vantage(body, body.position, tracks: true, label);
+            }
+
+            /// <summary>A vantage on a place. §02's 도착점, and the ghost's own body.</summary>
+            public static Vantage Fixed(Vector3 point, string label)
+            {
+                return new Vantage(null, point, tracks: false, label);
+            }
+
+            /// <summary>
+            /// Where to look, or null when the followed thing has gone.
+            /// <para>
+            /// The two cases have to be told apart rather than collapsed: a destroyed
+            /// <c>Transform</c> compares equal to null, so a tracking vantage that fell
+            /// back to its stored point would keep framing the spot a creature spawned at
+            /// half an hour ago and never say anything was wrong.
+            /// </para>
+            /// </summary>
+            public Vector3? Resolve()
+            {
+                if (_tracks)
+                {
+                    return Follow != null ? (Vector3?)Follow.position : null;
+                }
+
+                return _point;
+            }
+
+            /// <summary>
+            /// The unit direction the camera stands off in.
+            /// <para>
+            /// Behind a followed body, so the shot shows what it is walking into — a
+            /// creature framed from the front shows a face and hides the corridor it is
+            /// hunting down. For a fixed place, along the line the ghost is already on, so
+            /// the cut reads as flying there rather than as being teleported to an
+            /// arbitrary side of it.
+            /// </para>
+            /// </summary>
+            public Vector3 Approach(Vector3 target, Vector3 cameraNow)
+            {
+                var follow = Follow;
+                if (follow != null)
+                {
+                    var back = -follow.forward;
+                    back.y = 0f;
+                    if (back.sqrMagnitude > 0.0001f)
+                    {
+                        return back.normalized;
+                    }
+                }
+
+                var away = cameraNow - target;
+                away.y = 0f;
+                if (away.sqrMagnitude > 0.0001f)
+                {
+                    return away.normalized;
+                }
+
+                // Standing exactly on it. South, which the compass readout calls 북 from
+                // the subject's side — a defined answer rather than a zero vector.
+                return Vector3.back;
+            }
         }
     }
 }

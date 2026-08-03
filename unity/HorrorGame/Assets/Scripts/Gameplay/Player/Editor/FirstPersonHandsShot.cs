@@ -478,16 +478,12 @@ namespace HorrorGame.Gameplay.PlayerEditor
             {
                 var driver = _rig.GetComponent<PlayerAnimatorDriver>();
 
-                // The two carry flags are false at every call now — see the deleted plates
-                // above. Resolve is still asked rather than the clip picked here, because
-                // the point of this tool is that the state machine being photographed is
-                // the game's own.
+                // The two carry flags are gone from Resolve entirely — nothing is held,
+                // so there was never a call that passed true. Resolve is still asked
+                // rather than the clip picked here, because the point of this tool is
+                // that the state machine being photographed is the game's own.
                 var state = PlayerAnimatorDriver.Resolve(
-                    Motor.GroundSpeed,
-                    carryingObjective: false,
-                    visiblyBurdened: false,
-                    driver.CrouchingNow,
-                    driver.Dead);
+                    Motor.GroundSpeed, driver.CrouchingNow, driver.Dead);
 
                 var clip = driver.ClipFor(state);
                 var animator = _rig.GetComponentInChildren<Animator>();

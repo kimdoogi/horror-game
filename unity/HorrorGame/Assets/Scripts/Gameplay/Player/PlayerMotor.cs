@@ -249,7 +249,7 @@ namespace HorrorGame.Gameplay.Player
         {
             var context = BuildContext();
             context.BaseSpeed = SpeedResolver.SelectBaseSpeed(
-                new MoveInput(1f, 0f, true), context, SprintUnlocked, sprintGranted);
+                new MoveInput(1f, 0f, true), SprintUnlocked, sprintGranted);
 
             var contextMultiplier = SpeedResolver.ContextMultiplier(context);
             if (contextMultiplier <= 0f || context.BaseSpeed <= 0f)
@@ -332,7 +332,7 @@ namespace HorrorGame.Gameplay.Player
             // bar spent its last slice at 5.6.
             var sprintGranted = _stamina.LastSprintSeconds > 0f;
 
-            context.BaseSpeed = SpeedResolver.SelectBaseSpeed(sanitized, context, sprintUnlocked, sprintGranted);
+            context.BaseSpeed = SpeedResolver.SelectBaseSpeed(sanitized, sprintUnlocked, sprintGranted);
 
             var yaw = _look != null ? _look.YawDegrees : transform.rotation.eulerAngles.y;
             var velocity = SpeedResolver.ResolveVelocity(sanitized, context, yaw).ToVector3();
@@ -511,12 +511,10 @@ namespace HorrorGame.Gameplay.Player
             // SpeedResolver.ContextMultiplier is exactly that product. A player crouching
             // backwards still pays 후진's 65 % on top.
             //
-            // bagEquipped stays false, now trivially: there is no bag.
-            return new MovementContext(
-                GameConstants.WalkSpeed,
-                StanceMultiplier(),
-                carryingObjective: false,
-                bagEquipped: false);
+            // The carryingObjective and bagEquipped arguments are gone rather than passed
+            // false: MovementContext no longer has the fields. Stance is the only thing
+            // left that can make one runner slower than another.
+            return new MovementContext(GameConstants.WalkSpeed, StanceMultiplier());
         }
 
         /// <summary>§05's stance multiplier, or the identity on a rig with no stance component.</summary>

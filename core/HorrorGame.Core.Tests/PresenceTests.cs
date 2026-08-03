@@ -126,12 +126,12 @@ namespace HorrorGame.Core.Tests
         [Test]
         public void TheSafeBrightness_IsExactlyTheBrightnessAClueNeeds()
         {
-            Assert.That(PresenceDensity.SafeLightQuality, Is.EqualTo(GameConstants.ClueMinReadableLightQuality));
+            Assert.That(PresenceDensity.SafeLightQuality, Is.EqualTo(GameConstants.MinSafeLightQuality));
 
-            Assert.That(PresenceDensity.DarknessFrom(GameConstants.ClueMinReadableLightQuality), Is.EqualTo(0f));
+            Assert.That(PresenceDensity.DarknessFrom(GameConstants.MinSafeLightQuality), Is.EqualTo(0f));
             Assert.That(PresenceDensity.DarknessFrom(1f), Is.EqualTo(0f));
             Assert.That(PresenceDensity.DarknessFrom(0f), Is.EqualTo(1f));
-            Assert.That(PresenceDensity.DarknessFrom(GameConstants.ClueMinReadableLightQuality * 0.5f),
+            Assert.That(PresenceDensity.DarknessFrom(GameConstants.MinSafeLightQuality * 0.5f),
                 Is.EqualTo(0.5f).Within(1e-5f), "the §03 term is linear between pitch dark and readable");
 
             Assert.That(PresenceDensity.DarknessFrom(float.NaN), Is.EqualTo(1f),
@@ -223,8 +223,9 @@ namespace HorrorGame.Core.Tests
 
             Assert.That(toll.SilenceSeconds, Is.EqualTo(GameConstants.SprintStaminaSeconds),
                 "§06 already fixes 12 s as the longest unbroken bad moment the design asks a player to survive");
-            Assert.That(toll.RecallSmear, Is.EqualTo(1f - GameConstants.ClueMisreadFocusedFraction).Within(1e-5f),
-                "§03: the 그늘 may take back the benefit of a careful look and no more");
+            Assert.That(toll.RecallSmear, Is.EqualTo(GameConstants.PresenceRecallSmear).Within(1e-5f),
+                "the 그늘 takes half the runner's certainty and no more — a total toll would make it a "
+                + "second unkillable pressure beside §06, and the race only has room for one");
 
             var state = field.StateOf(0);
             Assert.That(state.MayTransmitVoice, Is.False);
@@ -381,24 +382,14 @@ namespace HorrorGame.Core.Tests
                 "a 주자 running for an S-corridor in the dark was silenced mid-chase");
         }
 
-        /// <summary>
-        /// §04's 관측자 is structurally immune while doing its job. The role stands still
-        /// for 3 s within 15 m of the monster with no light — otherwise the exact profile
-        /// the 그늘 punishes — and §11 gives it the one weakness that cannot be bought
-        /// back, so "discouraged" would not be good enough.
-        /// </summary>
-        [Test]
-        public void TheObserverIsImmuneWhileDoingItsJob()
-        {
-            Assert.That(GameConstants.PresenceMonsterClearRadius, Is.GreaterThan(GameConstants.ObserverRange));
+        // DELETED with §04: TheObserverIsImmuneWhileDoingItsJob. The 관측자 stood
+        // still for 3 s within 15 m of the creature with no light — otherwise the
+        // exact profile the 그늘 punishes — so it had to be structurally immune
+        // rather than merely discouraged. Nobody stands still on purpose in a race.
+        // The rule that mattered survives as TheMonsterClearsTheDark below: no
+        // runner ever faces §06 and the 그늘 in the same moment, which is what
+        // keeps 이길 수 없는 적 to exactly one.
 
-            var field = new PresenceField(1);
-            var observing = new PresenceTickInput(0, 0f, GameConstants.ObserverRange, false, true);
-
-            Run(field, observing, GameConstants.ObserverStillSeconds * 20f, BeforeSunrise);
-
-            Assert.That(field.StateOf(0).Stage, Is.EqualTo(PresenceStage.Clear));
-        }
 
         /// <summary>
         /// §04's 청음사 is the role the 그늘 charges rather than removes. It reads the
@@ -606,42 +597,42 @@ namespace HorrorGame.Core.Tests
         // ====================================================================
 
         /// <summary>
-        /// Every 그늘 number is bounded by a number that already existed. This asserts the
-        /// two that decide whether the entity has a job at all — if the dark filled slower
-        /// than a battery empties, never switching the light on would be strictly safer
-        /// than switching it on, which is the one-way switch this whole thing exists to
-        /// close.
+        /// Every 그늘 number is bounded by a number that already existed.
+        /// <para>
+        /// The upper bound used to be the battery: the dark had to fill faster than a
+        /// cell empties, or never switching the light on would have been strictly
+        /// safer than switching it on. The battery is gone and the torch is free, so
+        /// the light's only remaining price is being SEEN — which is why the bound
+        /// asserted here is now that a lit runner is noticed from further away than
+        /// §06 can see an unlit one. Below that the 그늘 has no job, because the dark
+        /// would cost nothing to sit in.
+        /// </para>
+        /// <para>
+        /// Honest gap, recorded rather than papered over: PresenceSaturationSeconds
+        /// now has no upper bound of its own. What stops it growing without limit is
+        /// the lower bound below plus the §14 playtest, not an assertion.
+        /// </para>
         /// </summary>
         [Test]
-        public void TheDarkFillsFasterThanABatteryEmpties_AndSlowerThanTheBuildingIsCrossed()
+        public void TheDarkCostsMoreThanTheLight_AndFillsSlowerThanTheBuildingIsCrossed()
         {
-            Assert.That(GameConstants.PresenceSaturationSeconds, Is.LessThan(GameConstants.BatterySecondsPerCell));
+            Assert.That(GameConstants.FlashlightNoticeDistance, Is.GreaterThan(GameConstants.MonsterSightRange),
+                "switching the torch on has to cost something now that it costs no battery: the creature "
+                + "notices the beam from further than it can see the person holding it");
 
             var threeCoverCrossings = 3f * GameConstants.LineOfSightBreakSpacingMax / GameConstants.WalkSpeed;
             Assert.That(GameConstants.PresenceSaturationSeconds, Is.GreaterThan(threeCoverCrossings));
 
-            Assert.That(GameConstants.PresenceSilenceSeconds, Is.GreaterThan(GameConstants.ClueReadSeconds),
-                "a silence a player can read and speak through costs nothing");
+            Assert.That(GameConstants.PresenceSilenceSeconds, Is.GreaterThan(GameConstants.DoorShutSeconds),
+                "a silence shorter than the door you stopped to shut costs nothing");
 
             Assert.DoesNotThrow(GameConstants.Validate);
         }
 
-        /// <summary>
-        /// §08's 강화 손전등 is "이 목록의 대표작" because brighter cuts both ways, and the
-        /// 그늘 gives it a second meaning without a line of new code: twice the radius is
-        /// twice the ground the dark cannot pool on, at the price §08 already charges —
-        /// 괴물이 2배 멀리서 본다.
-        /// </summary>
-        [Test]
-        public void TheUpgradedFlashlightBuysTwiceTheGroundTheDarkCannotHave()
-        {
-            var standing = GameConstants.FlashlightRange;
-            var upgraded = GameConstants.FlashlightRange * GameConstants.UpgradedFlashlightRangeMultiplier;
-
-            Assert.That(upgraded, Is.EqualTo(standing * 2f));
-            Assert.That(GameConstants.UpgradedFlashlightDetectionMultiplier, Is.EqualTo(2f),
-                "the price §08 charges for it is unchanged, which is the point — the item got better and no more "
-                + "expensive because the world got a new cost, not because the item was buffed");
-        }
+        // DELETED with §08: TheUpgradedFlashlightBuysTwiceTheGroundTheDarkCannotHave.
+        // It asserted that the 강화 손전등 doubled both the lit radius and the distance
+        // the creature notices it from — "brighter cuts both ways", §08's showpiece
+        // trade. There is no shop, so there is no upgrade to buy and no second torch
+        // to compare against. Every runner is issued the same beam.
     }
 }

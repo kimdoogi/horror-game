@@ -519,8 +519,8 @@
         "Floor_Concrete",
         "Wall_Dado"
       ],
-      "triangles": 3436,
-      "vertices": 1960,
+      "triangles": 3108,
+      "vertices": 1768,
       "docks": [
         {
           "edge": "-Y",
@@ -533,7 +533,7 @@
           "level": 0.0
         }
       ],
-      "note": "§12 막힌 길 20~25%, each with a reward — plinth + alcove built in."
+      "note": "§12 막힌 길 20~25%. 경주에서 잘못 든 길의 대가는 시간뿐 — the plinth that stood in the middle of it is deleted (it stood in the NavMesh too); the wall alcove stays and holds nothing."
     },
     {
       "name": "Hall_Open_20x20",
@@ -877,7 +877,7 @@
       "triangles": 440,
       "vertices": 240,
       "docks": [],
-      "note": "PROP. §12 전기 패널 구역당 1개 — §04's Engineer lights the clue."
+      "note": "PROP. Wall furniture, one per zone. It was §12's 전기 패널 — §04's 정비공 threw it to light a zone, and reading was the point of the light. 직업이 삭제됐고 읽을 것도 없으므로 이제는 벽에 붙은 물건이다."
     },
     {
       "name": "FloorTile_Wood",
