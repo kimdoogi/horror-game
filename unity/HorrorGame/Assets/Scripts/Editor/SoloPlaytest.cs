@@ -192,7 +192,6 @@ namespace HorrorGame.EditorTools
                 + "  the dark — F toggles the beam and nothing drains it any more. What the light costs is being "
                 + "seen.\n"
                 + "  탈락 — a catch drops you into §09's ghost: you fly, you cannot speak, you cannot leave. Hold "
-                + "[" + Gameplay.Ghost.GhostSession.EndMatchKey + "] to give up the seat and read §02's verdict.\n"
                 + "  §14 Q1 추격이 재밌는가 — let a creature see you, then break line of sight round two bends and "
                 + "keep it broken for " + Core.GameConstants.AggroReleaseLineOfSightBreak + "s.\n"
                 + "  §14 Q2 곁눈질 딜레마가 작동하는가 — hold a diagonal while looking back and watch the margin "

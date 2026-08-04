@@ -140,9 +140,13 @@ namespace HorrorGame.Tests.PlayMode.Racing
             _race.Tick(10f);
             Assert.That(_race.Over, Is.False, "One home, two running.");
 
-            _race.ReportCaught(0, 12f);
+            // Withdraw, not ReportCaught: being caught sends a runner back to B1 and leaves
+            // them Running, so it can never close a race. An emptied seat is the only thing
+            // in the game that takes somebody out of the field, which is exactly what this
+            // test needs and exactly why Withdraw still exists.
+            _race.Withdraw(0, 12f);
             _race.Tick(12f);
-            Assert.That(_race.Over, Is.False, "One home, one out, one still running — the last place is still live.");
+            Assert.That(_race.Over, Is.False, "One home, one seat empty, one still running — the last place is still live.");
 
             Stand(bodies[1], Finish);
             _race.Tick(15f);
@@ -286,26 +290,58 @@ namespace HorrorGame.Tests.PlayMode.Racing
         // ------------------------------------------------------------------
 
         [Test]
-        public void CaughtIsUnranked_AndTheGhostCannotFinish()
+        public void CaughtSendsARunnerBackToB1_AndTheyAreStillRacing()
         {
             var bodies = StartRace(2);
             Descend(2);
 
-            var reason = RaceExit.Racing;
-            _race.Retired += (id, why) => reason = why;
+            Assert.That(_race.Rules![0].Storey, Is.EqualTo(RaceState.Storeys - 1),
+                "Descend() takes the field all the way down, so this runner is on B8 — one "
+                + "cell from winning, which is the most expensive moment to be caught in.");
+
+            var retiredWith = RaceExit.Racing;
+            _race.Retired += (id, why) => retiredWith = why;
+
+            var caughtOn = -1;
+            _race.Caught += (id, storey) => caughtOn = storey;
 
             _race.ReportCaught(0, 8f);
 
-            Assert.That(reason, Is.EqualTo(RaceExit.Caught));
-            Assert.That(_race.ExitOf(0), Is.EqualTo(RaceExit.Caught));
-            Assert.That(_race.Rules![0].Place, Is.Zero,
-                "§02: 탈락 has no place. Ranking corpses by depth would pay people for dying in the right order.");
+            Assert.That(caughtOn, Is.EqualTo(RaceState.Storeys - 1),
+                "the event carries the storey they lost — all eight of them.");
+            Assert.That(retiredWith, Is.EqualTo(RaceExit.Racing),
+                "Retired must NOT fire. A caught runner is still in the race, and anything "
+                + "listening for Retired to take somebody off a board would erase a live player.");
+            Assert.That(_race.ExitOf(0), Is.EqualTo(RaceExit.Racing));
+            Assert.That(_race.Rules[0].Status, Is.EqualTo(RacerStatus.Running));
+            Assert.That(_race.Rules[0].Storey, Is.Zero, "back to B1 — a 투하구 is one-way.");
+            Assert.That(_race.Rules[0].TimesCaught, Is.EqualTo(1));
+        }
 
-            // §09 leaves the dead in the world as spectators, and a spectator drifts.
+        [Test]
+        public void ARunnerWhoWasCaughtCanStillWin()
+        {
+            var bodies = StartRace(2);
+            Descend(2);
+            _race.ReportCaught(0, 8f);
+
+            Assert.That(_race.Rules![0].Storey, Is.Zero, "back on B1 with everything to redo.");
+
+            // The whole descent again, which is what being caught actually costs.
+            for (var storey = 1; storey < RaceState.Storeys; storey++)
+            {
+                _race.ReportDescent(0, storey, 10f + storey);
+            }
+
             Stand(bodies[0], Finish);
-            _race.Tick(9f);
+            _race.Tick(30f);
 
-            Assert.That(_race.Finishers, Is.Zero, "A ghost floating over the finish has not finished.");
+            Assert.That(_race.Finishers, Is.EqualTo(1));
+            Assert.That(_race.Rules[0].Place, Is.EqualTo(1),
+                "§02 ranks arrival, not a clean run. Being caught costs eight storeys and "
+                + "nothing else — a runner who pays that and still gets there first has won.");
+            Assert.That(_race.Rules[0].TimesCaught, Is.EqualTo(1),
+                "and the standings still say what it cost them.");
         }
 
         [Test]
@@ -405,11 +441,14 @@ namespace HorrorGame.Tests.PlayMode.Racing
             _race.Tick(10f);
             Stand(bodies[3], Far());
 
-            _race.ReportCaught(0, 11f);
+            _race.Withdraw(0, 11f);
 
-            // One home, two still running, one out. The three bands are what is being
-            // asserted; the order inside the middle band is RaceState.Standings' business
-            // and is tested next door.
+            // One home, two still running, one seat empty. The three bands are what is
+            // being asserted; the order inside the middle band is RaceState.Standings'
+            // business and is tested next door. It is a withdrawal rather than a catch
+            // because a caught runner stays in the middle band — there would be no third
+            // band to put on the bottom.
+            Assert.That(_race.Rules![0].Status, Is.EqualTo(RacerStatus.Eliminated));
             var board = _race.Board();
 
             Assert.That(board.Count, Is.EqualTo(4), "Every seat appears exactly once.");
@@ -417,7 +456,7 @@ namespace HorrorGame.Tests.PlayMode.Racing
             Assert.That(board[0].Status, Is.EqualTo(RacerStatus.Finished),
                 "§02: putting the finishers on top is the screen saying that arriving is worth something on its own.");
             Assert.That(board[3].Id, Is.EqualTo(0));
-            Assert.That(board[3].Status, Is.EqualTo(RacerStatus.Eliminated), "The unranked are last.");
+            Assert.That(board[3].Status, Is.EqualTo(RacerStatus.Eliminated), "An emptied seat is last.");
             Assert.That(board[1].Status, Is.EqualTo(RacerStatus.Running));
             Assert.That(board[2].Status, Is.EqualTo(RacerStatus.Running));
         }

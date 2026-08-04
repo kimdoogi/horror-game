@@ -182,14 +182,11 @@ namespace HorrorGame.Tests.PlayMode.Match
             var player = FindPlayerRoot();
             Assert.That(player, Is.Not.Null, "no player rig in the scene, so nobody can stand anywhere");
 
-            // Was `director.State.PlayerAt(LocalPlayerIndex).Ghost is null`, read off a
-            // seat table nothing else in the game consulted. LocalPlayerIsGhost is the
-            // better assertion by the same reasoning: it is the property the game itself
-            // reads to decide whether the grab path runs at all.
-            Assert.That(director.LocalPlayerIsGhost, Is.False,
-                "the local player was already a ghost before the test put them anywhere. §09 skips "
-                + "the whole grab path for a corpse, which is one of the things that can look "
-                + "like 'the monster does not kill me'.");
+            // Nobody has been caught yet, so anything this test measures afterwards is the
+            // creature's doing and not a leftover from setting the scene up.
+            Assert.That(director.LocalTimesCaught, Is.Zero,
+                "the runner had already been caught before the test put them anywhere, so "
+                + "any catch this test sees would not be the one it staged.");
 
             // ── The holes in the floor ──────────────────────────────────────────
             // MatchDirector.AttachChutes binds these at BeginMatch, and CheckChutes asks
@@ -308,7 +305,7 @@ namespace HorrorGame.Tests.PlayMode.Match
             var closest = float.MaxValue;
             var lastLogged = -1f;
 
-            while (elapsed < BudgetSeconds && !director.LocalPlayerIsGhost)
+            while (elapsed < BudgetSeconds && director.LocalTimesCaught == 0)
             {
                 // Hold the ground they reached. A body left to its own devices slides
                 // off a charging creature and the test would be measuring a chase.
@@ -334,11 +331,17 @@ namespace HorrorGame.Tests.PlayMode.Match
                 yield return null;
             }
 
-            var died = director.LocalPlayerIsGhost;
+            var caught = director.LocalTimesCaught > 0;
+
+            // Being caught is no longer death, so the thing to check afterwards is that the
+            // creature actually cost them something: the runner has to be back on B1's rim,
+            // not standing where they were grabbed.
+            var sentHome = caught
+                           && Flat(player.position - stand) > GameConstants.MonsterAttackRange;
 
             // ── If it did not happen, say which link was open ───────────────────
             var why = new StringBuilder();
-            why.AppendLine("서서 " + BudgetSeconds.ToString("0") + "초를 기다렸는데 죽지 않았다.");
+            why.AppendLine("서서 " + BudgetSeconds.ToString("0") + "초를 기다렸는데 잡히지 않았다.");
             why.AppendLine("가장 가까웠던 거리 " + closest.ToString("0.00") + " m, 공격 사거리는 "
                            + GameConstants.MonsterAttackRange.ToString("0.0") + " m.");
             why.AppendLine("선 자리 " + stand.ToString("0.00") + ", 괴물의 자리 " + post.ToString("0.00")
@@ -367,7 +370,13 @@ namespace HorrorGame.Tests.PlayMode.Match
             why.AppendLine();
             why.Append(trace);
 
-            Assert.That(died, Is.True, why.ToString());
+            Assert.That(caught, Is.True, why.ToString());
+
+            Assert.That(sentHome, Is.True,
+                "잡혔는데 제자리에 서 있다 — " + player.position.ToString("0.0") + " 는 잡힌 자리 "
+                + stand.ToString("0.0") + " 에서 " + Flat(player.position - stand).ToString("0.00")
+                + " m 다. MatchDirector.SendBackToTheStartLine 이 몸을 옮기지 못했다면 괴물은 "
+                + "아무 대가도 물리지 못하고, 잡히는 것은 그냥 소리 하나가 된다.");
         }
 
         // ------------------------------------------------------------------

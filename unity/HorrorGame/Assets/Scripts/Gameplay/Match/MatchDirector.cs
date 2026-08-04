@@ -4,13 +4,11 @@ using System;
 using System.Collections.Generic;
 using HorrorGame.Audio;
 using HorrorGame.Core;
-using HorrorGame.Core.Ghost;
 using HorrorGame.Core.Map;
 using HorrorGame.Core.Match;
 using HorrorGame.Core.Monster;
 using HorrorGame.Core.Session;
 using HorrorGame.Core.Voice;
-using HorrorGame.Gameplay.Ghost;
 using HorrorGame.Gameplay.Interaction;
 using HorrorGame.Gameplay.Monster;
 using HorrorGame.Gameplay.Player;
@@ -160,13 +158,21 @@ namespace HorrorGame.Gameplay.Match
 
         private MatchClock _clock = new MatchClock();
 
-        /// <summary>§09's ghost, or null while the local runner is still descending.</summary>
-        private GhostState? _ghost;
+        /// <summary>
+        /// How many times §06 has caught this machine's runner and sent them back to B1.
+        /// <para>
+        /// The observable fact of being caught. There used to be one already —
+        /// <c>LocalPlayerIsGhost</c> — and everything that wanted to know whether the
+        /// creature had reached you read it, because being caught and becoming a spectator
+        /// were the same event. §09's spectator is deleted with the elimination that gave
+        /// it a reason to exist, so this is what is left to watch.
+        /// </para>
+        /// </summary>
+        public int LocalTimesCaught { get; private set; }
 
         private MatchMap? _map;
         private DeterministicRandom? _rng;
 
-        private GhostSession? _ghosts;
         private PlayerInteractor? _interactor;
         private PlayerMotor? _motor;
         private PlayerFlashlight? _flashlight;
@@ -181,7 +187,6 @@ namespace HorrorGame.Gameplay.Match
         private double _accumulator;
         private bool _running;
         private int _activeSeed;
-        private bool _verdictHeldForGhost;
 
         /// <summary>Throttle for the proximity report. See <see cref="CheckGrab"/>.</summary>
         private float _lastGrabReport;
@@ -319,28 +324,6 @@ namespace HorrorGame.Gameplay.Match
         }
 
         /// <summary>
-        /// §09's seat for the eliminated. Null until <see cref="ResolveWiring"/> has run;
-        /// the session itself is inert while nobody has been caught.
-        /// </summary>
-        public GhostSession? Ghosts
-        {
-            get { return _ghosts; }
-        }
-
-        /// <summary>
-        /// Whether the local runner is 탈락 and watching. §09.
-        /// <para>
-        /// Not the same question as "is the race over". Being caught takes you out of the
-        /// standings unranked and leaves everybody else running — §02 closes when nobody is
-        /// still descending, which with a full field is nineteen more people later.
-        /// </para>
-        /// </summary>
-        public bool LocalPlayerIsGhost
-        {
-            get { return _ghost != null; }
-        }
-
-        /// <summary>
         /// How hard the local runner is speaking right now. The voice transport sets this
         /// every tick; §06 hears the result. Silent when nobody is holding the key.
         /// </summary>
@@ -410,15 +393,6 @@ namespace HorrorGame.Gameplay.Match
         }
 
         /// <summary>
-        /// Whether §02 has closed and the match is waiting on §09's spectator to say when
-        /// to stop. See <see cref="RaceClosed"/>.
-        /// </summary>
-        public bool RaceVerdictHeldForGhost
-        {
-            get { return _verdictHeldForGhost; }
-        }
-
-        /// <summary>
         /// Lays out and starts a descent. Idempotent in the sense that it tears down
         /// whatever the previous one left in the world first.
         /// </summary>
@@ -476,7 +450,7 @@ namespace HorrorGame.Gameplay.Match
             // re-supplied; a runner starts on the rim of B1 with the maze in front of
             // them and nothing behind. MatchClock dropped the whole 지상 half of its
             // surface, so there is no longer a flag to pass false to.
-            _ghost = null;
+            LocalTimesCaught = 0;
             _clock = new MatchClock();
             _accumulator = 0d;
 
@@ -504,13 +478,11 @@ namespace HorrorGame.Gameplay.Match
         public void EndMatch()
         {
             _running = false;
-            _verdictHeldForGhost = false;
 
             // §09 ends with the match and never outlives it. A ghost left flying after
             // the director stopped would be a camera in a building whose creatures have
             // stopped moving — §09's whole argument for the seat is that there is
             // something to watch.
-            _ghosts?.End();
         }
 
         /// <summary>
@@ -602,7 +574,7 @@ namespace HorrorGame.Gameplay.Match
 
         private void StepFixed()
         {
-            // Hangs on the map, deliberately NOT on _ghost: _ghost is null for a runner
+            // Hangs on the map: it is the building that decides this, not the runner
             // who is still alive, which is most of the match, and this step is what keeps
             // them alive. Whether the match is running at all is _running, tested by
             // StepMatch before it gets here.
@@ -688,7 +660,7 @@ namespace HorrorGame.Gameplay.Match
                 return;
             }
 
-            var hunted = _playerRoot == null || LocalPlayerIsGhost ? null : LocalStoreyCreature();
+            var hunted = _playerRoot == null ? null : LocalStoreyCreature();
 
             // Taken once for the whole match, not once per creature. The stride is a
             // property of the runner's legs — ReportFootsteps used to advance an
@@ -1030,7 +1002,7 @@ namespace HorrorGame.Gameplay.Match
         private void CheckChutes()
         {
             var root = _playerRoot;
-            if (root == null || _chutes.Count == 0 || LocalPlayerIsGhost)
+            if (root == null || _chutes.Count == 0)
             {
                 return;
             }
@@ -1122,7 +1094,7 @@ namespace HorrorGame.Gameplay.Match
         private void CheckBounds()
         {
             var root = _playerRoot;
-            if (root == null || LocalPlayerIsGhost)
+            if (root == null)
             {
                 _bounds.Idle();
                 return;
@@ -1293,12 +1265,11 @@ namespace HorrorGame.Gameplay.Match
         /// charging for.
         /// </para>
         /// <para>
-        /// <b>Held for §09, exactly as the co-op verdict was.</b> A spectator thrown to a
-        /// results panel the instant the race closes is precisely what 「죽으면 지루하다 →
-        /// 볼 게 있고 할 게 있다」 rules out, so when the local seat is watching, the match
-        /// keeps stepping and the ghost decides when to stop — <c>GhostSession.EndMatchKey</c>
-        /// held down. Nothing about the standings changes while it waits; they are already
-        /// final.
+        /// <b>Nothing is held for a spectator any more.</b> It used to be: §09 kept the
+        /// match stepping so a caught runner had a live building to look at instead of a
+        /// results panel. Being caught no longer ends anybody's race — they are put back on
+        /// B1 and keep running — so the only seats left when §02 closes are seats that
+        /// finished, and a finisher wants the standings.
         /// </para>
         /// <para>
         /// <b>It does not lay out the next race.</b> The old path restarted itself on
@@ -1313,26 +1284,6 @@ namespace HorrorGame.Gameplay.Match
             Debug.Log(
                 "[Match] §02 경주 종료 — " + (winner >= 0 ? "우승 좌석 " + winner : "완주자 없음 (§07 시간 초과)")
                 + " · " + _clock.ElapsedSeconds.ToString("0") + "초 · seed " + _activeSeed, this);
-
-            var ghosts = _ghosts;
-            if (ghosts != null && ghosts.IsActive)
-            {
-                if (!_verdictHeldForGhost)
-                {
-                    _verdictHeldForGhost = true;
-                    ghosts.MatchEndRequested = StopRacing;
-                    ghosts.NoteVerdictReached(true);
-
-                    Debug.Log(
-                        "[Match] §09 탈락자가 아직 건물 안에 있다. ["
-                        + GhostSession.EndMatchKey + "]를 누르고 있으면 경주를 떠난다.", this);
-                }
-
-                // §07's clock is still running and §06 is still hunting, on purpose: a
-                // free camera over a live building is the only instrument this project has
-                // for §14 Q1, and stopping the match would take it away.
-                return;
-            }
 
             StopRacing();
         }
@@ -1370,7 +1321,7 @@ namespace HorrorGame.Gameplay.Match
         /// collider and a carving obstacle — and not its behaviour, because
         /// <c>MapSceneBuilder</c> lives in its own editor assembly and cannot see a
         /// runtime component. Attaching here is the same arrangement §09's
-        /// <c>GhostSession</c> uses, and it has the same benefit: a door works in any
+        /// the chutes use, and it has the same benefit: a door works in any
         /// scene the generator writes, with nothing to remember to author.
         /// </para>
         /// <para>
@@ -1550,14 +1501,14 @@ namespace HorrorGame.Gameplay.Match
                 }
 
                 // §09 leaves the body where it fell and it stays there for the rest of the
-                // match. A body is not catchable — the null check on _ghost below refuses a
+                // match. A runner already being sent home is not catchable again —
                 // second kill anyway, but reaching it would play the grab again over a
                 // runner who is no longer there.
                 //
                 // A creature on another floor is never chasing this runner for the purposes
                 // of a catch, however close the flat distance says it is. See the remarks.
                 var reachable = OnSameStorey(monster.transform.position, here);
-                var chasing = reachable && monster.State == MonsterStateId.Chase && !LocalPlayerIsGhost;
+                var chasing = reachable && monster.State == MonsterStateId.Chase;
 
                 var separation = here - monster.transform.position;
                 separation.y = 0f;
@@ -1578,7 +1529,7 @@ namespace HorrorGame.Gameplay.Match
                     Debug.Log("[Match] 괴물 " + distance.ToString("0.00") + " m · §06 " + monster.State
                               + " · 덮치기 " + creature.Lunge.State
                               + (chasing ? string.Empty : "  ← 추격이 아니라 판정 없음")
-                              + (LocalPlayerIsGhost ? "  ← 이미 탈락" : string.Empty), this);
+                              , this);
                 }
 
                 // FixedStep, not Time.deltaTime. CheckGrab runs inside StepFixed, which
@@ -1622,104 +1573,90 @@ namespace HorrorGame.Gameplay.Match
 
                 var where = _playerRoot.position;
 
-                if (_ghost == null)
-                {
-                    // §09 mints the spectator here. MatchState used to own this call so it
-                    // could also drop 전리품 and the 목표물; there is neither, so the ghost
-                    // is built where it is used. The null test is the "no second kill"
-                    // invariant MatchState.TryKill used to enforce.
-                    _ghost = new GhostState(where.ToVec3());
+                // §02: caught is not death. The creature sends a runner back to the place
+                // they started on B1 and they keep racing — everything they had is gone,
+                // which after B6 is a very great deal, but the game is not.
+                //
+                // The ghost used to be minted here, and it is not any more. §09's spectator
+                // existed because 탈락 was permanent and being sent to a menu two minutes
+                // into a twenty-minute match is the most boring thing this design can do to
+                // somebody. Nothing is permanent now, so there is nobody to spectate: the
+                // runner is back on the rim and running before the grab clip has finished.
+                Debug.Log(
+                    "[Match] §06 에게 잡혔다 — " + where.ToString("0.0")
+                    + " 에서 출발선으로 돌려보낸다.", this);
 
-                    Debug.Log("[Match] §02 잡혔다 — 탈락, 순위 없음. " + where, this);
+                // §06 forgets a target that is no longer where it was looking, and it is
+                // told BEFORE the runner moves: a creature still holding this seat would
+                // spend its next tick pathing toward a body that is now eight storeys up,
+                // and on a floor it cannot leave that is a creature walking into a wall.
+                monster.ForgetTarget(LocalSeat);
 
-                    // §06 forgets a target that is now a body — see StepCreatures — and §09
-                    // takes the seat BEFORE §02 is told.
-                    //
-                    // On a small field this catch can be the last live runner, and RaceClosed
-                    // asks whether a spectator is watching so it can HOLD the verdict for
-                    // them; asked before GhostSession.Begin it would answer no and stop the
-                    // match on the spot, dropping a runner who was caught one metre from the
-                    // finish out of the game with nothing to look at. As it happens
-                    // RaceDirector.Retire only raises Retired — RaceState.Over is tested in
-                    // Tick, which is four lines further down this same fixed step — so the
-                    // spectator would be up in time either way. Ordering it here makes that
-                    // a local guarantee instead of one that depends on the internals of a
-                    // method in another file.
-                    //
-                    // RaceHud redraws at 5 Hz, so the standings are right long before
-                    // anything is drawn from them.
-                    monster.ForgetTarget(LocalSeat);
-                    EnterGhost(_ghost);
-                    _raceDirector?.ReportCaught(LocalSeat, _clock.ElapsedSeconds);
-                }
+                SendBackToTheStartLine();
+                LocalTimesCaught++;
+                _raceDirector?.ReportCaught(LocalSeat, _clock.ElapsedSeconds);
 
                 // The seat has resolved, so this tick is over. The other creatures' lunges
-                // resume on the next one, by which time LocalPlayerIsGhost is true and none
+                // resume on the next one, by which time the runner is on B1's rim and none
                 // of them can commit at a body — which is the rule the single-creature
                 // version got from `chasing` and this one has to get from the loop ending.
                 break;
             }
         }
 
-        /// <summary>
-        /// Hands the seat over to §09. The race keeps running; this is a change of what the
-        /// player is doing, not the end of what they are doing it in.
-        /// <para>
-        /// <b>Why a spectator seat survives a pivot that deleted the rest of the co-op
-        /// game.</b> DESCENT-PIVOT §3 keeps §09 under 살아남는다 with one word of scope —
-        /// 「탈락자 관전」 — and that word is the whole argument. The co-operative ghost was a
-        /// CONSOLATION: it could rattle objects to warn the living, it watched its own
-        /// dropped 전리품 so the team had a reason to come back, and it kept helping a team
-        /// it was no longer on. None of that survives 탈락. A race has no team to help, and a
-        /// dead runner who can still move objects in front of a live one is an eliminated
-        /// player deciding somebody else's place — the standings would be settled by people
-        /// who are not in them. What is left is watching, which is worth keeping on its own:
-        /// a first-past-the-post race is 2~20 minutes long, and being sent to a menu the
-        /// moment you are caught is the most boring thing this design can do to somebody.
-        /// The rattle itself is <c>GhostSession</c>'s to delete.
-        /// </para>
-        /// <para>
-        /// The torch goes out. A body does not hold a light up, and leaving one burning
-        /// would light the floor for §06 while the runner who paid for it is gone.
-        /// </para>
-        /// </summary>
-        private void EnterGhost(GhostState? ghost)
-        {
-            if (ghost == null)
-            {
-                return;
-            }
-
-            if (_flashlight != null)
-            {
-                _flashlight.State.TurnOff();
-                _flashlight.RefreshPresentation();
-            }
-
-            var ghosts = _ghosts;
-            if (ghosts == null)
-            {
-                Debug.LogWarning(
-                    "[Match] §09 has nowhere to put the eliminated runner — no GhostSession on this "
-                    + "director, so 탈락 is a locked camera instead of a spectator.", this);
-                return;
-            }
-
-            ghosts.MatchEndRequested = StopRacing;
-
-            // The creature on the floor the body is lying on, not simply "the monster".
-            // §09's whole promise is 「죽으면 지루하다 → 볼 게 있고 할 게 있다」, and what
-            // there is to watch is the thing that just caught you still hunting the floor
-            // you were caught on. Handed the primary instead, a spectator on B2 would spend
-            // the race watching a §06 state machine three storeys away. Falls back to the
-            // primary so that an elimination on a floor with no creature still has something
-            // to show.
-            ghosts.Begin(ghost, _playerRoot, LocalStoreyMonster ?? _monster);
-        }
-
         // ------------------------------------------------------------------
         // Layout and wiring.
         // ------------------------------------------------------------------
+
+        /// <summary>
+        /// §06 caught this runner: put them back where they started and let them run.
+        /// <para>
+        /// <b>Their own starting place, not a fresh one.</b> <c>RaceRunners.LocalStart</c>
+        /// is the cell §13 dealt this machine at the start line, and coming back to it is
+        /// the difference between a punishment and a re-roll — a runner sent to a random
+        /// part of the ring might land nearer B1's way in than they began, which would make
+        /// being caught occasionally lucky. It is also the only place on the map a runner is
+        /// allowed to stand without having fallen into it: the 투하구 are one-way, so
+        /// anywhere below B1 is unreachable from above.
+        /// </para>
+        /// <para>
+        /// The controller goes off across the write for the same reason it does in
+        /// <see cref="CheckChutes"/> and <see cref="MovePlayerToSpawn"/> — left on, it
+        /// depenetrates the move away on its own next step and the runner ends up back
+        /// beside the creature that just caught them.
+        /// </para>
+        /// </summary>
+        private void SendBackToTheStartLine()
+        {
+            if (_playerRoot == null)
+            {
+                return;
+            }
+
+            var home = RaceRunners.LocalStart;
+
+            if (home == Vector3.zero)
+            {
+                // No start line was ever taken — a solo playtest, or a session where §13's
+                // answer never arrived. MovePlayerToSpawn's seat-0 marker is wrong for a
+                // party and right for one person, and one person is exactly who is here.
+                MovePlayerToSpawn();
+                return;
+            }
+
+            var controller = _playerRoot.GetComponent<CharacterController>();
+            if (controller != null)
+            {
+                controller.enabled = false;
+            }
+
+            _playerRoot.position = home;
+
+            if (controller != null)
+            {
+                controller.enabled = true;
+            }
+        }
 
         private void MovePlayerToSpawn()
         {
@@ -1814,19 +1751,6 @@ namespace HorrorGame.Gameplay.Match
                 _interactor.Bind(this);
             }
 
-            if (_ghosts == null)
-            {
-                // Built here rather than authored into the scene: §09 is a state every seat
-                // can enter and no scene should have to remember to carry it. It costs
-                // nothing until somebody is caught.
-                _ghosts = GetComponentInChildren<GhostSession>();
-                if (_ghosts == null)
-                {
-                    var child = new GameObject("GhostSession");
-                    child.transform.SetParent(transform, worldPositionStays: false);
-                    _ghosts = child.AddComponent<GhostSession>();
-                }
-            }
         }
 
         /// <summary>
@@ -2032,12 +1956,6 @@ namespace HorrorGame.Gameplay.Match
         private void ClearWorld()
         {
             _running = false;
-            _verdictHeldForGhost = false;
-
-            // Before anything else: §09 has the player's camera unparented from the rig
-            // and three of the rig's components switched off. A new match laid out around
-            // a rig in that state would spawn a runner who cannot move and cannot see.
-            _ghosts?.End();
 
             DespawnClonedCreatures();
 

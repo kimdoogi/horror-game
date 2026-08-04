@@ -118,6 +118,94 @@ namespace HorrorGame.Core.Tests
         }
 
         [Test]
+        public void Being_caught_sends_a_runner_back_to_B1_and_leaves_them_running()
+        {
+            var race = new RaceState(4);
+
+            for (var storey = 1; storey <= 5; storey++)
+            {
+                race.ReportDescent(0, storey, storey * 30f);
+            }
+
+            Assert.That(race[0].Storey, Is.EqualTo(5), "five 투하구 is B6.");
+
+            Assert.That(race.ReportCaught(0, 200f), Is.True);
+
+            Assert.That(race[0].Status, Is.EqualTo(RacerStatus.Running),
+                "§06's creature is a hazard, not an executioner — being caught costs the "
+                + "descent, not the game.");
+            Assert.That(race[0].Storey, Is.Zero,
+                "back to B1. A 투하구 is one-way, so any other storey is a place the map has "
+                + "no route into.");
+            Assert.That(race[0].TimesCaught, Is.EqualTo(1));
+            Assert.That(race.Over, Is.False, "nobody left the race, so nothing about it ended.");
+        }
+
+        [Test]
+        public void A_runner_sent_back_can_descend_the_whole_way_again()
+        {
+            var race = new RaceState(2);
+
+            for (var storey = 1; storey <= 7; storey++)
+            {
+                race.ReportDescent(0, storey, storey * 10f);
+            }
+
+            race.ReportCaught(0, 100f);
+
+            // The point of resetting the storey rather than nudging it: ReportDescent is
+            // monotonic, so a record still reading B8 would refuse every drop on the way
+            // back down and the runner would be stuck on B1 for the rest of the match with
+            // no error anywhere.
+            for (var storey = 1; storey <= 7; storey++)
+            {
+                Assert.That(race.ReportDescent(0, storey, 100f + (storey * 10f)), Is.True,
+                    "B" + (storey + 1) + " refused the second time down.");
+            }
+
+            Assert.That(race.ReportFinish(0, 200f), Is.EqualTo(1),
+                "a runner who was caught and ran it again is still allowed to win.");
+            Assert.That(race[0].TimesCaught, Is.EqualTo(1), "the count survives the finish.");
+        }
+
+        [Test]
+        public void Being_caught_does_nothing_to_a_runner_who_has_already_finished()
+        {
+            var race = new RaceState(2);
+
+            for (var storey = 1; storey <= 7; storey++)
+            {
+                race.ReportDescent(0, storey, storey * 10f);
+            }
+
+            race.ReportFinish(0, 80f);
+
+            Assert.That(race.ReportCaught(0, 90f), Is.False,
+                "the creature reaching a finisher would take a place off the board.");
+            Assert.That(race[0].Status, Is.EqualTo(RacerStatus.Finished));
+            Assert.That(race[0].Place, Is.EqualTo(1));
+            Assert.That(race[0].Storey, Is.EqualTo(RaceState.Storeys - 1));
+        }
+
+        [Test]
+        public void Nothing_in_the_game_eliminates_a_runner_except_an_empty_seat()
+        {
+            var race = new RaceState(2);
+
+            race.ReportCaught(0, 10f);
+            race.ReportCaught(0, 20f);
+            race.ReportCaught(0, 30f);
+
+            Assert.That(race[0].Status, Is.EqualTo(RacerStatus.Running),
+                "caught three times and still in it.");
+            Assert.That(race[0].TimesCaught, Is.EqualTo(3));
+
+            // The one thing that still ends a runner's race without them finishing it.
+            Assert.That(race.ReportEliminated(1, 40f), Is.True);
+            Assert.That(race[1].Status, Is.EqualTo(RacerStatus.Eliminated));
+        }
+
+        [Test]
         public void The_field_is_bounded_by_the_map_rather_than_by_the_network()
         {
             Assert.That(() => new RaceState(1), Throws.ArgumentException.Or.TypeOf<System.ArgumentOutOfRangeException>());

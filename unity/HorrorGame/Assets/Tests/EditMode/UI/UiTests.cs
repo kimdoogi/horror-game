@@ -6,7 +6,6 @@ using System.IO;
 using System.Reflection;
 using HorrorGame.Audio;
 using HorrorGame.Core;
-using HorrorGame.Core.Ghost;
 using HorrorGame.Core.Math;
 using HorrorGame.Gameplay.Player;
 using HorrorGame.UI;
@@ -103,39 +102,13 @@ namespace HorrorGame.Tests.EditMode.UI
     {
         private const BindingFlags Declared =
             BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
-
-        // ====================================================================
-        // §09 — 말하기: 불가능.
-        // ====================================================================
-
-        [Test]
-        public void GhostUi_HasNoVoiceWidgetToDisable()
-        {
-            // The rattle words ride along for the same reason they do in
-            // GhostSessionTests: this scan is what catches 신호 being re-added under
-            // its old name, and §11's 탈락자 rule forbids it outright.
-            var banned = new[]
-            {
-                "voice", "mic", "speak", "talk", "mute", "chat", "radio", "push",
-                "rattle", "shake", "signal",
-            };
-
-            foreach (var type in new[] { typeof(GhostOverlay) })
-            {
-                foreach (var name in NamesOf(type))
-                {
-                    var lower = name.ToLowerInvariant();
-                    foreach (var word in banned)
-                    {
-                        Assert.That(lower.Contains(word), Is.False,
-                            "§09: '" + type.Name + "." + name + "' is a voice affordance. A muted icon or a greyed-out "
-                            + "push-to-talk describes a control that exists in some other state and sends the player looking "
-                            + "for it. The silence is structural — Core's GhostState has no method that takes a message — and "
-                            + "§13 settles it for anyone who would rather mute a live channel: cutting at the receiver is not cutting.");
-                    }
-                }
-            }
-        }
+        // GhostUi_HasNoVoiceWidgetToDisable was here. It guarded §09's spectator
+        // against growing a voice widget — a dead player who can still talk to the
+        // living is an eliminated player deciding somebody else's place.
+        //
+        // §09 is deleted. Being caught sends a runner back to B1 and they keep
+        // running, so nobody is ever eliminated and there is no spectator to give a
+        // microphone to. The rule it protected now has no subject.
 
         // ====================================================================
         // DELETED with §09's 신호. Two tests stood here:

@@ -514,11 +514,51 @@ namespace HorrorGame.Gameplay.Race
         /// </summary>
         /// <param name="runnerId">Seat index.</param>
         /// <param name="elapsedSeconds">Seconds since the start.</param>
-        /// <returns>True if this eliminated them; false if they were already out or home.</returns>
+        /// <returns>
+        /// True if this sent them back; false if they had already finished or left.
+        /// </returns>
         public bool ReportCaught(int runnerId, float elapsedSeconds)
         {
-            return Retire(runnerId, elapsedSeconds, RaceExit.Caught);
+            var rules = _rules;
+            if (rules == null || _over || runnerId < 0 || runnerId >= rules.Count)
+            {
+                return false;
+            }
+
+            var storey = rules[runnerId].Storey;
+
+            if (!rules.ReportCaught(runnerId, elapsedSeconds))
+            {
+                return false;
+            }
+
+            // Not Untrack, and not an entry in _exits: a runner who has been caught has not
+            // stopped racing, so taking them off the standings would leave a live player
+            // invisible on every HUD in the match. Retire is now only reached by Withdraw.
+            if (_verbose)
+            {
+                Debug.Log(
+                    "[Race] §02 " + runnerId + "번이 B" + (storey + 1) + " 에서 잡혔다 — "
+                    + elapsedSeconds.ToString("0") + "초. 출발선으로 돌려보낸다. "
+                    + storey + "개 층을 다시 내려가야 한다 (" + rules[runnerId].TimesCaught
+                    + "번째).", this);
+            }
+
+            Caught?.Invoke(runnerId, storey);
+            return true;
         }
+
+        /// <summary>
+        /// §06's creature caught a runner and sent them back to B1. Carries the storey they
+        /// were on, which is what the loss actually was.
+        /// <para>
+        /// Raised instead of <see cref="Retired"/>, and that difference is the change: a
+        /// caught runner is still in the standings, still on somebody's screen, and still
+        /// able to win. Anything listening for <c>Retired</c> to take a player off a board
+        /// must not fire here.
+        /// </para>
+        /// </summary>
+        public event Action<int, int>? Caught;
 
         /// <summary>
         /// A seat emptied — somebody disconnected, or the field was padded up to §11's
@@ -850,11 +890,12 @@ namespace HorrorGame.Gameplay.Race
             _exits[runnerId] = why;
             Untrack(runnerId);
 
-            if (_verbose && why == RaceExit.Caught)
+            if (_verbose)
             {
                 Debug.Log(
-                    "[Race] §02 " + runnerId + "번 탈락 — B" + (rules[runnerId].Storey + 1) + ", "
-                    + elapsedSeconds.ToString("0") + "초. 부활은 없다.", this);
+                    "[Race] §02 " + runnerId + "번 자리가 비었다 (" + why + ") — B"
+                    + (rules[runnerId].Storey + 1) + ", " + elapsedSeconds.ToString("0")
+                    + "초. 이 판에서 유일하게 주자를 빼는 길이다.", this);
             }
 
             Retired?.Invoke(runnerId, why);

@@ -12,7 +12,17 @@ namespace HorrorGame.Core.Race
         /// <summary>Reached the middle of the deepest storey. §02 승리 or 완주.</summary>
         Finished = 1,
 
-        /// <summary>Caught. §02 탈락 — no revival, and §09 turns them into a spectator.</summary>
+        /// <summary>
+        /// Out of the race for good — a seat that emptied, not a runner the creature
+        /// caught.
+        /// <para>
+        /// Being caught used to land here. It no longer does: §06's creature sends a
+        /// runner back to their starting place on B1 and they keep running (see
+        /// <see cref="RaceState.ReportCaught"/>). Nothing in the game eliminates a
+        /// player any more; this is what a disconnect resolves to, so
+        /// <see cref="RaceState.Over"/> can still come true when somebody quits.
+        /// </para>
+        /// </summary>
         Eliminated = 2,
     }
 
@@ -20,13 +30,14 @@ namespace HorrorGame.Core.Race
     public readonly struct Racer
     {
         /// <summary>Builds a standing.</summary>
-        public Racer(int id, RacerStatus status, int storey, float elapsedSeconds, int place)
+        public Racer(int id, RacerStatus status, int storey, float elapsedSeconds, int place, int timesCaught = 0)
         {
             Id = id;
             Status = status;
             Storey = storey;
             ElapsedSeconds = elapsedSeconds;
             Place = place;
+            TimesCaught = timesCaught;
         }
 
         /// <summary>Seat index. §13 — the host owns this list and clients only read it.</summary>
@@ -43,6 +54,17 @@ namespace HorrorGame.Core.Race
 
         /// <summary>1 for the winner, 2 for the next finisher, and so on. 0 while still running or if eliminated.</summary>
         public int Place { get; }
+
+        /// <summary>
+        /// How many times §06's creature has sent this runner back to B1.
+        /// <para>
+        /// Not a penalty — the eight storeys they have to descend again are the penalty.
+        /// It is here so the standings can say why somebody who was on B6 a minute ago is
+        /// on B1 now, which otherwise reads as a bug, and so a match report can tell a
+        /// clean run apart from one that was caught four times and still won.
+        /// </para>
+        /// </summary>
+        public int TimesCaught { get; }
     }
 
     /// <summary>
@@ -173,7 +195,7 @@ namespace HorrorGame.Core.Race
                 return false;
             }
 
-            _racers[id] = new Racer(id, RacerStatus.Running, storey, elapsedSeconds, 0);
+            _racers[id] = new Racer(id, RacerStatus.Running, storey, elapsedSeconds, 0, racer.TimesCaught);
             return true;
         }
 
@@ -200,12 +222,75 @@ namespace HorrorGame.Core.Race
             }
 
             _finishers++;
-            _racers[id] = new Racer(id, RacerStatus.Finished, racer.Storey, elapsedSeconds, _finishers);
+            _racers[id] = new Racer(id, RacerStatus.Finished, racer.Storey, elapsedSeconds, _finishers, racer.TimesCaught);
             return _finishers;
         }
 
         /// <summary>
-        /// A runner has been caught. §02 탈락 — out, and unranked.
+        /// §06's creature caught a runner. They go back to where they started and keep
+        /// running.
+        /// <para>
+        /// <b>This replaces elimination, and the reason is the whole shape of the game.</b>
+        /// A first-past-the-post race that removes people leaks players: caught on B2 of a
+        /// twenty-minute match and you have nothing to do but watch, so the design grew a
+        /// spectator seat to make being out bearable. Sending a runner back to B1 costs
+        /// them everything they had — eight storeys, every gate, all of it — without
+        /// taking the game away, which is a bigger punishment and a smaller one at the
+        /// same time.
+        /// </para>
+        /// <para>
+        /// <b>It is also the answer to a creature nobody feared.</b> §12's 주자 테스트
+        /// measured every place on the map as escapable, and while being caught was
+        /// elimination that produced a monster people simply avoided and forgot. A hazard
+        /// you can outrun is only frightening if being caught costs something you can
+        /// still lose — and after B6 that is a very great deal.
+        /// </para>
+        /// <para>
+        /// <b>The storey goes back to 0, not down by one.</b> §01 puts the 투하구 at every
+        /// middle and lands you on the rim below, so a floor is only ever entered from its
+        /// own rim. There is no way back UP a chute, so a runner returned to B4 would be
+        /// standing somewhere the map has no route to. B1's rim is the one place in the
+        /// building that a runner is allowed to be without having fallen into it.
+        /// </para>
+        /// <para>
+        /// Resetting <see cref="Racer.Storey"/> is also what lets them descend again:
+        /// <see cref="ReportDescent"/> is monotonic and would refuse every drop from B2
+        /// down if the record still said B6.
+        /// </para>
+        /// </summary>
+        /// <param name="id">Seat index.</param>
+        /// <param name="elapsedSeconds">Seconds since the start.</param>
+        /// <returns>
+        /// True if this sent them back; false if they had already finished or left, both of
+        /// which are past caring what the creature does.
+        /// </returns>
+        public bool ReportCaught(int id, float elapsedSeconds)
+        {
+            var racer = _racers[id];
+            if (racer.Status != RacerStatus.Running)
+            {
+                return false;
+            }
+
+            _racers[id] = new Racer(
+                id,
+                RacerStatus.Running,
+                0,
+                elapsedSeconds,
+                0,
+                racer.TimesCaught + 1);
+
+            return true;
+        }
+
+        /// <summary>
+        /// A seat emptied — somebody quit or dropped. Out, and unranked.
+        /// <para>
+        /// No longer what happens when the creature catches you; see
+        /// <see cref="ReportCaught"/>. It survives because <see cref="Over"/> counts
+        /// runners who are still Running, and a seat nobody is sitting in would keep a
+        /// finished race open forever.
+        /// </para>
         /// </summary>
         /// <param name="id">Seat index.</param>
         /// <param name="elapsedSeconds">Seconds since the start.</param>
@@ -218,7 +303,7 @@ namespace HorrorGame.Core.Race
                 return false;
             }
 
-            _racers[id] = new Racer(id, RacerStatus.Eliminated, racer.Storey, elapsedSeconds, 0);
+            _racers[id] = new Racer(id, RacerStatus.Eliminated, racer.Storey, elapsedSeconds, 0, racer.TimesCaught);
             return true;
         }
 
