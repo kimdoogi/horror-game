@@ -186,6 +186,35 @@ BRASS_FITTING = "Dress_BrassFitting"
 # field they sat on is still there, so a sign is still a sign, with nothing
 # written on it that a runner has to read.
 
+REFUSED_MATERIALS: tuple[str, ...] = ("Clue_Face",)
+"""Material names a piece may not carry, kept as data because they are a GUARD.
+
+The name is the whole point of this tuple and it is the reason it exists at all.
+`DressingManifest.RefuseDeletedSystems` drops any piece that declares a face here or
+whose FBX carries the slot, and it did so against a manifest key literally called
+`clue_faces` — so the guard that removes §03 was the last thing in the project still
+saying 단서 out loud, and `PivotAssetTombstoneTests` read the shipped
+`Dressing.manifest.json` and reported it. The manifest key this file writes is now
+`refused_faces`, which says what the number is FOR instead of what it once counted.
+
+**One half of that guard is INERT until the C# side is renamed to match, and saying
+so here is the point.** `DressingPiece` still declares `public int clue_faces;` and
+`RefuseDeletedSystems` still tests `piece.clue_faces > 0`. Unity's `JsonUtility`
+leaves a field absent from the JSON at its default, so that test now reads 0 for
+every piece, forever, without erroring — the exact shape of a guard that goes quiet
+instead of going red. It is not currently hiding anything: the loader's *other* test
+walks `piece.materials` for `Clue_Face`, that list is still written in full, and no
+piece carries the slot today. But the belt is gone and only the braces are left, so
+until `DressingPiece.clue_faces` is renamed `refused_faces` (and line ~129 with it),
+this file is writing a number that nothing on the Unity side reads.
+
+**Measured, not asserted.** `emit` counts the polygons whose material slot is one of
+these — it does not write a hard 0. A generator that wrote a constant 0 and a loader
+that believed it would be a green number nobody verified, which is worse than a red
+one. The count is 0 today because the quads are gone from the builders; the tuple is
+here so that a re-export which pulls one back in from `gen_props` is caught by the
+same number rather than by nobody."""
+
 MATERIALS: dict[str, MaterialSpec] = {
     # Painted steel is metallic=0. Paint is a dielectric coat over the metal, and
     # calling it metallic is not a stylistic choice — with no reflection probe in
@@ -266,9 +295,16 @@ def rads(degrees):
 # gave each group its own 0..1 UV mapping and flipped U on the group facing +Y —
 # the entire 좌↔우 mechanism: one glyph, two sides, one of them reversed. With no
 # glyph the mapping has nothing to map and the flip nothing to reverse.
-def _crate(f: Frame, side: float, height: float, wood: str = TIMBER_PALE,
-           batten: str = TIMBER_DARK) -> None:
-    """One packing crate: a body plus corner battens and a lid.
+def _case(f: Frame, side: float, height: float, wood: str = TIMBER_PALE,
+          batten: str = TIMBER_DARK) -> None:
+    """One packing case: a body plus corner battens and a lid.
+
+    **Named `_case`, not `_crate`.** 「crate」 is §01's 궤짝 — the two-person 전리품
+    piece — and `PivotAssetTombstoneTests` reads asset PATHS, so the word shipped in
+    three filenames under `Assets/Models/Dressing/` and the guard was right to say so.
+    The GEOMETRY is not the 궤짝 and never was: a stack of boxes against a basement
+    wall is §12's 시야 차단 지점, nothing picks it up and nothing is inside it. Only
+    the name was wrong, so only the name changed.
 
     Kept to six primitives because these are stacked three deep and the whole
     stack has to stay inside the per-piece triangle budget §05 justifies (dark,
@@ -375,33 +411,38 @@ def _chain(b: PropBuild, x: float, y: float, z_top: float, z_bottom: float,
 # ══════════════════════════════════════════════════════════════════════════
 
 
-def build_crate_stack_tall() -> PropBuild:
-    """Three crates stacked to 1.72 m — a sight-line break that is not a wall.
+def build_case_stack_tall() -> PropBuild:
+    """Three cases stacked to 1.72 m — a sight-line break that is not a wall.
 
     §12 wants 시야 차단 지점 every 15~25 m and §06 needs 3 s of broken line of
     sight for an aggro release. A stack just under standing eye height
     (1.63 m assumed) breaks the line for a running player without hiding the
-    route, which a full-height block would. The slight yaw on each crate is what
+    route, which a full-height block would. The slight yaw on each case is what
     stops three boxes reading as one extruded box."""
-    b = PropBuild("Dress_CrateStack_Tall")
-    _crate(b.frame((0.0, 0.0, 0.0), yaw=0.0), 0.640, 0.600)
-    _crate(b.frame((0.03, -0.02, 0.600), yaw=7.0), 0.600, 0.560)
-    _crate(b.frame((-0.02, 0.03, 1.160), yaw=-11.0), 0.560, 0.520)
+    b = PropBuild("Dress_CaseStack_Tall")
+    _case(b.frame((0.0, 0.0, 0.0), yaw=0.0), 0.640, 0.600)
+    _case(b.frame((0.03, -0.02, 0.600), yaw=7.0), 0.600, 0.560)
+    _case(b.frame((-0.02, 0.03, 1.160), yaw=-11.0), 0.560, 0.520)
     b.pivot_part = b.parts[0]
     return b
 
 
-def build_crate_stack_low() -> PropBuild:
-    """Two crates and a sack — waist height, so it is cover to crouch behind.
+def build_case_stack_low() -> PropBuild:
+    """Two cases and a sack — waist height, so it is cover to crouch behind.
 
-    §12's 막힌 길 need a reason to be entered and something to hide loot behind;
-    §08 hides the good pieces there. Low enough to see over, which keeps §04's
-    Observer sightlines intact."""
-    b = PropBuild("Dress_CrateStack_Low")
-    _crate(b.frame((-0.30, 0.0, 0.0), yaw=-5.0), 0.640, 0.600)
-    _crate(b.frame((-0.26, 0.04, 0.600), yaw=9.0), 0.580, 0.540)
-    _crate(b.frame((0.38, -0.06, 0.0), yaw=22.0), 0.560, 0.520)
-    # A dust sheet half-pulled off the low crate: the brightest thing in the pile.
+    **Why this is still worth building now that §12's 막힌 길 pay nothing.** The old
+    reason read *"막힌 길 need a reason to be entered and something to hide 전리품
+    behind; §08 hides the good pieces there, and it stays low enough to see over so
+    §04's Observer sightlines survive"*. Both halves are deleted — a dead end costs a
+    racer time and gives nothing back, and every runner has the same eyes. What
+    survives is the shape: waist height is the one height a player can BREAK a
+    creature's line of sight behind without also losing their own view of the route
+    out, which is §06's 3 s aggro release bought at no cost to §01's race."""
+    b = PropBuild("Dress_CaseStack_Low")
+    _case(b.frame((-0.30, 0.0, 0.0), yaw=-5.0), 0.640, 0.600)
+    _case(b.frame((-0.26, 0.04, 0.600), yaw=9.0), 0.580, 0.540)
+    _case(b.frame((0.38, -0.06, 0.0), yaw=22.0), 0.560, 0.520)
+    # A dust sheet half-pulled off the low case: the brightest thing in the pile.
     b.box((0.700, 0.640, 0.030), (0.38, -0.06, 0.525), rot=(0.0, -4.0, 22.0), mat=CLOTH_DUST,
           nobevel=True)
     b.box((0.180, 0.560, 0.026), (0.66, -0.14, 0.360), rot=(0.0, 26.0, 22.0), mat=CLOTH_DUST,
@@ -410,13 +451,13 @@ def build_crate_stack_low() -> PropBuild:
     return b
 
 
-def build_crate_broken() -> PropBuild:
-    """A crate that lost an argument with a forklift. Spilled straw and boards.
+def build_case_broken() -> PropBuild:
+    """A case that lost an argument with a forklift. Spilled straw and boards.
 
     Below knee height everywhere: §05 makes backward movement 65 % speed and §06
     gives the monster 4.8 m/s, so dressing a player can trip on is a death written
     by an artist rather than by design."""
-    b = PropBuild("Dress_CrateBroken")
+    b = PropBuild("Dress_CaseBroken")
     b.box((0.620, 0.580, 0.300), (0.0, 0.0, 0.150), rot=(0.0, 4.0, 0.0), mat=TIMBER_PALE)
     b.pivot_part = b.parts[0]
     for sx in (-1.0, 1.0):
@@ -760,7 +801,7 @@ def build_rubble_small() -> PropBuild:
 
 
 def build_planks_fallen() -> PropBuild:
-    """Timber that came off a crate or a shelf. 1.65 x 0.80 x 0.17 m."""
+    """Timber that came off a case or a shelf. 1.65 x 0.80 x 0.17 m."""
     b = PropBuild("Dress_PlanksFallen")
     first = b.box((1.560, 0.160, 0.032), (0.0, -0.170, 0.016), rot=(0.0, 0.0, 4.0),
                   mat=TIMBER_PALE, nobevel=True)
@@ -831,8 +872,10 @@ def build_tool_scatter() -> PropBuild:
 
 
 # ══════════════════════════════════════════════════════════════════════════
-#  WET — §03's worked clue example is "그것은 물이 있는 층에 있다", so water is
-#  diegetic information, not atmosphere.
+#  WET — water is atmosphere, and only atmosphere. It used to be §03's worked
+#  example of a 단서 ("그것은 물이 있는 층에 있다") and therefore diegetic
+#  information; §03 is deleted and the destination is announced at the start.
+#  What it is now is the kit's only mirror — see the module header.
 # ══════════════════════════════════════════════════════════════════════════
 
 
@@ -848,11 +891,13 @@ def _puddle(b: PropBuild, lobes: tuple, thickness: float) -> None:
 
 
 def build_puddle_large() -> PropBuild:
-    """Standing water, 1.85 x 1.35 m. The zone-scale answer to §03's water clue.
+    """Standing water, 1.85 x 1.35 m. §12 zone C's largest piece.
 
     A dark mirror on the floor. It costs nothing until a flashlight crosses it and
     then it is the brightest thing in the corridor — which is how a player learns
-    "I am on the floor with the water" without a single line of UI."""
+    "I am on the floor with the water" without a single line of UI. That sentence is
+    the whole reason it survived §03: it tells a runner WHICH STOREY they are on, and
+    §01 stacks eight of them behind one-way 투하구."""
     b = PropBuild("Dress_PuddleLarge")
     _puddle(b, (
         (0.00, 0.00, 0.560, 20),
@@ -1028,9 +1073,11 @@ def build_pipe_valve_cluster() -> PropBuild:
 def build_gauge_board() -> PropBuild:
     """Three meters on a backboard at 1.45–1.95 m. WALL mount.
 
-    Deliberately at reading height. §03's whole loop is "look at a thing in a
-    beam and remember it", and a wall of dials teaches a player to do that on
-    something harmless before a clue asks for it in earnest."""
+    Deliberately at reading height. The reason used to be §03's loop — "look at a
+    thing in a beam and remember it", practised on something harmless before a 단서
+    asked for it in earnest — and there is nothing to read any more. It stays at that
+    height for what is left: a corridor whose only detail is at floor level reads as a
+    tunnel, and §12 wants a place."""
     b = PropBuild("Dress_GaugeBoard")
     back = b.box((0.640, 0.030, 0.500), (0.0, -0.015, 1.700), mat=TIMBER_DARK, nobevel=True)
     b.pivot_part = back
@@ -1393,7 +1440,7 @@ class Piece:
 
 
 PALETTES: dict[str, str] = {
-    "storage": "§12 zone A 나무 — an old storage wing: timber, crates, sheets, cobwebs.",
+    "storage": "§12 zone A 나무 — an old storage wing: timber, cases, sheets, cobwebs.",
     "institutional": "§12 zone B 타일 — the tiled hall: lockers, cabinets, signage, meters.",
     "wet": "§12 zone C 자갈 — the unfinished, flooded end. §03's 물이 있는 층 lives here.",
     "utility": "§12 zone D 콘크리트 — plant and services: pipes, valves, benches, tools.",
@@ -1401,12 +1448,12 @@ PALETTES: dict[str, str] = {
 
 PIECES: list[Piece] = [
     # ── Bulk — cover, and §12's 시야 차단 지점 ───────────────────────────────
-    Piece("Dress_CrateStack_Tall", build_crate_stack_tall, "Bulk", (0.713, 0.713, 1.680),
+    Piece("Dress_CaseStack_Tall", build_case_stack_tall, "Bulk", (0.713, 0.713, 1.680),
           palettes=("storage", "utility"), weight=1.2, max_tris=1200,
           note="sightline break just under eye height"),
-    Piece("Dress_CrateStack_Low", build_crate_stack_low, "Bulk", (1.492, 0.860, 1.140),
+    Piece("Dress_CaseStack_Low", build_case_stack_low, "Bulk", (1.492, 0.860, 1.140),
           palettes=("storage", "wet"), weight=1.0, max_tris=1300, note="crouch cover"),
-    Piece("Dress_CrateBroken", build_crate_broken, "Debris", (1.181, 1.072, 0.397),
+    Piece("Dress_CaseBroken", build_case_broken, "Debris", (1.181, 1.072, 0.397),
           palettes=("storage", "wet"), weight=0.8, max_tris=900),
     Piece("Dress_BarrelUpright", build_barrel_upright, "Bulk", (0.612, 0.612, 0.895),
           weight=1.3, max_tris=700),
@@ -1445,7 +1492,7 @@ PIECES: list[Piece] = [
     # ── Wet — §03: "그것은 물이 있는 층에 있다" ─────────────────────────────
     Piece("Dress_PuddleLarge", build_puddle_large, "Decal", (1.860, 1.340, 0.012),
           palettes=("wet", "institutional"), weight=1.4, max_tris=700, solid=False,
-          note="§03's water clue, and the kit's only mirror"),
+          note="§12 zone C 물, and the kit's only mirror"),
     Piece("Dress_PuddleSmall", build_puddle_small, "Decal", (0.710, 0.660, 0.008),
           weight=1.2, max_tris=500, solid=False),
     Piece("Dress_DrainGrate", build_drain_grate, "Decal", (0.960, 0.960, 0.050),
@@ -1520,7 +1567,7 @@ def pivot_shift(b: PropBuild, mount: str) -> Vector:
     """Offset that puts the origin where the mount convention says.
 
     Extends `gen_props.pivot_shift` with the two mounts a dressing kit needs and
-    a loot kit does not: CEILING, whose origin is the ceiling plane so a piece
+    a floor-standing prop kit does not: CEILING, whose origin is the ceiling plane so a piece
     hangs from wherever it is dropped, and CORNER, whose origin is the
     wall/wall/ceiling corner itself.
     """
@@ -1577,6 +1624,22 @@ def emit(piece: Piece) -> None:
     if lost:
         blendkit.fail(f"{piece.name}: materials missing from the exported FBX: {', '.join(lost)}")
 
+    # Counted off the joined mesh's real polygons, per REFUSED_MATERIALS' docstring:
+    # the manifest states the fact and the loader acts on it, so the fact has to be a
+    # measurement. Read after the join and the triangulate, which is the geometry that
+    # actually went into the FBX — a count taken before either would be counting a mesh
+    # this file did not export.
+    slots = [m.name if m is not None else "" for m in obj.data.materials]
+    refused_faces = sum(1 for p in obj.data.polygons
+                        if 0 <= p.material_index < len(slots)
+                        and slots[p.material_index] in REFUSED_MATERIALS)
+    if refused_faces:
+        blendkit.fail(
+            f"{piece.name}: {refused_faces} polygon(s) carry a deleted system's material "
+            f"({', '.join(REFUSED_MATERIALS)}). The scatter tool's loader would refuse the "
+            "whole piece, so shipping it is shipping a piece that never appears — fail here "
+            "instead, where the builder that added it is one frame up the stack.")
+
     size = report.size
     for i, axis in enumerate("XYZ"):
         want = piece.expect[i]
@@ -1619,6 +1682,7 @@ def emit(piece: Piece) -> None:
         "materials": used,
         "sharp": sharp, "bevel_skipped": bevel_skipped, "piece": piece,
         "emissive": gen_props.emissive_material_count(obj),
+        "refused_faces": refused_faces,
     })
 
     blendkit.print_report(report)
@@ -1666,6 +1730,10 @@ def write_manifest(rows: list[dict]) -> str:
             "triangles": r["tris"],
             "emissive_materials": r["emissive"],
             "materials": r["materials"],
+            # The guard half of `RefuseDeletedSystems`, restated per REFUSED_MATERIALS.
+            # It sits beside `materials` because the loader's other half reads that list,
+            # and the two are meant to be read together: a re-export can break either.
+            "refused_faces": r["refused_faces"],
             "note": piece.note,
         })
 

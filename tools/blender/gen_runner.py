@@ -1997,12 +1997,20 @@ def clip_gun_walk(rig) -> gpm.Clip:
 
 
 def clip_death(rig) -> gpm.Clip:
-    """§09 사망 처리 — death is a transition into the ghost state, not an exit.
+    """§01 잡힘 — going down is a transition back to B1, not an exit.
 
-    Does NOT loop, and settles flat rather than in a heap: §08 makes the corpse a map
-    marker teammates have to navigate back to for the dropped loot, and §09's ghost is
-    *"자기 물건이 어디 있는지 보이는데 말할 수 없다"* — the pose is the thing the ghost is
-    screaming about and cannot point at.
+    **The reason this clip used to give is deleted.** It read *"§08 makes the corpse a map
+    marker teammates have to navigate back to for the dropped 전리품, and §09's 유령 is
+    「자기 물건이 어디 있는지 보이는데 말할 수 없다」"*. There is nothing to drop, nobody is
+    coming back for it, and the spectator 유령 went with §09. What is left is the rule that
+    replaced them: 잡히면 B1 의 자기 칸으로 돌아가 계속 달린다 — so this is the pose the OTHER
+    runners read, at the distance a flashlight reaches, in the second before the body is
+    gone from the floor. It is not a corpse and it marks nothing.
+
+    Does NOT loop, and settles flat rather than in a heap, and that is now a mechanical
+    requirement rather than a design one: ``main`` runs ``settle_on_floor`` on every clip
+    with ``loop=False``, so the lowest vertex of the last pose sits ON z = 0 — a heap
+    would put an elbow inside the concrete and ``verify_floor`` would fail the run.
 
     The player's keyframe table is reused rather than re-authored, with the hip drops
     scaled by the ratio of the two hip heights. A fall is a fall from wherever the hips
@@ -2035,7 +2043,7 @@ def clip_death(rig) -> gpm.Clip:
         world = (hips[0], hips[1] * ratio, hips[2] * ratio)
         poses.append(gpm.make_pose(frame, spec, hips_world=world, prev=prev))
     return gpm.Clip(name="Death", poses=poses, loop=False, measure_frame=48,
-                    note="§09 → ghost; corpse marks dropped loot (§08)")
+                    note="§01 잡힘 → B1 복귀; 다른 주자가 읽는 자세, 표식이 아니다")
 
 
 CLIP_BUILDERS = (clip_idle, clip_walk, clip_run, clip_crouch, clip_crouch_walk,

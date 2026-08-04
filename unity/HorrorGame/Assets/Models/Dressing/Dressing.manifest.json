@@ -14,7 +14,7 @@
     },
     {
       "name": "storage",
-      "note": "§12 zone A 나무 — an old storage wing: timber, crates, sheets, cobwebs."
+      "note": "§12 zone A 나무 — an old storage wing: timber, cases, sheets, cobwebs."
     },
     {
       "name": "utility",
@@ -272,8 +272,8 @@
   ],
   "pieces": [
     {
-      "name": "Dress_CrateStack_Tall",
-      "file": "Dress_CrateStack_Tall.fbx",
+      "name": "Dress_CaseStack_Tall",
+      "file": "Dress_CaseStack_Tall.fbx",
       "group": "Bulk",
       "mount": "FLOOR",
       "palettes": [
@@ -294,12 +294,12 @@
         "Dress_TimberPale",
         "Dress_TimberDark"
       ],
-      "clue_faces": 0,
+      "refused_faces": 0,
       "note": "sightline break just under eye height"
     },
     {
-      "name": "Dress_CrateStack_Low",
-      "file": "Dress_CrateStack_Low.fbx",
+      "name": "Dress_CaseStack_Low",
+      "file": "Dress_CaseStack_Low.fbx",
       "group": "Bulk",
       "mount": "FLOOR",
       "palettes": [
@@ -321,12 +321,12 @@
         "Dress_TimberDark",
         "Dress_ClothDust"
       ],
-      "clue_faces": 0,
+      "refused_faces": 0,
       "note": "crouch cover"
     },
     {
-      "name": "Dress_CrateBroken",
-      "file": "Dress_CrateBroken.fbx",
+      "name": "Dress_CaseBroken",
+      "file": "Dress_CaseBroken.fbx",
       "group": "Debris",
       "mount": "FLOOR",
       "palettes": [
@@ -348,7 +348,7 @@
         "Dress_TimberDark",
         "Dress_Paper"
       ],
-      "clue_faces": 0,
+      "refused_faces": 0,
       "note": ""
     },
     {
@@ -374,7 +374,7 @@
         "Dress_SteelBare",
         "Dress_BrassFitting"
       ],
-      "clue_faces": 0,
+      "refused_faces": 0,
       "note": ""
     },
     {
@@ -402,7 +402,7 @@
         "Dress_BrassFitting",
         "Dress_SteelPainted"
       ],
-      "clue_faces": 0,
+      "refused_faces": 0,
       "note": ""
     },
     {
@@ -431,7 +431,7 @@
         "Dress_BrassFitting",
         "Dress_TimberDark"
       ],
-      "clue_faces": 0,
+      "refused_faces": 0,
       "note": ""
     },
     {
@@ -465,7 +465,7 @@
         "Dress_TimberDark",
         "Dress_ClothDust"
       ],
-      "clue_faces": 0,
+      "refused_faces": 0,
       "note": "§12 sightline blocker; gaps make it cover rather than wall"
     },
     {
@@ -494,7 +494,7 @@
         "Dress_Paper",
         "Dress_Cardboard"
       ],
-      "clue_faces": 0,
+      "refused_faces": 0,
       "note": ""
     },
     {
@@ -521,7 +521,7 @@
         "Dress_SteelBare",
         "Dress_Paper"
       ],
-      "clue_faces": 0,
+      "refused_faces": 0,
       "note": ""
     },
     {
@@ -549,7 +549,7 @@
         "Dress_Paper",
         "Dress_ClothStained"
       ],
-      "clue_faces": 0,
+      "refused_faces": 0,
       "note": ""
     },
     {
@@ -581,7 +581,7 @@
         "Dress_Paper",
         "Dress_Cardboard"
       ],
-      "clue_faces": 0,
+      "refused_faces": 0,
       "note": ""
     },
     {
@@ -608,7 +608,7 @@
         "Dress_TimberDark",
         "Dress_Paper"
       ],
-      "clue_faces": 0,
+      "refused_faces": 0,
       "note": ""
     },
     {
@@ -634,7 +634,7 @@
         "Dress_TimberPale",
         "Dress_TimberDark"
       ],
-      "clue_faces": 0,
+      "refused_faces": 0,
       "note": ""
     },
     {
@@ -660,7 +660,7 @@
         "Dress_TimberPale",
         "Dress_TimberDark"
       ],
-      "clue_faces": 0,
+      "refused_faces": 0,
       "note": ""
     },
     {
@@ -689,7 +689,7 @@
         "Dress_Brick",
         "Dress_RustHeavy"
       ],
-      "clue_faces": 0,
+      "refused_faces": 0,
       "note": ""
     },
     {
@@ -714,7 +714,7 @@
         "Dress_Concrete",
         "Dress_ConcreteBroken"
       ],
-      "clue_faces": 0,
+      "refused_faces": 0,
       "note": ""
     },
     {
@@ -741,7 +741,7 @@
         "Dress_ConcreteBroken",
         "Dress_RustHeavy"
       ],
-      "clue_faces": 0,
+      "refused_faces": 0,
       "note": ""
     },
     {
@@ -766,7 +766,7 @@
         "Dress_Paper",
         "Dress_Cardboard"
       ],
-      "clue_faces": 0,
+      "refused_faces": 0,
       "note": "albedo 0.78 — the kit's brightest floor"
     },
     {
@@ -793,7 +793,7 @@
         "Dress_TimberDark",
         "Dress_RustHeavy"
       ],
-      "clue_faces": 0,
+      "refused_faces": 0,
       "note": ""
     },
     {
@@ -819,8 +819,8 @@
         "Dress_Water",
         "Dress_WetStain"
       ],
-      "clue_faces": 0,
-      "note": "§03's water clue, and the kit's only mirror"
+      "refused_faces": 0,
+      "note": "§12 zone C 물, and the kit's only mirror"
     },
     {
       "name": "Dress_PuddleSmall",
@@ -844,7 +844,7 @@
         "Dress_Water",
         "Dress_WetStain"
       ],
-      "clue_faces": 0,
+      "refused_faces": 0,
       "note": ""
     },
     {
@@ -874,7 +874,7 @@
         "Dress_RustHeavy",
         "Dress_WetStain"
       ],
-      "clue_faces": 0,
+      "refused_faces": 0,
       "note": ""
     },
     {
@@ -903,7 +903,7 @@
         "Dress_RustHeavy",
         "Dress_SteelBare"
       ],
-      "clue_faces": 0,
+      "refused_faces": 0,
       "note": ""
     },
     {
@@ -932,7 +932,7 @@
         "Dress_SteelBare",
         "Dress_BrassFitting"
       ],
-      "clue_faces": 0,
+      "refused_faces": 0,
       "note": "tiles on the 2.5 m grid; galvanised = the corridor's depth cue"
     },
     {
@@ -962,7 +962,7 @@
         "Dress_GaugeFace",
         "Dress_Grime"
       ],
-      "clue_faces": 0,
+      "refused_faces": 0,
       "note": ""
     },
     {
@@ -995,7 +995,7 @@
         "Dress_EnamelRed",
         "Dress_SteelBare"
       ],
-      "clue_faces": 0,
+      "refused_faces": 0,
       "note": ""
     },
     {
@@ -1022,7 +1022,7 @@
         "Dress_Enamel",
         "Dress_Rubber"
       ],
-      "clue_faces": 0,
+      "refused_faces": 0,
       "note": ""
     },
     {
@@ -1049,7 +1049,7 @@
         "Dress_Galvanised",
         "Dress_SteelBare"
       ],
-      "clue_faces": 0,
+      "refused_faces": 0,
       "note": ""
     },
     {
@@ -1077,7 +1077,7 @@
         "Dress_SteelBare",
         "Dress_Rubber"
       ],
-      "clue_faces": 0,
+      "refused_faces": 0,
       "note": ""
     },
     {
@@ -1106,7 +1106,7 @@
         "Dress_BrassFitting",
         "Dress_BulbDead"
       ],
-      "clue_faces": 0,
+      "refused_faces": 0,
       "note": "§03: a minority get a real light, ranged to one cell"
     },
     {
@@ -1134,7 +1134,7 @@
         "Dress_BulbDead",
         "Dress_SteelBare"
       ],
-      "clue_faces": 0,
+      "refused_faces": 0,
       "note": ""
     },
     {
@@ -1162,7 +1162,7 @@
         "Dress_SteelBare",
         "Dress_RustHeavy"
       ],
-      "clue_faces": 0,
+      "refused_faces": 0,
       "note": ""
     },
     {
@@ -1190,7 +1190,7 @@
         "Dress_ClothDust",
         "Dress_ClothStained"
       ],
-      "clue_faces": 0,
+      "refused_faces": 0,
       "note": "a §06 line-of-sight break that is not a wall; hangs into the room"
     },
     {
@@ -1215,8 +1215,113 @@
       "materials": [
         "Dress_Cobweb"
       ],
-      "clue_faces": 0,
+      "refused_faces": 0,
       "note": ""
+    },
+    {
+      "name": "Dress_WallSign",
+      "file": "Dress_WallSign.fbx",
+      "group": "Sign",
+      "mount": "WALL",
+      "palettes": [
+        "*"
+      ],
+      "weight": 1.0,
+      "size_x": 0.52,
+      "size_y": 0.047,
+      "size_z": 0.36,
+      "mount_depth": 0.047,
+      "breaks_sightline": false,
+      "solid": false,
+      "hangs_low": false,
+      "triangles": 152,
+      "emissive_materials": 0,
+      "materials": [
+        "Dress_SteelPainted",
+        "Dress_SteelBare",
+        "Dress_Enamel"
+      ],
+      "refused_faces": 0,
+      "note": "wall plate, blank"
+    },
+    {
+      "name": "Dress_HangingSign",
+      "file": "Dress_HangingSign.fbx",
+      "group": "Sign",
+      "mount": "CEILING",
+      "palettes": [
+        "*"
+      ],
+      "weight": 0.7,
+      "size_x": 0.8,
+      "size_y": 0.09,
+      "size_z": 0.93,
+      "mount_depth": 0.93,
+      "breaks_sightline": false,
+      "solid": false,
+      "hangs_low": false,
+      "triangles": 932,
+      "emissive_materials": 0,
+      "materials": [
+        "Dress_SteelBare",
+        "Dress_SteelPainted",
+        "Dress_Enamel"
+      ],
+      "refused_faces": 0,
+      "note": "double-sided plate on two chains, blank"
+    },
+    {
+      "name": "Dress_PipeLabel",
+      "file": "Dress_PipeLabel.fbx",
+      "group": "Sign",
+      "mount": "WALL",
+      "palettes": [
+        "*"
+      ],
+      "weight": 0.9,
+      "size_x": 1.1,
+      "size_y": 0.2263,
+      "size_z": 0.192,
+      "mount_depth": 0.2263,
+      "breaks_sightline": false,
+      "solid": false,
+      "hangs_low": false,
+      "triangles": 384,
+      "emissive_materials": 0,
+      "materials": [
+        "Dress_Galvanised",
+        "Dress_SteelBare",
+        "Dress_SteelPainted",
+        "Dress_Enamel"
+      ],
+      "refused_faces": 0,
+      "note": "labelled pipe band, blank"
+    },
+    {
+      "name": "Dress_DoorPlate",
+      "file": "Dress_DoorPlate.fbx",
+      "group": "Sign",
+      "mount": "WALL",
+      "palettes": [
+        "*"
+      ],
+      "weight": 1.1,
+      "size_x": 0.2,
+      "size_y": 0.024,
+      "size_z": 0.14,
+      "mount_depth": 0.024,
+      "breaks_sightline": false,
+      "solid": false,
+      "hangs_low": false,
+      "triangles": 64,
+      "emissive_materials": 0,
+      "materials": [
+        "Dress_BrassFitting",
+        "Dress_Enamel",
+        "Dress_SteelBare"
+      ],
+      "refused_faces": 0,
+      "note": "door number plate, blank"
     }
   ]
 }

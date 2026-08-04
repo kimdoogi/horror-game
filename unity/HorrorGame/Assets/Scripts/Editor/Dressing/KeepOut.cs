@@ -60,6 +60,17 @@ namespace HorrorGame.EditorTools.Dressing
         /// <summary>How many 착지 drop columns are enforced.</summary>
         public int Landings { get; private set; }
 
+        /// <summary>
+        /// How many §12 도달 지점 are enforced — one per 막힌 길.
+        /// <para>
+        /// The largest group by far, and the one that was missing. They are the markers
+        /// the NavMesh audit measures reachability against, so a piece of dressing that
+        /// seals one turns a green map into a nine-island failure that no dressing rule
+        /// could see.
+        /// </para>
+        /// </summary>
+        public int ReachProbes { get; private set; }
+
         /// <summary>How many 투하구 mouths are enforced.</summary>
         public int Mouths { get; private set; }
 
@@ -145,11 +156,33 @@ namespace HorrorGame.EditorTools.Dressing
                 keepOut.Spawns++;
             }
 
+            // §12's 도달 지점 — one at every 막힌 길, and they are what the NavMesh audit
+            // actually tests. This is the gap that let a single piece of scenery fail a
+            // whole regeneration: the band rule proved every solid piece was inside the
+            // floor a runner stands on, the keep-out list proved none was in a drop column
+            // or a doorway, and one dead end on B7 came back as an island of exactly one
+            // marker — ReachProbe_B7 수몰층_6_6_4 — because a 막힌 길 is a one-cell stub and
+            // a piece can seal it while satisfying both.
+            //
+            // The radius is the BAKE's agent, not the runner's: the audit asks whether
+            // NavMesh reaches the probe, Recast erodes its own agent radius off every edge,
+            // and keeping a 0.45 m circle clear for a 0.5 m agent would leave the marker
+            // technically un-dressed and still unreachable. That is the same mistake the
+            // dead-end plinth made, and it cost a round.
+            var probeAgent = AgentRadius(out var probeNote);
+            foreach (var probe in Group(markers, MapMarkerKind.ReachProbe))
+            {
+                keepOut._columns.Add(new Column("도달 지점", probe.name, probe.position,
+                    probeAgent + DressingSpace.WallInset, probe.position.y,
+                    probe.position.y + body.Height));
+                keepOut.ReachProbes++;
+            }
+
             // §06's creature, one per storey. Its own baked agent radius, because the
             // creature is not a 0.30 m capsule and using the runner's would keep a
             // 0.45 m circle clear for a body that needs more.
-            var agent = AgentRadius(out var agentNote);
-            keepOut.Note = agentNote;
+            keepOut.Note = probeNote;
+            var agent = probeAgent;
             foreach (var spawn in Group(markers, MapMarkerKind.MonsterSpawn))
             {
                 keepOut._columns.Add(new Column("창조물", spawn.name, spawn.position,
@@ -226,6 +259,7 @@ namespace HorrorGame.EditorTools.Dressing
                 .Append(F(ChuteDropHeightMetres)).Append(" m drop and a ")
                 .Append(F(Body.Height)).Append(" m body), ")
                 .Append(Mouths).Append(" 투하구 mouths, ")
+                .Append(ReachProbes).Append(" 도달 지점, ")
                 .Append(Spawns).Append(" spawns, ")
                 .Append(Doors).Append(" 문 swings (r ")
                 .Append(F(MapKitCatalogue.CorridorClearWidth)).Append(" m, the leaf's own reach)");

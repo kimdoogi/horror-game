@@ -1,206 +1,287 @@
 # Trailer — shot list
 
-> **Rewritten 2026-08-03 for the race.** The previous list was ten beats about a
-> four-player co-op looting game: the surface van, the shop, the clue plate, the
-> carry. All four of those things were deleted on 2026-08-02
-> ([DESCENT-PIVOT.md](../DESCENT-PIVOT.md)), and with them three of that list's
-> blockers. This is a shot list for the game that exists.
+> **Rewritten 2026-08-04, and this time there is a file.** The previous version of this
+> document was a storyboard with the standing note *"no video is edited here, and none
+> can be."* That is no longer true: `tools/render/descent_film.py` shoots the cut below
+> in-engine and encodes it, and `docs/store/trailer_descent.mp4` is its output. What
+> changed in between is that the shot book stopped describing a game that had been
+> deleted.
 
 The single highest-leverage asset on the page: a visitor plays it before reading
-anything. [STEAM-RELEASE.md §2.3](../STEAM-RELEASE.md) has the format requirements
-and they are the thing the current file fails — see §0.
-
-**No video is edited here, and none can be.** What this file delivers is the
-storyboard, what each beat has to prove, which beats can be shot today, and the
-route to actual motion.
+anything. [STEAM-RELEASE.md §2.3](../STEAM-RELEASE.md) has the format requirements.
 
 ---
 
-## 0 · The file in this folder is not a trailer
+## 0 · The two files, measured
 
-`docs/store/party.mp4`, measured with `ffprobe` (STEAM-RELEASE.md §I.3.3):
+Both numbers below are `ffprobe` output, not intentions.
 
-```
-codec_name=h264   width=1280   height=720   r_frame_rate=24/1
-duration=3.000000  size=609331  bit_rate=1624882
-```
+| | `party.mp4` (old) | `trailer_descent.mp4` (new) | Valve wants |
+|---|---|---|---|
+| resolution | 1280 × 720 | **1920 × 1080** | 1920 × 1080 |
+| frame rate | 24 | **30** | 30/29.97 or 60/59.94 |
+| bit rate | 1,625 Kbps | **see §6** | 5,000+ Kbps |
+| duration | 3.00 s | **41.57 s** | 30–60 s |
+| subject | a four-player co-op looting party | the race | — |
 
-Valve asks for **up to 1920 × 1080, 30/29.97 or 60/59.94 fps, 5,000+ Kbps**,
-H.264/AAC. That file misses the resolution, the frame rate and the bit rate, is
-three seconds long, and is named after a party of four that no longer exists in this
-design. **It has to be reshot from scratch regardless**, which is the one good thing
-about the pivot landing on it: nothing was thrown away that was going to be used.
+`party.mp4` misses the resolution, the frame rate, the bit rate and the length, and is
+named after a party of four that this design deleted on 2026-08-02. **It is not the
+trailer and it never was.** It is left in place only because this pass does not delete
+files; move it out of `docs/store/` before anybody mistakes it for an asset.
 
-> It is not deleted here on purpose — this pass does not remove files. Delete it, or
-> move it out of `docs/store/`, before anybody mistakes it for an asset.
+> **Why the new encode targets a bit rate instead of a quality.** `party_film.py` asked
+> for `-crf 18` and got 1.62 Mbps. That is not an ffmpeg bug: this game is a dark
+> corridor lit by one torch, and a quality-targeted encoder spends almost nothing on it.
+> *Any* constant-quality setting fails the same way on the same footage however high the
+> quality is set. The bit rate is therefore a target (`-b:v` + `-maxrate` + `-bufsize`),
+> and `descent_film.py` reads the result back with `ffprobe` and exits non-zero if it
+> missed — the check is in `check_against_valve`.
 
-**The thirteen reference frames in `docs/store/trailer/` are stale for the same
-reason.** They are seed 1204 on the five-storey co-op building, and four of them
-photograph objects the pivot deleted (`beat02_surface`, `beat12_shop`). The camera
-spec that produced them, `tools/render/trailer_frames.json`, holds coordinates in a
-map that is no longer generated. **Re-probe before re-shooting** — §5.
+**The thirteen reference frames in `docs/store/trailer/` are stale and are not inputs to
+this cut.** They are seed 1204 on the five-storey co-op building, and two of them
+photograph systems the pivot deleted (`beat02_surface`, `beat12_shop`). The spec that
+produced them, `tools/render/trailer_frames.json`, holds coordinates in a map that is no
+longer generated — that is [checklist.md B-3](checklist.md). The new spec,
+`tools/render/trailer_shots.json`, **contains no world coordinates at all**: every camera
+is an anchor keyword the rig resolves against the scene it just opened, so a re-seeded
+storey moves the framing with it instead of stranding it inside a wall.
 
 ---
 
 ## 1 · The pitch this trailer has to make
 
-Not "scary multiplayer game". Four claims, in this order, because each one is the
-reason the next one matters:
+Not "scary multiplayer game". Four claims, in this order, because each is the reason the
+next one matters:
 
-1. **You are going down, and you are not alone.** Twenty people, one building, one
-   direction. Three seconds.
-2. **Winning a floor puts you back at the start.** The chute is the idea nobody else
-   has. If the trailer lands one thing, it is this.
-3. **The last gate is one cell wide.** Which is what turns a maze into a race —
-   everyone arrives at the same doorway.
-4. **Something in here ends your run, and it does not care who you are.** The stake,
-   stated late and briefly.
+1. **You are going down, and you are not alone.** Eight floors, one direction.
+2. **Winning a floor puts you back at the start.** The 투하구 drops you on the *rim* of
+   the floor below, and a floor is only ever entered from its rim. This is the idea
+   nobody else has. If the trailer lands one thing, it is this.
+3. **The last gate is one cell wide.** Which is what turns a maze into a race — everyone
+   arrives at the same doorway, and §12-A refuses to widen it when the lobby grows.
+4. **Something in here takes everything you have gained, and does not end your run.**
 
-A trailer that shows a dark corridor and a monster has made claim 4 and none of the
-others, and there are two hundred of those on Steam. **Claim 2 is the trailer.**
+**Claim 4 changed on 2026-08-03 and the store copy has not caught up.** Being caught is
+not death: `MatchDirector.cs:1614` — 「§02: caught is not death. The creature sends a
+runner back to the place they started on B1 and they keep racing.」 §09's spectator ghost
+was deleted in the same change, because nothing is permanent any more and there is
+nobody to spectate. The previous version of this file had a beat built on
+**탈락 · 순위 없음 / OUT · NO PLACING** and on filming the ghost. Both were cut here.
+See [§7](#7--the-copy-still-sells-elimination) — the same error is still live in
+`copy-ko.md` and `copy-en.md`, and it is a bigger problem than the trailer was.
 
 ---
 
 ## 2 · The cut, beat by beat
 
-Target 60–70 s. Timings are a first pass; the audio decides the real ones.
+**This table is the prose of `tools/render/trailer_shots.json` and nothing else.** Every
+row is a shot that file names, in that file's order, at that file's duration. A row here
+that is not in that file is a shot nobody can film, which is the same failure as a test
+nobody ran — so when the cut changes, both change or neither does.
 
-| # | t | Beat | What it proves | Shootable today |
+23 shots · 1247 frames · 30 fps · **41.57 s**.
+
+| # | shot | t | Beat | What it proves |
 |:--:|---|---|---|---|
-| 1 | 0:00–0:04 | **Cold open: the drop.** First person, standing in the lit middle of a floor, the mouth of a 투하구 at your feet. A step forward, three metres of fall in the dark, and a corridor you have never seen resolving as you land — on the *outside* of the next floor. No cut. | The whole loop in one unbroken shot, gameplay in the first three seconds, and the game's only genuinely new idea before anybody has read a word. | ✅ `Chute.DropHeightMetres = 3.0f` and the controller's own gravity — the fall is real, not a transition |
-| 2 | 0:04–0:09 | **The start line.** The outer ring of B1, lit, twenty identical figures spread around it facing inward. They all move at the same instant. Hold two seconds longer than is comfortable. | Twenty, and that they are identical — §04 deleted the roles, and a viewer should understand there is no character select. | ❌ **needs twenty connected peers.** Today the number is zero |
-| 3 | 0:09–0:17 | **Four, two, one.** Three cuts down one storey. Four doorways at the rim with people spilling through them; two, with a scuffle at one; one, with a queue. Each cut is tighter than the last and has more bodies in it. | §12-A's whole design: the gates do not multiply when the lobby does. | ⚠ geometry ✅, crowd ❌ — the doorways are shootable now, the people are not |
-| 4 | 0:17–0:24 | **The door.** A runner stops at the middle gate. 1.1 seconds of standing still facing the wrong way while a beam swings up the corridor behind. It shuts. Hard cut: two runners on the far side, 4.5 seconds of breaking, and it does not come back. | The only thing you can do to another player, and its price, without a word of explanation. One door per floor — this is the floor's whole social event. | ⚠ door mechanics ✅ (`DoorState`, `DoorInteractable`), second runner ❌ |
-| 5 | 0:24–0:32 | **Eight floors, eight surfaces.** One second each, deepest last, each cut carrying only its own footstep and nothing else: concrete 하역장, wood 기록보관소, metal 기계실, gravel 저탄장, tile 저수조, carpet 병동, water 수몰층, earth 굴착층. **No music under this section.** | The audio alphabet, and the headphone argument made by demonstration rather than by a caption. A viewer wearing headphones works out what this section is for by themselves. | ✅ all eight exist: `DescentMap.Storey`, `Assets/Audio/Footsteps/` |
-| 6 | 0:32–0:39 | **Voices.** Two runners who have never met, in the same corridor, talking — *"그쪽 막혔어?"* Then the same two, two gates later, at the one-cell gate, not talking. | Proximity voice, and what it is worth: cooperation is real and it is temporary. This is the beat people will clip. | ❌ **needs two peers and working voice.** Neither has ever happened |
-| 7 | 0:39–0:50 | **Seen.** Three cuts on the inner ring: at 18 m it is a shape; at 12 m the acquisition tell fires; at 6 m it fills the frame. Then the 45° glance, the corridor tilting, and the stamina bar emptying while the gap does not open. | §06's speed ladder — 4.5 against 4.8 — and §05's central dilemma, shown rather than stated. The three-cut approach is what makes "three tenths of a metre per second" a feeling instead of a number. | ✅ shot today, and the strongest sequence in the list |
-| 8 | 0:50–0:55 | **Out.** The catch. Then the same building seen through its walls, from above, silent — §09's ghost. One line: **탈락 · 순위 없음 / OUT · NO PLACING.** | The stake, and the sentence that makes it different from every other horror game: there is no good order to die in. | ✅ `GhostSession` is built and has been rendered |
-| 9 | 0:55–1:02 | **B8.** The earth floor. Two runners in the same inner corridor and one doorway. Cut on the doorway, before it resolves. | §02: one winner, and the trailer refuses to say which. | ⚠ geometry ✅, second runner ❌ |
-| 10 | 1:02–1:10 | **Title.** The name over the empty lit outer ring of B1 — twenty start marks, nobody standing on them. Hold. Wishlist card. | — | ✅ |
+| 1 | `01_mouth` | 2.20 | Stood in the middle of B4, looking down at the 투하구 at your feet. | Opens on the mechanic, not on a corridor. |
+| 2 | `02_fall` | 0.50 | The drop. Half a second, eased t², onto a floor you have not seen. | Claim 2, before anybody has read a word. |
+| 3 | `03_landed` | 2.60 | You are on B5's **rim** — the far outside of the new floor. | The twist in claim 2: winning a floor puts you at the back of the next one. |
+| 4 | `04_start_line` | 3.60 | B1's lit outer ring. **Two** bodies, facing inward, idle. | People, in the light, before the dark. |
+| 5 | `05_inward_rim` | 1.60 | The outer band, heading in. | The narrowing, 1 of 3. |
+| 6 | `06_inward_gate` | 1.60 | The middle gate on B5 and the door it carries. | 2 of 3, and the only thing you can do to another runner. |
+| 7 | `07_inward_centre` | 1.90 | Past the last gate. Tighter lens, flat pitch. | 3 of 3: everybody arrives here. |
+| 8–15 | `08_surface_b1` … `15_surface_b8` | 1.15 ea | **Eight floors, eight surfaces.** Identical relative framing on every storey; the only variable is the floor. **No music under this section.** | The audio alphabet, demonstrated rather than captioned. |
+| 16 | `16_gun` | 2.60 | A gun on the floor of a dead end. `Gun_B4`, a real prefab instance on a 막힌 길. | The other runner is a threat, and the game hands you the reason. |
+| 17 | `17_seen_18m` | 1.40 | At 16 m it is a shape. | §06's speed ladder as three distances, not a number. |
+| 18 | `18_seen_12m` | 1.40 | The acquisition tell fires. | |
+| 19 | `19_seen_6m` | 1.90 | It fills the frame; the camera gives ground. | |
+| 20 | `20_back_to_b1` | 2.80 | **Hard cut out of the creature onto B1's lit rim.** The cell you started in, eight floors up, still running. | Claim 4. The juxtaposition *is* the rule — no card, no caption. |
+| 21 | `21_door` | 2.20 | One door per floor. 1.1 s to shut, 4.5 s to break, never comes back. | |
+| 22 | `22_finish` | 2.80 | The middle of B8 — §12-C: 「B8의 중심은 투하구가 아니라 도착점」. | The one place in the building with no hole in it. |
+| 23 | `23_ring_empty` | 3.40 | B1's outer ring with nobody on it. | Title plate goes here, in the edit — not baked into a frame. |
 
-**Four of the ten need other people in the frame** (2, 6, and half of 3, 4 and 9),
-and that is the honest state of this game: its trailer is blocked on the same thing
-its release is blocked on. See §4.
+### The two beats that were cut, and why
 
----
-
-## 3 · Sound is the pitch, not the garnish
-
-§05 makes the mix a mechanic, so the trailer's audio is content:
-
-- **Mix for headphones.** Everything about the game assumes them. A trailer mixed for
-  phone speakers advertises the wrong product.
-- **Beat 5 has no music.** The eight surfaces have to be audible *as different
-  surfaces*. Anything under them defeats the only beat that argues for the mix.
-- **Beat 1 has no music either.** The fall should be wind and then a floor.
-- **Voices early and unpolished** (beat 6). Two strangers negotiating in a corridor is
-  the product. Clean VO would make it look like a different, more expensive, less
-  interesting game.
-- **The creature is heard twice at most** — once under beat 7's acquisition tell, once
-  at beat 8. §06's 정지 state, 「침묵이 가장 무서운 소리다」, is the design's own
-  argument for restraint.
-- ⚠ **The gravel/concrete inversion is audible.** [F-002](../BALANCE-FINDINGS.md#f-002):
-  gravel measures **26.1 dB quieter** than concrete at the 800 Hz corner the mix uses,
-  while the game tells the player gravel is the clearer of the two. Beat 5 puts those
-  two surfaces four seconds apart in a section whose entire purpose is that surfaces
-  sound different. **Resolve F-002 before cutting beat 5**, or order the eight so
-  gravel and concrete are not adjacent — they currently are not (B1 concrete, B4
-  gravel), which is luck rather than design.
+- **"Twenty runners on the ring."** Not filmed, and deliberately. Two peers have
+  connected; twenty never have. §8's rule stands: staging twenty stand-ins to photograph
+  the one claim on this page that has never been demonstrated is a lie, not a shortcut.
+  Shot 4 shows two and the cut never says a number.
+- **"Being sent back to B1", as the curtain.** `CaughtScreen` is a UI curtain driven by
+  `MatchDirector`, and this rig is edit-mode — no play mode, no UI, no director. Shot 20
+  gets the *rule* across by cutting from the creature to the lit rim, which is what the
+  player sees anyway. Filming the curtain itself needs [route A](#5--what-still-needs-a-human).
 
 ---
 
-## 4 · What blocks this trailer, and what does not
+## 3 · What the rig can and cannot do, stated plainly
 
-The pivot cleared three of the old list's four blockers and left one new one that is
-larger than all of them.
+`DescentFilmRig` runs in **edit mode**. The geometry, the lighting, the materials, the
+models and the animation clips in every frame are the shipped ones. The *movement through
+them* is authored in the shot book, and there is no `MatchDirector`, no physics, no AI
+and no networking.
 
-| Old blocker | State |
+So: **the rig produces a second body, never a second player.** Shot 4's two runners are
+the shipped `Runner.fbx` on the shipped `Idle` clip standing on two real
+`PlayerSpawn_` marks — an accurate picture of two runners on the start line, and not a
+recording of two people playing. The distinction matters for beats built on *behaviour*
+(a scuffle at a gate, a door shut in somebody's face, two voices in a corridor). Those
+are route A.
+
+> **The bind-pose defect, recorded because it nearly shipped.** Until 2026-08-04 the rig
+> read its clips from `Assets/Models/Characters/Player.fbx` — a path that does not exist;
+> the runner is at `Assets/Models/Player/Runner.fbx`. `AssetDatabase` returns an empty set
+> for a missing path rather than an error, so every body failed its clip lookup and stood
+> in its **bind pose**. The 14:13 take put two T-posed figures on B1's start line, in the
+> shot the cut exists to make. Frame count right, exit code zero, log clean. Only looking
+> at the PNGs found it. It is now checked before the first frame is rendered
+> (`RequireRunnerClips`) and a missing clip is fatal.
+
+Two more failures that used to be warnings and are now fatal, for the same reason:
+
+- **A camera inside geometry.** The 14:14 take spent 72 frames on a gun shot the rig had
+  already called `INSIDE GEOMETRY … This shot will be a wall`. Framing a dead end needed
+  `standOff`, which backs the camera along the corridor that actually leaves the cell
+  rather than along a world axis nobody can predict after a re-seed.
+- **Under 1.5 m of room ahead**, which reads as a wall at the default FOV.
+
+---
+
+## 4 · Two real instances — the honest answer
+
+`LocalTwoInstance.Launch` does run a host and a client that connect, start and race by
+themselves, and `LaunchFullField` runs twenty. **It is a measurement harness, not a
+camera.** It reports frame time and bandwidth; there is no capture path in it, and
+nothing in this repository records a player window.
+
+What it would take, precisely:
+
+1. The instances already accept `-screen-width 1920 -screen-height 1080`
+   (`LocalTwoInstance.cs:492`), so the window can be the right size. Clients default to
+   `-batchmode -nographics`, which renders nothing — the ones being filmed have to be
+   launched windowed.
+2. Capture is then **desktop recording** — `ffmpeg -f avfoundation -i "3"` (`Capture
+   screen 0` is present on this machine). That records the whole screen, so it needs a
+   human to place the windows, and it needs macOS Screen Recording permission granted to
+   whatever process runs it. Neither is something an unattended agent should do: it
+   records the operator's desktop, not just the game.
+3. It also has to be scheduled. A full field was running on this machine while this cut
+   was being planned (20 processes, 19:33–19:44), and a GPU-heavy render alongside it
+   would have corrupted the frame-time numbers that run existed to measure.
+
+**So: not filmed here, and not because it was hard to think of.** It is the single
+biggest upgrade available to this trailer — shots 4, 6 and 21 all get materially better
+with two people actually playing — and it is route A below.
+
+---
+
+## 5 · What still needs a human
+
+| Needs a person at a keyboard | Why the rig cannot |
 |---|---|
-| §03's clue prop is a white square | **gone** — the clue system was deleted with the co-op game |
-| §08's vehicle is a white box | **gone** — there is no surface and no round trip |
-| §03's objective prop is a white capsule | **gone** — there is no objective to carry |
-| §08's loot props are white cubes | ⚠ **check.** The loot economy was deleted from the design; whether the props are still being spawned into the descent map is a question for whoever regenerates it. If they are, they constrain every framing in the building exactly as [checklist.md S-4](checklist.md) recorded |
+| **§05's mouse-look** — the 45° glance back while running | An editor-authored camera path does not move like a hand on a mouse, and the glance is the game's central dilemma |
+| **Proximity voice** — two strangers negotiating in a corridor | Cannot be faked, and it is the beat people will clip |
+| **A door shut in somebody's face** | Two players and a decision; the rig can only place a door and a camera |
+| **The 잡힘 curtain** and the HUD | Play-mode UI; the rig is edit-mode |
+| **Anything with twenty people in it** | Twenty people |
 
-| New blocker | State |
-|---|---|
-| **Other players in the frame** | Beats 2, 6, and half of 3, 4 and 9. `RaceLobby` is referenced by nothing, `RaceDirector` is in no scene, and no two peers have ever connected ([STEAM-RELEASE.md §I.4](../STEAM-RELEASE.md)). This is not an art problem and cannot be worked around with a render rig |
-
-**The four beats that are shootable today — 1, 5, 7, 8 — are the four strongest in the
-list.** A 30-second cut of exactly those four is a real teaser and it can be made this
-week. That is worth saying plainly, because the instinct will be to wait for beat 2.
+**Route A (OBS or `ffmpeg` over a real session) is what closes all five, and it is now
+the only thing standing between this cut and a good one.** The route-B rig has gone as
+far as route B goes.
 
 ---
 
-## 5 · Rendering the reference frames
-
-The spec is stale (§0) and has to be re-derived before any of this is shot:
+## 6 · Shooting it
 
 ```bash
-# 1. the map moved: re-derive camera anchors on the descent seed
-python3 tools/render/store_shots.py probe --seed 20260802 --out /tmp/descent_probe.json
+# whole cut: Unity renders 1247 PNGs, ffmpeg encodes and the result is verified
+python3 tools/render/descent_film.py --out docs/store/trailer_descent.mp4
 
-# 2. rewrite tools/render/trailer_frames.json against those anchors — one JSON
-#    entry per beat above, so changing a framing is an edit and a re-run, not a
-#    conversation about where the camera was
-
-# 3. shoot
-python3 tools/render/store_shots.py shoot --spec tools/render/trailer_frames.json
+# re-cut without re-rendering (fades, bit rate, ordering)
+python3 tools/render/descent_film.py --encode-only
 ```
 
-`DescentMap.DefaultSeed` is **20260802** and every storey is centred on cell (12, 12)
-with a radius of 11 — the tower does not move between floors, so a camera anchor is a
-storey index plus an offset from the middle, which is a far simpler spec than the old
-building needed.
-
-Three things that will otherwise waste a night:
+Four things that otherwise waste a night, all of them learned the expensive way:
 
 - **Never add `-nographics`.** The driver deliberately does not pass it. That flag
   disables the graphics device and every frame comes out black.
 - **Check the exit code before the frame count.** A run that died on the project lock
   writes a log with no errors in it.
-- **Do not run Unity while another agent holds the project lock.** Parallel runs
-  corrupt each other's measurements; the driver waits and retries.
+- **Do not run Unity while another agent holds the project lock**, and do not run it
+  while a field of instances is being measured. The driver waits on the lockfile; it
+  cannot see the field.
+- **Judge the frames at native brightness.** Do not open them in a viewer that
+  auto-gains, and do not grade the cut to make them readable — [§8](#8--what-not-to-do).
 
 ---
 
-## 6 · Capturing motion — the two honest routes
+## 7 · The copy still sells elimination
 
-Neither exists in this repository. Both are a real evening's work.
+Found while sweeping this folder, and it is worse than anything that was wrong with the
+trailer, because the trailer was merely stale while this is a claim on the store page
+that the game contradicts.
 
-**A · OBS over a real play session.** Record a human playing at 1920 × 1080, 60 fps,
-and cut from the take. The only route that captures §05's mouse-look — the 45° glance
-in beat 7 *is* a hand on a mouse, and an editor-authored camera path does not look
-like one. It also captures beat 6's voices, which cannot be faked. Costs: somebody has
-to play well, and beats 2, 3, 4, 6 and 9 need more than one person.
+The shipped rule (`MatchDirector.cs:1614`, `CaughtScreen.cs`): caught → back to your own
+starting cell on B1 → keep racing. Nothing eliminates a player. `GhostSession` is deleted
+from the repository.
 
-**B · Unity Recorder in the editor.** `com.unity.recorder`, added to
-`Packages/manifest.json`, records the Game view to an image sequence or MP4.
-Deterministic, repeatable, any frame rate. Costs: it captures the editor's frame —
-ART.md §6's numbers are editor renderer timings with no physics, AI or UI, and a
-recorded take inherits that caveat. It cannot produce a second player any more than
-the still rig can.
+Still on the page:
 
-**Recommendation: B now, A later.** This is a change from the previous version of this
-file, which recommended waiting. Route B can shoot beats 1, 5, 7 and 8 today — the
-fall, the eight surfaces, the chase, the elimination — and those four are a publishable
-30-second teaser, not merely an internal animatic. Route A becomes right the moment
-two peers connect, and the trailer roughly doubles in value at that moment.
+| File | Line | Says |
+|---|---|---|
+| `copy-ko.md` | 65 | 「잡히면 순위 없이 **탈락**한다」 |
+| `copy-ko.md` | 121 | 「잡히면 **탈락**입니다. 순위도 남지 않습니다 … 잘 죽는 방법은 없습니다」 |
+| `copy-ko.md` | 131 | 경주 규칙에 「**탈락**」을 열거 |
+| `copy-en.md` | 138 | "start, finish order, **elimination**, timeout" |
+| `copy-en.md` | 331 | "Caught is out, unranked, no revival ✅ code + test" — *cites `RaceDirector.cs:508`, whose comment is itself stale* |
+
+Two of those are the emotional centre of the Korean long description. **Rewriting them is
+not a copy edit** — 「잘 죽는 방법은 없습니다」 is a good line about a rule that no longer
+exists, and the replacement has to be about losing eight floors of progress and running
+anyway, which is a different and arguably better pitch. It is not done here because this
+pass owns the trailer; it is [checklist.md](checklist.md)'s to schedule.
+
+**The gun does not appear in any store document.** Four of them ship, one each on B3–B6
+(`Gun_B3`…`Gun_B6`, verified in the scene). It is in this cut at shot 16 and in no piece
+of copy anywhere.
 
 ---
 
-## 7 · What not to do
+## 8 · What not to do
 
+- **Do not stage a crowd.** Twenty AI stand-ins in the outer ring would make the "twenty
+  runners" beat shootable tomorrow and would be a lie about the only claim on this page
+  that has never once been demonstrated. If that beat is in the trailer, it is because
+  twenty people were in the building.
 - **No text overlays claiming things.** No "20 PLAYERS" card, no feature bullets burned
-  into the video. The store page says those; the trailer shows them. The one exception
-  is beat 8's 탈락 · 순위 없음, which is the game's own UI, not a marketing card.
-- **No review quotes, no laurels, no scores.** There are none, and Valve rejects
-  capsules carrying them.
+  into the video. The store page says those; the trailer shows them.
+- **No review quotes, no laurels, no scores.** There are none, and Valve rejects capsules
+  carrying them.
 - **Do not brighten the footage.** [STEAM-RELEASE.md §2.2](../STEAM-RELEASE.md) is
   explicit and right: a buyer who bought a brighter game says so in a review. Frame for
-  the beam instead. The darkness regression recorded in
-  [checklist.md S-6](checklist.md) is an art problem to fix in the game, not in the
-  grade.
-- **Do not stage a crowd.** Twenty AI stand-ins spawned in the outer ring would make
-  beat 2 shootable tomorrow and would be a lie about the only claim on this page that
-  has never once been demonstrated. If beat 2 is in the trailer, it is because twenty
-  people were in the building.
+  the beam instead. The darkness regression in [checklist.md B-5](checklist.md) is an art
+  problem to fix in the game, not in the grade.
+- **Do not let this file and `trailer_shots.json` drift.** §2 is the JSON in prose. A beat
+  that exists only here is a shot nobody can film.
+
+---
+
+## 9 · Sound
+
+§05 makes the mix a mechanic, so the trailer's audio is content, not garnish. **None of
+it is in the encode** — `descent_film.py` produces a silent H.264 track and the mix is an
+edit-suite job.
+
+- **Mix for headphones.** Everything about the game assumes them.
+- **Shots 8–15 have no music.** The eight surfaces have to be audible *as different
+  surfaces*; anything under them defeats the only beat that argues for the mix.
+- **Shots 1–3 have no music either.** The fall should be wind and then a floor.
+- **The creature is heard twice at most** — once under shot 18's acquisition tell, once at
+  shot 19. §06's 정지 state, 「침묵이 가장 무서운 소리다」, is the design's own argument for
+  restraint.
+- ⚠ **The gravel/concrete inversion is audible.**
+  [F-002](../BALANCE-FINDINGS.md#f-002): gravel measures **26.1 dB quieter** than concrete
+  at the 800 Hz corner the mix uses, while the game tells the player gravel is the clearer
+  of the two. Shots 8–15 put both in a section whose entire purpose is that surfaces sound
+  different. **Resolve F-002 before mixing that section.** The cut's order is fixed by
+  storey (B1 concrete → B8), so the two cannot be separated by re-ordering — B1 concrete
+  and B4 gravel are three cuts apart.

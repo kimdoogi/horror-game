@@ -3,7 +3,7 @@
   "resolution": 1024,
   "uv_units_per_metre": 0.518702,
   "fbx": "Assets/Models/Characters/Player.fbx",
-  "note": "The five Role_* slots are flat colour by design \u2014 Unity swaps slot 0 per RoleId and \u00a705 picks those values for separation in the dark. Only the three neutral surfaces carry maps.",
+  "note": "The Role_* slots are flat colour by design \u2014 Unity swaps slot 0 per RoleId and \u00a705 picks those values for separation in the dark. Only the three neutral surfaces have maps.",
   "roles": [
     {
       "name": "Role_Listener",
@@ -48,17 +48,6 @@
       "roughness": 0.76,
       "metallic": 0.0,
       "luma": 0.5565
-    },
-    {
-      "name": "Role_Flasher",
-      "base_color_linear": [
-        0.78,
-        0.78,
-        0.74
-      ],
-      "roughness": 0.7,
-      "metallic": 0.0,
-      "luma": 0.7771
     }
   ],
   "materials": [

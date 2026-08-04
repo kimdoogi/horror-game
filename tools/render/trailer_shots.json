@@ -1,0 +1,263 @@
+{
+  "_comment": [
+    "하강 — the trailer, written as shots rather than coordinates.",
+    "",
+    "Every 'from', 'to', 'at' and 'aimTarget' names an object in",
+    "Map_FirstSketch_Solo.unity or a keyword DescentFilmRig resolves against the scene",
+    "it just opened. There is deliberately not one world coordinate in this file: the",
+    "specs this replaces (trailer_frames.json, store_shots.json) hold coordinates probed",
+    "on seed 1204's five-storey sanatorium, a map that is no longer generated — that is",
+    "checklist.md's blocker B-3.",
+    "",
+    "Keywords, all verified against the shipped scene on 2026-08-04:",
+    "  centre:<n>                 n = 1..8   (B1 = 1)",
+    "  chute:<n>:<south|north>    n = 1..7   (7 holes join 8 storeys)",
+    "  landing:<n>:<south|north>  n = 1..7   where that hole puts you, on the RIM below",
+    "  gun:<n>                    n = 3..6   ONLY. Four guns, B3-B6, and no others exist",
+    "  door:<n>                   n = 1..8   one door per storey, all at cell (11,7)",
+    "  start:<i>                  i = 8..43  ONLY. 36 marks, numbered from 8, not from 1",
+    "",
+    "'aheadMetres' places a body n metres down the bearing the rig measured by raycast,",
+    "so a re-seeded storey moves the staging with it. 'standOff' backs the camera away",
+    "from an anchor along the corridor that actually leaves it, which is the only way to",
+    "frame a dead end without knowing which way the dead end points.",
+    "",
+    "Runner clips, read off Assets/Models/Player/Runner.fbx: Idle Walk Run Crouch",
+    "CrouchWalk GunIdle GunWalk Death. A name outside that set now fails the run before",
+    "the first frame — see DescentFilmRig.RequireRunnerClips.",
+    "",
+    "Order here is the order of the cut. 23 shots, 1247 frames at 30 fps = 41.57 s,",
+    "inside Valve's 30-60 s window with room for the encoder's fades.",
+    "docs/store/trailer.md is the prose version and says what each beat has to prove."
+  ],
+  "scene": "Assets/Scenes/Map_FirstSketch_Solo.unity",
+  "width": 1920,
+  "height": 1080,
+  "fps": 30,
+  "shots": [
+    {
+      "name": "01_mouth",
+      "_beat": "Cold open. Stood in the middle of B4, looking down at the 투하구 at your feet.",
+      "seconds": 2.2,
+      "from": "centre:4",
+      "aim": "at",
+      "aimTarget": "chute:4:south",
+      "pitchFrom": 6.0,
+      "pitchTo": 34.0
+    },
+    {
+      "name": "02_fall",
+      "_beat": "The drop. Chute.FallSeconds 0.5 s over Chute.DropHeightMetres 1.226 m, eased t² by the controller's own gravity. NOT 3 m — that figure was right until 2026-08-03 and is still quoted in stale docs.",
+      "seconds": 0.5,
+      "from": "landing:4:south",
+      "fromOffset": { "x": 0.0, "y": 1.226, "z": 0.0 },
+      "to": "landing:4:south",
+      "fall": true,
+      "insideGeometryExpected": true,
+      "aim": "clearest",
+      "pitchFrom": 28.0,
+      "pitchTo": 4.0
+    },
+    {
+      "name": "03_landed",
+      "_beat": "You are on B5's rim — the far outside of a floor you have not seen. §01: a floor is only ever entered from its own rim, so winning a floor puts you at the back of the next one.",
+      "seconds": 2.6,
+      "from": "landing:4:south",
+      "aim": "clearest",
+      "dolly": 3.2,
+      "pitchFrom": 3.0,
+      "pitchTo": 0.0
+    },
+    {
+      "name": "04_start_line",
+      "_beat": "B1's lit outer ring. TWO bodies, not twenty — two is the number of peers that have ever connected, and trailer.md §7 forbids staging a crowd for a claim nobody has demonstrated.",
+      "seconds": 3.6,
+      "from": "start:37",
+      "aim": "clearest",
+      "dolly": 1.5,
+      "runners": [
+        { "aheadMetres": 7.0, "lateralMetres": -0.55, "face": "inward", "clip": "Idle", "phase": 0.0 },
+        { "aheadMetres": 12.0, "lateralMetres": 0.55, "face": "inward", "clip": "Idle", "phase": 0.43 }
+      ]
+    },
+    {
+      "name": "05_inward_rim",
+      "_beat": "The narrowing, 1 of 3: the outer band, where everybody starts and the way in is four gates wide.",
+      "seconds": 1.6,
+      "from": "start:19",
+      "aim": "inward",
+      "dolly": 2.2
+    },
+    {
+      "name": "06_inward_gate",
+      "_beat": "2 of 3: the middle gate on B5, the one that carries the floor's only door.",
+      "seconds": 1.6,
+      "from": "door:5",
+      "standOff": 4.5,
+      "aim": "at",
+      "aimTarget": "door:5",
+      "dolly": 1.4
+    },
+    {
+      "name": "07_inward_centre",
+      "_beat": "3 of 3: past the last gate, which §12-A holds at one cell wide however big the lobby gets. Everybody arrives at the same doorway. Tighter lens and a flat pitch so it does not repeat 14_surface_b7's framing from the same anchor — the previous cut shipped two shots with byte-identical camera parameters.",
+      "seconds": 1.9,
+      "from": "centre:7",
+      "aim": "clearest",
+      "dolly": 2.6,
+      "pitchFrom": 0.0,
+      "pitchTo": 0.0,
+      "fov": 50.0
+    },
+    {
+      "name": "08_surface_b1",
+      "_beat": "Eight floors, eight surfaces. Identical relative framing on every storey — the only variable is the floor, so the cut argues for the mix without a caption. No music under this section.",
+      "seconds": 1.15,
+      "from": "centre:1",
+      "aim": "clearest",
+      "dolly": 1.5,
+      "pitchFrom": 18.0,
+      "pitchTo": 18.0
+    },
+    {
+      "name": "09_surface_b2",
+      "seconds": 1.15,
+      "from": "centre:2",
+      "aim": "clearest",
+      "dolly": 1.5,
+      "pitchFrom": 18.0,
+      "pitchTo": 18.0
+    },
+    {
+      "name": "10_surface_b3",
+      "seconds": 1.15,
+      "from": "centre:3",
+      "aim": "clearest",
+      "dolly": 1.5,
+      "pitchFrom": 18.0,
+      "pitchTo": 18.0
+    },
+    {
+      "name": "11_surface_b4",
+      "seconds": 1.15,
+      "from": "centre:4",
+      "aim": "clearest",
+      "dolly": 1.5,
+      "pitchFrom": 18.0,
+      "pitchTo": 18.0
+    },
+    {
+      "name": "12_surface_b5",
+      "seconds": 1.15,
+      "from": "centre:5",
+      "aim": "clearest",
+      "dolly": 1.5,
+      "pitchFrom": 18.0,
+      "pitchTo": 18.0
+    },
+    {
+      "name": "13_surface_b6",
+      "seconds": 1.15,
+      "from": "centre:6",
+      "aim": "clearest",
+      "dolly": 1.5,
+      "pitchFrom": 18.0,
+      "pitchTo": 18.0
+    },
+    {
+      "name": "14_surface_b7",
+      "seconds": 1.15,
+      "from": "centre:7",
+      "aim": "clearest",
+      "dolly": 1.5,
+      "pitchFrom": 18.0,
+      "pitchTo": 18.0
+    },
+    {
+      "name": "15_surface_b8",
+      "seconds": 1.15,
+      "from": "centre:8",
+      "aim": "clearest",
+      "dolly": 1.5,
+      "pitchFrom": 18.0,
+      "pitchTo": 18.0
+    },
+    {
+      "name": "16_gun",
+      "_beat": "A gun on the floor of a dead end. Gun_B4 is a real prefab instance in the shipped scene, placed on a 막힌 길. Camera backs off along the corridor that leaves the cell — a fixed world-axis offset put this shot inside a wall on 2026-08-04.",
+      "seconds": 2.6,
+      "from": "gun:4",
+      "standOff": 4.0,
+      "aim": "at",
+      "aimTarget": "gun:4",
+      "dolly": 2.1,
+      "pitchFrom": 12.0,
+      "pitchTo": 32.0
+    },
+    {
+      "name": "17_seen_18m",
+      "_beat": "§06's speed ladder, shown as three distances rather than stated as a number. At 16 m it is a shape.",
+      "seconds": 1.4,
+      "from": "centre:3",
+      "aim": "clearest",
+      "monster": { "aheadMetres": 16.0, "face": "camera", "clip": "Chase", "travel": 6.5 }
+    },
+    {
+      "name": "18_seen_12m",
+      "_beat": "The acquisition tell fires.",
+      "seconds": 1.4,
+      "from": "centre:3",
+      "aim": "clearest",
+      "monster": { "aheadMetres": 10.5, "face": "camera", "clip": "Chase", "tell": true, "travel": 6.5 }
+    },
+    {
+      "name": "19_seen_6m",
+      "_beat": "It fills the frame and the camera gives ground. The cut lands on 20_back_to_b1 — the juxtaposition IS the rule, because being caught is not death.",
+      "seconds": 1.9,
+      "from": "centre:3",
+      "aim": "clearest",
+      "dolly": -0.9,
+      "monster": { "aheadMetres": 5.5, "face": "camera", "clip": "Chase", "tell": true, "travel": 3.5 }
+    },
+    {
+      "name": "20_back_to_b1",
+      "_beat": "Hard cut out of the creature onto B1's lit rim: the cell you started in, eight floors up, still racing. MatchDirector.cs:1614 — 「§02: caught is not death.」 §09's spectator ghost was deleted because nothing is permanent any more.",
+      "seconds": 2.8,
+      "from": "start:37",
+      "aim": "inward",
+      "dolly": 1.8,
+      "runners": [
+        { "aheadMetres": 2.6, "lateralMetres": 0.0, "face": "camera", "clip": "Idle", "phase": 0.2 }
+      ]
+    },
+    {
+      "name": "21_door",
+      "_beat": "One door per floor — 1.1 s to shut, 4.5 s to break, never comes back. The only thing you can do to another runner.",
+      "seconds": 2.2,
+      "from": "door:3",
+      "standOff": 4.0,
+      "aim": "at",
+      "aimTarget": "door:3",
+      "dolly": 1.3
+    },
+    {
+      "name": "22_finish",
+      "_beat": "The middle of B8. §12-C: B8의 중심은 투하구가 아니라 도착점 — the one place in the building with no hole in it.",
+      "seconds": 2.8,
+      "from": "centre:8",
+      "aim": "clearest",
+      "dolly": 1.8,
+      "pitchFrom": 8.0,
+      "pitchTo": 1.0,
+      "fov": 55.0
+    },
+    {
+      "name": "23_ring_empty",
+      "_beat": "Close on B1's outer ring with nobody on it, for the title. No burned-in text in the render — trailer.md §7: the plate is added in the edit, not baked into a frame the rig cannot re-cut.",
+      "seconds": 3.4,
+      "from": "start:19",
+      "aim": "clearest",
+      "dolly": 1.2
+    }
+  ]
+}

@@ -263,6 +263,30 @@ namespace HorrorGame.EditorTools.SceneGen
                 return false;
             }
 
+            // A field is already running: refuse, and this is the one refusal in this file
+            // that is not about §11.
+            //
+            // It happened. Twenty instances were forty seconds from the end of a measured
+            // run when a second LaunchField started on the same machine. ClearLogs deleted
+            // all twenty logs out from under processes that were still writing to them, so
+            // the evidence for the run went to an unlinked inode and the numbers already
+            // read off it could not be reproduced; both fields then bid for the same
+            // loopback port. Nothing in either log said any of that had happened — the
+            // second run looked like a clean four-instance field, which is exactly what
+            // makes it dangerous.
+            //
+            // Counted by process name rather than by a lock file because a lock file
+            // outlives a crash and a process does not, and the failure mode of a stale lock
+            // is refusing to run at all.
+            var alive = CountRunningInstances(playerPath);
+            if (alive > 0)
+            {
+                Debug.LogError("[Field] 이 기계에서 이미 " + alive + "개 인스턴스가 돌고 있다 — 띄우지 않는다. "
+                    + "두 판을 겹쳐 돌리면 로그가 서로를 지우고 포트를 다툰다. 끝나기를 기다리거나 "
+                    + "`pkill -f " + BuildFolder + "` 로 정리한 뒤에 다시 부르라.");
+                return false;
+            }
+
             ClearLogs(field);
 
             StartProcess(playerPath, 0, field, headless: false, secondsBeforeQuit);
@@ -284,6 +308,35 @@ namespace HorrorGame.EditorTools.SceneGen
             Debug.Log("[Field] Launched " + field + " instance(s) of " + playerPath + ". The host waits for "
                 + field + " runner(s) before it presses 출발 — see LocalTwoInstanceEntry.");
             return true;
+        }
+
+        /// <summary>
+        /// How many copies of the built player are running right now.
+        /// <para>
+        /// The name comes from the executable this method is about to start, so a project
+        /// renamed in Player Settings does not silently start counting nothing. Any failure
+        /// reading the process table is answered with 0 — refusing to launch because the
+        /// check itself broke would make the harness less usable than it was before the
+        /// check existed.
+        /// </para>
+        /// </summary>
+        /// <param name="playerPath">The built player, <c>.app</c> bundle or executable.</param>
+        private static int CountRunningInstances(string playerPath)
+        {
+            var name = Path.GetFileNameWithoutExtension(playerPath);
+            if (string.IsNullOrEmpty(name))
+            {
+                return 0;
+            }
+
+            try
+            {
+                return Process.GetProcessesByName(name).Length;
+            }
+            catch (Exception)
+            {
+                return 0;
+            }
         }
 
         /// <summary>Builds the local test player. Reuses an existing one when it is newer than every scene.</summary>

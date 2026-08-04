@@ -172,22 +172,6 @@
       "emission_strength": 0.143,
       "roughness": 0.86,
       "metallic": 0.0
-    },
-    {
-      "name": "Ghost_Role_Flasher",
-      "base_color_linear": [
-        0.035624,
-        0.036357,
-        0.035789
-      ],
-      "emission_linear": [
-        0.169809,
-        0.173301,
-        0.170593
-      ],
-      "emission_strength": 0.143,
-      "roughness": 0.86,
-      "metallic": 0.0
     }
   ]
 }
