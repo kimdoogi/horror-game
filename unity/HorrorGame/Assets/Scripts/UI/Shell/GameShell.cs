@@ -394,7 +394,15 @@ namespace HorrorGame.UI.Shell
             // starts stalling the main thread on asset decompression.
             yield return null;
 
-            var sceneName = string.IsNullOrEmpty(_matchScene) ? DefaultMatchScene : _matchScene;
+            // §13 · the lobby's chosen building outranks the serialised default. TAKEN
+            // rather than read: a building left lying in the seam would be loaded by the
+            // next solo 시작 as well, which is the same defect as a seat number surviving
+            // a session (see RaceParty.Clear).
+            var chosen = LobbyEntry.MatchScene;
+            LobbyEntry.MatchScene = null;
+            var sceneName = !string.IsNullOrEmpty(chosen)
+                ? chosen!
+                : string.IsNullOrEmpty(_matchScene) ? DefaultMatchScene : _matchScene;
             var load = SceneManager.LoadSceneAsync(sceneName, LoadSceneMode.Single);
 
             if (load == null)

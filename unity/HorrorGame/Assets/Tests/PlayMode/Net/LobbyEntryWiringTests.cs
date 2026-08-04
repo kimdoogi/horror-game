@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.IO;
 using HorrorGame.Core;
 using HorrorGame.Net;
@@ -20,7 +21,18 @@ namespace HorrorGame.Tests.PlayMode.Net
     /// <summary>
     /// That 시작 asks §11's lobby before it loads a scene, that something is actually
     /// listening when it asks, and that pressing 호스트 and then 출발 arrives in the
-    /// maze with the runners' bodies still in existence.
+    /// building §13 chose with the runners' bodies still in existence.
+    /// <para>
+    /// <b>"The building §13 chose" is the newest of those claims and the one that was
+    /// unreachable until the seam closed.</b> <c>RaceLobby</c> picked a building out of
+    /// <c>DescentRoster</c> and logged it; <c>GameShell</c> loaded its own serialised
+    /// default; and every assertion here passed, because the assertion was the default's
+    /// name. The two are now told apart against the manifest — see the landing check in
+    /// <see cref="HostingFromTheMenuReachesTheMazeWithARunnerStillAlive"/>, which asserts
+    /// both states a shipped build can be in: a roster was baked and the party is in one
+    /// of its buildings, or none was and the party is in the shell's own scene. One
+    /// building is a legal state; a party split across two is not.
+    /// </para>
     /// <para>
     /// <b>Why this is a networking test.</b> <c>LobbyEntry</c>, <c>LobbyScreen</c> and
     /// <c>RaceLobby</c> were all written, all committed and all correct, and
@@ -46,8 +58,40 @@ namespace HorrorGame.Tests.PlayMode.Net
         /// <summary>Scene 0 of the build — the one holding <c>GameShell</c>.</summary>
         private const string MenuScene = "Bootstrap";
 
-        /// <summary>Where 시작 ends up. Named here so the teardown can unload it.</summary>
-        private const string MatchScene = "Map_FirstSketch_Solo";
+        /// <summary>
+        /// Where 시작 ends up when nothing chose a building for it —
+        /// <c>GameShell.DefaultMatchScene</c>, restated because this fixture asserts
+        /// against it and a test that reads the constant it is checking checks nothing.
+        /// </summary>
+        private const string DefaultMatchScene = "Map_FirstSketch_Solo";
+
+        /// <summary>
+        /// <c>Resources.Load</c> name of the descent manifest — <c>DescentRoster
+        /// .ManifestResourceName</c>, spelled out for the same reason the assertions below
+        /// go through <c>LobbyEntry</c>: that class is in <c>Assembly-CSharp</c> and no
+        /// assembly definition may reference the default assembly. If the two ever
+        /// disagree this fixture stops finding a roster and falls back to asserting the
+        /// default scene, which is a visible failure rather than a silent pass — the
+        /// landing assertion below would then be checking that the last hop did NOT
+        /// happen.
+        /// </summary>
+        private const string RosterResourceName = "DescentRoster";
+
+        /// <summary>
+        /// Keyword every published line of the manifest starts with —
+        /// <c>DescentRoster.SlotKeyword</c> followed by its tab separator. Used only to
+        /// tell "this build has buildings" from "this build has a manifest with no
+        /// buildings in it", which are the two states that make the same
+        /// <c>Resources.Load</c> succeed.
+        /// </summary>
+        private const string RosterSlotLead = "building\t";
+
+        /// <summary>
+        /// Somewhere to stand while the loaded scenes are unloaded. One per run, not one
+        /// per test: it is never unloaded itself, so a teardown that made a new one every
+        /// time would throw on the second.
+        /// </summary>
+        private const string BlankSceneName = "LobbyEntryWiringTests_Empty";
 
         /// <summary>
         /// Wall-clock seconds allowed for the descent's scene load.
@@ -375,8 +419,49 @@ namespace HorrorGame.Tests.PlayMode.Net
                 "출발 did not arrive in a match within " + LoadSecondsBudget + " s. Either RaceLobby.BeginDescent never "
                 + "handed the flow back through LobbyEntry.PassNextThrough, or the scene load stalled.");
 
-            Assert.That(SceneManager.GetActiveScene().name, Is.EqualTo(MatchScene),
-                "The party agreed on a seed and then landed somewhere other than the descent scene.");
+            // ── §13 · the party landed in the building the roster published ────────
+            //
+            // This used to be Is.EqualTo("Map_FirstSketch_Solo"), which was true and said
+            // nothing: the shell loaded its serialised default whatever the lobby chose,
+            // because HorrorGame.UI cannot reference the gameplay layer and nothing carried
+            // the choice across. The seam that carries it is LobbyEntry.MatchScene — set by
+            // RaceLobby.BeginDescent, TAKEN by GameShell.LoadMatchRoutine — and the only
+            // way to see it work from here is the scene that actually came up.
+            //
+            // Asserted against the MANIFEST rather than against a scene name, because a
+            // name is what the bake decides and the roster is what the game reads. The test
+            // is a substring of the manifest text for the same reason
+            // MapSceneGenerator.RegisterScenes uses one: a name absent from that text
+            // cannot have been published under any column layout, and this fixture must not
+            // grow a second parser that can drift from DescentRoster's.
+            //
+            // Both branches are real states of a shipped build and both are asserted, so
+            // this test does not quietly depend on a roster having been baked on the
+            // machine it runs on.
+            var manifest = Resources.Load<TextAsset>(RosterResourceName);
+            var roster = manifest != null ? manifest.text : string.Empty;
+            var published = roster.IndexOf(RosterSlotLead, StringComparison.Ordinal) >= 0;
+            var landed = SceneManager.GetActiveScene().name;
+
+            if (published)
+            {
+                Assert.That(roster.IndexOf(landed, StringComparison.Ordinal), Is.GreaterThanOrEqualTo(0),
+                    "The party landed in '" + landed + "', which is not named anywhere in the descent manifest. "
+                    + "§13 says the host chooses one of the published buildings and every machine loads that one; a "
+                    + "scene outside the roster is a building nobody audited.");
+
+                Assert.That(landed, Is.Not.EqualTo(DefaultMatchScene),
+                    "This build has a baked roster and 출발 still loaded the shell's own default, '" + DefaultMatchScene
+                    + "'. That is the last hop missing: RaceLobby.BeginDescent sets LobbyEntry.MatchScene and "
+                    + "GameShell.LoadMatchRoutine has to take it, or every match is the same building however many "
+                    + "were baked.");
+            }
+            else
+            {
+                Assert.That(landed, Is.EqualTo(DefaultMatchScene),
+                    "This build has no published buildings, so 시작 must fall back to the shell's own scene — one "
+                    + "building is a legal state and it has to keep working. It landed in '" + landed + "' instead.");
+            }
 
             yield return null;
 
@@ -716,26 +801,50 @@ namespace HorrorGame.Tests.PlayMode.Net
             // particular must.
             Application.targetFrameRate = _restoreTargetFrameRate;
 
-            // Blank scene first: Unity refuses to unload the last loaded scene, and after a
-            // Single load one of these two is all there is.
-            var blank = default(Scene);
-            var names = new[] { MenuScene, MatchScene };
-
-            for (var i = 0; i < names.Length; i++)
+            // ── unload whatever is loaded, by handle rather than by name ────────────
+            //
+            // This used to unload two named scenes, and the descent's name is no longer
+            // knowable from here: §13 picks a building out of the manifest, so the test
+            // lands in Map_Descent_<n> for an n the host's seed chose at run time. A name
+            // list would silently stop unloading the moment a roster was baked, and the
+            // consequence is the one this teardown exists to prevent — the whole
+            // eight-storey building, its colliders and its lights inherited by every
+            // PlayMode fixture that sorts after Net (see the remarks above, and the
+            // 0.166010931 that identified it).
+            //
+            // Everything currently loaded is something this test loaded: both loads are
+            // LoadSceneMode.Single, which unloads everything else first. Scenes with no
+            // asset path are the parking scene below — created here, never unloaded,
+            // and not something to tear down.
+            var loaded = new List<Scene>();
+            for (var i = 0; i < SceneManager.sceneCount; i++)
             {
-                var scene = SceneManager.GetSceneByName(names[i]);
-                if (!scene.IsValid() || !scene.isLoaded)
+                var scene = SceneManager.GetSceneAt(i);
+                if (scene.IsValid() && scene.isLoaded && !string.IsNullOrEmpty(scene.path))
                 {
-                    continue;
+                    loaded.Add(scene);
                 }
+            }
 
+            if (loaded.Count > 0)
+            {
+                // Blank scene first: Unity refuses to unload the last loaded scene. Found
+                // before it is made, because it outlives the teardown that created it —
+                // nothing unloads the parking scene, and CreateScene throws
+                // ArgumentException on a name that is already taken, which turns the
+                // SECOND test's teardown into a failure with the first test's name on it.
+                var blank = SceneManager.GetSceneByName(BlankSceneName);
                 if (!blank.IsValid())
                 {
-                    blank = SceneManager.CreateScene("LobbyEntryWiringTests_Empty");
-                    SceneManager.SetActiveScene(blank);
+                    blank = SceneManager.CreateScene(BlankSceneName);
                 }
 
-                yield return SceneManager.UnloadSceneAsync(scene);
+                SceneManager.SetActiveScene(blank);
+
+                for (var i = 0; i < loaded.Count; i++)
+                {
+                    yield return SceneManager.UnloadSceneAsync(loaded[i]);
+                }
             }
         }
     }

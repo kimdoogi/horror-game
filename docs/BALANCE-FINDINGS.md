@@ -1001,8 +1001,12 @@ spent on it and the grade has not moved
 > is what is blocking map authoring.
 >
 > **Do not close B-007 by relaxing `SightBreakPointSpanMax`.** The rule is derived from
-> §12's own arithmetic (14.4 m single-corner requirement less the 10 m head start its
-> 어그로 시작 거리 table endorses). Fix the geometry and both close together.
+> §12's own arithmetic. **The derivation moved on 2026-08-05 and the instruction did
+> not**: the cap is now the 14.4 m single-corner requirement with **nothing subtracted**
+> (`MapValidator.SightBreakPointSpanCap`), because §01's 「마주치면 피할 수 없다」 means a
+> runner reaches cover carrying no head start at all — the 10 m came from §04's 어그로
+> 시작 거리 table, and §04's 주자 is gone. The map measures 95 m against it, 6.6× over.
+> Fix the geometry and both close together.
 
 ### Measured
 

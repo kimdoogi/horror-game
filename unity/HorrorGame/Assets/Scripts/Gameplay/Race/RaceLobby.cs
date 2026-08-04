@@ -15,6 +15,395 @@ using UnityEngine.SceneManagement;
 namespace HorrorGame.Gameplay.Race
 {
     /// <summary>
+    /// One pre-baked building the lobby may send the party into. §13.
+    /// <para>
+    /// A building is a SEED and the SCENE that was baked from it. The seed alone is not
+    /// enough at run time — the maze is geometry in a scene file and a player cannot
+    /// build one — and the scene name alone is not enough either, because two builds can
+    /// hold different geometry under one name. <see cref="Generation"/> is what tells
+    /// those apart: <c>MapSceneGenerator</c> stamps every scene it commits with a named
+    /// empty object, and that stamp is in the artefact rather than in anybody's notes.
+    /// </para>
+    /// </summary>
+    public readonly struct DescentBuilding
+    {
+        /// <summary>Records one roster line. All four fields come from the manifest the baker wrote.</summary>
+        public DescentBuilding(int seed, string sceneName, string generation)
+        {
+            Seed = seed;
+            SceneName = sceneName ?? string.Empty;
+            Generation = generation ?? string.Empty;
+        }
+
+        /// <summary>The seed <c>DescentMap.Build</c> was run at. Identifies the maze; nothing rebuilds it.</summary>
+        public int Seed { get; }
+
+        /// <summary>Scene the party loads. Must be in Build Settings or nobody can enter it.</summary>
+        public string SceneName { get; }
+
+        /// <summary>
+        /// The generation stamp inside that scene — <c>gen-&lt;date&gt;-&lt;time&gt;-seed&lt;n&gt;</c>,
+        /// with <c>-forced</c> appended if a gate was overridden. Compared against the
+        /// stamp found in the loaded scene, so a stale build is caught by the building
+        /// rather than by its file name.
+        /// </summary>
+        public string Generation { get; }
+
+        /// <summary>False for the zero value — "no building", which is what an empty roster selects.</summary>
+        public bool Exists
+        {
+            get { return !string.IsNullOrEmpty(SceneName); }
+        }
+
+        /// <inheritdoc />
+        public override string ToString()
+        {
+            return SceneName + " (씨앗 " + Seed + ", " + Generation + ")";
+        }
+    }
+
+    /// <summary>
+    /// Every building this build can descend into, read out of the manifest the map
+    /// pipeline wrote. §01 · §13.
+    /// <para>
+    /// <b>Why this exists.</b> §11's lobby has always agreed a seed, broadcast it and
+    /// logged it — and the scene was pre-baked at one fixed seed, so the number decided
+    /// only where runners start. Every match was the same building, which makes 「맵을 아는
+    /// 사람이 유리하다」 a permanent asset rather than a per-match one: the twentieth match
+    /// is the first one already solved. This is the list the agreed seed now picks from.
+    /// </para>
+    /// <para>
+    /// <b>It is read from the artefact, not written down.</b> The manifest is produced by
+    /// <c>MapPipeline.BakeRoster</c> from the slots it ACTUALLY published, after each one
+    /// has been through the same three gates the shipped map goes through — §12's
+    /// checklist, the NavMesh connectivity audit and the player-traversal audit, all
+    /// re-run on the scene as it sits on disk with its dressing in it. A seed whose
+    /// building came out with nine islands never reaches this file, so it cannot be
+    /// selected. That is the whole enforcement: the roster is not a list of seeds
+    /// somebody believes are good, it is a list of buildings that passed.
+    /// </para>
+    /// <para>
+    /// <b>A text asset and not a ScriptableObject.</b> The baker has to write it, the
+    /// player has to read it, and a hand-editable format is one a human can diff in a
+    /// pull request and a fingerprint can be taken over. A ScriptableObject would put
+    /// the roster in a binary nobody can read in a review and would still need the same
+    /// generation stamps in it.
+    /// </para>
+    /// </summary>
+    public static class DescentRoster
+    {
+        /// <summary>Name <c>Resources.Load</c> is given. The baker writes it under a Resources folder.</summary>
+        public const string ManifestResourceName = "DescentRoster";
+
+        /// <summary>
+        /// First line of the manifest. Bumped only when the FORMAT changes; a build that
+        /// does not recognise it refuses the whole file rather than half-reading it.
+        /// </summary>
+        public const string ManifestHeader = "하강 descent roster 1";
+
+        /// <summary>
+        /// Prefix <c>MapSceneGenerator</c> gives the empty object it stamps a committed
+        /// scene with.
+        /// <para>
+        /// <b>Two files agree on this string and neither can see the other.</b> The
+        /// generator is in an editor assembly and this is runtime, exactly as
+        /// <c>MatchMap</c>'s marker names are. Mirrors
+        /// <c>MapSceneGenerator.GenerationStampPrefix</c>, which is <c>private const</c>
+        /// there; if it ever changes, <see cref="RaceLobby"/>'s stamp check stops finding
+        /// a stamp and says so rather than passing.
+        /// </para>
+        /// </summary>
+        public const string GenerationStampPrefix = "SceneGen_";
+
+        /// <summary>
+        /// Field separator. A tab, because a scene name may contain a space and a seed
+        /// may not contain a tab — so a line can never be mis-split into a wrong seed.
+        /// </summary>
+        public const char Separator = '\t';
+
+        /// <summary>Keyword every building line starts with.</summary>
+        public const string SlotKeyword = "building";
+
+        private static DescentBuilding[] _buildings = Array.Empty<DescentBuilding>();
+        private static uint _fingerprint;
+        private static string _note = string.Empty;
+        private static bool _read;
+
+        /// <summary>Every building, in the order the baker published them. Empty when there is no manifest.</summary>
+        public static IReadOnlyList<DescentBuilding> Buildings
+        {
+            get
+            {
+                EnsureRead();
+                return _buildings;
+            }
+        }
+
+        /// <summary>How many buildings this build can descend into. Zero means the manifest is missing.</summary>
+        public static int Count
+        {
+            get { return Buildings.Count; }
+        }
+
+        /// <summary>
+        /// One number covering the whole roster — count, seeds, scene names and generation
+        /// stamps.
+        /// <para>
+        /// §13 needs every machine in one building, and the only way to know two machines
+        /// agree is to compare what they are choosing FROM. The host sends this with the
+        /// lobby roster and again with the start, and a client whose own number differs
+        /// refuses to descend: it is holding a different set of buildings, so the index
+        /// the host chose does not mean the same thing on both machines.
+        /// </para>
+        /// </summary>
+        public static uint Fingerprint
+        {
+            get
+            {
+                EnsureRead();
+                return _fingerprint;
+            }
+        }
+
+        /// <summary>Why the roster is the size it is. Shown in the lobby when it is empty.</summary>
+        public static string Note
+        {
+            get
+            {
+                EnsureRead();
+                return _note;
+            }
+        }
+
+        /// <summary>
+        /// The building a seed names, or the zero value when there is no roster.
+        /// <para>
+        /// <b>By position in the published list, not by a slot number written in the
+        /// file.</b> The baker publishes only the slots that passed their gates, so a seed
+        /// that regressed leaves a shorter roster rather than a hole — and a hole would
+        /// have to be either skipped (changing which building every later seed selects,
+        /// silently) or entered (which is the defect). The manifest IS the list, the
+        /// fingerprint covers it whole, and two machines with the same fingerprint cannot
+        /// disagree about what index 3 means.
+        /// </para>
+        /// </summary>
+        public static DescentBuilding Select(int seed)
+        {
+            EnsureRead();
+            if (_buildings.Length == 0)
+            {
+                return default;
+            }
+
+            return _buildings[IndexFor(seed, _buildings.Length)];
+        }
+
+        /// <summary>
+        /// Which building a seed picks out of a roster of the given size.
+        /// <para>
+        /// Unsigned, so <c>int.MinValue</c> cannot come back negative — <c>%</c> on a
+        /// negative int does in C#, and an index of −3 into the roster is an exception in
+        /// the one code path that must not throw. <c>RaceLobby.NewSeed</c> only draws
+        /// positives, but the seed also arrives over the wire.
+        /// </para>
+        /// </summary>
+        public static int IndexFor(int seed, int count)
+        {
+            return count <= 0 ? 0 : (int)((uint)seed % (uint)count);
+        }
+
+        /// <summary>Reads the manifest again. Called by the baker after it writes one, and by tests.</summary>
+        public static void Reload()
+        {
+            _read = false;
+            EnsureRead();
+        }
+
+        /// <summary>
+        /// Replaces the roster with a made-up one. Tests only — nothing in the game calls
+        /// it, because the whole point of the manifest is that the roster describes what
+        /// was baked.
+        /// </summary>
+        public static void UseForTests(IReadOnlyList<DescentBuilding>? buildings)
+        {
+            if (buildings == null)
+            {
+                _buildings = Array.Empty<DescentBuilding>();
+                _note = "테스트: 로스터 없음.";
+            }
+            else
+            {
+                var copy = new DescentBuilding[buildings.Count];
+                for (var i = 0; i < buildings.Count; i++)
+                {
+                    copy[i] = buildings[i];
+                }
+
+                _buildings = copy;
+                _note = "테스트: " + copy.Length + "개 건물.";
+            }
+
+            _fingerprint = FingerprintOf(Format(_buildings));
+            _read = true;
+        }
+
+        /// <summary>
+        /// The manifest text for a set of buildings — the one canonical spelling, used to
+        /// write the file AND to take the fingerprint of it.
+        /// <para>
+        /// One formatter and one parser in one file, so a roster that round-trips is
+        /// proof that both ends agree. The fingerprint is taken over THIS text rather than
+        /// over the file on disk, so a comment or a trailing newline cannot make two
+        /// identical rosters look different.
+        /// </para>
+        /// </summary>
+        public static string Format(IReadOnlyList<DescentBuilding> buildings)
+        {
+            var text = new System.Text.StringBuilder();
+            text.Append(ManifestHeader).Append('\n');
+
+            if (buildings != null)
+            {
+                for (var i = 0; i < buildings.Count; i++)
+                {
+                    text.Append(SlotKeyword).Append(Separator)
+                        .Append(buildings[i].Seed.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                        .Append(Separator).Append(buildings[i].SceneName)
+                        .Append(Separator).Append(buildings[i].Generation)
+                        .Append('\n');
+                }
+            }
+
+            return text.ToString();
+        }
+
+        /// <summary>
+        /// Reads a manifest. Returns false with a reason rather than a partial roster: a
+        /// roster that dropped a line it could not parse is a roster that disagrees with
+        /// every other machine's, which is the one failure this whole file exists to stop.
+        /// </summary>
+        public static bool TryParse(string? text, out DescentBuilding[] buildings, out string failure)
+        {
+            buildings = Array.Empty<DescentBuilding>();
+
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                failure = "manifest is empty";
+                return false;
+            }
+
+            var lines = text!.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+            if (lines.Length == 0 || !string.Equals(lines[0].Trim(), ManifestHeader, StringComparison.Ordinal))
+            {
+                failure = "first line is '" + (lines.Length > 0 ? lines[0] : string.Empty)
+                    + "', not '" + ManifestHeader + "'";
+                return false;
+            }
+
+            var found = new List<DescentBuilding>();
+            for (var i = 1; i < lines.Length; i++)
+            {
+                var line = lines[i];
+                if (line.Length == 0 || line[0] == '#')
+                {
+                    continue;
+                }
+
+                var fields = line.Split(Separator);
+                if (fields.Length != 4 || !string.Equals(fields[0], SlotKeyword, StringComparison.Ordinal))
+                {
+                    failure = "line " + (i + 1) + " is not '" + SlotKeyword + "<tab>seed<tab>scene<tab>generation'";
+                    return false;
+                }
+
+                if (!int.TryParse(
+                        fields[1],
+                        System.Globalization.NumberStyles.Integer,
+                        System.Globalization.CultureInfo.InvariantCulture,
+                        out var seed))
+                {
+                    failure = "line " + (i + 1) + " has '" + fields[1] + "' where a seed goes";
+                    return false;
+                }
+
+                if (fields[2].Length == 0 || fields[3].Length == 0)
+                {
+                    failure = "line " + (i + 1) + " has an empty scene name or generation stamp";
+                    return false;
+                }
+
+                found.Add(new DescentBuilding(seed, fields[2], fields[3]));
+            }
+
+            buildings = found.ToArray();
+            failure = string.Empty;
+            return true;
+        }
+
+        /// <summary>
+        /// FNV-1a over the canonical manifest text.
+        /// <para>
+        /// Not a cryptographic hash and it does not need to be: this compares two copies
+        /// of a file that came out of the same build pipeline, it is not defending against
+        /// anybody. What it must be is IDENTICAL on every platform, which rules out
+        /// <c>string.GetHashCode</c> — .NET randomises that per process, so two machines
+        /// running the same build would disagree about the same roster.
+        /// </para>
+        /// </summary>
+        public static uint FingerprintOf(string canonical)
+        {
+            unchecked
+            {
+                var hash = 2166136261u;
+                if (canonical != null)
+                {
+                    for (var i = 0; i < canonical.Length; i++)
+                    {
+                        hash ^= canonical[i];
+                        hash *= 16777619u;
+                    }
+                }
+
+                return hash;
+            }
+        }
+
+        private static void EnsureRead()
+        {
+            if (_read)
+            {
+                return;
+            }
+
+            _read = true;
+            _buildings = Array.Empty<DescentBuilding>();
+            _fingerprint = 0u;
+
+            var asset = Resources.Load<TextAsset>(ManifestResourceName);
+            if (asset == null)
+            {
+                _note = "이 빌드에는 건물 목록이 없다 — 지도 파이프라인의 로스터 굽기를 돌리지 않았다.";
+                _fingerprint = FingerprintOf(Format(_buildings));
+                return;
+            }
+
+            if (!TryParse(asset.text, out var parsed, out var failure))
+            {
+                _note = "건물 목록을 읽지 못했다: " + failure;
+                _fingerprint = FingerprintOf(Format(_buildings));
+                Debug.LogError(
+                    "[Descent] " + ManifestResourceName + " could not be read (" + failure
+                    + "), so this build has one building. Re-run the roster bake.");
+                return;
+            }
+
+            _buildings = parsed;
+            _fingerprint = FingerprintOf(Format(_buildings));
+            _note = _buildings.Length + "개 건물 · 지문 " + _fingerprint.ToString("X8");
+        }
+    }
+
+    /// <summary>
     /// The whole lobby, as the host sees it, sent to one connection.
     /// <para>
     /// <b>Public fields, on purpose.</b> Mirror's weaver generates the serialiser from a
@@ -42,6 +431,20 @@ namespace HorrorGame.Gameplay.Race
 
         /// <summary>Display names, in arrival order. Never longer than §11's cap.</summary>
         public string[] Names;
+
+        /// <summary>
+        /// <see cref="DescentRoster.Fingerprint"/> as the host has it.
+        /// <para>
+        /// Sent with the ROSTER and not only with the start, so a client holding a
+        /// different set of buildings finds out while it is sitting in the lobby rather
+        /// than at the moment twenty people are told to go. There is nothing to do about
+        /// it during a race and everything to do about it before one.
+        /// </para>
+        /// </summary>
+        public uint RosterFingerprint;
+
+        /// <summary>How many buildings the host can choose between. Drawn in the lobby; also names the defect.</summary>
+        public int BuildingCount;
     }
 
     /// <summary>
@@ -54,8 +457,29 @@ namespace HorrorGame.Gameplay.Race
     /// </summary>
     public struct RaceLobbyBeginMessage : NetworkMessage
     {
-        /// <summary>§13's seed, restated. <c>DescentMap.Build</c> turns it into the tower.</summary>
+        /// <summary>§13's seed, restated. §01 deals the starting ring from a shuffle of it.</summary>
         public int Seed;
+
+        /// <summary>Which of <see cref="DescentRoster.Buildings"/> the host chose. −1 when the host has no roster.</summary>
+        public int BuildingIndex;
+
+        /// <summary>
+        /// The seed that building was BAKED from.
+        /// <para>
+        /// Not the same number as <see cref="Seed"/> and it must not be: the match seed is
+        /// drawn fresh every race and the building seed is one of a handful that have been
+        /// through the audit. Sent because it is the actionable half of a disagreement —
+        /// "you have 씨앗 41 at index 3 and I have 씨앗 908" is a sentence somebody can fix,
+        /// where two fingerprints are not.
+        /// </para>
+        /// </summary>
+        public int BuildingSeed;
+
+        /// <summary>Scene the party loads. The client checks it against its own roster before loading anything.</summary>
+        public string BuildingScene;
+
+        /// <summary>The host's <see cref="DescentRoster.Fingerprint"/>. A client whose own differs does not descend.</summary>
+        public uint RosterFingerprint;
     }
 
     /// <summary>
@@ -132,6 +556,15 @@ namespace HorrorGame.Gameplay.Race
         private int _localIndex = -1;
         private string _note = string.Empty;
         private float _nextPoll;
+
+        /// <summary>
+        /// The host's roster fingerprint as this machine was told it, or 0 before any
+        /// roster message. Compared against <see cref="DescentRoster.Fingerprint"/>.
+        /// </summary>
+        private uint _hostFingerprint;
+
+        /// <summary>How many buildings the host said it has. Drawn in the lobby note; 0 until told.</summary>
+        private int _hostBuildingCount;
 
         /// <summary>The one lobby in the process, or null before the bootstrap scene has come up.</summary>
         public static RaceLobby? Instance { get; private set; }
@@ -226,6 +659,25 @@ namespace HorrorGame.Gameplay.Race
                 return;
             }
 
+            // ── the roster, before §13's authority is claimed ────────────────────────
+            //
+            // A host that cannot load one of its own buildings would pick it anyway and
+            // strand the whole field: LoadSceneAsync returns null for a scene outside
+            // Build Settings, so the symptom is a loading screen that never ends on every
+            // machine at once. Checked HERE rather than at start because refusing to host
+            // is recoverable and refusing after twenty people have joined is not.
+            //
+            // This is also the run-time half of "a seed that produces nine islands must not
+            // be selectable". The author-time half is that MapPipeline only publishes a
+            // building that passed its gates; this half is that the lobby can only choose a
+            // published one, and refuses to run at all if the build cannot open them.
+            if (!VerifyRoster(out var rosterFailure))
+            {
+                SetStage(LobbyStage.Offline, rosterFailure);
+                Debug.LogError("[Lobby] " + rosterFailure, this);
+                return;
+            }
+
             var manager = EnsureManager();
 
             // §13 — the seed comes from the host and nowhere else. Generated here, at the
@@ -268,6 +720,8 @@ namespace HorrorGame.Gameplay.Race
             _seed = 0;
             _hostIndex = -1;
             _localIndex = -1;
+            _hostFingerprint = 0u;
+            _hostBuildingCount = 0;
             _runners.Clear();
 
             manager.StartClient();
@@ -293,10 +747,29 @@ namespace HorrorGame.Gameplay.Race
                 return;
             }
 
+            // ── which building, decided once, on the machine that has §13's authority ──
+            //
+            // The seed picks it, so the number the lobby has been showing all along is now
+            // the building as well as the starting ring — 「씨앗 = 건물」, which is what the
+            // lobby screen already told players it meant and, until this change, was only
+            // half true. The host does NOT let every machine work it out from the seed on
+            // its own: two builds with different rosters would compute different buildings
+            // from the same number and neither would notice. It is chosen here and SENT.
+            var building = DescentRoster.Select(_seed);
+            var index = DescentRoster.Count == 0 ? -1 : DescentRoster.IndexFor(_seed, DescentRoster.Count);
+
             // Remotes first, then this machine. The host is the last one to leave the
             // lobby, so a client that never got the message is a client the host can still
             // see sitting in it.
-            var begin = new RaceLobbyBeginMessage { Seed = _seed };
+            var begin = new RaceLobbyBeginMessage
+            {
+                Seed = _seed,
+                BuildingIndex = index,
+                BuildingSeed = building.Seed,
+                BuildingScene = building.SceneName,
+                RosterFingerprint = DescentRoster.Fingerprint,
+            };
+
             foreach (var connection in NetworkServer.connections.Values)
             {
                 if (connection == null || connection == NetworkServer.localConnection)
@@ -314,7 +787,7 @@ namespace HorrorGame.Gameplay.Race
             // race path, a runner who connects mid-descent is admitted to a lobby that is no
             // longer there. Recorded rather than worked around: forcing the phase from here
             // would put a second author on §13's state machine.
-            BeginDescent(_seed);
+            BeginDescent(_seed, building);
         }
 
         /// <inheritdoc />
@@ -526,6 +999,8 @@ namespace HorrorGame.Gameplay.Race
                     HostIndex = _hostIndex,
                     YourIndex = i,
                     Names = names,
+                    RosterFingerprint = DescentRoster.Fingerprint,
+                    BuildingCount = DescentRoster.Count,
                 });
             }
 
@@ -566,6 +1041,8 @@ namespace HorrorGame.Gameplay.Race
             _seed = message.Seed;
             _hostIndex = message.HostIndex;
             _localIndex = message.YourIndex;
+            _hostFingerprint = message.RosterFingerprint;
+            _hostBuildingCount = message.BuildingCount;
 
             _runners.Clear();
             var names = message.Names ?? Array.Empty<string>();
@@ -590,13 +1067,110 @@ namespace HorrorGame.Gameplay.Race
                 return;
             }
 
-            BeginDescent(message.Seed);
+            // ── §13: one building, or no race ────────────────────────────────────────
+            //
+            // A client that descends into a DIFFERENT maze from everybody else is worse
+            // than a client that does not descend at all, and it is worse specifically
+            // because it looks fine: the runner sees a building, runs down it, and is
+            // ranked against twenty people who were never in it. There is no in-game
+            // symptom to notice. So the disagreement is caught here, before a scene is
+            // loaded, and the answer is to leave rather than to guess.
+            if (!AgreesWithHost(message, out var disagreement))
+            {
+                Debug.LogError("[Lobby] " + disagreement, this);
+                StopSession();
+                SetStage(LobbyStage.Offline, disagreement);
+                return;
+            }
+
+            BeginDescent(message.Seed, BuildingFrom(message));
+        }
+
+        /// <summary>
+        /// True when this machine's roster can honour the host's choice.
+        /// <para>
+        /// Three checks, narrowest last. The fingerprint covers the whole roster and is
+        /// what actually decides; the index and the seed are checked as well because they
+        /// are what a person can act on — 「index 3 is 씨앗 41 here and 씨앗 908 there」 names
+        /// the file to rebake, where two eight-digit fingerprints name nothing.
+        /// </para>
+        /// <para>
+        /// A host with NO roster (index −1) is allowed through: that is a build whose map
+        /// pipeline has not baked a roster yet, it has exactly one building, and every
+        /// machine in the session loads the same one. It is a race with no variety rather
+        /// than a race in two buildings.
+        /// </para>
+        /// </summary>
+        private static bool AgreesWithHost(RaceLobbyBeginMessage message, out string disagreement)
+        {
+            disagreement = string.Empty;
+
+            if (message.BuildingIndex < 0)
+            {
+                if (DescentRoster.Count == 0)
+                {
+                    return true;
+                }
+
+                disagreement = "호스트에게는 건물 목록이 없고 이 빌드에는 " + DescentRoster.Count
+                    + "개가 있다. §13 · 같은 건물이라는 보장이 없으므로 내려가지 않는다.";
+                return false;
+            }
+
+            if (message.RosterFingerprint != DescentRoster.Fingerprint)
+            {
+                disagreement = "건물 목록이 호스트와 다르다 (호스트 "
+                    + message.RosterFingerprint.ToString("X8") + " · 이쪽 "
+                    + DescentRoster.Fingerprint.ToString("X8")
+                    + "). §13 · 같은 건물로 내려갈 수 없으므로 판을 떠난다. 두 빌드가 같은 로스터를 구워야 한다.";
+                return false;
+            }
+
+            if (message.BuildingIndex >= DescentRoster.Count)
+            {
+                disagreement = "호스트가 " + message.BuildingIndex + "번 건물을 골랐는데 이 빌드에는 "
+                    + DescentRoster.Count + "개뿐이다. §13 · 내려가지 않는다.";
+                return false;
+            }
+
+            var mine = DescentRoster.Buildings[message.BuildingIndex];
+            if (mine.Seed != message.BuildingSeed
+                || !string.Equals(mine.SceneName, message.BuildingScene, StringComparison.Ordinal))
+            {
+                disagreement = message.BuildingIndex + "번 건물이 호스트는 씨앗 " + message.BuildingSeed
+                    + " · " + message.BuildingScene + ", 이쪽은 씨앗 " + mine.Seed + " · " + mine.SceneName
+                    + ". §13 · 같은 건물이 아니므로 내려가지 않는다.";
+                return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// The building the host named, taken from THIS machine's roster rather than from
+        /// the message.
+        /// <para>
+        /// The generation stamp is the point: it is not on the wire, so the only place a
+        /// client can get one is its own manifest, and comparing that against the stamp
+        /// found in the scene it loads is what catches two builds holding different
+        /// geometry under one scene name. Taking it from the message instead would make
+        /// the check compare the host's claim with the host's claim.
+        /// </para>
+        /// </summary>
+        private static DescentBuilding BuildingFrom(RaceLobbyBeginMessage message)
+        {
+            if (message.BuildingIndex < 0 || message.BuildingIndex >= DescentRoster.Count)
+            {
+                return default;
+            }
+
+            return DescentRoster.Buildings[message.BuildingIndex];
         }
 
         /// <summary>
         /// Settles the seed and hands the flow back to the shell.
         /// </summary>
-        private void BeginDescent(int seed)
+        private void BeginDescent(int seed, DescentBuilding building)
         {
             _seed = seed;
             AgreedSeed = seed;
@@ -605,12 +1179,17 @@ namespace HorrorGame.Gameplay.Race
             // it cannot reference this assembly to come and get it.
             NetSession.SetAgreedSeed(seed);
 
-            SetStage(LobbyStage.Starting, "씨앗 " + seed + " · 같은 건물로 내려간다.");
+            SetStage(
+                LobbyStage.Starting,
+                building.Exists
+                    ? "씨앗 " + seed + " · " + building.SceneName + " (건물 씨앗 " + building.Seed + ") 로 내려간다."
+                    : "씨앗 " + seed + " · 같은 건물로 내려간다.");
             Close();
 
             // Taken before the load that is about to destroy the objects holding it. See
-            // RaceParty for why it is two fields and not the whole roster.
+            // RaceParty for why it is three facts and not the whole roster.
             RaceParty.Settle(_localIndex, NetworkServer.active ? _connectionOrder : null);
+            RaceParty.SettleBuilding(building);
 
             // §02's results screen reads names, and on a client they exist ONLY here — the
             // roster replicated them into _runners, and nothing after the scene load ever
@@ -629,7 +1208,16 @@ namespace HorrorGame.Gameplay.Race
             Debug.Log(
                 "[Lobby] Descending on seed " + seed + " with " + _runners.Count + " runner(s) — §11's field is "
                 + GameConstants.RaceRunnersMin + "~" + GameConstants.RaceRunnersMax + ". "
-                + kept + " runner body/bodies carried across the scene load.", this);
+                + kept + " runner body/bodies carried across the scene load. 건물: "
+                + (building.Exists ? building.ToString() : "로스터 없음 — 이 빌드의 유일한 건물")
+                + " · 로스터 지문 " + DescentRoster.Fingerprint.ToString("X8")
+                + " (" + DescentRoster.Count + "개).", this);
+
+            // §13's choice, handed to the shell through the seam it declares. It cannot be
+            // a call: HorrorGame.UI does not reference this assembly and must not — see
+            // LobbyEntry, which exists because the shell cannot reference Mirror. Null when
+            // this build has no roster, which leaves the shell on its own default.
+            LobbyEntry.MatchScene = building.Exists ? building.SceneName : null;
 
             // The shell's own 시작 is what runs next, and it is also what opened this
             // lobby. The latch stops that being a loop.
@@ -768,6 +1356,28 @@ namespace HorrorGame.Gameplay.Race
             var seed = AgreedSeed;
             AgreedSeed = 0;
 
+            // From RaceParty rather than from a second static here: one fact, one home.
+            // It is NOT consumed the way the seed is — the seed has to be, because a solo
+            // playtest afterwards must not inherit one, and a building that outlives its
+            // race is only a label a later log can print.
+            var building = RaceParty.Building;
+
+            // ── is this the building §13 chose? asked of the scene, not of the plan ───
+            //
+            // Everything up to here is agreement about a NAME. This is the only check that
+            // reads the artefact: MapSceneGenerator commits every scene with a named empty
+            // object carrying its generation, that object is still in the assembled scene
+            // (measured on the shipped pair — SceneGen_gen-20260804-201542-seed20260802 is
+            // in Map_FirstSketch.unity AND in Map_FirstSketch_Solo.unity), and the roster
+            // records the same string per building. So two machines whose Build Settings
+            // hold the same scene NAME over different geometry — one of them built before a
+            // rebake — are told apart here and nowhere else.
+            if (building.Exists && !VerifyLoadedBuilding(scene, building, out var wrong))
+            {
+                Debug.LogError("[Lobby] " + wrong, this);
+                return;
+            }
+
             if (!director.BeginMatch(seed))
             {
                 Debug.LogError(
@@ -805,6 +1415,8 @@ namespace HorrorGame.Gameplay.Race
             _seed = 0;
             _hostIndex = -1;
             _localIndex = -1;
+            _hostFingerprint = 0u;
+            _hostBuildingCount = 0;
 
             RaceParty.Clear();
             RaceRunners.Clear();
@@ -844,6 +1456,8 @@ namespace HorrorGame.Gameplay.Race
             _seed = 0;
             _hostIndex = -1;
             _localIndex = -1;
+            _hostFingerprint = 0u;
+            _hostBuildingCount = 0;
 
             // Both of these outlive scenes on purpose — see KeepBodiesAcrossTheLoad — so
             // the session ending is the only thing that can clear them. A second race, or
@@ -867,12 +1481,25 @@ namespace HorrorGame.Gameplay.Race
             }
 
             var note = _note;
-            if (string.IsNullOrEmpty(note) && _stage == LobbyStage.Waiting)
+
+            // A roster this machine cannot honour is the most useful thing this screen can
+            // say, so it outranks every other note: the alternative is a player sitting in
+            // a lobby they are about to be silently dropped out of. Only a CLIENT can be in
+            // this state — RequestHost refuses to open a session whose roster is unusable.
+            if (_stage == LobbyStage.Waiting && !IsHost && _hostFingerprint != 0u
+                && _hostFingerprint != DescentRoster.Fingerprint)
+            {
+                note = "§13 · 건물 목록이 호스트와 다르다 (호스트 " + _hostBuildingCount + "개 · 이쪽 "
+                    + DescentRoster.Count + "개). 이대로는 같은 미로로 내려갈 수 없어 출발할 때 판을 떠나게 된다.";
+            }
+            else if (string.IsNullOrEmpty(note) && _stage == LobbyStage.Waiting)
             {
                 note = _runners.Count < GameConstants.RaceRunnersMin
                     ? "§11 · " + GameConstants.RaceRunnersMin + "명부터 출발할 수 있다."
                     : IsHost
-                        ? "§12-A · 관문은 4 → 2 → 1로 고정이다. 인원이 늘수록 마지막 한 칸이 좁아진다."
+                        ? DescentRoster.Count > 1
+                            ? "§01 · 씨앗이 건물을 고른다 — 이 빌드에는 " + DescentRoster.Count + "개가 있다."
+                            : "§12-A · 관문은 4 → 2 → 1로 고정이다. 인원이 늘수록 마지막 한 칸이 좁아진다."
                         : "호스트가 출발시키기를 기다린다.";
             }
 
@@ -903,6 +1530,226 @@ namespace HorrorGame.Gameplay.Race
             }
 
             return SteamServices.Current.Transport.LocalAddress;
+        }
+
+        /// <summary>
+        /// Can this build actually open every building it is offering? Run before §13's
+        /// authority is claimed.
+        /// <para>
+        /// <c>LoadSceneAsync</c> answers a scene outside Build Settings with null rather
+        /// than an exception, which is how the shipped game once had a 시작 button that did
+        /// nothing. A roster that promises buildings a player cannot load is that defect
+        /// multiplied by the field size — twenty people on a loading screen that never
+        /// finishes — so it stops the host here, with the scene named. This is the one
+        /// roster state in this method that is an error, and it is an error because it is
+        /// the one that ends a session.
+        /// </para>
+        /// <para>
+        /// <b>The build list is no longer maintained only by hand.</b>
+        /// <c>MapSceneGenerator.RegisterScenes</c> rewrites Build Settings wholesale, and it
+        /// used to name three hard-coded paths — so regenerating the map dropped every
+        /// descent slot out of the build, routinely and silently. It now re-adds the slots
+        /// that are NAMED IN THE MANIFEST, which is the same list this method walks. So
+        /// this check is no longer the routine consequence of a map regeneration; it is
+        /// what catches the two cases that remain — a manifest carried into a player build
+        /// whose scenes were not, and a slot scene deleted off disk with its line left in
+        /// the file.
+        /// </para>
+        /// </summary>
+        /// <param name="failure">What to put on the lobby screen. Empty when the roster is usable.</param>
+        private static bool VerifyRoster(out string failure)
+        {
+            failure = string.Empty;
+
+            if (DescentRoster.Count == 0)
+            {
+                // ── one building is a LEGAL STATE, and this is a warning ──────────────
+                //
+                // Not a refusal, and — since 2026-08-05 — not an error either. The two are
+                // told apart by one question: does this state break a match? An empty
+                // roster does not. Every machine in the session loads the same scene, the
+                // race is fair, the seed still deals §01's starting ring, and this is what
+                // 하강 shipped for its whole life and what it ships tomorrow if a bake is
+                // slow. It is also, deliberately, the state a build is in the moment the
+                // manifest is missing from a player — Resources.Load returning null must
+                // not be a red line in a shipped game's log.
+                //
+                // The state that IS an error is the one below: a roster naming a scene
+                // Build Settings does not have. That one ends with twenty people on a
+                // loading screen that never finishes, because LoadSceneAsync answers an
+                // unlisted scene with null. An error should mean "this session will fail",
+                // and only one of these two does.
+                //
+                // What is NOT given up is the record. The line still goes out on every
+                // host, it still names what is lost — 「맵을 아는 사람이 유리하다」 stops being
+                // a per-match skill and becomes a permanent asset, so the twentieth match
+                // is the first one already solved — and it still carries DescentRoster.Note
+                // verbatim, which is what distinguishes "no manifest in this build" from
+                // "a manifest that published zero buildings", i.e. a bake that was never
+                // run from a bake that ran and refused everything. Deleting the line would
+                // be forgetting; lowering it is saying the right thing at the right level.
+                //
+                // The unreadable manifest stays an error, and it is not raised here:
+                // DescentRoster.EnsureRead logs one when TryParse refuses a file that
+                // exists, because that is a build whose roster disagrees with every other
+                // build's — the one failure the fingerprint exists to catch.
+                Debug.LogWarning(
+                    "[Lobby] " + DescentRoster.Note + " 모든 판이 같은 건물이 된다 — §01의 "
+                    + "「맵을 아는 사람이 유리하다」가 판마다가 아니라 영구적인 자산이 된다. "
+                    + "판은 정상적으로 돌아간다: 모두 같은 씬으로 내려가고 씨앗은 여전히 출발 위치를 정한다. "
+                    + "건물을 늘리려면 HorrorGame ▸ Scene Gen ▸ Bake Descent Roster 를 돌린다.");
+                return true;
+            }
+
+            for (var i = 0; i < DescentRoster.Count; i++)
+            {
+                var building = DescentRoster.Buildings[i];
+                if (!IsInBuild(building.SceneName))
+                {
+                    failure = "§13 · " + i + "번 건물 '" + building.SceneName
+                        + "' 이(가) Build Settings 에 없다. 고르면 아무도 들어가지 못하므로 방을 열지 않는다. "
+                        + "지도를 다시 생성하면 씬 목록이 통째로 덮어써진다 — 로스터를 다시 구워야 한다.";
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// True when a scene NAME is one the player can load.
+        /// <para>
+        /// Walked out of <c>SceneUtility</c> rather than asked of
+        /// <c>Application.CanStreamedLevelBeLoaded</c>, for one reason: this runs in the
+        /// editor too, where a scene can be open and playable without being in Build
+        /// Settings — and Build Settings is exactly what the shipped player will and will
+        /// not have. A check that passes in the editor and fails in a build is the shape of
+        /// half this project's blockers.
+        /// </para>
+        /// </summary>
+        private static bool IsInBuild(string sceneName)
+        {
+            var count = SceneManager.sceneCountInBuildSettings;
+            for (var i = 0; i < count; i++)
+            {
+                var path = SceneUtility.GetScenePathByBuildIndex(i);
+                if (string.IsNullOrEmpty(path))
+                {
+                    continue;
+                }
+
+                var slash = path.LastIndexOf('/');
+                var dot = path.LastIndexOf('.');
+                var name = dot > slash
+                    ? path.Substring(slash + 1, dot - slash - 1)
+                    : path.Substring(slash + 1);
+
+                if (string.Equals(name, sceneName, StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Checks the scene that actually came up against the building §13 chose.
+        /// <para>
+        /// Two different failures, and telling them apart is the whole value of this
+        /// method:
+        /// </para>
+        /// <list type="number">
+        /// <item><b>A different scene NAME.</b> Today that means only one thing — the shell
+        /// was never told which building to load, because the seam is not in the UI
+        /// assembly yet. Every machine loads the same default, so the race is fair and only
+        /// the variety is missing. Reported and allowed.</item>
+        /// <item><b>The same name over a different GENERATION.</b> That is two builds
+        /// holding different geometry under one file name, which is exactly the state in
+        /// which a runner races down a maze nobody else is in and nothing looks wrong.
+        /// Refused: the match does not start on this machine.</item>
+        /// </list>
+        /// </summary>
+        private static bool VerifyLoadedBuilding(Scene scene, DescentBuilding building, out string wrong)
+        {
+            wrong = string.Empty;
+
+            if (!string.Equals(scene.name, building.SceneName, StringComparison.Ordinal))
+            {
+                Debug.LogWarning(
+                    "[Lobby] §13 chose '" + building.SceneName + "' and the shell loaded '" + scene.name
+                    + "'. Every machine in this session did the same thing, so the race is still fair — but the "
+                    + "maze is the same one it was last match. GameShell owns the scene load and has no way to "
+                    + "be told which building to open; see the diff in the report on this change.");
+                return true;
+            }
+
+            var stamp = FindGenerationStamp(scene);
+            if (stamp == null)
+            {
+                // A scene with no stamp was not committed by MapSceneGenerator — a
+                // hand-made test scene, or one saved over by hand. Nothing to compare, and
+                // refusing would fail every such scene, so it is reported and allowed.
+                Debug.LogWarning(
+                    "[Lobby] '" + scene.name + "' carries no " + DescentRoster.GenerationStampPrefix
+                    + " stamp, so this machine cannot prove it is in the same building as everybody else. "
+                    + "The roster expected " + building.Generation + ".");
+                return true;
+            }
+
+            if (string.Equals(stamp, building.Generation, StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            wrong = "§13 · 같은 이름의 다른 건물이다. '" + scene.name + "' 의 세대는 " + stamp
+                + " 인데 로스터는 " + building.Generation
+                + " 를 기대한다. 다른 빌드와 같은 미로가 아니므로 이 판은 시작하지 않는다. 두 빌드를 맞춰야 한다.";
+            return false;
+        }
+
+        /// <summary>
+        /// The generation string of a loaded scene, or null when it carries no stamp.
+        /// <para>
+        /// The whole scene is walked rather than only its roots: the stamp is created as a
+        /// root object by <c>MapSceneGenerator.Commit</c>, but <c>SoloPlaytest</c> assembles
+        /// the playable scene from the map scene and nothing promises the object stays
+        /// unparented through that. Once per descent, so the walk costs nothing worth
+        /// trading a wrong answer for.
+        /// </para>
+        /// </summary>
+        private static string? FindGenerationStamp(Scene scene)
+        {
+            var roots = scene.GetRootGameObjects();
+            for (var i = 0; i < roots.Length; i++)
+            {
+                var found = FindGenerationStamp(roots[i].transform);
+                if (found != null)
+                {
+                    return found;
+                }
+            }
+
+            return null;
+        }
+
+        private static string? FindGenerationStamp(Transform node)
+        {
+            if (node.name.StartsWith(DescentRoster.GenerationStampPrefix, StringComparison.Ordinal))
+            {
+                return node.name.Substring(DescentRoster.GenerationStampPrefix.Length);
+            }
+
+            for (var i = 0; i < node.childCount; i++)
+            {
+                var found = FindGenerationStamp(node.GetChild(i));
+                if (found != null)
+                {
+                    return found;
+                }
+            }
+
+            return null;
         }
 
         /// <summary>

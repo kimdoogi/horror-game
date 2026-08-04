@@ -371,37 +371,80 @@ namespace HorrorGame.Core
         /// order of arrival, not survival. See docs/BALANCE-FINDINGS.md F-013.
         /// </para>
         /// <para>
-        /// <b>Where 3.4 s comes from.</b> It is not chosen; it is the race's own price list.
-        /// DESCENT-PIVOT §2② prices the one deliberate way a runner can cost a rival time:
-        /// shut a door (<see cref="DoorShutSeconds"/>) and the pursuer must break it
-        /// (<see cref="DoorBreakSeconds"/>) — 「닫고 도망치면 3.4초를 번다」. So 3.4 s is the
-        /// smallest advantage this game already treats as worth standing still for. A chase
-        /// that costs less than one door is a chase a runner can rationally ignore, and
-        /// 「escapable」 becomes 「ignorable」 — which is the failure 720/720 was suspected of
-        /// and which the toll, not the rate, is what actually detects.
+        /// <b>Where 3.4 s comes from — §01's list of two.</b> It is not chosen; it is the
+        /// race's own price list. §01 leaves a runner exactly two ways to hinder a rival:
+        /// 「방해 수단은 문과 괴물을 남에게 떠넘기는 것뿐이다」, and §06 calls the second one
+        /// 「협동판에서 이것은 사고였다. 경주에서는 전술이다」. Price the first: shutting a door
+        /// costs the shutter <see cref="DoorShutSeconds"/> and costs the pursuer
+        /// <see cref="DoorBreakSeconds"/>, a swing of 3.4 s — §12-B's 「닫고 도망치면 3.4초를
+        /// 번다」. For the second tool to be a tactic rather than a worse door, handing the
+        /// creature to somebody has to move at least as much time as shutting one in their
+        /// face. A chase cheaper than that is one §01 lists a tool for and nobody would use:
+        /// 「escapable」 becomes 「ignorable」, which is the failure 720/720 was suspected of and
+        /// which the toll, not the rate, is what actually detects.
         /// </para>
         /// <para>
-        /// <b>The other end of the band is not a constant here, because §12-D's number has
-        /// none.</b> A chase must not cost more than solving the storey it happened on, or it
-        /// is indistinguishable from being sent back up a floor and §01's descent is nine legs
-        /// instead of eight. §12-D's shortest legal centre path is 90 m, which at
-        /// <see cref="RunSpeed"/> is 20.0 s. <c>MapValidator</c> does not implement §12-D's
-        /// <c>centre-path</c> rule, so there is nothing to hang a constant off yet.
+        /// <b>The ceiling is <see cref="ChaseTollSecondsMax"/> and it comes from the pivot.</b>
+        /// Being caught no longer ends a race — §06 sends the runner back to the cell they
+        /// started from on B1 and they keep running — so a catch has a price in the same
+        /// currency as a chase, and the two can be compared for the first time. See that
+        /// constant for the arithmetic.
         /// </para>
         /// <para>
-        /// <b>Measured, seed 20260802, all 720 places of the shipped building:</b> toll
-        /// min 3.4 s · median 7.2 s · p75 9.2 s · max 25.5 s — <b>0 below this floor</b> and
-        /// 7 (1.0 %) above the 20.0 s ceiling. The 중심 band gives back a median 15.0 m of
-        /// ground and the 외곽 band −10.0 m, which is §12-B③ 「외곽은 안전하고 중심은
-        /// 위험하다」 appearing as a number for the first time.
+        /// <b>Measured, seed 20260802, all 720 places of the shipped building</b> (headless,
+        /// <c>DescentMap.Build</c> + <c>RunnerTest</c>, 심야 4.8 m/s): toll min 3.4 s · p25
+        /// 6.0 s · median 7.2 s · p75 9.2 s · max 25.5 s — <b>0 below this floor</b>, and one
+        /// place above the storey-scaled ceiling (B1's 중심, 25.5 s against B1's 20.0 s). The
+        /// 중심 band gives back a median 15.0 m of ground and the 외곽 band −7.5 m, which is
+        /// §12-B③ 「외곽은 안전하고 중심은 위험하다」 as a number.
         /// </para>
         /// <para>
-        /// Inert until an instrument reads it: <c>RunnerTest</c> records ElapsedSeconds and
-        /// GapMetres but never the ground given back, and <c>RunnerCensus</c> reports only
-        /// the pass rate. F-013 carries the diff that makes both report the toll.
+        /// Corroboration rather than derivation: §07's own cost table prices 「괴물을 한 번
+        /// 떼어내기」 at ~30 s. The toll proper is 7.2 s median, and the bar the escape spent
+        /// takes <see cref="SprintRecoveryDelaySeconds"/> + a share of
+        /// <see cref="SprintStaminaRecoverySeconds"/> to put back — 18.4 s median together,
+        /// 23.6 s at p75. §07's estimate is the whole encounter including the bar; this
+        /// constant bands the part that is unambiguously time lost.
         /// </para>
         /// </summary>
         public const float ChaseTollSecondsMin = DoorBreakSeconds - DoorShutSeconds;
+
+        /// <summary>
+        /// Seconds a chase may cost a runner before escaping stops being worth doing —
+        /// the other end of <see cref="ChaseTollSecondsMin"/>'s band.
+        /// <para>
+        /// <b>Derived from what being caught now costs, which is a number the co-op game
+        /// did not have.</b> §06 used to end a caught runner's match (「잡히면 — 탈락」), so a
+        /// catch had no price, only a verdict, and nothing could be compared against it.
+        /// The race sends a caught runner back to the cell they started from on B1 with
+        /// every storey gone. A catch therefore costs exactly the storeys already
+        /// descended: on storey <c>k</c>, <c>k</c> × one storey.
+        /// </para>
+        /// <para>
+        /// <b>The binding case is B1, and that is what this constant is.</b> On B1 a catch
+        /// costs one storey; on B8 it costs eight, so B1 is the cheapest catch in the game
+        /// and the tightest ceiling. A chase that costs more than the catch it prevents is
+        /// a chase a runner should rationally stop running from — and §02 has no way to
+        /// express that choice, because 「탈락에는 순위가 없다」 was replaced by a send-home
+        /// that keeps you racing. One storey is §12-D's shortest legal 외곽→중심 path,
+        /// <see cref="CentrePathMetresMin"/>, walked at <see cref="RunSpeed"/>: 90 ÷ 4.5 =
+        /// 20.0 s.
+        /// </para>
+        /// <para>
+        /// Read against §12-D's <em>written</em> floor rather than against the shipped
+        /// geometry on purpose. The shipped storey measures 60~82.5 m entry-to-middle
+        /// (13.3~18.3 s), which is outside §12-D's own band — a map defect, not a reason to
+        /// lower the ceiling. A constant derived from geometry that is currently wrong would
+        /// move every time the geometry moved.
+        /// </para>
+        /// <para>
+        /// <b>Measured:</b> 7 of 720 places charge more than this flat 20.0 s, one per storey
+        /// except B8, every one of them the 중심 cell that throws an escaping runner 67.5 m
+        /// back out. Against the storey-scaled ceiling (<c>k</c> × 20.0 s) only <b>B1's</b> is
+        /// a breach; on B2–B7 a 25.5 s escape is a bargain against a 40~140 s catch.
+        /// </para>
+        /// </summary>
+        public const float ChaseTollSecondsMax = CentrePathMetresMin / RunSpeed;
 
         /// <summary>Runner sprint duration on a full bar, seconds. §06.</summary>
         public const float SprintStaminaSeconds = 12f;
@@ -1269,8 +1312,30 @@ namespace HorrorGame.Core
         /// start that works. A Runner leaving aggro at that distance already carries
         /// 10 m of the 14.4, so cover that is itself 4.4 m deep completes the release
         /// <em>wherever</em> it is picked up — at the very first step, at zero run-up.
-        /// Anything wider than this inverts §12's first conclusion, 「주자는 멀리서
-        /// 어그로를 걸어야 한다」: distance stops being what the Runner has to buy.
+        /// </para>
+        /// <para>
+        /// <b>NOT WHAT MAPVALIDATOR ENFORCES, and kept for the fixture that sizes itself
+        /// from it.</b> The subtracted term is 「주자는 멀리서 어그로를 걸어야 한다」 — §12's
+        /// conclusion about §04's 주자 <em>choosing</em> the range to be seen from, the same
+        /// deleted premise <see cref="RunnerTestAggroStartDistance"/>'s own remarks record.
+        /// Nobody chooses in a race: aggro starts where the creature finds you, which down
+        /// one of this map's 15~17.5 m legs is most of a leg and at an 안쪽 고리 junction is
+        /// one cell — §01's 「마주치면 피할 수 없다」. A runner therefore reaches cover carrying
+        /// nothing, and nothing comes off the 14.4.
+        /// </para>
+        /// <para>
+        /// So <c>MapValidator.SightBreakPointSpanCap</c> is
+        /// <see cref="SingleCornerMinDistance"/> itself. For one round the whole cap was
+        /// deleted on the strength of the argument above and the rule went green with the
+        /// map unmoved; stripping only the term makes the cap WEAKER (14.4 m against 4.4 m)
+        /// and the shipped map is still 6.6× over it at <b>95 m</b>. That is a map defect —
+        /// B-007, waived by name in <c>MapSceneGenerator.KnownFailingRules</c>.
+        /// </para>
+        /// <para>
+        /// The 탈출 대가 (<see cref="ChaseTollSecondsMin"/>) is measured beside it and does
+        /// not stand in for it: <b>0 of 720</b> places charge less than one door while cover
+        /// still runs 95 m unbroken. A toll priced on one runner's escape cannot see what
+        /// continuous cover costs a race of twenty.
         /// </para>
         /// <para>
         /// The measured consequence, on the geometry the game ships: a 5 m connector
@@ -1279,6 +1344,43 @@ namespace HorrorGame.Core
         /// </para>
         /// </summary>
         public const float SightBreakPointSpanMax = SingleCornerMinDistance - RunnerTestAggroStartDistance;
+
+        /// <summary>
+        /// Shortest legal 외곽→중심 path on one storey, metres. §12-D's <c>centre-path</c>
+        /// band, written down as a number for the first time.
+        /// <para>
+        /// §12-D derives it from match length and shows its working: 「길을 아는 사람
+        /// 118 m ÷ 4.5 m/s = 26초/층 × 8 = 3.5분; 처음 온 사람 길을 두 배 돌면 7분, 문과
+        /// 괴물까지 더하면 12~20분」, which is §01's 한 판의 흐름. It also says why the floor
+        /// matters more than the ceiling: 「60~90 m로 줄이면 아는 사람이 2분 만에 끝내고,
+        /// 그러면 맵을 아는 것이 실력이라는 전제가 보상 없이 사라진다」 — §01's only two
+        /// sources of difference are 길을 아는가 and 어디까지 감수하는가, and a storey short
+        /// enough to solve blind deletes the first one.
+        /// </para>
+        /// <para>
+        /// <b>Open map defect, measured headlessly on seed 20260802.</b> A runner enters a
+        /// storey at a 투하구 landing on the rim; from there to the middle is <b>70~75 m</b>
+        /// on B2–B6 and B8, <b>60~65 m</b> on B7, and <b>47.5~82.5 m</b> from B1's sixteen
+        /// 외곽 rail cells — <b>30 of 30</b> entry points outside this band, short by
+        /// 7.5~42.5 m. <c>MapValidator.RuleCentrePath</c> GATES it and it fails; the map is
+        /// still written because <c>MapSceneGenerator.KnownFailingRules</c> waives it by
+        /// name with those numbers in the entry (B-019). The fix is geometry in
+        /// <c>RadialStorey</c> — a longer rim-to-middle route, not a wider band.
+        /// </para>
+        /// </summary>
+        public const float CentrePathMetresMin = 90f;
+
+        /// <summary>
+        /// Longest legal 외곽→중심 path on one storey, metres. §12-D.
+        /// <para>
+        /// The other end of the band <see cref="CentrePathMetresMin"/> derives: 140 m ÷
+        /// <see cref="RunSpeed"/> = 31 s a storey, ×8 = 4.1 minutes for someone who knows
+        /// the way, which is the top of §01's 12~20 분 once a first-timer's doubling, the
+        /// doors and the creature are added. Past it a storey takes longer to walk than
+        /// §07 leaves the match.
+        /// </para>
+        /// </summary>
+        public const float CentrePathMetresMax = 140f;
 
         /// <summary>Length of one leg of an S-corridor, metres. §12 — the map's base unit.</summary>
         public const float SCorridorLegLength = 10f;
@@ -1303,28 +1405,63 @@ namespace HorrorGame.Core
         /// different job since: it was the number of FLOORS the game could have.
         /// </para>
         /// <para>
-        /// What the band was protecting is protected by other rules that did not change —
-        /// <see cref="ZoneDiagonalMin"/>~<see cref="ZoneDiagonalMax"/> still keeps a zone
-        /// inside one sprint, entry points are still 2~3, and every zone still needs its
-        /// own surface, which is now the real cap: eight materials, so nine zones only if
-        /// one of them is the stairwells' 금속.
+        /// What the band was protecting is protected by other rules that did not change:
+        /// entry points are still 2~3, and every zone still needs its own surface, which is
+        /// now the real cap — eight materials, so nine zones only if one of them is the
+        /// stairwells' 금속. That is also the whole of §01's audio map: 「여덟 개의 표면,
+        /// 층마다 하나. 발소리가 어느 층에 있는지 말해 준다」.
         /// </para>
         /// </summary>
         public const int ZoneCountMax = 9;
 
-        /// <summary>Smallest zone diagonal, metres. §12.</summary>
+        // --------------------------------------------------------------------
+        // ZoneDiagonalMin/Max are NO LONGER a §12 rule. MapValidator's
+        // `zone-diagonal` was deleted in the §12 re-derivation; the two constants
+        // stay because six live systems read them as a reference distance and none
+        // of the six is §12. Their doc comments below say which.
+        //
+        // The rule sized a 구역 as a SUB-AREA of a floor — small enough to search,
+        // big enough to name. On 하강 a 구역 IS a 층: eight zones, eight storeys,
+        // one surface each, and DescentMap.Radius 11 makes every one of them
+        // 57.5 m square and 81.3 m across. Both of the rule's own reasons went with
+        // that identity — a footstep now names a STOREY by design (§01), and 「주자가
+        // 구역 2~3개 관통 가능」 would mean crossing two or three FLOORS on one
+        // sprint, which §01 forbids structurally: a floor is only ever left through
+        // the 투하구 in its middle. What still needs bounding is how far a runner
+        // must travel on a floor, and that is §12-D's CentrePathMetresMin~Max.
+        // --------------------------------------------------------------------
+
+        /// <summary>
+        /// Reference distance: the small end of §12's retired 구역 대각선 band, metres.
+        /// <para>
+        /// Read by <c>PlayerFeelHarness</c> (the width of a test floor patch) and
+        /// <c>MonsterTests</c>. Kept at 30 m rather than re-derived because nothing that
+        /// reads it is making a §12 claim — see the block above for why the rule went.
+        /// </para>
+        /// </summary>
         public const float ZoneDiagonalMin = 30f;
 
-        /// <summary>Largest zone diagonal, metres. §12.</summary>
+        /// <summary>
+        /// Reference distance: how far the game bothers to render, patrol and replicate,
+        /// metres. Was §12's 구역 대각선 cap.
+        /// <para>
+        /// Its live readers are all engine-side and all of them mean "about one room-scale
+        /// distance": <c>NetInterestScope</c> floors its replication range at it,
+        /// <c>MonsterBrain</c> picks a search waypoint inside it, <c>AtmosphereSetup</c>
+        /// sets the shadow distance to it, and <c>NightAtmosphere</c> quotes it as the
+        /// distance at which fog reaches 83 %. Four systems agreeing on one number is worth
+        /// more than four literals; that is the job the constant now has.
+        /// </para>
+        /// </summary>
         public const float ZoneDiagonalMax = 40f;
 
         /// <summary>Map extent along one axis, metres. §12: 100 × 100.</summary>
         // Raised from 100 m on 2026-08-02. The 100 came from "주자가 구역 2~3개 관통
-        // 가능 on one sprint of 60 m", and that argument is about ZONE size, not about the
-        // building's footprint: a zone is still capped at a 30~40 m diagonal, so a sprint
-        // still crosses two or three of them whatever the outline is. What the old cap
-        // actually bounded was how many zones could exist at all, and with five floor
-        // surfaces that was five — which is why every storey read the same.
+        // 가능 on one sprint of 60 m", and that argument was about ZONE size rather than
+        // the building's footprint. The zone half of it is gone with `zone-diagonal`
+        // above; what bounds the footprint now is the tower — DescentMap stacks eight
+        // 57.5 m storeys in one column, so the measured extent is 57.5 m and this is the
+        // ceiling nothing has needed to approach.
         public const float MapExtent = 170f;
 
         /// <summary>Lowest acceptable dead-end ratio. §12: below this, map knowledge stops mattering.</summary>
@@ -1373,14 +1510,30 @@ namespace HorrorGame.Core
         // --------------------------------------------------------------------
 
         /// <summary>
-        /// Runner-test success rate below which the map is too hard. §12.
+        /// Runner-test success rate below which the map is too hard. §12 — <b>RETIRED. It is
+        /// not the race's grade and §12 no longer states it.</b>
         /// <para>
-        /// <b>Unreachable, and the arithmetic says so rather than an opinion.</b> Held at
-        /// §12's written value so the report keeps quoting the section honestly, but nothing
-        /// should be spent trying to land inside this band again — three working passes have
-        /// been, and the grade has never moved off 10/10. With cover continuous (which §12's
-        /// own 시야 차단 지점 간격 guarantees past the first 20 m of any route) a release
-        /// needs
+        /// <b>What it meant, and why the pivot took the meaning away.</b> 「도망칠 수 있다」
+        /// meant 「죽지 않는다」. §06 ended a caught runner's match, §02 gave them no 순위, and
+        /// a 5~7/10 escape rate was a statement about how often a player kept playing. §06 now
+        /// sends a caught runner back to the cell they started from on B1 and they keep
+        /// racing: they lose every storey they had and nothing else. Escape is no longer the
+        /// difference between playing and not playing, so its rate is no longer a grade — what
+        /// a race grades is the <em>price</em>, <see cref="ChaseTollSecondsMin"/> ~
+        /// <see cref="ChaseTollSecondsMax"/>.
+        /// </para>
+        /// <para>
+        /// <b>Kept as a compiling symbol, not as a threshold.</b> Its remaining readers are
+        /// <c>RunnerTest.Verdict</c>, <c>RunnerCensus</c>'s report line and three assertions in
+        /// <c>MapTests</c> — none of them this round's files. The value is NOT moved: a band
+        /// nudged until the map cleared it would be exactly the failure this re-derivation
+        /// exists to undo. It goes when those readers do.
+        /// </para>
+        /// <para>
+        /// <b>And it could never discriminate anyway — arithmetic, not opinion.</b> Three
+        /// working passes were spent trying to land inside it and the grade never moved off
+        /// 10/10. With cover continuous (which §12's own 시야 차단 지점 간격 guarantees past
+        /// the first 20 m of any route) a release needs
         /// <code>
         /// RunnerSprintSpeed × max(AggroReleaseLineOfSightBreak,
         ///                         (AggroReleaseDistance − RunnerTestAggroStartDistance)
@@ -1401,16 +1554,17 @@ namespace HorrorGame.Core
         /// <para>
         /// <b>What replaced it.</b> The band asks the co-op question, "can aggro be broken";
         /// the race asks §07's and §02's question, "what did breaking it cost". See
-        /// <see cref="ChaseTollSecondsMin"/> and docs/BALANCE-FINDINGS.md F-013.
+        /// <see cref="ChaseTollSecondsMin"/>, <see cref="ChaseTollSecondsMax"/> and
+        /// docs/BALANCE-FINDINGS.md F-013.
         /// </para>
         /// </summary>
         public const float RunnerTestPassRateMin = 0.50f;
 
         /// <summary>
-        /// Runner-test success rate above which the map is too easy. §12. Held at §12's
-        /// written value — see <see cref="RunnerTestPassRateMin"/> for why no map that obeys
-        /// §12 can ever score under it, and <see cref="ChaseTollSecondsMin"/> for the grade
-        /// the race is measured by instead.
+        /// Runner-test success rate above which the map is too easy. §12 — <b>RETIRED with
+        /// <see cref="RunnerTestPassRateMin"/></b>, on whose remarks the whole reason lives.
+        /// Held at §12's written value; the race's grade is
+        /// <see cref="ChaseTollSecondsMin"/> ~ <see cref="ChaseTollSecondsMax"/>.
         /// </summary>
         public const float RunnerTestPassRateMax = 0.70f;
 
@@ -1472,11 +1626,14 @@ namespace HorrorGame.Core
         /// changes which side of the cliff the report lands on and nothing about the game.
         /// </para>
         /// <para>
-        /// <b>And it is load-bearing elsewhere.</b> <see cref="SightBreakPointSpanMax"/> is
-        /// defined as <see cref="SingleCornerMinDistance"/> less this value, so lowering it
-        /// <em>loosens</em> a MapValidator rule the shipped map already fails. Changing it to
-        /// make one report greener would quietly relax a different gate. docs/BALANCE-FINDINGS.md
-        /// F-013.
+        /// <b>It used to be load-bearing elsewhere, and that circle is now broken.</b>
+        /// <see cref="SightBreakPointSpanMax"/> is defined as
+        /// <see cref="SingleCornerMinDistance"/> less this value, so the two were holding each
+        /// other up: this constant was kept because the span cap needed it, and the span cap
+        /// was derived from this constant. The §12 re-derivation took the span cap out of the
+        /// gate — it is measured and printed, not enforced — so nothing a map is judged by
+        /// depends on this number any more. It stays because of the cliff above and because
+        /// the 주자 테스트 report still quotes it. docs/BALANCE-FINDINGS.md F-013.
         /// </para>
         /// </summary>
         public const float RunnerTestAggroStartDistance = 10f;
@@ -1785,6 +1942,15 @@ namespace HorrorGame.Core
                 + "held, so a toll at or under that is paid by the release itself — the chase "
                 + "would cost nothing beyond the seconds it was already on screen, which is "
                 + "「escapable」 collapsing into 「ignorable」.");
+            Require(ChaseTollSecondsMax > ChaseTollSecondsMin, "§12: toll bounds must be ordered.");
+            // No epsilon: ChaseTollSecondsMax IS CentrePathMetresMin ÷ RunSpeed, and 90, 4.5
+            // and 20 are all exact in binary32, so the round trip is exact too. An epsilon
+            // here would hide a future value that is not.
+            Require(ChaseTollSecondsMax * RunSpeed <= CentrePathMetresMin,
+                "§01/§06: being caught sends a runner back to their B1 cell and takes every storey, "
+                + "so the cheapest catch in the game costs one storey — §12-D's shortest legal "
+                + "centre path. A chase allowed to cost more than that is a chase it is rational "
+                + "to stop running from, and the race has no way to express that choice.");
 
             Require(MonsterLungeSpeed > MonsterBaseSpeed,
                 "§06: a lunge that is no faster than the chase is not a lunge — the "
@@ -1927,6 +2093,15 @@ namespace HorrorGame.Core
             Require(SightBreakPointSpanMax > 0f && SightBreakPointSpanMax < LineOfSightBreakSpacingMin,
                 "§12: one 시야 차단 지점 must be narrower than the gap to the next one, or the two "
                 + "readings of 간격 — how wide a chance is and how far apart chances are — collapse into each other.");
+            Require(CentrePathMetresMin < CentrePathMetresMax, "§12-D: centre-path bounds must be ordered.");
+            Require(CentrePathMetresMin > SprintMaxTravelDistance,
+                "§12-D/§05: a storey has to be longer than one full sprint, or a runner crosses it "
+                + "from rim to middle on a single bar and 「스태미나를 언제 쓸 것인가」 — §06's stated "
+                + "dilemma — has one answer on every floor.");
+            Require(LineOfSightBreakSpacingMin * 4f <= SprintMaxTravelDistance,
+                "§12: 「질주 60m에 3~4번의 기회」 is what the 시야 차단 지점 간격 band means. If four "
+                + "gaps at the floor of the band no longer fit inside one sprint, the band has "
+                + "stopped saying what §12 says it says.");
 
             Require(PresenceSaturationSeconds > 3f * LineOfSightBreakSpacingMax / WalkSpeed,
                 "§10/§12: the 그늘 must take longer to fill than three cover-to-cover crossings at walking "

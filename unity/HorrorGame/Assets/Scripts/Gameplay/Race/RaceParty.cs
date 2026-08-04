@@ -7,7 +7,7 @@ using HorrorGame.Core;
 namespace HorrorGame.Gameplay.Race
 {
     /// <summary>
-    /// The two facts about the party that do not survive the descent's scene load on
+    /// The facts about the party that do not survive the descent's scene load on
     /// their own. §11 · §13.
     /// <para>
     /// <b>Why a static and not a component.</b> Both are decided in <c>Bootstrap</c> and
@@ -19,13 +19,13 @@ namespace HorrorGame.Gameplay.Race
     /// state to read it.
     /// </para>
     /// <para>
-    /// <b>Deliberately two fields and not a roster.</b> An earlier draft of this carried
+    /// <b>Deliberately a few fields and not a roster.</b> An earlier draft of this carried
     /// the seed, the field size and every name, and nothing read any of them: the seed is
     /// already static on the lobby, the names are already replicated in
     /// <see cref="RaceLobbyRosterMessage"/>, and the field size has no consumer until
     /// <c>MatchDirector.PlayersInMatch</c> stops being a constant. An object nothing reads
     /// is exactly the shape of this project's most expensive bug, so what is here is only
-    /// what <see cref="RaceRunners"/> actually asks for.
+    /// what something downstream actually asks for. Each field below names its reader.
     /// </para>
     /// <para>
     /// <b>Consumed, not remembered.</b> <see cref="Clear"/> runs when a session ends, so a
@@ -41,6 +41,29 @@ namespace HorrorGame.Gameplay.Race
 
         /// <summary>True once a lobby has started a descent, and until the session ends.</summary>
         public static bool Settled { get; private set; }
+
+        /// <summary>
+        /// The building §13 chose for this race, or the zero value on a build with no
+        /// roster.
+        /// <para>
+        /// <b>Its reader is the descent itself.</b> <c>RaceLobby.OnSceneLoaded</c> compares
+        /// this against the generation stamp inside the scene that actually came up, which
+        /// is the only check in the game that reads the ARTEFACT rather than a name two
+        /// machines agreed on. Two builds holding different geometry under one scene name
+        /// — one of them made before a rebake — are told apart by that comparison and by
+        /// nothing else, and the alternative is a runner racing down a maze nobody else is
+        /// in with no symptom to notice.
+        /// </para>
+        /// <para>
+        /// It is here rather than only on <c>RaceLobby.AgreedBuilding</c> for the reason
+        /// every other field here exists: the load in between is a
+        /// <c>LoadSceneMode.Single</c>, and something after it has to be able to ask what
+        /// was agreed before it. <c>AgreedBuilding</c> is consumed by the check the way the
+        /// seed is consumed by <c>BeginMatch</c>; this copy outlives the session so a
+        /// second descent or a §02 results screen can still name the building.
+        /// </para>
+        /// </summary>
+        public static DescentBuilding Building { get; private set; }
 
         /// <summary>
         /// This machine's row in the lobby, or −1.
@@ -105,6 +128,22 @@ namespace HorrorGame.Gameplay.Race
         }
 
         /// <summary>
+        /// Records which building the party agreed to descend into.
+        /// <para>
+        /// A separate call from <see cref="Settle"/> for the same reason
+        /// <see cref="SettleNames"/> is: it is a different KIND of fact and it must be
+        /// allowed to be absent. A build whose map pipeline has never baked a roster passes
+        /// the zero value here, which means "the one building this build has" and is not an
+        /// error — <c>RaceLobby.VerifyLoadedBuilding</c> simply has nothing to compare and
+        /// says so instead of failing a match.
+        /// </para>
+        /// </summary>
+        public static void SettleBuilding(DescentBuilding building)
+        {
+            Building = building;
+        }
+
+        /// <summary>
         /// Who is in each seat, by name, as the lobby's roster had them.
         /// <para>
         /// A separate call from <see cref="Settle"/> because it is a different KIND of
@@ -154,6 +193,7 @@ namespace HorrorGame.Gameplay.Race
         {
             Settled = false;
             LocalSeat = -1;
+            Building = default;
             _seatConnectionIds = Array.Empty<int>();
             _seatNames = Array.Empty<string>();
         }

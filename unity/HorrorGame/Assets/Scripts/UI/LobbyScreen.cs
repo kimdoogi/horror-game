@@ -133,6 +133,18 @@ namespace HorrorGame.UI
             return Intercept != null && Intercept(onBegin);
         }
 
+        /// <summary>
+        /// Scene the next 시작 should load, or null for the shell's own default.
+        /// <para>
+        /// §13 · the lobby chooses which of the pre-baked descents the party enters, and
+        /// the shell is what loads it. It travels through this seam for the same reason
+        /// <see cref="Intercept"/> does: this assembly cannot reference the gameplay layer,
+        /// so the dependency only runs one way and the gameplay layer fills it in. Set by
+        /// <c>RaceLobby.BeginDescent</c> immediately before it hands the flow back.
+        /// </para>
+        /// </summary>
+        public static string? MatchScene { get; set; }
+
         /// <summary>Lets the next <see cref="TryOpen"/> through untouched. Called by the lobby as it hands the flow back.</summary>
         public static void PassNextThrough()
         {
@@ -143,6 +155,7 @@ namespace HorrorGame.UI
         public static void ResetForTests()
         {
             Intercept = null;
+            MatchScene = null;
             _suppressed = false;
         }
     }

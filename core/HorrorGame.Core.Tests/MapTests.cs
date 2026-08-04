@@ -108,7 +108,9 @@ namespace HorrorGame.Core.Tests
                 + "reports PASS on a map that breaks the eighth. It was eleven until the "
                 + "상점/전리품/단서 제거 round deleted 관측 지점, 단서·목표물 후보 지점 and 은폐 지점 — "
                 + "three rules whose subjects (§04's 관측자, §03's clue chain, §07 새벽's ambush) no "
-                + "longer exist.");
+                + "longer exist. It read seven for one round: the §12 re-derivation deleted "
+                + "개방 공간–미로 공간 인접 whole, and only its 15 m clause rested on §04's 주자 "
+                + "picking an aggro range. The 인접 clause — which this map SATISFIES — came back.");
         }
 
         /// <summary>
@@ -206,6 +208,12 @@ namespace HorrorGame.Core.Tests
         /// <summary>
         /// "개방 공간이 최소 1개 있고, 미로 공간과 인접해 있다." Both kinds present but
         /// nowhere touching — §12's "[개방 공간] ──진입── [미로 공간]" broken at the arrow.
+        /// <para>
+        /// The 15~25 m clause of this rule is deleted and does not come back: it sized the
+        /// room for §04's 주자 choosing a range to be seen from. What is asserted here is the
+        /// clause that survives the pivot and that the shipped map passes — that the open
+        /// room and the maze touch, on one storey, through a doorway.
+        /// </para>
         /// </summary>
         [Test]
         public void Checklist_OpenSpaceNotAdjacentToMaze_FailsOnItsOwn()
@@ -219,8 +227,9 @@ namespace HorrorGame.Core.Tests
                 "This must be the adjacency failing, not the absence of a 미로 공간.");
 
             var result = AssertOnlyFailure(report, MapValidator.RuleOpenAdjacentToMaze,
-                "Aggro is taken in the open and broken in the maze. If the two never touch, the walk "
-                + "between them is itself an unbroken run and the pair buys nothing.");
+                "The open room is where a runner is met with nothing between them, and the maze is "
+                + "what ends that. If the two never touch, the walk between them is itself an "
+                + "unbroken run and the pair buys nothing.");
             Assert.That(result.Detail, Does.Contain("[개방 공간] ──진입── [미로 공간]"));
         }
 
@@ -441,19 +450,21 @@ namespace HorrorGame.Core.Tests
         // ====================================================================
 
         /// <summary>
-        /// "시야 차단 지점 간격 15~25m", broken on its own by widening one spur.
+        /// Cover 4.9 m deep is legal now, and was not before the §12 re-derivation.
         /// <para>
-        /// Nothing else about the map moves: the same nodes, the same degrees, the same
-        /// passages. The bend that hangs off a ring corner simply stands further from
-        /// it, and at
-        /// <see cref="GameConstants.SightBreakPointSpanMax"/> the two stop being one
-        /// 시야 차단 지점 and become cover deep enough to finish §06's
-        /// <see cref="GameConstants.AggroReleaseLineOfSightBreak"/> from any distance at
-        /// all — §12's first conclusion, 「주자는 멀리서 어그로를 걸어야 한다」, inverted.
+        /// This test used to fail the map here. The span cap was
+        /// <see cref="GameConstants.SightBreakPointSpanMax"/> — 14.4 m less the 10 m head
+        /// start §12's 어그로 시작 거리 table endorses, i.e. 4.4 m — and the subtracted term
+        /// is §04's 주자 <em>choosing</em> a range to be seen from. §01 replaced the choice
+        /// with 「마주치면 피할 수 없다」: a runner reaches cover carrying nothing. The term
+        /// went, the cap did not, and stripped of the term it is
+        /// <see cref="GameConstants.SingleCornerMinDistance"/> — which
+        /// <see cref="SightBreakSpacing_CoverDeeperThanASingleCornerNeeds_FailsOnItsOwn"/>
+        /// below is the test of. What this one records is the width the pivot bought back.
         /// </para>
         /// </summary>
         [Test]
-        public void SightBreakSpacing_CoverDeeperThanTheAggroHeadStart_FailsOnItsOwn()
+        public void SightBreakSpacing_CoverInsideASingleCornersRequirement_Passes()
         {
             var legal = BuildLongHouse(SpurOffset);
             Assert.That(MapValidator.Validate(legal).Failures, Is.Empty,
@@ -465,21 +476,78 @@ namespace HorrorGame.Core.Tests
             var report = MapValidator.Validate(map);
 
             Assert.That(map.Nodes.Length, Is.EqualTo(legal.Nodes.Length),
-                "Widening a spur must not add a place, or another rule could be the one that broke.");
+                "Widening a spur must not add a place, or another rule could be the one that moved.");
             Assert.That(map.Edges.Length, Is.EqualTo(legal.Edges.Length));
 
-            var result = report[MapValidator.RuleSightBreakSpacing];
-            Assert.That(result.Passed, Is.False,
+            Assert.That(report.FailedRuleIds, Is.Empty,
                 "Cover " + (GameConstants.SightBreakPointSpanMax + JustInside)
-                + " m deep breaks aggro wherever it is picked up:\n" + report.Describe());
-            Assert.That(result.IsChecklistItem, Is.False,
-                "§12's 검증 체크리스트 has eleven items and this is not one of them — it comes from the "
-                + "수치 규칙 table, like 구역 개수 and 맵 전체.");
-            Assert.That(
-                report.FailedRuleIds.Where(id => id != MapValidator.RuleSightBreakSpacing), Is.Empty,
-                "Only the spacing was supposed to change. Full report:\n" + report.Describe());
-            Assert.That(result.Detail, Does.Contain("주자는 멀리서 어그로를 걸어야 한다"),
+                + " m deep is inside what a single corner has to buy, so nothing fails:\n"
+                + report.Describe());
+            Assert.That(report[MapValidator.RuleSightBreakSpacing].Detail, Does.Contain("deepest"),
+                "The depth is printed on a pass too. If it stops being printed, cover going "
+                + "continuous is invisible until it crosses the cap:\n" + report.Describe());
+        }
+
+        /// <summary>
+        /// Cover that runs deeper than a single corner has to buy fails the rule, and the
+        /// message says what a runner gets for free.
+        /// <para>
+        /// §12 needs <see cref="GameConstants.SingleCornerMinDistance"/> of gap to buy
+        /// <see cref="GameConstants.AggroReleaseLineOfSightBreak"/> of broken sight from one
+        /// corner. A 시야 차단 지점 wider than that finishes the release from a standing start
+        /// with no run-up at all — 「도망칠 수 있다」 handed out rather than earned.
+        /// </para>
+        /// <para>
+        /// A fixture of its own rather than a widened long-house spur, and the reason is
+        /// worth recording: at the honest 14.4 m cap the spur has to hang far enough off its
+        /// ring corner to leave the zone box, so the widened long house fails
+        /// zone-membership and straight-corridor too and stops isolating anything. This one
+        /// chains three bends 10 m apart into a single 20 m 지점 and reads that rule's result
+        /// directly.
+        /// </para>
+        /// </summary>
+        [Test]
+        public void SightBreakSpacing_CoverDeeperThanASingleCornerNeeds_FailsOnItsOwn()
+        {
+            var report = MapValidator.Validate(BuildContinuousCover());
+            var result = report[MapValidator.RuleSightBreakSpacing];
+
+            Assert.That(result.Passed, Is.False,
+                "Three bends 10 m apart are one 20 m piece of cover, over §12's "
+                + GameConstants.SingleCornerMinDistance + " m:\n" + report.Describe());
+            Assert.That(result.Detail, Does.Contain("standing start"),
                 "§12 states the consequence, and the consequence is what a designer can act on.");
+            Assert.That(result.IsChecklistItem, Is.False,
+                "§12's 검증 체크리스트 has eight items and this is not one of them — it comes from the "
+                + "수치 규칙 table, like 구역 개수 and 맵 전체.");
+        }
+
+        /// <summary>
+        /// One zone, one walk, and two 시야 차단 지점 the legal distance apart — but the
+        /// first of them is three bends chained 10 m apart, so it is one 20 m piece of
+        /// cover rather than three chances. Every straight run in it is 20 m or shorter, so
+        /// the straight-corridor rule is not what breaks.
+        /// </summary>
+        private static MapGraph BuildContinuousCover()
+        {
+            var builder = new MapGraphBuilder().Named("연속 엄폐");
+            var zone = builder.AddZone(
+                "연속 엄폐", FloorMaterial.Concrete, new Vec3(30f, 0f, 30f), new Vec3(120f, 4f, 120f));
+
+            var walk = builder.AddChain(
+                zone,
+                MapNodeKind.MazeSpace,
+                new Vec3(10f, 0f, 10f),   // end
+                new Vec3(20f, 0f, 10f),   // bend ─┐
+                new Vec3(20f, 0f, 20f),   // bend  │ one 지점, 20 m across
+                new Vec3(30f, 0f, 20f),   // bend ─┘
+                new Vec3(30f, 0f, 30f),   // straight through
+                new Vec3(30f, 0f, 40f),   // bend, and 20 m of walk from the last one
+                new Vec3(40f, 0f, 40f),   // bend
+                new Vec3(40f, 0f, 50f));  // end
+
+            Assert.That(walk.Length, Is.EqualTo(8));
+            return builder.Build();
         }
 
         /// <summary>
@@ -528,9 +596,13 @@ namespace HorrorGame.Core.Tests
             var strungOut = MapValidator.Validate(BuildLongHouse());
 
             Assert.That(compact.ChecklistPassed, Is.True,
-                "All eleven 검증 체크리스트 items still pass on the compact sketch.");
-            Assert.That(compact.FailedRuleIds, Is.EqualTo(new[] { MapValidator.RuleSightBreakSpacing }),
-                "and this is the only rule it breaks:\n" + compact.Describe());
+                "Every 검증 체크리스트 item still passes on the compact sketch.");
+            Assert.That(compact.FailedRuleIds, Is.Empty,
+                "and it breaks nothing — which it did not always. The 시야 차단 지점 SPAN cap used to "
+                + "subtract §04's 주자 head start and sat at 4.4 m, and the compact sketch failed it; "
+                + "with the deleted term stripped out the cap is 14.4 m and the sketch's deepest "
+                + "지점 is inside it. What its cover saturation costs is read as a toll instead:\n"
+                + compact.Describe());
 
             Assert.That(strungOut.Failures, Is.Empty,
                 "The long house is the map §12's 실전 검증 is run against, so it has to satisfy every "
@@ -545,9 +617,12 @@ namespace HorrorGame.Core.Tests
         /// It was eleven. Three went in the 상점/전리품/단서 제거 round because they were
         /// requirements OF systems that no longer exist: 관측 지점 (§04's 관측자),
         /// 단서·목표물 후보 지점 with its 전기 패널 clause (§03 and the light economy), and
-        /// 은폐 지점 near the exit (§07 새벽's ambush, and already waived as obsolete in
-        /// MapSceneGenerator.KnownFailingRules). §12's 막힌 길 rule kept its ratio band
-        /// and lost its "각각 보상이 있다" half with §08.
+        /// 은폐 지점 near the exit (§07 새벽's ambush, and waived as obsolete in
+        /// MapSceneGenerator.KnownFailingRules until the rule itself went). A fourth,
+        /// 개방 공간–미로 공간 인접, went in the §12 re-derivation and came back: only its
+        /// 15~25 m clause was §04's 주자 picking a range to be seen from, and the 인접 clause
+        /// the map satisfies had been deleted alongside it. §12's 막힌 길 rule kept its ratio
+        /// band and lost its "각각 보상이 있다" half with §08.
         /// </para>
         /// </summary>
         [Test]
@@ -574,6 +649,74 @@ namespace HorrorGame.Core.Tests
                 "§12's 검증 체크리스트 now has eight items and each one has a test above that breaks "
                 + "only it. If this fails, a rule was added or renamed and its isolation test is "
                 + "missing.");
+        }
+
+        // ====================================================================
+        // §12-D 외곽에서 중심까지 최단 90~140m.
+        // ====================================================================
+
+        /// <summary>
+        /// A tower whose storeys are crossed in twenty metres fails §12-D, and the report
+        /// says which storeys and by how much.
+        /// <para>
+        /// §12-D's own reason for the floor, quoted at
+        /// <see cref="GameConstants.CentrePathMetresMin"/>: 「60~90 m로 줄이면 아는 사람이
+        /// 2분 만에 끝내고, 그러면 맵을 아는 것이 실력이라는 전제가 보상 없이 사라진다」. §01
+        /// leaves a race two sources of difference and a floor solvable blind deletes one
+        /// of them.
+        /// </para>
+        /// </summary>
+        [Test]
+        public void CentrePath_AStoreyCrossedTooQuickly_IsOutsideTheBandAndSaysSo()
+        {
+            var result = MapValidator.Validate(BuildTinyTower())[MapValidator.RuleCentrePath];
+
+            Assert.That(result.Passed, Is.False,
+                "Twenty metres from the rim to the middle is inside one sprint, so knowing the way "
+                + "is worth nothing: " + result.Detail);
+            Assert.That(result.Detail, Does.Contain("OUTSIDE"));
+            Assert.That(result.IsChecklistItem, Is.False,
+                "§12-D is a 수치 규칙 table of its own, not one of the 검증 체크리스트 items.");
+        }
+
+        /// <summary>
+        /// A map with one surface has no 층, so §12-D has nothing to measure and says that
+        /// rather than passing silently. A rule that is vacuous somewhere should be legible
+        /// as vacuous, or the next reader counts it as evidence.
+        /// </summary>
+        [Test]
+        public void CentrePath_OnAMapWithNoChute_SaysThereIsNoStoreyToMeasure()
+        {
+            var result = MapValidator.Validate(BuildLongHouse())[MapValidator.RuleCentrePath];
+
+            Assert.That(result.Passed, Is.True);
+            Assert.That(result.Detail, Does.Contain("투하구"));
+        }
+
+        /// <summary>
+        /// Two storeys, one 투하구, and a straight run from each rim to each middle. The
+        /// 투하구 drops from the upper storey's middle onto the lower storey's rim, which is
+        /// §01's 「떨어지면 언제나 다음 층 외곽」 — and it is what makes the lower floor's entry
+        /// point a landing rather than the whole rail.
+        /// </summary>
+        private static MapGraph BuildTinyTower()
+        {
+            var builder = new MapGraphBuilder().Named("두 층짜리 탑");
+            var upper = builder.AddZone(
+                "B1", FloorMaterial.Concrete, new Vec3(0f, 0f, 0f), new Vec3(40f, 4f, 40f));
+            var lower = builder.AddZone(
+                "B2", FloorMaterial.Tile, new Vec3(0f, -10f, 0f), new Vec3(40f, 4f, 40f));
+
+            var upperMiddle = builder.AddNode(upper, new Vec3(0f, 0f, 0f), MapNodeKind.OpenSpace, "B1 중심");
+            var upperRim = builder.AddNode(upper, new Vec3(20f, 0f, 0f), MapNodeKind.MazeSpace, "B1 외곽");
+            builder.Connect(upperMiddle, upperRim);
+
+            var lowerMiddle = builder.AddNode(lower, new Vec3(0f, -10f, 0f), MapNodeKind.OpenSpace, "B2 중심");
+            var lowerRim = builder.AddNode(lower, new Vec3(20f, -10f, 0f), MapNodeKind.MazeSpace, "B2 외곽");
+            builder.Connect(lowerMiddle, lowerRim);
+
+            builder.Connect(upperMiddle, lowerRim, false, "투하구");
+            return builder.Build();
         }
 
         // ====================================================================

@@ -23,7 +23,7 @@ namespace HorrorGame.Core.Map
         /// <param name="rule">§12's own wording of the rule, so the report reads as the document.</param>
         /// <param name="passed">Whether the map satisfies it.</param>
         /// <param name="detail">What was measured, which place failed, and why it matters.</param>
-        /// <param name="isChecklistItem">True for the eleven items on §12's 검증 체크리스트.</param>
+        /// <param name="isChecklistItem">True for the eight items left on §12's 검증 체크리스트.</param>
         public MapValidationResult(string ruleId, string rule, bool passed, string detail, bool isChecklistItem)
         {
             RuleId = ruleId;
@@ -49,10 +49,17 @@ namespace HorrorGame.Core.Map
         public string Detail { get; }
 
         /// <summary>
-        /// True for the eleven items §12 lists under 검증 체크리스트. The rest —
-        /// zone count, zone diagonal, map extent, connectivity — come from §12's
-        /// 수치 규칙 table instead, and are separated so that "the checklist passes"
-        /// remains a statement about the checklist.
+        /// True for the items §12 lists under 검증 체크리스트 — eight now; it was eleven
+        /// before the co-op deletions took 관측 지점, 단서·목표물 후보 지점 and 은폐 지점.
+        /// The rest — zone count, map extent, connectivity, zone membership, 시야 차단 지점
+        /// 간격, §12-D's centre-path — come from §12's 수치 규칙 tables instead, and are
+        /// separated so that "the checklist passes" remains a statement about the checklist.
+        /// <para>
+        /// It briefly read seven: the §12 re-derivation deleted 개방 공간–미로 공간 인접
+        /// outright. The deletion was wider than its own argument — the rule has two
+        /// clauses and only the second rested on §04, so the first came back. See
+        /// <see cref="MapValidator.RuleOpenAdjacentToMaze"/>.
+        /// </para>
         /// </summary>
         public bool IsChecklistItem { get; }
 
@@ -110,7 +117,7 @@ namespace HorrorGame.Core.Map
             }
         }
 
-        /// <summary>True when the eleven 검증 체크리스트 items all pass, whatever the 수치 규칙 rules did.</summary>
+        /// <summary>True when every 검증 체크리스트 item passes, whatever the 수치 규칙 rules did.</summary>
         public bool ChecklistPassed
         {
             get
@@ -201,9 +208,9 @@ namespace HorrorGame.Core.Map
     /// <summary>
     /// §12's 검증 체크리스트 as code.
     /// <para>
-    /// §12 opens with "맵은 아트가 아니라 시스템이다" and closes with an eleven-item
-    /// checklist. This type is the join between those two sentences: a map that
-    /// breaks one of the eleven fails here, in a unit test, instead of failing in a
+    /// §12 opens with "맵은 아트가 아니라 시스템이다" and closes with a checklist. This type
+    /// is the join between those two sentences: a map that
+    /// breaks one of the items fails here, in a unit test, instead of failing in a
     /// playtest where the symptom is "the chase feels bad" and the cause is a 26 m
     /// straight corridor nobody measured.
     /// </para>
@@ -217,13 +224,45 @@ namespace HorrorGame.Core.Map
     public static class MapValidator
     {
         // ====================================================================
-        // §12 검증 체크리스트 — the eleven items, in the document's order.
+        // §12 검증 체크리스트 — the items that are left, in the document's order.
         // ====================================================================
 
         /// <summary>"20m 넘는 직선 통로가 없다."</summary>
         public const string RuleStraightCorridor = "straight-corridor";
 
-        /// <summary>"개방 공간이 최소 1개 있고, 미로 공간과 인접해 있다."</summary>
+        /// <summary>
+        /// "개방 공간이 최소 1개 있고, 미로 공간과 인접해 있다" — the half of it a race still
+        /// has a subject for.
+        /// <para>
+        /// <b>Restored after being deleted whole, because the deletion was wider than its
+        /// own argument.</b> The rule says two things: that an 개방 공간 EXISTS and TOUCHES
+        /// a 미로 공간, and (as this file used to read it) that the room be at least
+        /// <c>LineOfSightBreakSpacingMin</c> across. Only the second rests on §04. The
+        /// first is a statement about the building — that the one room on a storey wide
+        /// enough to be crossed in the open is joined to the cover, on the same floor,
+        /// through a doorway rather than a fall — and the shipped map SATISFIES it. It was
+        /// thrown away along with a clause the map does not satisfy, which is a gate given
+        /// up for nothing.
+        /// </para>
+        /// <para>
+        /// The 15 m clause stays deleted, with the argument the deletion made for it:
+        /// 개방 공간 「멀리서 어그로를 건다 · 시야 15~25m 확보」 is one player's opening move,
+        /// and the player is §04's 주자 — the only one who could out-run the creature and
+        /// the only one with a reason to be seen on purpose. §04 is deleted; 질주 5.6
+        /// belongs to all twenty; and §01 says what acquisition looks like in a race
+        /// instead: 「안쪽 고리는 좁다. 마주치면 피할 수 없다」, which is §12's own 3 m ❌ row.
+        /// Nobody picks a range, so a room sized for picking one is a requirement with no
+        /// subject. The map's one 개방 공간 per storey is the 중심 chamber, and what §12-C
+        /// asks of THAT room is not 15 m of sight but that the 투하구 choice be visible —
+        /// 「무작위가 아니다, 맵을 아는 사람이 유리해야」. Its width is measured and printed
+        /// below so the deletion did not delete the number.
+        /// </para>
+        /// <para>
+        /// GameConstants.HallClearSightMin is untouched by any of this: it stands on its
+        /// own §06 derivation (a hall must be crossable in sight of the creature from
+        /// further than AggroReleaseDistance) and Editor/Dressing still enforces it.
+        /// </para>
+        /// </summary>
         public const string RuleOpenAdjacentToMaze = "open-adjacent-to-maze";
 
         /// <summary>"S자 통로(10m×2)가 구역당 최소 1개 있다."</summary>
@@ -265,8 +304,34 @@ namespace HorrorGame.Core.Map
         /// <summary>"구역 개수 4~6."</summary>
         public const string RuleZoneCount = "zone-count";
 
-        /// <summary>"구역 대각선 30~40m."</summary>
-        public const string RuleZoneDiagonal = "zone-diagonal";
+        // DELETED in the §12 re-derivation: RuleZoneDiagonal, "구역 대각선 30~40m".
+        //
+        // The band sized a 구역 as a SUB-AREA of a floor. §12's own 근거 column for that
+        // row is empty, and the two reasons the rest of §12 supplies are both about a
+        // 구역 being smaller than a 층: 소리 → 바닥 재질 makes a zone the granularity at
+        // which a footstep names a place, and 맵 한 층 asks that "주자가 구역 2~3개 관통
+        // 가능" on one 60 m sprint.
+        //
+        // On 하강 a 구역 IS a 층 — eight zones, eight storeys, one surface each — and both
+        // reasons invert. §01 makes the footstep name a STOREY on purpose ("여덟 개의 표면,
+        // 층마다 하나"), so 3~4 zones per floor would need 3~4 surfaces per floor and would
+        // break the audio map rather than serve it; and crossing "2~3 zones" on one sprint
+        // would mean crossing two or three FLOORS, which §01 forbids structurally, because
+        // a floor is only ever left through the 투하구 in its middle. DescentMap.Radius 11
+        // then makes every storey 57.5 m square and 81.3 m across, which is not a map that
+        // misses the band by a little — it is a map the band is not about.
+        //
+        // What still needs bounding is how far a runner must travel on a floor, and §12-D
+        // already states it: centre-path, 외곽에서 중심까지 최단 90~140 m
+        // (GameConstants.CentrePathMetresMin/Max). That rule is now RuleCentrePath below,
+        // it gates, and the shipped map FAILS it on every storey. That is a map defect with
+        // an address, not a reason to keep a rule about a 구역 that no longer exists.
+        // (This paragraph used to end "MapValidator does not gate that rule". It does now;
+        // the sentence was true when it was written and would be a lie if left standing.)
+        //
+        // GameConstants.ZoneDiagonalMin/Max stay: six live systems read them as a reference
+        // distance (replication range, search waypoints, shadow distance, fog) and not one
+        // of them is making a §12 claim.
 
         /// <summary>"맵 전체 100 × 100m."</summary>
         public const string RuleMapExtent = "map-extent";
@@ -279,6 +344,27 @@ namespace HorrorGame.Core.Map
 
         /// <summary>"시야 차단 지점 간격 15~25m" — 질주 60m에 3~4번의 기회.</summary>
         public const string RuleSightBreakSpacing = "sight-break-spacing";
+
+        /// <summary>
+        /// §12-D: "외곽에서 중심까지 최단 90~140 m", per storey.
+        /// <para>
+        /// <b>§12-D says this is checked here and it never was.</b> The section lists five
+        /// rules — <c>ring-gates</c>, <c>centre-path</c>, <c>centre-single-gate</c>,
+        /// <c>chute-count</c>, <c>chute-landing</c> — under the sentence "MapValidator와
+        /// 씬 감사기가 층마다 확인한다", and this file implemented none of them. It is the one
+        /// that carries a number, and it is the rule that inherited 구역 대각선's job when a
+        /// 구역 became a 층: how far a runner must travel on one floor.
+        /// </para>
+        /// <para>
+        /// It was measured before it was gated — <c>MapSceneGenerator</c> printed it on
+        /// every generation and the map has never been inside the band. A measurement that
+        /// gates nothing is how a defect goes quiet, so it gates, it fails, and
+        /// <c>MapSceneGenerator.KnownFailingRules</c> carries the waiver with the numbers
+        /// in it. See <see cref="GameConstants.CentrePathMetresMin"/> for what the band is
+        /// derived from — §01's 「맵을 아는 것이 실력」 is what a short storey spends.
+        /// </para>
+        /// </summary>
+        public const string RuleCentrePath = "centre-path";
 
         /// <summary>
         /// Runs every rule and returns the whole report.
@@ -303,11 +389,11 @@ namespace HorrorGame.Core.Map
                 CheckLockableDoors(graph),
                 CheckZoneEntryPoints(graph),
                 CheckZoneCount(graph),
-                CheckZoneDiagonal(graph),
                 CheckMapExtent(graph),
                 CheckConnectivity(graph),
                 CheckZoneMembership(graph),
                 CheckSightBreakSpacing(graph),
+                CheckCentrePath(graph),
             };
 
             return new MapValidationReport(
@@ -356,23 +442,21 @@ namespace HorrorGame.Core.Map
         /// §12's second checklist item, checked as the pair it is drawn as rather than
         /// as two flags that happen to share an edge.
         /// <para>
-        /// <b>Two things have to be true and only one of them used to be checked.</b>
-        /// §12 draws "[개방 공간] ──진입── [미로 공간]" and says what it is for in the
-        /// same breath — 어그로 시작 거리 15~25 m, with its own table rating a 3 m start
-        /// ❌. So the arrow is not the whole rule: the box on the left has to be a place
-        /// where 15 m of sight actually exists. A room a Runner crosses in two strides
-        /// satisfies "touches a 미로 공간" and satisfies nothing else, and passing it
-        /// tells a designer the map has a structure it does not have.
+        /// <b>The arrow has to be a step, not a fall.</b> On the 하강 tower every storey
+        /// stacks in one column and the only edges between them are 투하구, which a runner
+        /// can enter and never leave (§01). Walking the raw graph therefore let this rule
+        /// pass on a pair 37 m apart in plan and a whole storey down — reported, verbatim,
+        /// as "opens directly into". Adjacency across a one-way drop is not adjacency, so
+        /// an edge that changes storey (<see cref="MapGraph.StoreyChangeMetres"/>) cannot
+        /// be the 진입 this rule is looking for.
         /// </para>
         /// <para>
-        /// <b>And the arrow itself has to be a step, not a fall.</b> On the 하강 tower
-        /// every storey stacks in one column and the only edges between them are 투하구,
-        /// which a runner can enter and never leave (§01). Walking the raw graph
-        /// therefore let this rule pass on a pair 37 m apart in plan and a whole storey
-        /// down — reported, verbatim, as "opens directly into". Adjacency across a
-        /// one-way drop is not adjacency, so an edge that changes storey
-        /// (<see cref="MapGraph.StoreyChangeMetres"/>) cannot be the 진입 this rule is
-        /// looking for.
+        /// <b>The width of the room is measured and printed, and is not the verdict.</b>
+        /// See <see cref="RuleOpenAdjacentToMaze"/> for why: 15~25 m is the range §04's
+        /// 주자 chose to be seen from, and the chooser is deleted. The number still gets
+        /// printed on every run, pass or fail, because §12-C wants that room read for a
+        /// different reason — the 투하구 choice inside it must be visible — and a width
+        /// nobody can see is a width nobody will notice going wrong.
         /// </para>
         /// </summary>
         private static MapValidationResult CheckOpenAdjacentToMaze(MapGraph graph)
@@ -380,26 +464,21 @@ namespace HorrorGame.Core.Map
             var open = graph.NodesOfKind(MapNodeKind.OpenSpace);
             var maze = graph.NodesOfKind(MapNodeKind.MazeSpace);
 
-            // §12 asks for aggro to be taken from 15~25 m, and that band is the same
-            // pair of numbers as 시야 차단 지점 간격 — the distance a Runner must buy
-            // before a corner can pay it back. The floor of the band is what an
-            // 개방 공간 has to be able to hold, so it is read from there rather than
-            // written down twice.
-            var needed = GameConstants.LineOfSightBreakSpacingMin;
-
             string detail;
             var passed = false;
 
             if (open.Length == 0)
             {
-                detail = "No 개방 공간 anywhere. §12: aggro has to be taken from 15~25 m out, and its own "
-                         + "table rates a 3 m start ❌ — with nowhere open, the Runner can only pull the "
-                         + "monster from a distance at which the release is arithmetically impossible.";
+                detail = "No 개방 공간 anywhere. §12 draws the map as \"[개방 공간] ──진입── [미로 공간]\" "
+                         + "and gives the left-hand box its own job — on this tower it is §12-C's 중심 "
+                         + "chamber, the one room on a storey a runner crosses in the open and the room "
+                         + "the two 투하구 stand in. A map with no such room has nowhere the 투하구 choice "
+                         + "is a choice.";
             }
             else if (maze.Length == 0)
             {
                 detail = "There are " + open.Length + " 개방 공간 and no 미로 공간. §12: \"개방 공간만 "
-                         + "있으면 도망칠 곳이 없다\" — aggro can be taken and never broken.";
+                         + "있으면 도망칠 곳이 없다\" — the creature is met and never broken from.";
             }
             else
             {
@@ -433,9 +512,10 @@ namespace HorrorGame.Core.Map
                 {
                     detail = "There are " + open.Length + " 개방 공간 and " + maze.Length
                              + " 미로 공간, but none of them touch. §12 draws the pair as "
-                             + "\"[개방 공간] ──진입── [미로 공간]\": the Runner takes aggro in the open and must "
-                             + "reach cover before the monster closes. If the two are not adjacent, the walk "
-                             + "between them is itself an unbroken run and the structure buys nothing.";
+                             + "\"[개방 공간] ──진입── [미로 공간]\": the open room is where a runner is met "
+                             + "with nothing between them, and cover is what ends that. If the two are not "
+                             + "adjacent, the walk between them is itself an unbroken run and the "
+                             + "structure buys nothing.";
 
                     if (acrossAChute != null)
                     {
@@ -456,37 +536,16 @@ namespace HorrorGame.Core.Map
                     var span = Span(graph, room, out var widest);
                     var touch = MazeTouching(graph, room, false)!;
 
-                    passed = span >= needed - MathX.Epsilon;
-                    if (passed)
-                    {
-                        detail = "개방 공간 " + graph.Nodes[touch[0]].Describe() + " opens directly into "
-                                 + "미로 공간 " + graph.Nodes[touch[1]].Describe() + " on the same storey, and "
-                                 + "the room behind it is " + Metres(span) + " across ("
-                                 + graph.Nodes[widest[0]].Describe() + " to "
-                                 + graph.Nodes[widest[1]].Describe() + "), so §12's "
-                                 + Metres(needed) + "~" + Metres(GameConstants.LineOfSightBreakSpacingMax)
-                                 + " 어그로 시작 거리 exists in it.";
-                    }
-                    else
-                    {
-                        detail = "The widest 개방 공간 that touches a 미로 공간 is only " + Metres(span)
-                                 + " across — " + graph.Nodes[widest[0]].Describe() + " to "
-                                 + graph.Nodes[widest[1]].Describe() + ", against §12's "
-                                 + Metres(needed) + " 어그로 시작 거리 floor. It does touch ("
-                                 + graph.Nodes[touch[0]].Describe() + " → "
-                                 + graph.Nodes[touch[1]].Describe()
-                                 + "), so the arrow in \"[개방 공간] ──진입── [미로 공간]\" is drawn; what is "
-                                 + "missing is the box on the left. §12's 어그로 시작 거리 table rates a 3 m "
-                                 + "start ❌ and this room is nearer to that than to " + Metres(needed)
-                                 + ": a Runner standing "
-                                 + "in it is taken from a distance at which the release is arithmetically "
-                                 + "impossible, because a sprint gains only "
-                                 + (GameConstants.RunnerSprintSpeed - GameConstants.MonsterBaseSpeed)
-                                     .ToString("0.#", CultureInfo.InvariantCulture)
-                                 + " m/s and a single corner needs "
-                                 + Metres(GameConstants.SingleCornerMinDistance) + " of gap. A room this "
-                                 + "size is a junction with the walls taken out, not §12's 개방 공간.";
-                    }
+                    passed = true;
+                    detail = "개방 공간 " + graph.Nodes[touch[0]].Describe() + " opens directly into "
+                             + "미로 공간 " + graph.Nodes[touch[1]].Describe() + " on the same storey, so "
+                             + "§12's 진입 is a doorway and not a 투하구. The room behind it measures "
+                             + Metres(span) + " across (" + graph.Nodes[widest[0]].Describe() + " to "
+                             + graph.Nodes[widest[1]].Describe() + ") — measured, not gated: §12's "
+                             + Metres(GameConstants.LineOfSightBreakSpacingMin) + "~"
+                             + Metres(GameConstants.LineOfSightBreakSpacingMax)
+                             + " 어그로 시작 거리 was §04's 주자 choosing a range to be seen from, and §01 "
+                             + "replaced the choice with 「마주치면 피할 수 없다」.";
                 }
             }
 
@@ -516,10 +575,10 @@ namespace HorrorGame.Core.Map
         /// The map's 개방 공간 grouped into rooms: maximal sets of 개방 공간 nodes joined
         /// to each other by passages that stay on one storey.
         /// <para>
-        /// One room rather than one node, because §12's 15~25 m is a property of the
-        /// VOLUME and no single node has a size. Storey-changing edges are cut first, so
-        /// two halls stacked one above the other with a 투하구 between them are two rooms
-        /// and not one 30 m one.
+        /// One room rather than one node, because a width is a property of the VOLUME and
+        /// no single node has a size. Storey-changing edges are cut first, so two halls
+        /// stacked one above the other with a 투하구 between them are two rooms and not one
+        /// 30 m one.
         /// </para>
         /// </summary>
         private static List<int[]> OpenSpaceRooms(MapGraph graph)
@@ -1010,41 +1069,14 @@ namespace HorrorGame.Core.Map
                   + GameConstants.ThreatPatrolZonesNight + " later): past that the creature stops "
                   + "covering enough of the building to threaten anybody on it.";
 
-            return new MapValidationResult(RuleZoneCount, "구역 개수 4~6", passed, detail, false);
-        }
-
-        private static MapValidationResult CheckZoneDiagonal(MapGraph graph)
-        {
-            var problems = new List<string>();
-            for (var z = 0; z < graph.Zones.Length; z++)
-            {
-                var diagonal = graph.Zones[z].Diagonal;
-                if (diagonal < GameConstants.ZoneDiagonalMin - MathX.Epsilon)
-                {
-                    problems.Add(graph.Zones[z].Name + " is " + Metres(diagonal) + " across, under §12's "
-                                 + Metres(GameConstants.ZoneDiagonalMin) + ": a zone this small is crossed "
-                                 + "before the runner behind you has heard which way you went, and §12 sizes "
-                                 + "a zone so a footstep names a room rather than the whole storey");
-                }
-                else if (diagonal > GameConstants.ZoneDiagonalMax + MathX.Epsilon)
-                {
-                    problems.Add(graph.Zones[z].Name + " is " + Metres(diagonal) + " across, over §12's "
-                                 + Metres(GameConstants.ZoneDiagonalMax) + ": a Runner covers "
-                                 + Metres(GameConstants.SprintMaxTravelDistance)
-                                 + " on a full sprint (§05), and §12 sizes a zone so two or three of them can "
-                                 + "be crossed in one");
-                }
-            }
-
-            var passed = graph.Zones.Length > 0 && problems.Count == 0;
-            var detail = graph.Zones.Length == 0
-                ? "The map has no zones to measure."
-                : passed
-                    ? "Every zone diagonal is inside " + Metres(GameConstants.ZoneDiagonalMin) + "~"
-                      + Metres(GameConstants.ZoneDiagonalMax) + "."
-                    : string.Join("; ", problems) + ".";
-
-            return new MapValidationResult(RuleZoneDiagonal, "구역 대각선 30~40m", passed, detail, false);
+            // The label quotes the LIVE band, not §12's original 4~6. A rule whose name
+            // and whose bound disagree is a report that reads as broken every time it
+            // passes; §12's 수치 규칙 table now says 4~9 for the reason the detail gives.
+            return new MapValidationResult(
+                RuleZoneCount,
+                "구역 개수 " + GameConstants.ZoneCountMin + "~" + GameConstants.ZoneCountMax
+                + " (구역 = 층, 그래서 건물의 깊이)",
+                passed, detail, false);
         }
 
         private static MapValidationResult CheckMapExtent(MapGraph graph)
@@ -1071,7 +1103,10 @@ namespace HorrorGame.Core.Map
             // storey wider than 2~3 zones per sprint means the creature can never
             // be outrun to a gate, which is the whole of §05's answer to §06.
 
-            return new MapValidationResult(RuleMapExtent, "맵 전체 100 × 100m", passed, detail, false);
+            return new MapValidationResult(
+                RuleMapExtent,
+                "맵 한 층 " + Metres(GameConstants.MapExtent) + " 정사각형 이내",
+                passed, detail, false);
         }
 
         private static MapValidationResult CheckConnectivity(MapGraph graph)
@@ -1146,14 +1181,64 @@ namespace HorrorGame.Core.Map
         /// <b>Which makes the width of a 지점 the other half of the rule.</b> Grouping
         /// alone would pass the very map this exists to reject: sixty metres of bends
         /// every four metres is one enormous group with nothing to be spaced from. A
-        /// 지점 may therefore be no wider than
-        /// <see cref="GameConstants.SightBreakPointSpanMax"/>, which is §12's own
-        /// 14.4 m single-corner requirement minus the 10 m head start its 어그로 시작
-        /// 거리 table endorses: cover deeper than that completes the release from
-        /// wherever it is picked up, and 「주자는 멀리서 어그로를 걸어야 한다」 stops
-        /// being true of the map.
+        /// 지점 may therefore be no wider than <see cref="SightBreakPointSpanCap"/>.
+        /// </para>
+        /// <para>
+        /// <b>That cap was retired for one round and is back with a different number.</b>
+        /// It used to be <c>GameConstants.SightBreakPointSpanMax</c> — 14.4 m less the 10 m
+        /// head start §12's 어그로 시작 거리 table endorses, i.e. 4.4 m — and the subtracted
+        /// term is §04's 주자 <em>choosing</em> a range to be seen from. §04 is deleted and
+        /// §01 replaced the choice with 「마주치면 피할 수 없다」, so that term had to go.
+        /// Removing the whole cap did not follow from removing the term: strip the term and
+        /// the honest cap is <see cref="GameConstants.SingleCornerMinDistance"/> itself,
+        /// and the map is still six times over it. A gate the geometry cannot meet is a MAP
+        /// defect, not a wrong gate, and it is waived by name in
+        /// <c>MapSceneGenerator.KnownFailingRules</c> with both numbers in the entry.
+        /// </para>
+        /// <para>
+        /// What the width guards is also measured in the race's own currency, as 탈출 대가
+        /// against <see cref="GameConstants.ChaseTollSecondsMin"/> (one door) and
+        /// <see cref="GameConstants.ChaseTollSecondsMax"/> (one storey, which is what a
+        /// catch now costs); <c>MapSceneGenerator</c> prints the toll beside this report.
+        /// The toll is a consequence and the span is a cause, and they disagree on this
+        /// map — <b>0 of 720</b> places charge less than one door while cover runs
+        /// continuously for tens of metres — so the toll does not stand in for the span.
+        /// A toll measured against a monster that catches one runner at a time cannot see
+        /// what continuous cover costs a race of twenty.
         /// </para>
         /// </summary>
+        /// <summary>
+        /// Widest one 시야 차단 지점 may be, metres — the §04 term stripped out rather than
+        /// the cap thrown away.
+        /// <para>
+        /// §12 needs <see cref="GameConstants.SingleCornerMinDistance"/> of gap to buy
+        /// <see cref="GameConstants.AggroReleaseLineOfSightBreak"/> of broken sight from a
+        /// single corner. <c>GameConstants.SightBreakPointSpanMax</c> then subtracted
+        /// <c>RunnerTestAggroStartDistance</c> from it, on the argument that a 주자 who
+        /// chose to be seen from 10 m out arrives at the corner already carrying 10 m of
+        /// the 14.4. Nobody chooses in a race — §01: 「마주치면 피할 수 없다」 — so a runner
+        /// arrives at cover carrying nothing, and the whole 14.4 m has to be bought by the
+        /// cover itself.
+        /// </para>
+        /// <para>
+        /// So this is <see cref="GameConstants.SingleCornerMinDistance"/> with nothing
+        /// taken off, and it is the strictly WEAKER of the two caps: the deleted premise
+        /// was making the rule harsher than a race can justify, not softer. Cover deeper
+        /// than this completes §06's release from a standing start with no run-up at all,
+        /// which is 「도망칠 수 있다」 handed out rather than earned — and in a race that is
+        /// not the caught runner's problem but every other runner's, because §06 is the
+        /// only thing on the map that costs a leader time.
+        /// </para>
+        /// <para>
+        /// Read from <see cref="GameConstants"/> rather than restated, so a §06 retune of
+        /// the corner requirement moves the map rule with it — §12: "§06의 수치가 맵의 성립
+        /// 조건을 규정한다". <c>GameConstants.SightBreakPointSpanMax</c> is deliberately NOT
+        /// read here: it still carries the subtraction, and MapTests uses it to size a
+        /// fixture spur.
+        /// </para>
+        /// </summary>
+        private static float SightBreakPointSpanCap => GameConstants.SingleCornerMinDistance;
+
         private static MapValidationResult CheckSightBreakSpacing(MapGraph graph)
         {
             const string rule = "시야 차단 지점 간격 15~25m (질주 60m에 3~4번의 기회)";
@@ -1237,7 +1322,7 @@ namespace HorrorGame.Core.Map
             var tooLonely = -1;
             for (var p = 0; p < pointCount; p++)
             {
-                if (widest[p] > GameConstants.SightBreakPointSpanMax + MathX.Epsilon
+                if (widest[p] > SightBreakPointSpanCap + MathX.Epsilon
                     && (tooWide < 0 || widest[p] > widest[tooWide]))
                 {
                     tooWide = p;
@@ -1258,13 +1343,13 @@ namespace HorrorGame.Core.Map
                     + graph.Nodes[widestPair[tooWide][1]].Describe()
                     + " with nothing further than " + Metres(GameConstants.LineOfSightBreakSpacingMin)
                     + " between any two of its bends, so a Runner rounding them holds one unbroken sight "
-                    + "line the whole way. §12 allows " + Metres(GameConstants.SightBreakPointSpanMax)
-                    + " — its own " + Metres(GameConstants.SingleCornerMinDistance)
-                    + " single-corner requirement less the " + Metres(GameConstants.RunnerTestAggroStartDistance)
-                    + " head start its 어그로 시작 거리 table endorses. Cover this deep finishes §06's "
-                    + Seconds(GameConstants.AggroReleaseLineOfSightBreak)
-                    + " from wherever it is picked up, which inverts §12's first conclusion — 「주자는 "
-                    + "멀리서 어그로를 걸어야 한다」 — and leaves the 실전 검증 with nothing to grade");
+                    + "line the whole way. The cap is " + Metres(SightBreakPointSpanCap) + " — §12's "
+                    + Metres(GameConstants.SingleCornerMinDistance)
+                    + " single-corner requirement with nothing subtracted, because §01's 「마주치면 피할 수 "
+                    + "없다」 means a runner reaches cover carrying no head start at all. Cover this deep "
+                    + "finishes §06's " + Seconds(GameConstants.AggroReleaseLineOfSightBreak)
+                    + " from a standing start, so the release is not bought, it is lying on the floor — "
+                    + "and §06 is the only thing on this map that costs a leading runner time");
             }
 
             if (pointCount < 2)
@@ -1312,12 +1397,20 @@ namespace HorrorGame.Core.Map
                     span = widest[p] > span ? widest[p] : span;
                 }
 
+                // "질주 60m에 3~4번의 기회" read back out of the measurement rather than
+                // asserted: at the widest legal gap a sprint meets 60 ÷ 25 = 2.4 지점, at
+                // the tightest 60 ÷ 15 = 4, which is the band's own arithmetic.
+                var chances = GameConstants.SprintMaxTravelDistance / furthest;
+
                 detail = pointCount + " 시야 차단 지점 built from " + corners.Count
-                         + " bend(s), the widest " + Metres(span) + " deep (§12 allows "
-                         + Metres(GameConstants.SightBreakPointSpanMax)
-                         + "), nearest-neighbour spacing " + Metres(closest) + "~" + Metres(furthest)
+                         + " bend(s), the deepest " + Metres(span) + " (cap "
+                         + Metres(SightBreakPointSpanCap) + "), nearest-neighbour spacing "
+                         + Metres(closest) + "~" + Metres(furthest)
                          + " inside §12's " + Metres(GameConstants.LineOfSightBreakSpacingMin) + "~"
-                         + Metres(GameConstants.LineOfSightBreakSpacingMax) + ".";
+                         + Metres(GameConstants.LineOfSightBreakSpacingMax) + ", so one "
+                         + Metres(GameConstants.SprintMaxTravelDistance) + " sprint meets "
+                         + chances.ToString("0.#", CultureInfo.InvariantCulture)
+                         + " of them at worst (§12: 3~4번의 기회).";
             }
             else
             {
@@ -1416,6 +1509,342 @@ namespace HorrorGame.Core.Map
             {
                 parent[rootB] = rootA;
             }
+        }
+
+        // ====================================================================
+        // §12-D 외곽에서 중심까지 최단 90~140m — how far a runner must travel on
+        // one floor.
+        //
+        // §12-D says "MapValidator와 씬 감사기가 층마다 확인한다" and MapValidator
+        // never did. It was measured and printed by MapSceneGenerator instead,
+        // where it has been outside the band since the tower was drawn. A number
+        // that is printed and gates nothing is how a defect goes quiet, which is
+        // the failure this rule exists to stop repeating.
+        // ====================================================================
+
+        /// <summary>
+        /// Measures every storey's 외곽 → 중심 walk against §12-D's band.
+        /// <para>
+        /// <b>Where a storey starts.</b> A 투하구 landing (§01 — "떨어지면 언제나 다음 층
+        /// 외곽"), which is where a runner arrives on B2–B8; and on the top storey, which
+        /// nothing drops into, the whole 외곽 rail, because §01 stands twenty of them on it.
+        /// Both are read off the graph: a landing is the lower end of a storey-changing
+        /// edge, and the 외곽 rail is the outermost ring of the zone.
+        /// </para>
+        /// <para>
+        /// <b>What counts as a ring.</b> Chebyshev radius from the zone's own centre —
+        /// <c>max(|Δx|, |Δz|)</c> — because that is the metric a concentric storey is laid
+        /// out in: one ring is one constant radius the whole way round, so "the outermost
+        /// ring" is exactly "the largest radius any place in the zone stands at" and "the
+        /// 중심" is the smallest. Neither needs to know the cell size, which is what lets a
+        /// rule in Core measure a building the Editor drew.
+        /// </para>
+        /// <para>
+        /// <b>Vacuous on a map with no 투하구, and it says so.</b> §12-D is a rule about a
+        /// tower of storeys; a single-surface map has no 층 to walk down and this rule has
+        /// nothing to measure on it. That is stated in the detail rather than hidden behind
+        /// a bare pass.
+        /// </para>
+        /// </summary>
+        private static MapValidationResult CheckCentrePath(MapGraph graph)
+        {
+            var rule = "외곽에서 중심까지 최단 " + GameConstants.CentrePathMetresMin + "~"
+                       + GameConstants.CentrePathMetresMax + "m (§12-D, 층마다)";
+
+            if (!HasStoreyChange(graph))
+            {
+                return new MapValidationResult(
+                    RuleCentrePath, rule, true,
+                    "Nothing on this map changes storey, so there is no 투하구, no 층 below the one you "
+                    + "are on, and no 외곽 → 중심 descent for §12-D to bound. The rule is about the "
+                    + "distance a runner must cover on a floor before they can leave it; a map with one "
+                    + "surface has no such distance.", false);
+            }
+
+            var toMiddle = DistancesToStoreyMiddle(graph);
+            var worst = float.PositiveInfinity;
+            var longest = 0f;
+            var outside = 0;
+            var measured = 0;
+            var storeysOutside = new List<string>();
+
+            for (var zone = 0; zone < graph.Zones.Length; zone++)
+            {
+                var entries = StoreyEntries(graph, zone);
+                var zoneWorst = float.PositiveInfinity;
+                var zoneLongest = 0f;
+                var zoneOutside = 0;
+                var zoneMeasured = 0;
+
+                for (var i = 0; i < entries.Count; i++)
+                {
+                    var walk = toMiddle[entries[i]];
+                    if (float.IsNaN(walk) || float.IsPositiveInfinity(walk))
+                    {
+                        continue;
+                    }
+
+                    zoneMeasured++;
+                    zoneWorst = walk < zoneWorst ? walk : zoneWorst;
+                    zoneLongest = walk > zoneLongest ? walk : zoneLongest;
+                    if (walk < GameConstants.CentrePathMetresMin - MathX.Epsilon
+                        || walk > GameConstants.CentrePathMetresMax + MathX.Epsilon)
+                    {
+                        zoneOutside++;
+                    }
+                }
+
+                if (zoneMeasured == 0)
+                {
+                    continue;
+                }
+
+                measured += zoneMeasured;
+                outside += zoneOutside;
+                worst = zoneWorst < worst ? zoneWorst : worst;
+                longest = zoneLongest > longest ? zoneLongest : longest;
+
+                if (zoneOutside > 0)
+                {
+                    storeysOutside.Add(
+                        graph.Zones[zone].Name + " " + Metres(zoneWorst) + "~" + Metres(zoneLongest)
+                        + " (" + zoneOutside + "/" + zoneMeasured + ")");
+                }
+            }
+
+            if (measured == 0)
+            {
+                return new MapValidationResult(
+                    RuleCentrePath, rule, false,
+                    "This map has 투하구 in it, so it is a tower, and yet no storey has both a place a "
+                    + "runner arrives at and a middle they can walk to. §12-D's distance is not "
+                    + "measurable here, which is worse than being outside the band: the descent the "
+                    + "whole race is made of cannot be shown to exist.", false);
+            }
+
+            var passed = outside == 0;
+            var detail = measured + " storey entry point(s) walk " + Metres(worst) + "~" + Metres(longest)
+                         + " to their own storey's middle = "
+                         + (worst / GameConstants.RunSpeed).ToString("0.#", CultureInfo.InvariantCulture)
+                         + "~"
+                         + (longest / GameConstants.RunSpeed).ToString("0.#", CultureInfo.InvariantCulture)
+                         + " s at 달리기 " + GameConstants.RunSpeed + " m/s, against §12-D's "
+                         + Metres(GameConstants.CentrePathMetresMin) + "~"
+                         + Metres(GameConstants.CentrePathMetresMax) + ". ";
+
+            detail += passed
+                ? "All inside."
+                : outside + " of " + measured + " OUTSIDE: " + string.Join("; ", storeysOutside)
+                  + ". §12-D says what a short storey spends — 「60~90 m로 줄이면 아는 사람이 2분 만에 "
+                  + "끝내고, 그러면 맵을 아는 것이 실력이라는 전제가 보상 없이 사라진다」 — and §01 leaves "
+                  + "a race only two sources of difference, 길을 아는가 and 어디까지 감수하는가. A floor "
+                  + "solvable blind deletes the first. The fix is geometry: a longer rim-to-middle "
+                  + "route in RadialStorey, not a wider band.";
+
+            return new MapValidationResult(RuleCentrePath, rule, passed, detail, false);
+        }
+
+        /// <summary>True when any passage on the map joins two storeys — i.e. it is a tower.</summary>
+        private static bool HasStoreyChange(MapGraph graph)
+        {
+            for (var e = 0; e < graph.Edges.Length; e++)
+            {
+                if (JoinsStoreys(graph, e))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Chebyshev radius of a place from its own zone's centre, in metres — which
+        /// concentric ring it stands on, measured in a unit the graph actually carries.
+        /// <para>
+        /// <c>max(|Δx|, |Δz|)</c> rather than a straight line because a ring of a
+        /// concentric maze is a SQUARE: its corner and the middle of its side are the same
+        /// ring and are not the same distance from the axis. Euclid would call the corner
+        /// an outer ring and split the 외곽 rail into four arcs.
+        /// </para>
+        /// </summary>
+        private static float RingRadius(MapGraph graph, int node)
+        {
+            var zone = graph.Nodes[node].ZoneId;
+            if (zone < 0 || zone >= graph.Zones.Length)
+            {
+                return float.NaN;
+            }
+
+            var centre = graph.Zones[zone].Center;
+            var position = graph.Nodes[node].Position;
+            var x = System.Math.Abs(position.X - centre.X);
+            var z = System.Math.Abs(position.Z - centre.Z);
+            return x > z ? x : z;
+        }
+
+        /// <summary>
+        /// The places on a zone's innermost or outermost ring — its 중심, or its 외곽 고리.
+        /// <para>
+        /// <b>막힌 길 are not on the rail, and this is measured rather than assumed.</b> The
+        /// outermost Chebyshev radius on every storey of the shipped tower is 27.5 m and
+        /// holds <b>8</b> places, every one of them a dead end; the rail is the ring inside
+        /// it at 25 m, <b>16</b> places, none of them dead ends. §01 stands twenty runners
+        /// on the 외곽 고리 and a 막힌 길 is a pocket you can only be in by having walked into
+        /// it — it is not a start line. So the outer-rail pick skips dead ends, and the
+        /// first measurement of this rule (22 entry points, 50~80 m) was wrong for exactly
+        /// that reason: it had found the pockets.
+        /// </para>
+        /// <para>
+        /// The middle does NOT skip them. A 중심 that is a leaf is a map defect the
+        /// 투하구 rules are about, and quietly measuring from the ring outside it would
+        /// hide it.
+        /// </para>
+        /// </summary>
+        /// <param name="graph">The map.</param>
+        /// <param name="zone">Which zone.</param>
+        /// <param name="outermost">True for the 외곽 rail, false for the middle.</param>
+        private static List<int> RingExtreme(MapGraph graph, int zone, bool outermost)
+        {
+            var found = new List<int>();
+            var pick = float.NaN;
+
+            var members = graph.NodesInZone(zone);
+            for (var i = 0; i < members.Length; i++)
+            {
+                if (outermost && graph.IsDeadEnd(members[i]))
+                {
+                    continue;
+                }
+
+                var radius = RingRadius(graph, members[i]);
+                if (float.IsNaN(radius))
+                {
+                    continue;
+                }
+
+                if (float.IsNaN(pick)
+                    || (outermost ? radius > pick + MathX.Epsilon : radius < pick - MathX.Epsilon))
+                {
+                    pick = radius;
+                    found.Clear();
+                    found.Add(members[i]);
+                }
+                else if (System.Math.Abs(radius - pick) <= MathX.Epsilon)
+                {
+                    found.Add(members[i]);
+                }
+            }
+
+            return found;
+        }
+
+        /// <summary>
+        /// Where a runner starts a storey: a 투하구 landing, or on the top storey the
+        /// 외곽 rail §01 stands twenty of them on.
+        /// <para>
+        /// A landing is the LOWER end of a storey-changing edge because §01's 투하구 is
+        /// one-way — "떨어지면 언제나 다음 층 외곽" — so the storey an edge delivers you to
+        /// is the one underneath it. A storey nothing drops into is the top of the tower,
+        /// and there the whole outer ring is a start line.
+        /// </para>
+        /// </summary>
+        private static List<int> StoreyEntries(MapGraph graph, int zone)
+        {
+            var entries = new List<int>();
+            for (var e = 0; e < graph.Edges.Length; e++)
+            {
+                if (!JoinsStoreys(graph, e))
+                {
+                    continue;
+                }
+
+                var a = graph.Nodes[graph.Edges[e].A];
+                var b = graph.Nodes[graph.Edges[e].B];
+                var landing = a.Position.Y < b.Position.Y ? a : b;
+                if (landing.ZoneId == zone)
+                {
+                    entries.Add(landing.Id);
+                }
+            }
+
+            return entries.Count > 0 ? entries : RingExtreme(graph, zone, true);
+        }
+
+        /// <summary>
+        /// Walking distance from every place to its own storey's middle, in metres, or
+        /// +∞ where the middle cannot be walked to.
+        /// <para>
+        /// One multi-source Dijkstra per storey, out from that floor's 중심. Two things
+        /// make it per-storey rather than map-wide: §01 makes every floor an independent
+        /// maze, and a 투하구 is a fall rather than a path, so a route that leaves the floor
+        /// is not a route back to its middle. Public because <c>MapSceneGenerator</c>
+        /// prices a chase in the same distance — 「중심까지 얼마나 남았는가」 is the only
+        /// distance §02 settles the race on — and two answers to that question would let a
+        /// rule and a report disagree about the same map.
+        /// </para>
+        /// </summary>
+        /// <param name="graph">The map.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="graph"/> is null.</exception>
+        public static float[] DistancesToStoreyMiddle(MapGraph graph)
+        {
+            if (graph == null)
+            {
+                throw new ArgumentNullException(nameof(graph));
+            }
+
+            var best = new float[graph.Nodes.Length];
+            for (var i = 0; i < best.Length; i++)
+            {
+                best[i] = float.PositiveInfinity;
+            }
+
+            var open = new List<int>();
+            for (var zone = 0; zone < graph.Zones.Length; zone++)
+            {
+                var middle = RingExtreme(graph, zone, false);
+                for (var i = 0; i < middle.Count; i++)
+                {
+                    best[middle[i]] = 0f;
+                    open.Add(middle[i]);
+                }
+            }
+
+            while (open.Count > 0)
+            {
+                var pick = 0;
+                for (var i = 1; i < open.Count; i++)
+                {
+                    if (best[open[i]] < best[open[pick]])
+                    {
+                        pick = i;
+                    }
+                }
+
+                var at = open[pick];
+                open.RemoveAt(pick);
+
+                var incident = graph.IncidentEdges(at);
+                for (var i = 0; i < incident.Length; i++)
+                {
+                    var other = graph.Edges[incident[i]].Other(at);
+                    if (graph.Nodes[other].ZoneId != graph.Nodes[at].ZoneId)
+                    {
+                        continue;
+                    }
+
+                    var candidate = best[at] + graph.Edges[incident[i]].Length;
+                    if (candidate >= best[other])
+                    {
+                        continue;
+                    }
+
+                    best[other] = candidate;
+                    open.Add(other);
+                }
+            }
+
+            return best;
         }
 
         // ====================================================================

@@ -1,0 +1,4 @@
+하강 descent roster 1
+building	463793241	Map_Descent_0	gen-20260805-020936-seed463793241
+building	1246502161	Map_Descent_1	gen-20260805-021710-seed1246502161
+building	20260802	Map_Descent_2	gen-20260805-022447-seed20260802

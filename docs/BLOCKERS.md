@@ -8,6 +8,15 @@ not stop the game live in [ART.md](ART.md) §7.
 against the artefact at that commit; where an entry was closed by a measurement, the
 measurement and the log it came from are quoted.
 
+> **2026-08-05 — B-007, B-014 and the new B-019 only.** Those three were re-measured
+> against the §12 report the shipped graph produces today; nothing else in this file was
+> re-checked and the 08-03 triage still stands for the rest.
+>
+> **2026-08-05, later the same night — B-018 closed and B-020 opened-and-closed.** Both
+> were measured on `gen-20260805-025901-seed20260802` and on the roster published at
+> `A135BAD7`: four matches were run and the building each one loaded was read out of the
+> log, and the solo scene's reach audit was re-taken. Still nothing else re-triaged.
+
 > **The game changed shape on 2026-08-02.** Four-player co-operative recovery became a
 > twenty-player competitive descent ([DESCENT-PIVOT.md](DESCENT-PIVOT.md)). Several
 > entries below were opened against the old game; each says so.
@@ -20,7 +29,7 @@ measurement and the log it came from are quoted.
 | [B-004](#b-004) | 🔴 **open — blocks release** | The networking library is a stranger's repack |
 | [B-005](#b-005) | 🟢 closed | Regenerating the map unregistered the scene 시작 loads |
 | [B-006](#b-006) | 🟢 closed | The core solution did not build |
-| [B-007](#b-007) | 🔴 **open** | §12's sight-break-spacing: the map ships under a waiver |
+| [B-007](#b-007) | 🔴 **open** | §12's sight-break-spacing: 95 m of cover against 14.4 m, waived by name |
 | [B-008](#b-008) | 🟢 closed | A 계단 only the creature could use |
 | [B-009](#b-009) | 🟢 closed | The NavMesh audited was not the one just built |
 | [B-009b](#b-009b) | 🟢 closed | …and the chamber sealed the middle its own way |
@@ -28,10 +37,280 @@ measurement and the log it came from are quoted.
 | [B-011](#b-011) | 🔴 **open** | The one red test is on the path a human takes |
 | [B-012](#b-012) | 🔴 **open** | The simulator measures a building the game deleted |
 | [B-013](#b-013) | 🟠 open (process) | CI was red for three commits that said green |
-| [B-014](#b-014) | 🟠 open | §12's report says FAIL for three different reasons and names none of them |
+| [B-014](#b-014) | 🟢 closed | §12's report said FAIL for three different reasons and named none of them |
 | [B-015](#b-015) | 🔴 **open — blocks release** | No shippable build: IL2CPP will not compile here |
 | [B-016](#b-016) | 🟠 open | EditMode has not been run since the pivot |
 | [B-017](#b-017) | 🟠 open | The first-person view has no hands on the runner rig |
+| [B-018](#b-018) | 🟢 closed | Every match is the same building — 3 in the roster, a second match loads another |
+| [B-019](#b-019) | 🔴 **open** | §12-D's centre-path: every storey is 7.5–42.5 m short of the band |
+| [B-020](#b-020) | 🟢 closed | `PlayerReach` counted its own measuring body as a wall and refused eight roster slots |
+
+---
+
+## B-020 · The player-reach audit counted its own measuring body as a wall
+
+**Status:** 🟢 closed 2026-08-05 · found while a roster bake refused every slot it staged
+
+`PlayerTraversal.Audit` decides whether a runner can stand somewhere with
+`Physics.CheckCapsule(bottom, top, radius, ~0, QueryTriggerInteraction.Ignore)`. A `~0`
+mask cannot tell a wall from a body, and `SoloPlaytest.Build` parks the harness rig on the
+first `PlayerSpawn` with a `CharacterController` on it. So the audit's capsule met the
+capsule the audit exists to simulate, and reported the marker unreachable. **재는 사람이
+재는 대상 안에 서 있었다.**
+
+Measured over one baked surface, both scenes referencing NavMesh guid
+`26ffd78e0ece1459686bbf4580765605`:
+
+| scene | starts | B1 walkable | verdict |
+|---|---|---|---|
+| `Map_FirstSketch.unity` (no rig) | 36/36 | 18 077 | PASS |
+| `Map_FirstSketch_Solo.unity` (+ rig) | **34/36** | 18 065 | FAIL |
+
+The two lost starts were `PlayerSpawn_10` and `PlayerSpawn_11`, both at
+(23.75, 0.00, 6.25) — where the rig stands. That was the *entire* difference between the
+two reports, and because `MapPipeline.AuditSlot` is the first audit in the pipeline whose
+subject is the solo assembly rather than the layout, it refused all eight slots of the
+2026-08-05 bake: 8 staged, 0 published.
+
+**Fix.** `Audit` now disables every `CharacterController` in the scene, runs
+`AuditTheBuilding`, and re-enables them in a `finally`. Nothing is saved; the toggle lives
+in memory for the length of the audit. Only `CharacterController`s — props, walls, doors
+and §06's creature all stay in, so a crate that seals a start is still a refusal — and each
+body stood down is named in the report's notes, so the audit says what it excluded.
+
+**Verified in the artefact**, 2026-08-05 on `gen-20260805-025901-seed20260802`:
+`Map_FirstSketch_Solo.unity` now reads **PASS · starts 36/36 · B1 18 113**, identical to the
+layout scene's 18 113, with the note `Stood Player down for the measurement — a
+CharacterController at (23.75, 0.00, 6.25) …`. `m_Enabled: 1` on the `!u!143` block in the
+solo scene and in all three `Map_Descent_*` slot scenes on disk, so the restore holds.
+
+**The reading.** An audit that shares a mask with its own subject has to say so and exclude
+it deliberately; a green number here would have been a body-shaped hole in the map. This is
+the same class as [B-009](#b-009) — the NavMesh audited was not the one just built — and it
+is why the two audits are always taken over a named, stamped surface.
+
+---
+
+## B-019 · Every storey is too short from the rim to the middle, and for two rounds nothing said so
+
+**Status:** 🔴 **open** · opened 2026-08-05 · a gate now, failing, waived by name
+
+§12-D writes the rule and says who checks it:
+
+> | `centre-path` | 외곽에서 중심까지 최단 **90~140 m** | … | `MapValidator`와 씬 감사기가 층마다 확인한다 |
+
+`MapValidator` did not. The number was measured and printed by `MapSceneGenerator` on
+every generation instead, and it has never once been inside the band. It is
+`MapValidator.RuleCentrePath` now, it gates, it fails, and
+`MapSceneGenerator.KnownFailingRules` waives it by name with the numbers in the entry.
+
+### The measurement
+
+`MapValidator.Validate(DescentMap.Build(20260802).Graph)`, 2026-08-05:
+
+```
+[FAIL] centre-path — 외곽에서 중심까지 최단 90~140m (§12-D, 층마다)
+  30 storey entry point(s) walk 47.5 m~82.5 m to their own storey's middle
+  = 10.6~18.3 s at 달리기 4.5 m/s, against §12-D's 90 m~140 m. 30 of 30 OUTSIDE:
+  B1 하역장 47.5 m~82.5 m (16/16); B2 기록보관소 70 m~75 m (2/2); B3 기계실 70 m~75 m (2/2);
+  B4 저탄장 70 m~75 m (2/2); B5 저수조 70 m~75 m (2/2); B6 병동 70 m~75 m (2/2);
+  B7 수몰층 60 m~65 m (2/2); B8 굴착층 70 m~75 m (2/2).
+```
+
+**Measured 47.5–82.5 m against a required 90–140 m: 30 of 30 entry points outside, every
+storey 7.5–42.5 m short.** An entry point is where a runner actually arrives — a 투하구
+landing on B2–B8 (§01: 「떨어지면 언제나 다음 층 외곽」), and on B1, which nothing drops
+into, the sixteen cells of the 외곽 rail §01 stands twenty runners on.
+
+### Why it is a defect in the map and not in the band
+
+§12-D forbids exactly this move in its own text: 「60~90 m로 줄이면 아는 사람이 2분 만에
+끝내고, 그러면 **맵을 아는 것이 실력이라는 전제**가 보상 없이 사라진다」. §01 leaves a race
+two sources of difference — 길을 아는가 and 어디까지 감수하는가 — and a floor that can be
+solved blind deletes the first. Fitting the band to the measurement would delete a premise
+to make a number go green.
+
+### What it would take
+
+A longer rim-to-middle route in `RadialStorey`: more bands, or the ring gates set so the
+way in spirals instead of cutting across. The rule reports per storey, so the fix has a
+number that says the moment it lands — regenerate and read `all inside`.
+
+It trades against [B-007](#b-007): more bands at the same 2.5 m cell size is more corners,
+and corners are what B-007 already has too many of. **The two want the same change** — legs
+long enough to be worth walking and straight enough to break sight — which is why they
+should be fixed together rather than in sequence.
+
+---
+
+## B-018 · Every match is the same building, and the last five lines are in a file this change could not touch
+
+**Status:** 🟢 closed 2026-08-05 · the seam landed, the roster names three buildings and a
+second match measurably loads a different one
+
+### How it closed, measured in the artefact
+
+`DescentRoster.txt` names **3** buildings (씨앗 463793241 · 1246502161 · 20260802, 지문
+`A135BAD7`); all three scenes exist under `Assets/Scenes/Descent/` and all three are
+`enabled: 1` in `ProjectSettings/EditorBuildSettings.asset`; and the mac development player
+built from them ships all three — `Level 3/4/5`, 85.6 / 77.8 / 78.3 MB compressed. The seam
+`GameShell` was missing is in `UI/LobbyScreen.cs` (`LobbyEntry.MatchScene`), `GameShell`
+takes it in `LoadMatchRoutine`, and `RaceLobby.BeginDescent` sets it.
+
+Four independent matches on 2026-08-05, host path, `LobbyEntryWiringTests`:
+
+| 씨앗 | 건물 | scene actually loaded |
+|---|---|---|
+| 2057322048 | Map_Descent_0 | `Assets/Scenes/Descent/Map_Descent_0.unity` |
+| 1341029346 | Map_Descent_0 | `Assets/Scenes/Descent/Map_Descent_0.unity` |
+| 505594061 | Map_Descent_2 | `Assets/Scenes/Descent/Map_Descent_2.unity` |
+| 1984380182 | Map_Descent_2 | `Assets/Scenes/Descent/Map_Descent_2.unity` |
+
+The choice is `DescentRoster.IndexFor(seed, count)` = `(uint)seed % count`, made once on
+§13's authority and **sent**, so it is the log line and the loaded scene agreeing rather
+than two machines each deriving a number. 「씨앗 = 건물」 is now true of the maze and not
+only of the starting ring.
+
+**One claim in the text below is now false and is left in place as the record:** the
+paragraph saying `MapSceneGenerator.RegisterScenes` drops the slots "routinely" described
+the hard-coded three-path version. It is manifest-driven now — a plain map regeneration was
+run on 2026-08-05 (`gen-20260805-025901-seed20260802`, no `-forceWrite`) and Build Settings
+still lists all six scenes afterwards. `RaceLobby.VerifyRoster` still refuses to host on a
+building Build Settings does not have, because that failure ends with twenty people on a
+loading screen that never finishes.
+
+**Latent, N ≥ 10:** the registration check is `manifest.IndexOf(diskSceneName)`, so an
+unpublished `Map_Descent_1` would be registered on the strength of a published
+`Map_Descent_10` containing it as a substring. Harmless at three. Fix by matching
+`Separator + name + Separator`.
+
+### The original entry, as written on 2026-08-04
+
+§11's lobby picks a seed, agrees it with everybody, broadcasts it and logs it. The lobby
+screen tells players what that number means, in as many words: 「씨앗 *is* the building —
+twenty players holding the same number are in the same maze」. It was half true. The scene
+is pre-baked at `DescentMap.DefaultSeed = 20260802`, so the seed decided **only** where
+runners start (which is real — §01 deals B1's ring from a Fisher-Yates shuffle of it). The
+maze itself was 20260802 every match, forever.
+
+For a race whose stated skill is 「맵을 아는 사람이 유리하다」 that makes map knowledge a
+permanent asset rather than a per-match one, and the twentieth match is the first one
+already solved.
+
+### What is in the build now
+
+`MapPipeline.BakeRoster` bakes one scene per seed and publishes only the slots that
+survive every gate — §12's checklist, the NavMesh connectivity audit and the
+player-traversal audit inside `MapSceneGenerator.Generate`, then the dressing pass and a
+second connectivity + traversal audit in `MapPipeline.Regenerate`, then a **third** pair of
+audits taken on the copied slot scene after its NavMesh reference has been moved to its own
+copy of the bake. It writes `DescentRoster.txt` from what it actually published, so the
+roster in the artefact is a list of buildings that passed rather than a list of seeds
+somebody believed in. `-forceWrite` is refused outright: a forced generation is one with a
+named defect in it, and a roster is a list of buildings twenty people may be put into.
+
+`DescentRoster` reads that manifest at run time. `RaceLobby.RequestHost` refuses to claim
+§13's authority if any listed building is missing from Build Settings — which it will be,
+routinely, because `MapSceneGenerator.RegisterScenes` rewrites the scene list wholesale
+from three hard-coded paths (this is B-005 with a wider blast radius). `RequestStart`
+chooses the building on the host and **sends** it — index, building seed, scene name and a
+fingerprint over the whole roster — rather than letting each machine derive it, and a client
+whose fingerprint differs leaves the session instead of descending. After the scene loads,
+`RaceLobby.OnSceneLoaded` compares the `SceneGen_` generation stamp inside the scene against
+the one the roster recorded, which is the only check in the game that reads the artefact
+rather than a name two machines agreed on.
+
+### What is missing, exactly
+
+`GameShell` owns the scene load — the loading screen, its minimum-display floor, the Build
+Settings error path and `SettingsService.Apply()` after activation — and it loads
+`GameShell.DefaultMatchScene`. There is no way to tell it which building to open, and there
+cannot be one from the gameplay side: `HorrorGame.UI` does not reference
+`HorrorGame.Gameplay` and must not, which is the entire reason `LobbyEntry` exists. The seam
+has to be declared in the UI assembly and filled from the race assembly, exactly as
+`LobbyEntry.Intercept` already is. That is five lines across `UI/LobbyScreen.cs` and
+`UI/Shell/GameShell.cs`; both are outside the files this change owned, so the diff is in the
+report rather than in the tree.
+
+**Until it lands the maze does not vary.** Every machine loads the same default scene, so
+the race is still fair — it is the variety that is missing, not the agreement — and
+`VerifyLoadedBuilding` logs the mismatch once per descent naming this entry's cause rather
+than letting it pass quietly.
+
+### Why pre-baking and not generating at run time
+
+Measured, not argued. `MapPipeline.ProbeSeeds` timed every phase on three fresh seeds
+(`/private/tmp/.../logs/probe.log`, 2026-08-04, batch-mode editor, Apple silicon):
+
+| phase | seed 463793241 | 1246502161 | 143331277 |
+|---|---|---|---|
+| sketch — `DescentMap.Build` | 0.04 s | 0.01 s | 0.01 s |
+| geometry — prefab instantiation + first bake | 1.01 s | 1.00 s | 1.01 s |
+| dressing scatter | 3.73 s | 3.77 s | 3.89 s |
+| **`NavMeshSurface.BuildNavMesh`, dressed** | **0.81 s** | **0.86 s** | **0.83 s** |
+| §12 gate — `MapValidator.Validate` | 69.20 s | 69.98 s | 70.28 s |
+| NavMesh connectivity + player traversal | 129.74 s | 114.45 s | 125.34 s |
+
+**Generating the building at run time is affordable. Proving it is not.** Everything a
+player could actually run — sketch, geometry, dressing, bake — is **≈5.7 s**, an ordinary
+loading screen. The gates are **≈190 s**, three minutes, on every machine before every
+match. Cutting them means shipping a generator with no gate, and the 9-island dressing
+failure that this project caught in the previous round is exactly what a runtime map would
+have shipped instead.
+
+The 5.7 s is also the reason not to shut the door: `RadialStorey` and `DescentMap` are
+already engine-free, and what blocks route (b) is the cost of the audits, not the cost of
+the building.
+
+**Provenance, because these numbers are not all from the same validator.** The 96-seed
+graph sweep ran against a `MapValidator` identical to `1b4b267`. The probe above ran a few
+hours later, against a working tree in which another change had retired two rules as
+obsolete — so it reports `passed=True failures=0` where HEAD reports three failures, all of
+which `MapSceneGenerator.KnownFailingRules` waives anyway. **Neither the sweep's verdict nor
+the probe's changed as a result**: every seed measured was writable under both rule sets.
+But a §12 *tally* taken from either log is only a claim about the validator it ran with, and
+`ProbeSeeds` now prints the rule count beside the verdict so the two can never be confused.
+
+### Which of these gates actually has to run per seed
+
+Worth separating, because it decides how many buildings the roster can afford:
+
+| | per seed | does it gate? | has it ever caught anything? |
+|---|---|---|---|
+| `MapValidator.Validate` | 69–70 s | **yes** — `Buildable` *is* `Validation.Passed` | not once in 96 seeds; and structurally cannot see the failure that matters — «a graph is joined whatever the baked surface does» (B-001) |
+| NavMesh connectivity + `PlayerTraversal` | 114–130 s | **yes** | B-001, B-008, B-009, and last round's 9-island dressing failure — all of them |
+| the rest of `MapQualityReport.Measure` | ~75–100 s | **no** | n/a — it is report text |
+
+The last row is free to drop and worth ~75–100 s per generation. `MapQualityReport
+.BreakSpacings` has no reader outside `DescribeSpacing()` in its own file, and `Measure` has
+exactly two callers: `ReportQualityMenu`, whose whole job is to print the report, and
+`Generate`, which reads only `.Buildable` to decide and then puts `.Describe()` in a log
+line. Splitting the gate from the prose — `Generate` calling `MapValidator.Validate`, and
+building the full report only when it is about to be printed — is a small change in
+`MapSceneGenerator.cs` / `MapQualityReport.cs` and is the single cheapest thing available
+here.
+
+**The audits are not cheap, and it would be convenient to believe they are.** 114–130 s for
+the pair is the *most* expensive gate in the pipeline after §12, not the cheap one — and
+`BakeRoster` runs them three times per slot (inside `Generate`, again after the dressing
+rebake, and again on the copy). Each pass has a distinct subject: the undressed layout, the
+dressed building, and the file the game will actually open with its own bake wired in. None
+of the three can go without giving up something the previous rounds paid for. So the real
+per-slot cost is ≈7 min of gate, and N=8 is roughly an hour of author time — which is fine,
+because it is author time. What does *not* scale is screening candidate seeds, and it does
+not have to: the screen only ever runs on the handful being considered for a slot, and
+`BakeRoster` gates every slot again regardless of what the screen said.
+
+### What it would take
+
+1. The five-line seam (see the report). After that the roster is live and a player sees a
+   repeat every N matches, N being however many slots the bake published.
+2. `MapSceneGenerator.RegisterScenes` should keep the descent slots instead of dropping
+   them, so the lobby's refusal is a safety net rather than the normal state after any map
+   regeneration.
+3. An EditMode test asserting every manifest line has a scene on disk and in Build
+   Settings. The runtime refusal covers the shipped game; a test covers the build that
+   never gets hosted.
 
 ---
 
@@ -163,7 +442,33 @@ toolchain is intact. Do not read it as a green light.
 
 ## B-014 · §12's report says FAIL for three different reasons and distinguishes none of them
 
-**Status:** 🟠 open · found 2026-08-03 · the gate is honest; the report is not
+**Status:** 🟢 closed 2026-08-05 · closed by deletion and by waiver, not by a third verdict
+
+The three-way `FAIL` is gone, and the resolution is not the one proposed below. Two of the
+three rules were obsolete and were **deleted with their reasoning at the rule's own
+tombstone in `MapValidator`** rather than moved to an `n/a` verdict — `zone-diagonal` (it
+sized a 구역 SMALLER than a 층, and on 하강 a 구역 IS a 층) and `concealment-near-exit`
+(§07 새벽's ambush). The third, `open-adjacent-to-maze`, was deleted too and **that part was
+wrong**: the rule has two clauses, only its 15~25 m clause rested on §04's 주자 picking an
+aggro range, and the 인접 clause the shipped map *satisfies* went with it. It is back, minus
+the deleted clause, and it passes.
+
+What the report reads now, `MapValidator.Validate(DescentMap.Build(20260802).Graph)`:
+
+```
+§12 map validation — 하강 — 요양원 지하 8층: FAIL      ← 12 ok, 2 FAIL, both waived by name
+[FAIL] sight-break-spacing   95 m of cover against 14.4 m      B-007
+[FAIL] centre-path           47.5~82.5 m against 90~140 m      B-019
+```
+
+Both failures are genuine map defects, both are in `KnownFailingRules` with the measured
+value, the required value and what fixing the geometry would take, and the generator prints
+`This build has KNOWN MAP DEFECTS in it` on every write. A reader of that block can now tell
+which to act on because there is nothing else in it. The **ID collision** noted below is
+resolved by the straight-corridor entry being retired outright (the map measures 17.5 m).
+
+**Below is the finding as it stood on 2026-08-03, kept because it is the record of what
+was wrong.** Every present tense in it describes that day, not today.
 
 `/tmp/r6_gen.log` ends its checklist with:
 
@@ -198,19 +503,19 @@ line. That is the same failure this project has recorded three times — [B-003]
 [B-013](#b-013). And it currently obscures the one genuine failure inside the noise: a
 reader of that block cannot tell which of the three to act on.
 
-### What it would take
+### What it would have taken — and the part of it still worth doing
 
-`MapValidator` grows a third verdict beside ok/FAIL — `n/a (descent)` — and the three
-obsolete rules move to it with the reason each was retired. `KnownFailingRules` then
-shrinks back to genuine deferrals (`sight-break-spacing`, `straight-corridor`), the
-headline reads `14/14 + 3 n/a` instead of `FAIL`, and B-007 becomes visible again. Also
-fix `NavMeshAudit.Report`, which prints `← the surface is in pieces` on every run because
-eight islands is now correct (`NavMeshConnectivity.cs:556`).
+The proposal was: `MapValidator` grows a third verdict beside ok/FAIL — `n/a (descent)` —
+and the three obsolete rules move to it. Deleting them with the reason attached achieves the
+same legibility without a third state to maintain, and it puts the reason where the next
+reader is standing when they ask the question. **The lesson it cost:** "obsolete" is a claim
+about a rule's *subject*, and it has to be checked clause by clause — one of the three was
+obsolete in one clause and load-bearing in the other, and deleting it whole gave up a gate
+the map passes for nothing.
 
-**Note the ID collision while you are in there.** `MapSceneGenerator.cs:645` cites
-"B-008" for the straight-corridor deferral. B-008 in this file is the stairwell defect
-and has been closed since 2026-08-01. That deferral has no entry here; it should cite
-B-014 or get its own.
+Still open, and still worth doing: fix `NavMeshAudit.Report`, which prints
+`← the surface is in pieces` on every run because eight islands is now correct
+(`NavMeshConnectivity.cs:556`).
 
 ---
 
@@ -546,36 +851,58 @@ descent map's chutes are gated rather than assumed.
 
 ## B-007 · §12's sight-break-spacing rejects the map that ships, and the map ships anyway
 
-**Status:** 🔴 **open** · opened 2026-08-01 · unchanged by the pivot except in scale
+**Status:** 🔴 **open** · opened 2026-08-01 · the cap was re-derived on 2026-08-05 and the
+map is still six times over it
 
 `66ce930` implemented 시야 차단 지점 간격 as `MapValidator`'s 17th rule. The rule is right
 and the map has never satisfied it. For a day the generator therefore refused to write the
 level the game ships; now it writes it under a named waiver
-(`MapSceneGenerator.KnownFailingRules`) and prints the failure every single time:
+(`MapSceneGenerator.KnownFailingRules`) that carries the numbers, and prints the failure
+every single time:
 
 ```
-[SceneGen] §12 is failing a rule that is already recorded as a known defect, so the map
-was written anyway. This is not permission to ignore it — see docs/BLOCKERS.md B-007.
+[SceneGen] §12 is failing 2 rule(s) that KnownFailingRules waives by name, so the map was
+written anyway. This build has KNOWN MAP DEFECTS in it — read KnownFailingRules for what
+each one measured, what §12 required, and what fixing the geometry would take.
 ```
 
 The waiver was the right trade — freezing all map authoring behind one already-measured
 defect cost more than it protected — and it is a debt, not a fix.
 
-### The measurement, on the descent map (`/tmp/r6_gen.log`, 2026-08-03)
+### The measurement (`/tmp/r6_gen.log` 2026-08-03, re-measured 2026-08-05)
 
 ```
 [FAIL] sight-break-spacing — 시야 차단 지점 간격 15~25m (질주 60m에 3~4번의 기회)
-  48 시야 차단 지점 from 496 bend(s). One 시야 차단 지점 is 95 m deep …
-  §12 allows 4.4 m — its own 14.4 m single-corner requirement less the 10 m head start
-  its 어그로 시작 거리 table endorses.
+  48 시야 차단 지점 from 496 bend(s). One 시야 차단 지점 is 95 m deep — #4 B1 하역장(9,2@L0)
+  to #85 B1 하역장(15,22@L0) with nothing further than 15 m between any two of its bends …
+  The cap is 14.4 m — §12's 14.4 m single-corner requirement with nothing subtracted.
 
 시야 차단 지점 간격: 496 corners, nearest-neighbour 2.5 m~7.5 m, mean 3.5 m, 0 inside the band.
 ```
 
-**95 m of continuous cover against 4.4 m allowed.** The five-storey building was 79
-corners at a mean of 4.1 m; the eight-storey radial map is 496 at 3.5 m. The pivot made
-this worse, because a concentric maze of 2.5 m cells is a corner every few metres by
+**95 m of continuous cover against 14.4 m allowed — 6.6× over.** The five-storey building
+was 79 corners at a mean of 4.1 m; the eight-storey radial map is 496 at 3.5 m. The pivot
+made this worse, because a concentric maze of 2.5 m cells is a corner every few metres by
 construction.
+
+### The cap moved on 2026-08-05, and the map failed the weaker one too
+
+It was 4.4 m: §12's 14.4 m single-corner requirement **less** the 10 m head start its
+어그로 시작 거리 table endorses. That subtraction is §04's 주자 *choosing* a range to be seen
+from, and §01 replaced the choice with 「마주치면 피할 수 없다」 — a runner reaches cover
+carrying nothing, so nothing comes off the 14.4.
+
+For one round the whole cap was deleted on the strength of that argument and the rule went
+green. **The map had not moved**: the same 48 지점, the same 95 m, the same 496 bends on
+both sides of the diff. Stripping the deleted term makes the cap 14.4 m, which is *weaker*
+than the one the map was already failing, and 95 m is still 6.6× over it. A gate the
+geometry cannot meet at the most generous honest number is a map defect, which is what this
+entry has always said.
+
+Note what the toll does **not** say. `MapSceneGenerator`'s 탈출 대가 finds 0 of 720 places
+charging less than one door, i.e. no chase on this map is free — and cover still runs 95 m
+unbroken. The toll prices one runner's escape; it cannot see what continuous cover costs a
+race of twenty, so it is not a substitute measurement for this one.
 
 ### It is the same defect as the 주자 테스트 grade
 
@@ -586,14 +913,17 @@ defect measured twice, and it is the reason the creature is decoration
 
 ### What it would take
 
-**Not** relaxing `SightBreakPointSpanMax`. The lever is the geometry: bands of the ring
-that run straight for 15–25 m between turns, so a sprint has three or four discrete
-chances to break line of sight rather than continuous cover. `RadialStorey` generates the
-bands, so this is a change to one generator with a number that says the moment it
-succeeds — re-run the generator and read `0 inside the band`.
+**Not** relaxing the cap — and not deleting it either; that was tried and cost three gates
+for nothing. The lever is the geometry: bands of the ring that run straight for 15–25 m
+between turns, so a sprint has three or four discrete chances to break line of sight rather
+than continuous cover. `RadialStorey` generates the bands, so this is a change to one
+generator with a number that says the moment it succeeds — re-run the generator and read
+`0 inside the band`.
 
 Closing this closes B-007 and moves F-007's grade in one change. It is the single most
-valuable piece of work available on this project.
+valuable piece of work available on this project. Do it together with
+[B-019](#b-019): that one wants a longer rim-to-middle route and this one wants longer
+straight legs, and they are the same edit to the same generator.
 
 ---
 

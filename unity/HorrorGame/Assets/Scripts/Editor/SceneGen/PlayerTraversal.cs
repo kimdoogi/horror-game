@@ -221,7 +221,85 @@ namespace HorrorGame.EditorTools.SceneGen
         /// over a graph with one node per pocket, which is where a fixpoint belongs.
         /// </para>
         /// </summary>
+        /// <remarks>
+        /// <para>
+        /// 재는 사람이 재는 대상 안에 서 있으면 안 된다. Every query below this line is a
+        /// <c>Physics.*</c> overlap with a <c>~0</c> mask, so a body <em>standing in the
+        /// scene</em> is indistinguishable from a wall. <c>SoloPlaytest.Build</c> parks the
+        /// harness rig on the first <c>PlayerSpawn</c> and gives it a
+        /// <c>CharacterController</c>; <c>TryStand</c>'s <c>CheckCapsule</c> at that same
+        /// marker then hits the very capsule this audit exists to simulate, and the marker
+        /// is reported unreachable.
+        /// </para>
+        /// <para>
+        /// Measured over one baked surface at <c>gen-20260805-002808</c>, both scenes
+        /// referencing NavMesh guid <c>26ffd78e0ece1459686bbf4580765605</c>:
+        /// <c>Map_FirstSketch.unity</c> (no rig) PASS 36/36, B1 18 077 places;
+        /// <c>Map_FirstSketch_Solo.unity</c> (+ rig) FAIL 34/36, B1 18 065. The two lost
+        /// starts were <c>PlayerSpawn_10</c> and <c>PlayerSpawn_11</c>, both at
+        /// (23.75, 0.00, 6.25) — exactly where the rig stands. That was the whole
+        /// difference between the two reports, and it refused all eight roster slots.
+        /// </para>
+        /// <para>
+        /// So the bodies are stood down for the measurement and put back afterwards. Only
+        /// <c>CharacterController</c>s — a runner's own collider, which §12 never meant to
+        /// gate. Props, walls, doors and §06's creature all stay in, so a crate that seals
+        /// a start is still a refusal. Nothing is saved: the toggle lives in memory for the
+        /// length of the audit, and each body stood down is named in
+        /// <see cref="Report.Notes"/> so the report says what it excluded.
+        /// </para>
+        /// </remarks>
         public static Report Audit(Scene scene)
+        {
+            // 스스로를 벽으로 세지 않기 위해. See the remarks above for the 34/36 this cost.
+            var stood = new List<CharacterController>();
+            foreach (var root in scene.GetRootGameObjects())
+            {
+                foreach (var body in root.GetComponentsInChildren<CharacterController>(true))
+                {
+                    if (!body.enabled)
+                    {
+                        continue;
+                    }
+
+                    body.enabled = false;
+                    stood.Add(body);
+                }
+            }
+
+            try
+            {
+                var report = AuditTheBuilding(scene);
+                foreach (var body in stood)
+                {
+                    var at = body.transform.position;
+                    report.Notes.Add(
+                        $"Stood {body.name} down for the measurement — a {body.GetType().Name} at "
+                        + $"({at.x:F2}, {at.y:F2}, {at.z:F2}) answers Physics.CheckCapsule like a wall "
+                        + "and would fail its own start marker. It is still in the scene and nothing "
+                        + "was saved.");
+                }
+
+                return report;
+            }
+            finally
+            {
+                // 반드시 되돌린다 — even if the audit throws. The scene may be saved by
+                // whoever opened it, and a rig that cannot move is a worse bug than a
+                // miscounted start.
+                foreach (var body in stood)
+                {
+                    body.enabled = true;
+                }
+            }
+        }
+
+        /// <summary>
+        /// The audit itself, with every runner body already stood down by
+        /// <see cref="Audit(Scene)"/>. Split out so the stand-down cannot be skipped by a
+        /// future early return.
+        /// </summary>
+        private static Report AuditTheBuilding(Scene scene)
         {
             var report = new Report();
             report.Body = PlayerBody.Measure(report);
