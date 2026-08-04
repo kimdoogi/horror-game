@@ -27,6 +27,20 @@ namespace HorrorGame.Net
     /// a PvE game played with friends, so the clamp is there to survive a frame
     /// spike or a desync, not to fight an attacker.
     /// </para>
+    /// <para>
+    /// <b>§02 arrives here too, and it is the one thing on this class that is not
+    /// §05's table.</b> A 투하구 and §06's grab happen on the machine the player is
+    /// sitting at — the chutes are colliders in the local scene and the creature is
+    /// simulated locally on every machine (<c>MatchDirector</c> contains no reference to
+    /// Mirror at all) — so somebody has to tell the host. That somebody is
+    /// <see cref="CmdReportDescent"/> and <see cref="CmdReportCaught"/> below, and the
+    /// reason they live on <em>this</em> component rather than on a free-standing
+    /// <c>NetworkMessage</c> is <see cref="_seatIndex"/>: Mirror only delivers a
+    /// <c>[Command]</c> from the connection that owns the object it was called on, so the
+    /// seat a report lands on is a number the host wrote and never one the client sent.
+    /// "I fell" and "he fell" are the same message with a different field, and the second
+    /// one is worth eight storeys of somebody else's race.
+    /// </para>
     /// </summary>
     [DisallowMultipleComponent]
     [RequireComponent(typeof(NetworkIdentity))]
@@ -212,6 +226,31 @@ namespace HorrorGame.Net
             transform.position = position;
         }
 
+        /// <summary>
+        /// Accepts the next reported position however far it has moved, without moving the
+        /// runner here.
+        /// <para>
+        /// The host's own body needs this and a client's does not get it for free.
+        /// <c>CmdReportDescent</c> and <c>CmdReportCaught</c> clear the flag when the rule
+        /// says yes, but the HOST does not send those commands — <c>RaceDirector</c>'s
+        /// judging branch goes straight to the rule — while the host's rig still reports
+        /// its position through <c>CmdReportView</c>, which executes locally and clamps.
+        /// So without this the one avatar that never crawled across the floor it just left
+        /// was every client's, and the one that did was the host's own.
+        /// </para>
+        /// <para>
+        /// Distinct from <see cref="TeleportTo"/> because the runner has ALREADY been put
+        /// where they belong by <c>MatchDirector</c>: writing the transform again here
+        /// would be a second opinion about a position, which is the thing §05's clamp
+        /// exists to keep to one.
+        /// </para>
+        /// </summary>
+        [Server]
+        public void ForgiveTheNextReport()
+        {
+            _hasReported = false;
+        }
+
         /// <inheritdoc />
         public override void OnStartServer()
         {
@@ -295,6 +334,14 @@ namespace HorrorGame.Net
         /// The owner's report. Everything in the signature is a primitive §05 names;
         /// there is deliberately nothing here that could carry a rules decision, so
         /// the host stays the only machine that resolves one.
+        /// <para>
+        /// §02's two reports are separate calls — <see cref="CmdReportDescent"/> and
+        /// <see cref="CmdReportCaught"/> — and that separation is the point. This one runs
+        /// thirty times a second and is clamped rather than judged; those two run a handful
+        /// of times a match and each returns a verdict from <c>RaceState</c>. Folding a
+        /// storey into this signature would put a §02 decision on a 30 Hz path and make
+        /// every frame an opportunity to claim one.
+        /// </para>
         /// </summary>
         [Command]
         private void CmdReportView(
@@ -332,6 +379,151 @@ namespace HorrorGame.Net
             {
                 transform.position = _position;
             }
+        }
+
+        // ------------------------------------------------------------------
+        // §02 — what this machine says happened to its own runner, and what the
+        // host does about it. §13: 순위 · 도착 판정 — 호스트만.
+        // ------------------------------------------------------------------
+
+        /// <summary>
+        /// Tells the host this runner fell through a 투하구 onto <paramref name="storey"/>.
+        /// Called on the machine that owns this runner.
+        /// <para>
+        /// <b>Why the client reports at all, instead of the host noticing.</b> The host
+        /// could watch every runner's replicated position and test it against the chute
+        /// mouths itself — that is the shape §02's finish uses, and it is strictly better.
+        /// It is not available here: a 투하구 is a <c>Chute</c> component in the match
+        /// scene and <c>MatchDirector.CheckChutes</c> is what knows where the mouths are,
+        /// on the machine whose scene it is. The host has that scene too, so the day
+        /// <c>RaceDirector</c> is given the chute list this call becomes a hint rather than
+        /// an authority. Until then the guard is <c>RaceDirector.AcceptDescent</c>, which
+        /// takes only one storey at a time.
+        /// </para>
+        /// </summary>
+        /// <param name="storey">The storey landed on. 0 is B1.</param>
+        /// <returns>False if this machine does not own this runner, so nothing was sent.</returns>
+        public bool ReportDescentToHost(int storey)
+        {
+            if (!isOwned)
+            {
+                return false;
+            }
+
+            CmdReportDescent(storey);
+            return true;
+        }
+
+        /// <summary>
+        /// Tells the host §06's creature caught this runner. Called on the machine that
+        /// owns it.
+        /// </summary>
+        /// <returns>False if this machine does not own this runner, so nothing was sent.</returns>
+        public bool ReportCaughtToHost()
+        {
+            if (!isOwned)
+            {
+                return false;
+            }
+
+            CmdReportCaught();
+            return true;
+        }
+
+        /// <summary>
+        /// §12's one-way drop, as the host hears it.
+        /// <para>
+        /// <b>No seat in the signature.</b> The seat is <see cref="_seatIndex"/> — assigned
+        /// by the host in <see cref="AssignSeat"/> — so this call can only ever move the
+        /// runner belonging to the connection Mirror delivered it from. See the class
+        /// remarks.
+        /// </para>
+        /// <para>
+        /// <b>The clamp is forgiven only if the rule said yes.</b> §05's speed clamp in
+        /// <see cref="CmdReportView"/> exists so a client cannot walk faster than 5.6 m/s,
+        /// and a descent is the one legal move in this game that is not walking: the runner
+        /// leaves the middle of the storey above and lands on the RIM of the one below,
+        /// which on the generated tower is more than twenty metres away in plan. Left
+        /// clamped, an accepted descent would drag the runner's replicated avatar slowly
+        /// across the floor they just left while their own screen showed them on the rim
+        /// below. Forgiving one report is exactly what <see cref="TeleportTo"/> already does
+        /// for a host-side placement, and it is gated on
+        /// <c>NetRace.ReportDescent</c> having returned true — so the exemption cannot be
+        /// asked for without also being recorded one storey deeper, which is monotonic and
+        /// takes the storeys one at a time.
+        /// </para>
+        /// </summary>
+        /// <param name="storey">The storey the owner claims to have landed on.</param>
+        [Command]
+        private void CmdReportDescent(int storey)
+        {
+            if (NetRace.ReportDescent(_seatIndex, storey))
+            {
+                _hasReported = false;
+            }
+        }
+
+        /// <summary>
+        /// §06's catch, as the host hears it. §02 — 잡히는 것은 죽는 것이 아니다: the runner
+        /// goes back to the cell they started from on B1 and keeps racing.
+        /// <para>
+        /// Same seat guarantee as <see cref="CmdReportDescent"/>, and it matters more here:
+        /// a catch resets the reported runner to B1, so a payload with somebody else's seat
+        /// in it would be a button that deletes a rival's whole descent. There is no such
+        /// payload.
+        /// </para>
+        /// <para>
+        /// The clamp is forgiven on acceptance for the same reason a descent forgives it —
+        /// <c>MatchDirector.SendBackToTheStartLine</c> puts the runner on their own starting
+        /// cell on B1, which from B6 is twenty-six metres straight up.
+        /// </para>
+        /// </summary>
+        [Command]
+        private void CmdReportCaught()
+        {
+            if (NetRace.ReportCaught(_seatIndex))
+            {
+                _hasReported = false;
+            }
+        }
+
+        /// <summary>
+        /// §01's 총, as the host hears it. The shooter is this object's seat; the target is
+        /// the only thing in the payload, and the host checks it.
+        /// <para>
+        /// <b>No distance and no hit position.</b> This is the one report in the game that
+        /// costs somebody else eight storeys, so the payload is stripped to the single fact
+        /// a client is the only machine that can know — where its crosshair was — and
+        /// everything that decides whether the shot lands is measured host-side between two
+        /// bodies it owns. See <c>IRaceAuthority.AcceptShot</c>.
+        /// </para>
+        /// <para>
+        /// The clamp is not forgiven here: nobody moved. The TARGET is moved, by
+        /// <c>RaceState.ReportCaught</c> on the host, and their own machine learns it from
+        /// the standings frame this triggers.
+        /// </para>
+        /// </summary>
+        /// <param name="targetSeat">Who the shooter's crosshair was on, or −1 for a miss.</param>
+        [Command]
+        private void CmdReportShot(int targetSeat)
+        {
+            NetRace.ReportShot(_seatIndex, targetSeat);
+        }
+
+        /// <summary>
+        /// Tells the host this runner fired. Called on the machine that owns it.
+        /// </summary>
+        /// <param name="targetSeat">Who the crosshair was on, or −1.</param>
+        /// <returns>False if this machine does not own this runner, so nothing was sent.</returns>
+        public bool ReportShotToHost(int targetSeat)
+        {
+            if (!isOwned)
+            {
+                return false;
+            }
+
+            CmdReportShot(targetSeat);
+            return true;
         }
 
         private void OnFlashlightChanged(bool previous, bool current)

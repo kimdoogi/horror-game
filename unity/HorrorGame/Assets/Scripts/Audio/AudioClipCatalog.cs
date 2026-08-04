@@ -112,7 +112,12 @@ namespace HorrorGame.Audio
             // §02's two verdicts and the transition into §09.
             (AudioCueId.EscapeSuccess, "UI", new[] { "escape_success" }),
             (AudioCueId.MatchFailure, "UI", new[] { "match_failure_wipe" }),
-            (AudioCueId.DeathTransition, "UI", new[] { "death_transition_01", "death_transition_02" }),
+            // §06's catch. One sting, not two variants: it fires several times in a race
+            // and always means the same thing, so variation is the wrong economy.
+            // tools/audio/gen_caught.py writes it and asserts it lands inside
+            // CaughtScreen's 0.20 s blackout. death_transition_01/02 were §09's transition
+            // into the ghost, and the ghost is deleted.
+            (AudioCueId.Caught, "UI", new[] { "caught_sent_home" }),
 
             // §13 근접 음성.
             (AudioCueId.VoiceActivity, "UI", new[] { "voice_activity_blip" }),

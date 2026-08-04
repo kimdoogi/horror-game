@@ -34,8 +34,8 @@ namespace HorrorGame.Net.PlayerBridge
     /// the FBX instance and its renderers. Not the camera, not the audio listener, not the
     /// character controller, not the input router: a remote runner is a body, and every
     /// one of those would be a second one of something the local player already has
-    /// exactly one of. Two corrections are then applied, and both are bugs if they are
-    /// forgotten:
+    /// exactly one of. Three corrections are then applied, and every one of them is a bug
+    /// if it is forgotten:
     /// </para>
     /// <list type="number">
     /// <item><description>
@@ -54,15 +54,19 @@ namespace HorrorGame.Net.PlayerBridge
     /// owner's fill light would then also light every other player's forearms from across
     /// the map.
     /// </description></item>
+    /// <item><description>
+    /// <b>The body is animated.</b> This used to read "the copy is not animated", and it
+    /// was the most visible defect in the multiplayer game: the local runner plays nine
+    /// clips off <c>Runner.fbx</c> and everybody else was a mannequin gliding through the
+    /// maze in the bind pose. <see cref="NetRunnerAnimation"/> is added here and handed
+    /// the <em>source rig's own</em> <see cref="PlayerAnimatorDriver"/>, which is where
+    /// those clips already live as serialised references — the same argument as the whole
+    /// class: the object guaranteed to be correct is the one in the loaded scene, because
+    /// <c>AssetDatabase</c> does not exist in a player build. The clips are read through
+    /// <c>ClipFor</c>, so the pose → clip mapping stays owned by the one class that
+    /// documents itself as owning it.
+    /// </description></item>
     /// </list>
-    /// <para>
-    /// <b>What this does not do.</b> The copy is not animated. §05's remote animation
-    /// needs a <c>PlayerAnimatorDriver</c> fed from the replicated speed and carry state,
-    /// and the driver's nine clips are serialised fields that only the editor rig builder
-    /// fills — so a remote runner today stands in the model's bind pose and slides. That
-    /// is an honest, visible gap rather than a silent one, and it is written down in the
-    /// report rather than papered over with a capsule.
-    /// </para>
     /// </summary>
     public static class NetRunnerBody
     {
@@ -74,6 +78,15 @@ namespace HorrorGame.Net.PlayerBridge
         public const string RigVisualChildName = "Visual";
 
         private static Transform? _template;
+
+        /// <summary>
+        /// The local rig's driver, which holds <c>Runner.fbx</c>'s clips as serialised
+        /// references. Resolved with <see cref="_template"/> and from the same rig, so the
+        /// body and the clips that move it can never come from two different players.
+        /// </summary>
+        private static PlayerAnimatorDriver? _clipSource;
+
+        private static bool _reportedNoClips;
 
         /// <summary>
         /// Builds one body, or null when this machine has no rig to copy — a headless
@@ -91,6 +104,7 @@ namespace HorrorGame.Net.PlayerBridge
 
             var body = Object.Instantiate(template.gameObject);
             DrawWhole(body);
+            Animate(body, _clipSource);
             return body;
         }
 
@@ -101,6 +115,8 @@ namespace HorrorGame.Net.PlayerBridge
         public static void Forget()
         {
             _template = null;
+            _clipSource = null;
+            _reportedNoClips = false;
         }
 
         /// <summary>
@@ -124,6 +140,13 @@ namespace HorrorGame.Net.PlayerBridge
             {
                 return null;
             }
+
+            // Taken from the same rig, in the same pass, so the two cannot disagree about
+            // which player was copied. GetComponentInChildren includes the object it is
+            // called on, which is where PlayerFeelHarnessMenu.BuildRig puts the driver —
+            // searching the children as well costs nothing and survives it being moved
+            // onto the model, which is where a reader would look for it.
+            _clipSource = rig.GetComponentInChildren<PlayerAnimatorDriver>(includeInactive: true);
 
             // By name first, because that is the contract the rig builder writes. The
             // fallback is what actually makes this robust: any child holding a skinned
@@ -176,6 +199,49 @@ namespace HorrorGame.Net.PlayerBridge
             var view = body.AddComponent<PlayerFirstPersonView>();
             view.IsOwner = false;
             view.Apply();
+        }
+
+        /// <summary>
+        /// Gives the copy the clips the original is already playing.
+        /// <para>
+        /// Added and bound in two steps because <c>AddComponent</c> on a live object runs
+        /// <c>Awake</c> and <c>OnEnable</c> immediately, and at that instant the component
+        /// is a bare copy that does not know which rig it came from —
+        /// <see cref="NetRunnerAnimation.Bind"/> is what turns it into this player's body
+        /// and starts the graph.
+        /// </para>
+        /// <para>
+        /// A rig with no driver, or a driver whose clip slots are empty, leaves the body
+        /// standing in the bind pose and <em>says so</em>, once. That state is exactly the
+        /// defect this work closed and it has a known cause with a known fix —
+        /// <c>SoloPlaytest.AuditAnimatorWiring</c> reads the saved scene back and names
+        /// which of the three it is — so a silent null here would put a sliding runner
+        /// back in the build with a green suite over it.
+        /// </para>
+        /// </summary>
+        private static void Animate(GameObject body, PlayerAnimatorDriver? source)
+        {
+            var animation = body.AddComponent<NetRunnerAnimation>();
+            if (source != null)
+            {
+                animation.Bind(source);
+            }
+
+            if (animation.HasClips || _reportedNoClips)
+            {
+                return;
+            }
+
+            _reportedNoClips = true;
+            Debug.LogWarning(
+                "[Net] 원격 주자의 몸에 넣을 클립이 없다 — "
+                + (source == null
+                    ? "the local rig has no PlayerAnimatorDriver at all"
+                    : "the local rig's PlayerAnimatorDriver has every clip slot empty")
+                + ". Every other player will stand in Runner.fbx's bind pose and slide, which is the most "
+                + "visible defect this game can ship. Run HorrorGame.EditorTools.SoloPlaytest.BuildBatch — its "
+                + "read-back audit names which of the three causes it is (no driver / import wrong / names "
+                + "wrong) rather than leaving it to be guessed.");
         }
     }
 }

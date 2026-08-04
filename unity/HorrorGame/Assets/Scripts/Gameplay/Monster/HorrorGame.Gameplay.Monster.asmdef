@@ -2,7 +2,8 @@
     "name": "HorrorGame.Gameplay.Monster",
     "rootNamespace": "HorrorGame.Gameplay.Monster",
     "references": [
-        "HorrorGame.Core"
+        "HorrorGame.Core",
+        "HorrorGame.Audio"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

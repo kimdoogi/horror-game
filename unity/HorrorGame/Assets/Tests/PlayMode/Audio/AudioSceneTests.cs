@@ -589,12 +589,56 @@ namespace HorrorGame.Tests.PlayMode.Audio
 
             Assert.That(census.HasListener, Is.True, "§05: 3D 오디오는 카메라 기준 → 헤드폰 필수.");
             Assert.That(census.HasMix, Is.True);
-            Assert.That(census.Total, Is.GreaterThan(20),
-                "The mix spawns a source per §07 tier, per heartbeat layer, per zone-bed side, per "
-                + "landmark and per emitter. A handful would mean the rig never built its graph.");
+            Assert.That(census.Total, Is.GreaterThanOrEqualTo(20),
+                "20, counted: §07's five tiers + one stinger, three heartbeat layers, two zone-bed "
+                + "sides + one incidental, two cue channels, two footstep hosts, three monster "
+                + "voices, and PlayerFootsteps' own source on the body. The 'per landmark' term "
+                + "went with §03's 발전기 and §12's 전기 패널 hums — that deletion is the six "
+                + "sources this number lost, and it is why the old floor of 20 stopped being one.");
 
             Assert.That(rig.Zones!.CurrentBed, Is.Not.Null,
                 "§12's room tone. The player is standing somewhere, and somewhere has a floor.");
+
+            // The tags themselves, and not only their effect. CurrentBed can be non-null
+            // through FloorSurfaces' raycast fallback, which walks the parent chain with a
+            // fixed four-hit buffer and has already evicted a real floor once — so a scene
+            // with every tag stripped out could still pass the line above on a lucky ray.
+            //
+            // §12 gave eight storeys eight surfaces for one stated reason: a footstep tells
+            // you which floor somebody is on. That is a whole channel of information in a
+            // game where you are racing nineteen people through the dark, and it was OFF —
+            // zero tags in the scene, every surface resolving to None. This is what would
+            // notice if it went off again.
+            // Found by interface rather than by type: this fixture's assembly does not
+            // reference HorrorGame.Gameplay.Player, and the tag's whole job is to answer
+            // IFloorSurface — which is what FloorSurfaces.Sample asks it, so it is also the
+            // more honest question.
+            var tags = new System.Collections.Generic.List<HorrorGame.Audio.IFloorSurface>();
+            foreach (var behaviour in UnityEngine.Object.FindObjectsByType<MonoBehaviour>(
+                FindObjectsInactive.Include, FindObjectsSortMode.None))
+            {
+                if (behaviour is HorrorGame.Audio.IFloorSurface surface)
+                {
+                    tags.Add(surface);
+                }
+            }
+
+            Assert.That(tags.Count, Is.GreaterThan(0),
+                "no FloorSurfaceTag in the generated scene — MapSceneBuilder stopped tagging "
+                + "the floors, so FloorSurfaces.Sample answers None everywhere and §12's eight "
+                + "surfaces are one silent surface.");
+
+            var surfaces = new System.Collections.Generic.HashSet<HorrorGame.Core.Map.FloorMaterial>();
+            for (var i = 0; i < tags.Count; i++)
+            {
+                surfaces.Add(tags[i].Floor);
+            }
+
+            Assert.That(surfaces.Count, Is.GreaterThanOrEqualTo(8),
+                "the eight storeys carry " + surfaces.Count + " distinct surface(s), not eight. "
+                + "§12's alphabet is one per storey — 콘크리트 나무 금속 자갈 타일 카펫 물 흙 — "
+                + "and a floor that shares its sound with the floor above stops telling anybody "
+                + "where anybody is.");
 
             // The empty scene goes back in PutTheSceneBack, not here. Here it only ran when
             // every assertion above it passed, and a whole match inherited by the rest of

@@ -1,7 +1,6 @@
 #nullable enable
 
 using HorrorGame.Core.Map;
-using UnityEngine;
 
 namespace HorrorGame.Gameplay.Player
 {
@@ -19,30 +18,22 @@ namespace HorrorGame.Gameplay.Player
     /// whatever it already knows — a zone id, a generated tile, its own
     /// <c>IWorldProbe</c> — without this file learning what a zone is (ARCHITECTURE §3).
     /// </para>
+    /// <para>
+    /// <b>The component that implements it moved out of this file, and that was a bug
+    /// fix rather than tidying.</b> <c>FloorSurfaceTag</c> is a <c>MonoBehaviour</c>, and
+    /// Unity keys a <c>MonoScript</c> on the FILE — a behaviour whose class name does not
+    /// match its file name cannot be given a real
+    /// <c>m_Script: {fileID: 11500000, guid: …}</c> reference when a scene is saved. The
+    /// generator wrote 32 tags into Map_FirstSketch.unity, all 32 serialised as
+    /// <c>m_Script: {fileID: 1894526129}</c> — a dangling in-file id — and 28 of them came
+    /// back from disk as missing scripts. §12's room tone was null in the shipped solo
+    /// scene for exactly that reason, and no test could see it because the count in the
+    /// generation log was taken before the save.
+    /// </para>
     /// </summary>
     public interface IFloorMaterialSource
     {
         /// <summary>The §12 surface here. <see cref="FloorMaterial.None"/> means "not authored yet", not "silent".</summary>
         FloorMaterial FloorMaterial { get; }
-    }
-
-    /// <summary>
-    /// The simplest possible <see cref="IFloorMaterialSource"/>: a material stated on a
-    /// collider. Enough for the feel harness and for hand-built test geometry; the
-    /// generated map is expected to answer through its own probe instead.
-    /// </summary>
-    [DisallowMultipleComponent]
-    public sealed class FloorSurfaceTag : MonoBehaviour, IFloorMaterialSource
-    {
-        [Tooltip("§12's zone surface. Leaving this None is a validation failure, not a default.")]
-        [SerializeField]
-        private FloorMaterial _material = FloorMaterial.None;
-
-        /// <inheritdoc />
-        public FloorMaterial FloorMaterial
-        {
-            get { return _material; }
-            set { _material = value; }
-        }
     }
 }

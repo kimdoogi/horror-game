@@ -92,6 +92,17 @@ namespace HorrorGame.EditorTools
             { "_run", "Run" },
             { "_crouch", "Crouch" },
             { "_crouchWalk", "CrouchWalk" },
+
+            // §01's 총. Two of the three slot numbers Carry vacated are occupied again,
+            // and by the same rule that emptied them: a row belongs here when
+            // PlayerAnimatorDriver declares the field, because this array says what the
+            // SCENE FILE contains. _gunIdle and _gunWalk are declared, Runner.fbx carries
+            // the GunIdle/GunWalk takes, and PlayerAnimatorDriver.Resolve enters both
+            // poses from RunnerGun.Mount — so an empty slot here is a runner holding a
+            // gun with empty hands, which is a wiring failure the audit below will name.
+            { "_gunIdle", "GunIdle" },
+            { "_gunWalk", "GunWalk" },
+
             { "_death", "Death" },
         };
 
@@ -101,7 +112,8 @@ namespace HorrorGame.EditorTools
         /// </summary>
         private static readonly string[] RequiredDriverReferences =
         {
-            "_animator", "_idle", "_walk", "_run", "_crouch", "_crouchWalk", "_death",
+            "_animator", "_idle", "_walk", "_run", "_crouch", "_crouchWalk",
+            "_gunIdle", "_gunWalk", "_death",
         };
 
         private const string Rule = "════════════════════════════════════════════════════════════════════════";

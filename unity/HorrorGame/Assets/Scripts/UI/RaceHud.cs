@@ -1,5 +1,6 @@
 #nullable enable
 
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using HorrorGame.Core.Race;
@@ -115,7 +116,12 @@ namespace HorrorGame.UI
     /// moment the match is about to end for everybody. Summed over every element a
     /// racing frame can contain, weighted by alpha and by luminance, that comes to
     /// about 770 px² of a 1920×1080 frame: <b>0.037% of the display</b>, against 0.083%
-    /// for the same screen with the honest twenty-row board on it.
+    /// for the same screen with the honest twenty-row board on it. The 잡힘 tally added
+    /// since is not in that figure and is deliberately hard to add to it: it is at most
+    /// six two-glyph cells at <c>TextSizeSmall</c> and <c>InkFaint</c>, and it is drawn
+    /// only for runners who have actually been caught — on the frames where nobody has,
+    /// which is most of a clean race, the column costs nothing at all. See
+    /// <see cref="DrawCaught"/>.
     /// </para>
     /// <para>
     /// <b>The screen is only allowed to get bright once the player has stopped
@@ -176,6 +182,33 @@ namespace HorrorGame.UI
         private const float RowDepthColumn = 46f;
 
         /// <summary>
+        /// Width reserved for a standings row's 잡힘 column, between the name and the
+        /// storey. Narrow: the widest thing it ever holds is <c>×4</c>, and a wider column
+        /// would push the names further from the depths they belong to.
+        /// </summary>
+        private const float RowCaughtColumn = 34f;
+
+        /// <summary>
+        /// Whether the runner in a given §11 seat can be heard right now, or null when
+        /// nothing has installed an answer.
+        /// <para>
+        /// <b>An installed delegate rather than a call into the voice system, because the
+        /// dependency only runs one way.</b> <c>HorrorGame.Gameplay</c> already references
+        /// <c>HorrorGame.UI</c>, so a screen that named <c>VoiceRuntime</c> would close the
+        /// cycle and neither assembly would compile. This is the same inversion
+        /// <c>NetTransportRegistry</c>, <c>SteamBackendRegistry</c> and
+        /// <c>NetRunner.LocalViewSourceFactory</c> use, and for the same reason: the
+        /// constrained side points at the general one, never the reverse.
+        /// </para>
+        /// <para>
+        /// The key is §02's <c>Racer.Id</c> — a §11 lobby seat index, and the only identity
+        /// a voice packet and a standings row have in common. Left null the HUD draws
+        /// exactly as it does today, so this is safe to land on its own.
+        /// </para>
+        /// </summary>
+        public static Func<int, bool>? SeatIsSpeaking { get; set; }
+
+        /// <summary>
         /// Scratch for <see cref="SelectRows"/>. A field rather than a local so the
         /// 5 Hz redraw allocates nothing of its own — <c>RaceState.Standings()</c>
         /// already allocates once per refresh, and that is one more than this screen
@@ -195,6 +228,7 @@ namespace HorrorGame.UI
         private Text? _field;
 
         private Text[]? _rowWho;
+        private Text[]? _rowCaught;
         private Text[]? _rowDepth;
 
         private RectTransform? _verdictGroup;
@@ -203,6 +237,7 @@ namespace HorrorGame.UI
 
         private float _nextRefresh;
         private int _drawnStorey = -1;
+        private int _drawnTimesCaught = -1;
         private RacerStatus _drawnStatus = RacerStatus.Running;
 
         /// <inheritdoc />
@@ -239,6 +274,7 @@ namespace HorrorGame.UI
         {
             _race = race;
             _drawnStorey = -1;
+            _drawnTimesCaught = -1;
             _nextRefresh = 0f;
 
             if (race == null)
@@ -278,6 +314,7 @@ namespace HorrorGame.UI
 
             _drawnStorey = local.Storey;
             _drawnStatus = local.Status;
+            _drawnTimesCaught = local.TimesCaught;
         }
 
         /// <summary>
@@ -306,7 +343,17 @@ namespace HorrorGame.UI
             }
 
             var local = race.LocalRacerId >= 0 ? race.LocalRacer : default;
-            var moved = local.Storey != _drawnStorey || local.Status != _drawnStatus;
+
+            // TimesCaught is part of the test and not a tidy addition to it. Being caught
+            // on B1 — which is where a runner who has just been sent back to B1 spends the
+            // next stretch of the race, with a creature patrolling that floor's middle —
+            // changes NOTHING else on this struct: storey was 0 and stays 0, status was
+            // Running and stays Running. Without this term the one case where a player is
+            // most likely to think the game has stopped responding is also the one case
+            // this screen would take a fifth of a second to acknowledge.
+            var moved = local.Storey != _drawnStorey
+                        || local.Status != _drawnStatus
+                        || local.TimesCaught != _drawnTimesCaught;
 
             if (!moved && Time.unscaledTime < _nextRefresh)
             {
@@ -489,14 +536,17 @@ namespace HorrorGame.UI
 
             _clock.text = Elapsed(race.ElapsedSeconds);
 
-            // §11's field, thinning. The pair is the only thing on this HUD that says
-            // the creature is still working: §02 makes elimination final and unranked,
-            // so a runner watching this number fall is watching people stop existing
-            // rather than watching a kill feed, which is the difference §01 asks for
-            // between a hazard and an antagonist.
+            // §11's field, and it no longer thins. This line used to say "남음" and its
+            // reasoning was that a runner watching the number fall was watching the
+            // creature work. That stopped being true when being caught stopped being
+            // elimination: a caught runner is still Running and still in this count, so
+            // the only thing that moves it now is somebody finishing or a seat emptying.
+            // Saying "남음" over a number that is 20/20 for twelve minutes would be the
+            // HUD advertising a mechanic the game does not have — and the fact it used to
+            // report has moved to the 잡힘 column, where it belongs, per seat.
             var live = race.Standings.Count;
             _field.text = live.ToString(CultureInfo.InvariantCulture)
-                + " / " + race.RunnerCount.ToString(CultureInfo.InvariantCulture) + " 남음";
+                + " / " + race.RunnerCount.ToString(CultureInfo.InvariantCulture) + "명";
         }
 
         /// <summary>
@@ -524,6 +574,7 @@ namespace HorrorGame.UI
         private void BuildStandings(RectTransform root)
         {
             var who = new Text[MaxRows];
+            var caught = new Text[MaxRows];
             var depth = new Text[MaxRows];
 
             var top = -(UiStyle.ScreenMargin + (UiStyle.LineGap * 2.5f));
@@ -533,10 +584,10 @@ namespace HorrorGame.UI
                 var y = top - (i * UiStyle.LineGap);
                 var suffix = i.ToString(CultureInfo.InvariantCulture);
 
-                // Two right-aligned columns rather than one padded string: the face may
+                // Three right-aligned columns rather than one padded string: the face may
                 // be proportional (UiFactory falls back to the engine's), and a single
-                // line of "4  이름  B6" would put every storey in a different place down
-                // the list. The storey is the column the eye scans, so it is the one
+                // line of "4  이름  ×2  B6" would put every storey in a different place
+                // down the list. The storey is the column the eye scans, so it is the one
                 // pinned to the edge.
                 who[i] = UiFactory.CreateText(
                     "RowWho" + suffix, root, Font, string.Empty, UiStyle.TextSizeSmall, UiStyle.InkFaint, TextAnchor.UpperRight);
@@ -544,8 +595,17 @@ namespace HorrorGame.UI
                     (RectTransform)who[i].transform,
                     new Vector2(1f, 1f),
                     new Vector2(1f, 1f),
-                    new Vector2(-(UiStyle.ScreenMargin + RowDepthColumn), y),
+                    new Vector2(-(UiStyle.ScreenMargin + RowDepthColumn + RowCaughtColumn), y),
                     new Vector2(300f, UiStyle.TextSizeSmall + 6f));
+
+                caught[i] = UiFactory.CreateText(
+                    "RowCaught" + suffix, root, Font, string.Empty, UiStyle.TextSizeSmall, UiStyle.InkFaint, TextAnchor.UpperRight);
+                UiFactory.Place(
+                    (RectTransform)caught[i].transform,
+                    new Vector2(1f, 1f),
+                    new Vector2(1f, 1f),
+                    new Vector2(-(UiStyle.ScreenMargin + RowDepthColumn), y),
+                    new Vector2(RowCaughtColumn, UiStyle.TextSizeSmall + 6f));
 
                 depth[i] = UiFactory.CreateText(
                     "RowDepth" + suffix, root, Font, string.Empty, UiStyle.TextSizeSmall, UiStyle.InkFaint, TextAnchor.UpperRight);
@@ -558,12 +618,13 @@ namespace HorrorGame.UI
             }
 
             _rowWho = who;
+            _rowCaught = caught;
             _rowDepth = depth;
         }
 
         private void DrawStandings(IRaceReadout race)
         {
-            if (_rowWho == null || _rowDepth == null)
+            if (_rowWho == null || _rowCaught == null || _rowDepth == null)
             {
                 return;
             }
@@ -580,6 +641,7 @@ namespace HorrorGame.UI
 
                 if (!shown)
                 {
+                    _rowCaught[row].gameObject.SetActive(false);
                     continue;
                 }
 
@@ -596,10 +658,61 @@ namespace HorrorGame.UI
                     + "  " + race.NameOf(racer.Id);
                 _rowDepth[row].text = StoreyName(racer.Storey);
 
-                var color = RowColor(racer, mine);
+                // Asked per drawn row rather than per runner: this loop runs at most
+                // MaxRows times, five times a second, and the answer is a walk over the
+                // at-most-three people VoiceSlots lets anybody hear at once.
+                var speaking = !mine && SeatIsSpeaking != null && SeatIsSpeaking(racer.Id);
+
+                var color = RowColor(racer, mine, speaking);
                 _rowWho[row].color = color;
                 _rowDepth[row].color = color;
+
+                DrawCaught(_rowCaught[row], racer, color);
             }
+        }
+
+        /// <summary>
+        /// §06's tally for one seat, and the reason this column exists.
+        /// <para>
+        /// <b>A caught runner's row moves further than anything else on this board.</b>
+        /// <c>RaceState.ReportCaught</c> resets their storey to 0 and leaves them
+        /// <c>Running</c>, so a runner who was second on B6 is suddenly last on B1 —
+        /// deepest-first ordering does the rest. Without this column that is a scoreboard
+        /// that reorders itself for no visible reason, and a reordering nobody can account
+        /// for is what a bug looks like. With it the row says <em>why</em>: they went back
+        /// to the start line, and here is how many times.
+        /// </para>
+        /// <para>
+        /// <b>Zero is drawn as nothing at all.</b> §03's argument against a lit HUD is
+        /// spent per glyph, and six rows of "×0" is six lines of light saying that the
+        /// ordinary thing happened. The column is empty until it has something to report,
+        /// which also makes a single mark on an otherwise blank column readable from the
+        /// corner of the eye — which is the only way this is ever read.
+        /// </para>
+        /// <para>
+        /// <b>It is never the row's brightest element.</b> The tally takes the row's own
+        /// colour and drops it to <c>InkFaint</c> when that row is the player's, because
+        /// their own count is history and their own storey is the thing they are playing.
+        /// A runner deep enough to be drawn in <c>Trade</c> keeps it here too: somebody one
+        /// gate from ending the match, who has already been caught twice, is a different
+        /// fact from somebody one gate from ending the match who has not.
+        /// </para>
+        /// </summary>
+        private static void DrawCaught(Text cell, Racer racer, Color rowColor)
+        {
+            var times = racer.TimesCaught;
+            cell.gameObject.SetActive(times > 0);
+
+            if (times <= 0)
+            {
+                return;
+            }
+
+            // "×2", not "2회" — the row is three columns of glyphs read at a glance, and
+            // the multiplication sign is the one mark that cannot be mistaken for a
+            // storey, a place or a seat number.
+            cell.text = "×" + times.ToString(CultureInfo.InvariantCulture);
+            cell.color = rowColor == UiStyle.Ink ? UiStyle.InkFaint : rowColor;
         }
 
         /// <summary>
@@ -615,8 +728,10 @@ namespace HorrorGame.UI
         /// serve neither.
         /// </para>
         /// <para>
-        /// A viewer with no live position — a §09 ghost, or a spectator — gets the same
-        /// six lines filled from the top, since there is no neighbourhood to centre on.
+        /// A viewer with no live position gets the same six lines filled from the top,
+        /// since there is no neighbourhood to centre on. That used to mean §09's ghost and
+        /// now means a machine with no seat at all — a replay, a shot rig, an observer —
+        /// because being caught no longer takes a runner out of the live list.
         /// </para>
         /// </summary>
         /// <param name="liveCount">How many runners are still descending.</param>
@@ -693,14 +808,43 @@ namespace HorrorGame.UI
         /// their last stamina now.
         /// </para>
         /// </summary>
-        private static Color RowColor(Racer racer, bool mine)
+        /// <param name="racer">The runner this row is for.</param>
+        /// <param name="mine">Whether it is the player at this screen.</param>
+        /// <param name="speaking">Whether §13's 근접 음성 can currently hear them.</param>
+        private static Color RowColor(Racer racer, bool mine, bool speaking)
         {
             if (racer.Storey >= RaceState.Storeys - 1)
             {
                 return UiStyle.Trade;
             }
 
-            return mine ? UiStyle.Ink : UiStyle.InkFaint;
+            if (mine)
+            {
+                return UiStyle.Ink;
+            }
+
+            // ---------------------------------------------------------------
+            // Somebody nearby is talking, and this is the whole of how the screen
+            // says so.
+            //
+            // No badge, no glyph, no new colour: the row lifts from InkFaint
+            // (α 0.42) to Ink (α 0.72) — the alpha this HUD already reserves for
+            // the player's own two facts. §03's argument is that the inner rings
+            // are unlit and that a bright overlay hands back for free what the ring
+            // structure charges for, so the budget for "who is talking" is zero NEW
+            // lit pixels. Lifting a row that is already drawn spends none, is
+            // legible without being read, and clears itself the moment they stop:
+            // VoiceSlots holds a slot only VoiceSlots.HoldSeconds past the last
+            // frame, and VoicePlayback drops a speaker after
+            // VoiceSpeakerStream.IdleTimeoutSeconds.
+            //
+            // It is also the only honest thing this screen can say. Proximity voice
+            // is already positional and occluded — you can hear that somebody is
+            // near without knowing where — so naming a direction here would hand
+            // back exactly the information VoiceRules.OccludedFraction exists to
+            // take away.
+            // ---------------------------------------------------------------
+            return speaking ? UiStyle.Ink : UiStyle.InkFaint;
         }
 
         // ------------------------------------------------------------------
@@ -755,12 +899,20 @@ namespace HorrorGame.UI
             if (local.Status == RacerStatus.Eliminated)
             {
                 // §02: 탈락 is unranked, and saying so is the point. A place here — even a
-                // "you were 6th when you died" — would rank corpses by how deep they got,
-                // which the design refuses because it would reward dying in the right
-                // order. The second line is §09's promise instead: you are still here.
+                // "you were 6th when you died" — would rank runners by how deep they got
+                // when they stopped, which the design refuses.
+                //
+                // The creature does NOT land here any more: RaceState.ReportCaught leaves
+                // a caught runner Running on B1 with their TimesCaught up by one. The only
+                // ways to reach this screen are §07's timeout closing the race with nobody
+                // home, and a seat that emptied. So the second line no longer promises
+                // §09's spectator — that ghost was deleted with the elimination that gave
+                // it a reason to exist, and offering to let a player watch a race from a
+                // screen that has nothing left to draw would be the HUD lying about a
+                // feature.
                 _verdictHeadline.text = "탈락";
                 _verdictHeadline.color = UiStyle.Spent;
-                _verdictLine.text = race.Over ? "경주가 끝났다" : "남은 경주를 본다";
+                _verdictLine.text = race.Over ? "경주가 끝났다" : "이 경주에서 빠졌다";
                 _verdictLine.color = UiStyle.InkFaint;
                 return;
             }

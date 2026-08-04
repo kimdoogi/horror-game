@@ -422,6 +422,22 @@ namespace HorrorGame.Gameplay.Monster
 
         private static FloorMaterial ResolveFloor(Collider collider)
         {
+            // Above the physics material: the component MapSceneBuilder wrote from the
+            // zone's own §12 material, so the ears, the rules and the runner's feet read
+            // ONE fact. It must outrank MatchFloorName in particular — the kit has five
+            // floor-tile pieces for eight surfaces, so B6 병동 is laid with FloorTileWood
+            // and B7 수몰층 with FloorTileTile, and a name reader hears 나무 on the carpet.
+            //
+            // Read through HorrorGame.Audio.IFloorSurface rather than the player layer's
+            // IFloorMaterialSource: FloorSurfaceTag implements both off one field, and
+            // this assembly referencing HorrorGame.Audio (Core + Steam) is a far smaller
+            // arrow than referencing the whole player layer for one interface.
+            var authored = collider.GetComponentInParent<HorrorGame.Audio.IFloorSurface>();
+            if (authored != null && authored.Floor != FloorMaterial.None)
+            {
+                return authored.Floor;
+            }
+
             // Order of trust: the physics material is an explicit authoring decision,
             // the object name is the MapKit convention (FloorTile_Wood,
             // Stairwell_Metal), the renderer material is the last resort.

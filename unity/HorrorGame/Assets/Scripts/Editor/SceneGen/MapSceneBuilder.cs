@@ -1,7 +1,9 @@
 using System.Collections.Generic;
+using System.Globalization;
 using HorrorGame.Core;
 using HorrorGame.Core.Map;
 using HorrorGame.Core.Math;
+using HorrorGame.Core.Race;
 using Unity.AI.Navigation;
 using UnityEditor;
 using UnityEngine;
@@ -259,6 +261,19 @@ namespace HorrorGame.EditorTools.SceneGen
                 BuildFloorSlab(floorRoot, rect, shafts, surfaces);
                 BuildCeilingCaps(ceilingRoot, rect, map, shafts, surfaces);
 
+                // §12's answer, written where a downward raycast can read it. On the zone
+                // root rather than on each of its ~290 pieces because both readers walk the
+                // parent chain — see TagFloorSurface for why that is the fix and not a
+                // shortcut.
+                TagFloorSurface(zoneRoots[i], rect.Floor);
+
+                // The caps are 콘크리트 whatever the zone is, exactly as BuildCeilingCaps
+                // pours them, and stating it here is what stops the line above from being
+                // inherited by a soffit. A cap only exists where the storey ABOVE has no
+                // zone, so the one place it can be walked on is the one place it would
+                // otherwise report the floor material of a different storey.
+                TagFloorSurface(ceilingRoot, FloorMaterial.Concrete);
+
                 // Neither of these is anywhere you can walk, and both used to be baked
                 // as if they were. The slab is poured across the zone's whole rectangle
                 // — under the walls and under the solid ground between corridors — one
@@ -300,7 +315,28 @@ namespace HorrorGame.EditorTools.SceneGen
                 // would stack every floor of the building into one, which validates
                 // perfectly — §12's rules are all horizontal — and is unplayable.
                 AlignMinCorner(go, tile.Origin.Min.X, tile.Origin.Min.Y, tile.Origin.Min.Z);
-                Finish(go, SurfaceOf(tile.Piece, tile.ZoneId, map), surfaces);
+
+                var tileFloor = SurfaceOf(tile.Piece, tile.ZoneId, map);
+                Finish(go, tileFloor, surfaces);
+
+                // Only where the piece disagrees with the zone it stands in, because the
+                // zone root already answers for everything that agrees. That is §12's own
+                // exception and nothing else: 계단 gets its own row — 금속, 울림 — so a
+                // stairwell in 콘크리트 zone D has to ring, and 「지금 계단이야」 is a call a
+                // runner can make. GetComponentInParent returns the NEAREST match walking
+                // up, so a tag here beats the zone's without either having to know about
+                // the other. A piece outside every zone (ZoneId &lt; 0) has no ancestor to
+                // inherit from at all, so it is tagged whenever it knows its own surface.
+                //
+                // Measured on the shipped tower: this fires zero times — §01's descent
+                // replaced every 계단 with a 투하구, and B3's FloorTileMetal sits in a zone
+                // that is already 금속. It is not dead code, it is the branch that keeps
+                // the rule true for a map that does use stairs.
+                if (tileFloor != FloorMaterial.None
+                    && (tile.ZoneId < 0 || tileFloor != map.ZoneRects[tile.ZoneId].Floor))
+                {
+                    TagFloorSurface(go, tileFloor);
+                }
 
                 // The two pieces whose walking surface deliberately leaves its own
                 // storey's floor: a 계단 climbs a whole StoreyMetres and §04's 갤러리
@@ -352,6 +388,12 @@ namespace HorrorGame.EditorTools.SceneGen
             BuildMarkers(root, map);
             BuildAmbience();
 
+            // After the markers, and that ordering is the whole keep-out contract: every
+            // volume a gun may not enter is a marker this scene now contains, so the
+            // check below reads the same objects the dressing pass reads rather than
+            // re-deriving where anything is.
+            BuildGuns(root, map);
+
             // Last of the geometry, and after everything that owns a renderer, because
             // the shells check themselves against it: nothing the generator wrote may
             // lie outside the box its storey is sealed in.
@@ -360,6 +402,7 @@ namespace HorrorGame.EditorTools.SceneGen
             BakeNavMesh(root, map, sceneName);
             ForbidStairLinks(root);
             VerifyStairwellsAreWalkable(climbs);
+            ReportFloorSurfaces(root, map);
 
             return root;
         }
@@ -409,6 +452,560 @@ namespace HorrorGame.EditorTools.SceneGen
                 // by a client comparing markers. §03's clue chain is deleted, there is no
                 // objective to hide and no candidate to be the real one, and a 도달 지점 is a
                 // statement about geometry that every client is welcome to.
+            }
+        }
+
+        // ====================================================================
+        // 총 — the one-shot gun, laid down on a 막힌 길. §07 · §12.
+        // ====================================================================
+
+        /// <summary>
+        /// Child of <see cref="MarkerRootName"/> holding the guns.
+        /// <para>
+        /// ASCII, for the reason <see cref="BoundaryRootName"/> gives at length: Unity
+        /// escapes Korean in <c>m_Name</c> as <c>\uXXXX</c>, so a group called 총 cannot
+        /// be counted with a grep of the written <c>.unity</c> file and a zero would read
+        /// as "no guns were placed" when it means "the grep was wrong". The runtime shows
+        /// the player 총; the scene spells it in letters a shell can count.
+        /// </para>
+        /// </summary>
+        public const string GunRootName = "Guns";
+
+        /// <summary>
+        /// Prefix of one gun's scene object; the suffix is the storey, B-numbered, so
+        /// <c>Gun_B3</c> is the gun on B3. One per storey means the name is also the key.
+        /// </summary>
+        public const string GunNamePrefix = "Gun_B";
+
+        /// <summary>
+        /// The pickup mesh. Not a <see cref="MapKitPiece"/> — the kit is corridors, and
+        /// this is a §01 prop built by <c>tools/blender/gen_gun.py</c>, which authors the
+        /// pickup copy so the grip rests on the floor with the origin at the grip's web.
+        /// </summary>
+        private const string GunPickupAssetPath = "Assets/Models/Props/Gun_Pickup.fbx";
+
+        /// <summary>
+        /// The held copy of the same revolver, authored by the same script so the thing on
+        /// the floor and the thing in a fist are one object built twice.
+        /// </summary>
+        private const string GunHeldAssetPath = "Assets/Models/Props/Gun_Held.fbx";
+
+        /// <summary>
+        /// Name of the disabled <c>Gun_Held</c> left in the scene for the runtime to clone.
+        /// Mirrors <c>RunnerGun.HeldTemplateName</c>.
+        /// <para>
+        /// <b>Why a template and not <c>Resources.Load</c>.</b> An asset the runtime needs
+        /// has to reach it somehow, and there are three ways: a <c>Resources/</c> folder,
+        /// which ships whether anything uses it or not and is invisible to Unity's
+        /// dependency graph; a serialised field on a component, which this assembly cannot
+        /// reference; or an object in the scene, which is what every other generated
+        /// dependency in this file already is. The third costs one disabled renderer and
+        /// makes the gun a dependency of the MAP — so a map with no guns carries no gun
+        /// asset, and the reference is one Unity can see, strip and report on.
+        /// </para>
+        /// </summary>
+        public const string HeldTemplateName = "Gun_Held_Template";
+
+        /// <summary>
+        /// Puts one gun on a 막힌 길 of every storey in §07's middle band.
+        /// <para>
+        /// <b>How many, and from which storey — the §07 argument.</b> §07 is 시간 =
+        /// 위협도 and the descent is the clock a player can read: a runner on B6 is late
+        /// in the match by construction, because the 투하구 are one-way and eight storeys
+        /// take what they take. That gives the gun two bad places and one good one.
+        /// </para>
+        /// <para>
+        /// <b>Not the top of the building.</b> On B1 §07's creature is at 초저녁 — its
+        /// slowest speed and its narrowest patrol — so for the first minutes the only
+        /// pressure in the maze is other runners, and §11 has just put up to
+        /// <see cref="GameConstants.RaceRunnersMax"/> of them on one rim. A gun there
+        /// finds a target within <see cref="Gunplay.RangeMetres"/> without anybody
+        /// looking for one, which is the "shooting gallery" <c>Gunplay</c>'s own remarks
+        /// refuse. It is also the shot that costs the least: being sent back to your own
+        /// starting cell on B1 while you are still ON B1 is the smallest setback this
+        /// game can deliver, so an early gun is loud, free and pointless at once.
+        /// </para>
+        /// <para>
+        /// <b>Not the bottom either.</b> §02 makes 완주 the point — the race deliberately
+        /// does not end when the winner arrives — and a gun found within sight of B8's
+        /// middle is picked up metres from the finish and spent immediately on whoever is
+        /// ahead, costing the shooter nothing and the target the entire descent. Eight
+        /// storeys against one 12 m line of sight is the coin flip
+        /// <see cref="Gunplay.RangeMetres"/> was shortened to avoid, arriving by the back
+        /// door.
+        /// </para>
+        /// <para>
+        /// <b>So the middle half of the tower, one gun to a floor.</b> The band is
+        /// <see cref="GunBandInset"/> storeys in from each end, which on §01's eight-storey
+        /// tower is B3~B6. One per storey rather than a scatter, and that is a rule about
+        /// the FIELD rather than about the floor: a storey's gun is a thing the runner in
+        /// front of you can take and leave you without, which is the same shape §12's 문
+        /// already has, and it caps the guns at four against §11's twenty runners — so at
+        /// most a fifth of the field can ever be armed and the guns between them can move
+        /// four runners once each. §06's eight creatures stay the thing that actually
+        /// costs people their descent; the gun stays the exception.
+        /// </para>
+        /// </summary>
+        private static void BuildGuns(GameObject root, MapSketchResult map)
+        {
+            var markerRoot = root.transform.Find(MarkerRootName);
+            if (markerRoot == null)
+            {
+                Debug.LogError("[SceneGen] 총: no '" + MarkerRootName + "' group, so neither the "
+                    + "막힌 길 nor the keep-out volumes could be read. No gun was placed.");
+                return;
+            }
+
+            var storeys = StoreyCount(map);
+            var inset = GunBandInset(storeys);
+            var first = inset;
+            var last = storeys - 1 - inset;
+            if (first > last)
+            {
+                Debug.Log("[SceneGen] 총 0 placed: a " + storeys + "-storey map has no middle band "
+                    + "once " + inset + " storeys are left clear at each end. §07's argument needs a "
+                    + "tower; a test map is not one.");
+                return;
+            }
+
+            var keepOut = ReadKeepOutPoints(markerRoot);
+            var group = Child(markerRoot.gameObject, GunRootName);
+            var placed = 0;
+            var nearest = float.PositiveInfinity;
+            var nearestWhat = "nothing";
+
+            for (var storey = first; storey <= last; storey++)
+            {
+                var alcoves = DeadEnds(map, storey);
+                var kept = new List<MapMarkerPlacement>();
+                for (var i = 0; i < alcoves.Count; i++)
+                {
+                    if (GunClearance(alcoves[i].Position, keepOut, out _) >= 0f)
+                    {
+                        kept.Add(alcoves[i]);
+                    }
+                }
+
+                if (kept.Count == 0)
+                {
+                    Debug.LogError("[SceneGen] 총: B" + (storey + 1) + " has " + alcoves.Count
+                        + " 막힌 길 and not one of them clears every 착지, 투하구, 출발점 and 문 by "
+                        + F(MapKitCatalogue.CorridorClearWidth) + " m. No gun on this floor, so §07's "
+                        + "band is short one.");
+                    continue;
+                }
+
+                // Seeded, so the same seed rebuilds the same building — MapSketchResult.Seed
+                // says byte for byte, and a gun that moved between two generations of one
+                // seed would make every measurement of this map unreproducible.
+                var chosen = kept[(int)(Mix((uint)map.Seed, (uint)storey) % (uint)kept.Count)];
+                var gap = GunClearance(chosen.Position, keepOut, out var what);
+                if (gap < nearest)
+                {
+                    nearest = gap;
+                    nearestWhat = what;
+                }
+
+                var go = PlaceGun(group, chosen, storey);
+                if (go != null)
+                {
+                    placed++;
+
+                    // Per storey, because "4 guns" is a count and this is the artefact: the
+                    // alcove each one is actually in, out of how many were legal. A run that
+                    // reports 4 guns and 1 candidate on every floor has a keep-out rule that
+                    // is rejecting the building rather than protecting it.
+                    Debug.Log("[SceneGen] 총 " + go.name + " on 막힌 길 " + chosen.Name
+                        + " (" + kept.Count + " of " + alcoves.Count
+                        + " alcoves legal), clear of " + what + " by " + F(gap) + " m.");
+                }
+            }
+
+            if (placed > 0)
+            {
+                BuildHeldTemplate(group);
+            }
+
+            Debug.Log("[SceneGen] 총 " + placed + " placed on B" + (first + 1) + "~B" + (last + 1)
+                + ", one per storey (§07's middle band, " + inset + " storeys clear at each end of "
+                + storeys + "). Every one on a 막힌 길, at least "
+                + F(GameConstants.FlashlightRange) + " m from its floor's 투하구 and clear of every "
+                + "착지, 출발점 and 문 swing; tightest margin over the keep-out radius "
+                + F(nearest) + " m at " + nearestWhat + ".");
+        }
+
+        /// <summary>
+        /// How many storeys at each end of the tower carry no gun — a quarter of the
+        /// building, so the band is its middle half.
+        /// <para>
+        /// A quarter rather than a chosen number of floors because the argument is about
+        /// PROPORTION: the opening is however long it takes the field to stop being a
+        /// crowd, and the endgame is however long the finish is in reach. Both scale with
+        /// the building. On §01's <c>RaceState.Storeys</c> = 8 this is 2, so B1~B2 and
+        /// B7~B8 are clear and B3~B6 are armed.
+        /// </para>
+        /// </summary>
+        private static int GunBandInset(int storeys) => storeys / 4;
+
+        /// <summary>Storeys the sketch actually built, from the zone rectangles. §01's tower says 8.</summary>
+        private static int StoreyCount(MapSketchResult map)
+        {
+            var top = -1;
+            for (var i = 0; i < map.ZoneRects.Length; i++)
+            {
+                if (map.ZoneRects[i].Level > top)
+                {
+                    top = map.ZoneRects[i].Level;
+                }
+            }
+
+            return top + 1;
+        }
+
+        /// <summary>
+        /// The 막힌 길 of one storey: 도달 지점 whose node the graph calls a dead end.
+        /// <para>
+        /// <b>The marker kind is not enough and that is worth stating.</b>
+        /// <see cref="MapMarkerKind.ReachProbe"/> covers two populations that used to have
+        /// separate names — the 152 leaves that were §08's 전리품 and the 24 band probes
+        /// that were §03's 후보 지점 — 176 markers, 22 to a storey. Only the leaves are
+        /// 막힌 길; a band probe stands on a rail with two ways out of it, which is a
+        /// through-corridor and exactly where <c>GunPickup</c>'s own remarks say a gun
+        /// must not be. <see cref="MapGraph.IsDeadEnd"/> is the same topological question
+        /// <c>MapSceneGenerator</c> counts the 20~25% band with, so the two cannot
+        /// disagree about what an alcove is.
+        /// </para>
+        /// </summary>
+        private static List<MapMarkerPlacement> DeadEnds(MapSketchResult map, int storey)
+        {
+            var levelOfZone = new Dictionary<int, int>();
+            for (var i = 0; i < map.ZoneRects.Length; i++)
+            {
+                levelOfZone[map.ZoneRects[i].ZoneId] = map.ZoneRects[i].Level;
+            }
+
+            var found = new List<MapMarkerPlacement>();
+            for (var i = 0; i < map.Markers.Length; i++)
+            {
+                var marker = map.Markers[i];
+                if (marker.Kind != MapMarkerKind.ReachProbe || marker.NodeId < 0
+                    || !map.Graph.IsDeadEnd(marker.NodeId)
+                    || !levelOfZone.TryGetValue(marker.ZoneId, out var level) || level != storey)
+                {
+                    continue;
+                }
+
+                found.Add(marker);
+            }
+
+            // MapSketch sorts its markers by name and this preserves that order, so the
+            // seeded pick below indexes a list that does not depend on enumeration order.
+            return found;
+        }
+
+        /// <summary>
+        /// One keep-out volume, read off the scene the same way <c>Editor/Dressing/KeepOut</c>
+        /// reads it.
+        /// </summary>
+        private readonly struct KeepOutPoint
+        {
+            public KeepOutPoint(string kind, string name, Vector3 at, float clearanceMetres)
+            {
+                Kind = kind;
+                Name = name;
+                At = at;
+                ClearanceMetres = clearanceMetres;
+            }
+
+            /// <summary>착지 · 투하구 · 출발점 · 창조물 · 문, so a rejection names the design concept.</summary>
+            public string Kind { get; }
+
+            /// <summary>The marker it was read from, so a rejection names a scene object.</summary>
+            public string Name { get; }
+
+            /// <summary>Where it is.</summary>
+            public Vector3 At { get; }
+
+            /// <summary>Metres of plan clearance a gun must keep from it.</summary>
+            public float ClearanceMetres { get; }
+        }
+
+        /// <summary>
+        /// Every place a gun may not lie, read out of the markers this generator has just
+        /// written.
+        /// <para>
+        /// <b>Why this is not <c>KeepOut.Read</c> itself, and why it is not a second
+        /// rule.</b> <c>Editor/Dressing/KeepOut</c> is the authority and it cannot be
+        /// called from here: its assembly references this one, so the arrow only runs one
+        /// way — the same boundary that stops <see cref="BuildDoor"/> from adding
+        /// <c>DoorInteractable</c> and stops <c>Chute.DropHeightMetres</c> from being
+        /// referenced instead of re-derived. What is reused is the part that matters: the
+        /// SOURCE. Every volume below is read from the same five marker groups
+        /// <c>KeepOut.Read</c> reads — 착지, 투하구, 출발점, 창조물 and any marker with a
+        /// <c>Hinge</c> child — so a marker that moves moves both.
+        /// </para>
+        /// <para>
+        /// <b>The radius is deliberately not KeepOut's, it is an upper bound on all of
+        /// them.</b> Restating four radii would be the second rule this is trying not to
+        /// be, and the fourth one to drift would be silent. So every volume is kept clear
+        /// at <see cref="MapKitCatalogue.CorridorClearWidth"/> instead, which is the
+        /// LARGEST radius <c>KeepOut</c> uses — a 문's, "the leaf's own reach". Its
+        /// standing columns are a body plus the kit's wall inset (0.30 + 0.15 = 0.45 m)
+        /// and its 창조물 columns the baked agent radius plus the same (0.50 + 0.15 =
+        /// 0.65 m), both far under 2.20 m. Ignoring the columns' vertical extent makes it
+        /// stricter again. So a gun this method accepts is outside every one of
+        /// <c>KeepOut</c>'s volumes without this file knowing what any of them measure.
+        /// </para>
+        /// <para>
+        /// The 투하구 get a wider berth still — <see cref="GameConstants.FlashlightRange"/>
+        /// — and that is a design rule rather than a clearance. The drop is the one place
+        /// on a floor every runner is already walking to, so a gun visible from it is a gun
+        /// picked up for no detour at all, and <c>GunPickup</c>'s whole argument is that the
+        /// detour is the decision. Twelve metres is exactly how far a runner can see, so the
+        /// rule is "you cannot spot it from the thing you were going to anyway".
+        /// </para>
+        /// </summary>
+        private static List<KeepOutPoint> ReadKeepOutPoints(Transform markerRoot)
+        {
+            var points = new List<KeepOutPoint>();
+            var stand = MapKitCatalogue.CorridorClearWidth;
+
+            void Take(MapMarkerKind kind, string label, float clearance)
+            {
+                var group = markerRoot.Find(kind.ToString() + "s");
+                if (group == null)
+                {
+                    return;
+                }
+
+                foreach (Transform child in group)
+                {
+                    points.Add(new KeepOutPoint(label, child.name, child.position, clearance));
+                }
+            }
+
+            Take(MapMarkerKind.ChuteLanding, "착지", stand);
+            Take(MapMarkerKind.Chute, "투하구", GameConstants.FlashlightRange);
+            Take(MapMarkerKind.PlayerSpawn, "출발점", stand);
+            Take(MapMarkerKind.MonsterSpawn, "창조물", stand);
+
+            // §12's 문, found by its hinge rather than by its name — the same read
+            // KeepOut makes, and for the reason it gives there: a name prefix is the kind
+            // of seam that goes on matching after the thing it named has moved.
+            foreach (Transform child in markerRoot)
+            {
+                if (child.Find("Hinge") != null)
+                {
+                    points.Add(new KeepOutPoint("문", child.name, child.position, stand));
+                }
+            }
+
+            return points;
+        }
+
+        /// <summary>
+        /// Metres of margin a gun at <paramref name="at"/> has over the tightest keep-out
+        /// volume, negative when it is inside one.
+        /// <para>
+        /// Measured in the plan, without the vertical, for the same reason
+        /// <c>Gunplay.Judge</c> measures range that way: two storeys are 3.75 m apart and
+        /// a check that used the diagonal would call a gun on B4 clear of a 투하구 on B3
+        /// that is directly above it. Flat is the strict reading here.
+        /// </para>
+        /// </summary>
+        private static float GunClearance(Vec3 at, List<KeepOutPoint> keepOut, out string what)
+        {
+            what = "nothing";
+            var margin = float.PositiveInfinity;
+            var here = ToUnity(at);
+
+            for (var i = 0; i < keepOut.Count; i++)
+            {
+                var point = keepOut[i];
+                var dx = point.At.x - here.x;
+                var dz = point.At.z - here.z;
+                var gap = Mathf.Sqrt((dx * dx) + (dz * dz)) - point.ClearanceMetres;
+                if (gap < margin)
+                {
+                    margin = gap;
+                    what = point.Kind + " " + point.Name;
+                }
+            }
+
+            return margin;
+        }
+
+        /// <summary>
+        /// Instantiates one gun on the floor of an alcove.
+        /// <para>
+        /// <b>No <c>GunPickup</c> component here, and that is the same boundary
+        /// <see cref="BuildDoor"/> ends on.</b> This is an editor assembly and the
+        /// component is in Assembly-CSharp, so the reference only runs one way. The
+        /// generator lays down a mesh, a trigger the crosshair can find and a name; the
+        /// runtime adds the behaviour on top of it — see <c>GunPickup.AttachAll</c>, which
+        /// finds this group exactly the way <c>MatchDirector.AttachChutes</c> finds the
+        /// 투하구.
+        /// </para>
+        /// <para>
+        /// <b>Aligned by bounds, not by transform.</b> The FBX's origin is the grip's web
+        /// and the mesh hangs around it; dropping the transform on the floor plane would
+        /// bury half a revolver in the slab. <see cref="AlignMinCorner"/> is what every
+        /// tile already uses and it puts the lowest vertex on the floor, which is where
+        /// <c>gen_gun.py</c> authored the pickup to rest.
+        /// </para>
+        /// <para>
+        /// Out of the NavMesh bake, like every other prop: a 0.26 m object in a 2.2 m
+        /// corridor erodes <c>agentRadius</c> around itself and a gun that severed an
+        /// alcove would be a gun §06's creature could not follow anybody into.
+        /// </para>
+        /// </summary>
+        private static GameObject PlaceGun(GameObject group, MapMarkerPlacement alcove, int storey)
+        {
+            var asset = AssetDatabase.LoadAssetAtPath<GameObject>(GunPickupAssetPath);
+            if (asset == null)
+            {
+                Debug.LogError("[SceneGen] 총: " + GunPickupAssetPath + " is missing, so B" + (storey + 1)
+                    + " has no gun. It is built by tools/blender/gen_gun.py and is not a MapKit piece, "
+                    + "so a kit re-export does not produce it.");
+                return null;
+            }
+
+            var go = PrefabUtility.InstantiatePrefab(asset, group.transform) as GameObject;
+            if (go == null)
+            {
+                return null;
+            }
+
+            go.name = GunNamePrefix + (storey + 1);
+            go.transform.rotation = Quaternion.identity;
+            go.transform.position = ToUnity(alcove.Position);
+            AlignFloorBottom(go, ToUnity(alcove.Position));
+
+            // The importer's own collider comes OFF, and this is not tidiness.
+            // AssetImportPolicy grades everything under Assets/Models/Props with
+            // addCollider: true, so the FBX arrives carrying a solid convex MeshCollider —
+            // and every reach audit in this project sweeps a 0.30 m capsule with
+            // QueryTriggerInteraction.Ignore, which means a SOLID 0.13 m object standing in
+            // an alcove is a wall to PlayerTraversal and a 도달 지점 that was reachable
+            // stops being reachable. The measurement that would catch it is the one line
+            // this generator is judged on — 100.0% complete — and it would have moved for a
+            // reason no screenshot shows. A gun lying on the floor is not an obstacle in a
+            // footrace; it is something to look at and pick up, and the trigger below is the
+            // whole of what it needs to be.
+            var solid = go.GetComponentsInChildren<Collider>(includeInactive: true);
+            for (var i = 0; i < solid.Length; i++)
+            {
+                solid[i].enabled = false;
+            }
+
+            // The box the crosshair ray hits. A trigger, so a gun on the floor of a 2.5 m
+            // alcove can never shove a runner into a wall — the same rule §12's doors and
+            // every other interactable volume follow. Grown to a size a crosshair can hold
+            // rather than fitted to the mesh: a 0.26 m revolver lying flat presents a
+            // 26 × 40 mm target from standing eye height, which is not a thing anybody can
+            // aim at while running in the dark. That is the lesson Interactable's deleted
+            // FitTrigger was written for and the one part of it worth keeping.
+            //
+            // Sized in the collider's OWN space, which is not metres unless the import
+            // happens to have left a unit scale on the root — this kit and these props
+            // both ship through FBX_SCALE_NONE, which parks the unit conversion on the
+            // node as Lcl Scaling 100. A size handed over in world metres would then be a
+            // hundredth of the box that was asked for, and it would still LOOK right in the
+            // scene view because the gizmo is drawn in local space too.
+            var trigger = go.AddComponent<BoxCollider>();
+            var scale = go.transform.lossyScale;
+            var world = new Vector3(GunTargetMetres, GunTargetMetres, GunTargetMetres);
+            var centre = go.transform.position + new Vector3(0f, GunTargetMetres * 0.5f, 0f);
+            if (TryBounds(go, out var bounds))
+            {
+                var span = Mathf.Max(bounds.size.x, bounds.size.z, GunTargetMetres);
+                world = new Vector3(span, GunTargetMetres, span);
+                centre = new Vector3(bounds.center.x, bounds.min.y + (GunTargetMetres * 0.5f), bounds.center.z);
+            }
+
+            trigger.center = go.transform.InverseTransformPoint(centre);
+            trigger.size = new Vector3(
+                world.x / Mathf.Max(Mathf.Abs(scale.x), 0.0001f),
+                world.y / Mathf.Max(Mathf.Abs(scale.y), 0.0001f),
+                world.z / Mathf.Max(Mathf.Abs(scale.z), 0.0001f));
+            trigger.isTrigger = true;
+
+            KeepOutOfNavMeshBake(go);
+            return go;
+        }
+
+        /// <summary>
+        /// Side of the cube a gun answers the crosshair with, metres.
+        /// <para>
+        /// <see cref="MapKitCatalogue.CorridorClearWidth"/> ÷ 8 — an eighth of the corridor
+        /// a runner is looking down, which is the smallest thing this project is willing to
+        /// ask somebody to put a crosshair on while moving. It is derived from the corridor
+        /// rather than from the revolver on purpose: the target is a UI affordance and the
+        /// mesh is 0.26 m of art, and sizing the box to the art is how §08's 2.2 cm 반지
+        /// became unaimable.
+        /// </para>
+        /// </summary>
+        private static readonly float GunTargetMetres = MapKitCatalogue.CorridorClearWidth / 8f;
+
+        /// <summary>
+        /// Leaves one disabled <c>Gun_Held</c> in the scene for <c>RunnerGun</c> to clone
+        /// onto a runner's arm. See <see cref="HeldTemplateName"/> for why it is a scene
+        /// object rather than a <c>Resources</c> asset.
+        /// <para>
+        /// Stood exactly where the first gun stands: <c>FootprintOf</c> collects renderers
+        /// <em>including inactive ones</em>, and <see cref="BuildStoreyShells"/> refuses
+        /// anything the generator wrote that lies outside its storey's box — so a template
+        /// parked at the world origin would be reported as an escape by a check that is
+        /// right to report it. A sibling of the guns rather than a child of one, so that
+        /// <c>GunPickup.Take</c>'s renderer sweep can never reach it and taking the B3 gun
+        /// cannot make every other runner's held gun invisible.
+        /// </para>
+        /// <para>
+        /// Disabled, colliderless and out of the bake. It is a prop nobody may walk into,
+        /// stand on or see until a runner picks a gun up.
+        /// </para>
+        /// </summary>
+        private static void BuildHeldTemplate(GameObject group)
+        {
+            var asset = AssetDatabase.LoadAssetAtPath<GameObject>(GunHeldAssetPath);
+            if (asset == null)
+            {
+                Debug.LogError("[SceneGen] 총: " + GunHeldAssetPath + " is missing, so a runner who "
+                    + "picks a gun up will hold nothing and no other runner can see they are armed. "
+                    + "It is built by tools/blender/gen_gun.py alongside the pickup.");
+                return;
+            }
+
+            var where = group.transform.childCount > 0
+                ? group.transform.GetChild(0).position
+                : group.transform.position;
+
+            var go = PrefabUtility.InstantiatePrefab(asset, group.transform) as GameObject;
+            if (go == null)
+            {
+                return;
+            }
+
+            go.name = HeldTemplateName;
+            go.transform.position = where;
+            go.transform.rotation = Quaternion.identity;
+
+            var colliders = go.GetComponentsInChildren<Collider>(includeInactive: true);
+            for (var i = 0; i < colliders.Length; i++)
+            {
+                colliders[i].enabled = false;
+            }
+
+            KeepOutOfNavMeshBake(go);
+            go.SetActive(false);
+        }
+
+        /// <summary>Puts an object's lowest vertex on <paramref name="floor"/>'s plane, leaving X and Z alone.</summary>
+        private static void AlignFloorBottom(GameObject go, Vector3 floor)
+        {
+            if (TryBounds(go, out var bounds))
+            {
+                go.transform.position += new Vector3(0f, floor.y - bounds.min.y, 0f);
             }
         }
 
@@ -1165,7 +1762,8 @@ namespace HorrorGame.EditorTools.SceneGen
                     new Vector3(interior.size.x, height, w));
 
                 BuildBandPlates(built, shell, inside, floored[level],
-                    MapKitCatalogue.FloorY(level) - FloorSlabDepth);
+                    MapKitCatalogue.FloorY(level) - FloorSlabDepth,
+                    FloorOfStorey(map, level));
 
                 // The tower's two ends, and only its ends. Above B1 and below B8 there is
                 // no storey to be sealed by, so these two are the closed surface; every
@@ -1230,7 +1828,8 @@ namespace HorrorGame.EditorTools.SceneGen
         /// </para>
         /// </summary>
         private static void BuildBandPlates(
-            List<PlacedPlate> built, GameObject shell, Plan inside, Plan slab, float topY)
+            List<PlacedPlate> built, GameObject shell, Plan inside, Plan slab, float topY,
+            FloorMaterial floor)
         {
             if (!slab.Exists)
             {
@@ -1242,19 +1841,32 @@ namespace HorrorGame.EditorTools.SceneGen
             var centreY = topY - (t * 0.5f);
 
             Strip(built, shell, "Band_XMin", inside.MinX - w, slab.MinX,
-                inside.MinZ - w, inside.MaxZ + w, centreY, t);
+                inside.MinZ - w, inside.MaxZ + w, centreY, t, floor);
             Strip(built, shell, "Band_XMax", slab.MaxX, inside.MaxX + w,
-                inside.MinZ - w, inside.MaxZ + w, centreY, t);
+                inside.MinZ - w, inside.MaxZ + w, centreY, t, floor);
             Strip(built, shell, "Band_ZMin", slab.MinX, slab.MaxX,
-                inside.MinZ - w, slab.MinZ, centreY, t);
+                inside.MinZ - w, slab.MinZ, centreY, t, floor);
             Strip(built, shell, "Band_ZMax", slab.MinX, slab.MaxX,
-                slab.MaxZ, inside.MaxZ + w, centreY, t);
+                slab.MaxZ, inside.MaxZ + w, centreY, t, floor);
         }
 
-        /// <summary>One band strip, or nothing at all when the slab already reaches the wall.</summary>
+        /// <summary>
+        /// One band strip, or nothing at all when the slab already reaches the wall.
+        /// <para>
+        /// <paramref name="floor"/> is the storey's own §12 surface, and a strip is the only
+        /// part of the boundary that takes one. The paragraph above says why: a band is laid
+        /// flush with the slab so that stepping onto it is not a step, which makes it a floor
+        /// a runner stands on — and the two coplanar surfaces answering the same downward
+        /// raycast is a hazard this file already documents. An untagged band would answer
+        /// that raycast with 「None」 and take a runner's footsteps away at the rim.
+        /// The walls, the <c>Lid</c> above B1 and the <c>Floor</c> hung under B8's slab get
+        /// nothing: none of the three is a surface anybody can be standing on.
+        /// </para>
+        /// </summary>
         private static void Strip(
             List<PlacedPlate> built, GameObject shell, string name,
-            float minX, float maxX, float minZ, float maxZ, float centreY, float thickness)
+            float minX, float maxX, float minZ, float maxZ, float centreY, float thickness,
+            FloorMaterial floor)
         {
             // A strip that is only the wall's own overhang wide IS the wall, not a floor.
             // Every strip is built with a wall thickness of overhang on the side it meets
@@ -1266,9 +1878,11 @@ namespace HorrorGame.EditorTools.SceneGen
                 return;
             }
 
-            Plate(built, shell, name,
-                new Vector3((minX + maxX) * 0.5f, centreY, (minZ + maxZ) * 0.5f),
-                new Vector3(maxX - minX, thickness, maxZ - minZ));
+            TagFloorSurface(
+                Plate(built, shell, name,
+                    new Vector3((minX + maxX) * 0.5f, centreY, (minZ + maxZ) * 0.5f),
+                    new Vector3(maxX - minX, thickness, maxZ - minZ)),
+                floor);
         }
 
         /// <summary>
@@ -1400,7 +2014,12 @@ namespace HorrorGame.EditorTools.SceneGen
         /// storey. "Something is in the way" is not a bug report.
         /// </para>
         /// </summary>
-        private static void Plate(
+        /// <returns>
+        /// The plate, so a caller that has something more to say about it — the band
+        /// strips, which are the only walkable plates and therefore the only ones that
+        /// carry a §12 surface — does not have to look it back up by name.
+        /// </returns>
+        private static GameObject Plate(
             List<PlacedPlate> built, GameObject parent, string name, Vector3 centre, Vector3 size)
         {
             var go = Child(parent, name);
@@ -1421,6 +2040,8 @@ namespace HorrorGame.EditorTools.SceneGen
             // below measure the same numbers this method wrote and a later reparenting
             // cannot quietly move what they measure.
             built.Add(new PlacedPlate(parent.name + "/" + name, new Bounds(centre, size)));
+
+            return go;
         }
 
         /// <summary>A boundary box this run wrote, and the name a failure should print.</summary>
@@ -2711,6 +3332,144 @@ namespace HorrorGame.EditorTools.SceneGen
         // ====================================================================
 
         /// <summary>
+        /// States what a piece of this map sounds like underfoot, in a component rather
+        /// than in a string.
+        /// <para>
+        /// §12 is blunt that this is not decoration: 「구역별로 바닥 재질이 달라야
+        /// 청음사가 위치를 판별할 수 있다. 아트 결정이 아니라 <b>시스템 결정이다.</b>」 —
+        /// and on the descent tower it is a whole channel of information, because the
+        /// eight storeys have eight different surfaces and a footstep therefore says
+        /// which floor somebody is on. Nothing in a race is more useful to a runner
+        /// nineteen other people are chasing through the dark.
+        /// </para>
+        /// <para>
+        /// <b>Why a component when the scene already answers by name and by physics
+        /// material.</b> It did not answer, and where it did it lied.
+        /// <c>PlayerFootsteps</c> — the thing that actually plays
+        /// <c>Assets/Audio/Footsteps/step_*</c> — reads <c>IWorldProbe</c> or an
+        /// <c>IFloorMaterialSource</c> on the collider's parent chain; no code in the
+        /// project assigns that probe and no generated object carried that interface, so
+        /// it logged 「No footstep clip set for surface 'None'」 once and went quiet for
+        /// the rest of the match. And the name is not a safe fallback: the kit ships five
+        /// floor-tile pieces for eight surfaces, so B6 병동 is floored with
+        /// <c>FloorTileWood</c> and B7 수몰층 with <c>FloorTileTile</c>. A reader that
+        /// matches the piece name — which <c>NavMeshWorldProbe.ResolveFloor</c> does, one
+        /// rung below the physics material — hears 나무 on the carpet. The zone knows its
+        /// §12 material; this writes that fact down where a raycast can read it.
+        /// </para>
+        /// <para>
+        /// <b>On the group rather than on every tile, and that is the 4-hit buffer.</b>
+        /// Both readers walk the parent chain (<c>GetComponentInParent</c>), so one tag on
+        /// a zone root answers for all 145 of its tiles and all 144 slabs beneath them.
+        /// That matters because <c>FloorSurfaces.Sample</c> collects at most FOUR hits into
+        /// a fixed buffer and <c>Physics.RaycastNonAlloc</c> does not sort them: with the
+        /// dressing pass scattering solid cover on the same floor, a tag that lived on only
+        /// one of the two coplanar surfaces could be the hit that gets evicted. Tagging the
+        /// ancestor makes every hit under the zone answer the same way, so eviction cannot
+        /// change the answer. It is also 8 components instead of ~2 300, which keeps the
+        /// scene the audit reads the size it was.
+        /// </para>
+        /// <para>
+        /// Nothing here touches the NavMesh. This is a plain <c>MonoBehaviour</c> with no
+        /// <c>NavMeshModifier</c>, no renderer and no collider — <see cref="BakeNavMesh"/>
+        /// collects <c>NavMeshCollectGeometry.RenderMeshes</c>, so the bake cannot see it.
+        /// </para>
+        /// </summary>
+        /// <param name="go">The object whose subtree sounds like <paramref name="floor"/>.</param>
+        /// <param name="floor">The §12 surface. <see cref="FloorMaterial.None"/> tags nothing.</param>
+        private static void TagFloorSurface(GameObject go, FloorMaterial floor)
+        {
+            // None is "not authored", not "silent" — see IFloorMaterialSource. Writing it
+            // into a tag would turn a missing answer into a stated one, and a stated None
+            // on an ancestor would SHADOW a real material further up the chain.
+            if (go == null || floor == FloorMaterial.None)
+            {
+                return;
+            }
+
+            // GetComponent first because Child() reuses the object it finds when a scene is
+            // regenerated on top of itself, and FloorSurfaceTag is [DisallowMultipleComponent].
+            var tag = go.GetComponent<HorrorGame.Gameplay.Player.FloorSurfaceTag>();
+            if (tag == null)
+            {
+                tag = go.AddComponent<HorrorGame.Gameplay.Player.FloorSurfaceTag>();
+            }
+
+            tag.FloorMaterial = floor;
+        }
+
+        /// <summary>
+        /// Says, in the generation log, what every storey now sounds like underfoot.
+        /// <para>
+        /// Printed rather than asserted because the failure this exists to catch is not a
+        /// crash — it is silence, and silence produces no error of any kind. §12 gave the
+        /// eight storeys eight surfaces so that a footstep says which floor somebody is on,
+        /// and the shipped scene carried ZERO of these tags for the whole of the last round
+        /// while every gate stayed green. A generation that prints 「B6 병동 Carpet」 next to
+        /// the tile the storey is actually floored with is a line a reader can check; a
+        /// generation that prints nothing is how this got missed.
+        /// </para>
+        /// <para>
+        /// The tile is worth printing beside the material because the two disagree on
+        /// purpose: the kit has five floor-tile pieces for eight surfaces, so 병동 is laid
+        /// with <c>FloorTileWood</c> and 수몰층 with <c>FloorTileTile</c>. That is exactly the
+        /// mismatch a name-matching reader gets wrong, and seeing both numbers on one line
+        /// is what makes the tag's existence obviously necessary rather than defensive.
+        /// </para>
+        /// </summary>
+        private static void ReportFloorSurfaces(GameObject root, MapSketchResult map)
+        {
+            var tags = root.GetComponentsInChildren<HorrorGame.Gameplay.Player.FloorSurfaceTag>(true);
+
+            var text = new System.Text.StringBuilder();
+            text.Append("[SceneGen] §12 발소리 표면: ").Append(tags.Length)
+                .Append(" FloorSurfaceTag over ").Append(map.ZoneRects.Length).Append(" zone(s).");
+
+            for (var i = 0; i < map.ZoneRects.Length; i++)
+            {
+                var rect = map.ZoneRects[i];
+                text.Append("\n  B").Append(rect.Level + 1).Append(' ').Append(rect.Name)
+                    .Append(" → ").Append(rect.Floor)
+                    .Append("   (laid with ").Append(MapKitCatalogue.FloorTileFor(rect.Floor)).Append(')');
+            }
+
+            if (tags.Length == 0)
+            {
+                // The whole defect, stated as itself. Nothing else in the project notices.
+                Debug.LogError(text.ToString()
+                    + "\n  Every surface in the building is silent: FloorSurfaces.Sample and "
+                    + "PlayerFootsteps both answer 「None」 without one of these, and §12's "
+                    + "8층 8재질 channel is off.");
+                return;
+            }
+
+            Debug.Log(text.ToString());
+        }
+
+        /// <summary>
+        /// The §12 surface of a whole storey — what its boundary band is a continuation of.
+        /// <para>
+        /// §01's tower puts exactly one zone on each floor, so the first match IS the
+        /// answer. Written as a search rather than as an index because
+        /// <see cref="BuildStoreyShells"/> already explains why a storey is not a zone: give
+        /// one level two zones and an index would name whichever came first while the shell
+        /// spans both.
+        /// </para>
+        /// </summary>
+        private static FloorMaterial FloorOfStorey(MapSketchResult map, int level)
+        {
+            for (var i = 0; i < map.ZoneRects.Length; i++)
+            {
+                if (map.ZoneRects[i].Level == level)
+                {
+                    return map.ZoneRects[i].Floor;
+                }
+            }
+
+            return FloorMaterial.None;
+        }
+
+        /// <summary>
         /// Takes an object out of the bake entirely.
         /// <para>
         /// For the props §12 asks for, and for one reason: they are gameplay fixtures
@@ -2751,6 +3510,34 @@ namespace HorrorGame.EditorTools.SceneGen
         }
 
         private static Vector3 ToUnity(Vec3 v) => new Vector3(v.X, v.Y, v.Z);
+
+        /// <summary>Metres, two places, in a culture that always writes a dot. Generation logs are read by grep.</summary>
+        private static string F(float metres) => metres.ToString("0.00", CultureInfo.InvariantCulture);
+
+        /// <summary>
+        /// A deterministic 32-bit mix of two numbers — the seeded choice of which alcove
+        /// on a storey gets the gun.
+        /// <para>
+        /// Written out rather than taken from <see cref="System.Random"/> because
+        /// <c>MapSketchResult.Seed</c> promises that one seed rebuilds one building byte
+        /// for byte, and <c>System.Random</c>'s sequence is a runtime implementation
+        /// detail that Microsoft has already changed once between .NET Framework and
+        /// .NET Core. A map whose guns moved when Unity's scripting runtime was upgraded
+        /// would invalidate every measurement anybody had taken of it, silently. This is
+        /// the finaliser of MurmurHash3 over the two inputs; nothing about it is
+        /// cryptographic and nothing needs to be.
+        /// </para>
+        /// </summary>
+        private static uint Mix(uint seed, uint index)
+        {
+            var h = seed ^ (index * 0x9E3779B9u);
+            h ^= h >> 16;
+            h *= 0x85EBCA6Bu;
+            h ^= h >> 13;
+            h *= 0xC2B2AE35u;
+            h ^= h >> 16;
+            return h;
+        }
 
         /// <summary>
         /// What a piece sounds like underfoot.

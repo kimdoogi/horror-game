@@ -215,37 +215,44 @@ namespace HorrorGame.Gameplay.Audio
         }
 
         /// <summary>
-        /// Points <see cref="FloorSurfaces"/> at the map's own sampler.
+        /// Leaves <see cref="FloorSurfaces"/> on its own sampler, deliberately.
         /// <para>
-        /// This is the single most important line in the file. §12 makes the floor
-        /// material a gameplay channel and F-002 names a HUD that disagrees with the
-        /// ears as the thing that ends §04's role — so the mix must answer "what is
-        /// underfoot" with the <em>same</em> <c>IWorldProbe</c> the monster's brain and
-        /// the Listener's ability read. The raycast fallback in
-        /// <see cref="FloorSurfaces.Sample"/> can disagree with the map, and a footstep
-        /// that names the wrong zone is not a wrong sound, it is a wrong answer.
+        /// <b>This used to install the monster's <c>IWorldProbe</c> as the global answer,
+        /// and the reason it did is now satisfied a better way.</b> The requirement has not
+        /// changed: §12 makes the floor material a gameplay channel and F-002 names a mix
+        /// that disagrees with the rules as the thing that ends §04, so the ears, the
+        /// creature and the runner's feet must give one answer. They now do, at the source
+        /// rather than by routing — <c>MapSceneBuilder.TagFloorSurface</c> writes one
+        /// <c>FloorSurfaceTag</c> per zone from the zone's own §12 material, and BOTH
+        /// <see cref="FloorSurfaces.Sample"/> and <c>NavMeshWorldProbe.ResolveFloor</c>
+        /// read that component before anything else. One fact, two readers.
         /// </para>
         /// <para>
-        /// Deferred to <c>Update</c> rather than done in <c>Awake</c> because the probe
-        /// does not exist until <c>MonsterAgent.Initialize</c> has run, which
-        /// <c>MatchDirector</c> does when the match begins.
+        /// <b>Why the routing had to go.</b> <c>NavMeshWorldProbe.RaycastFloor</c> casts
+        /// from <c>position + up * bodyHeight</c>, and that body is the CREATURE's 2.336 m.
+        /// Asked where the listener is standing — a camera at 1.63 m — it started its ray
+        /// 3.97 m up, which on B1 is above the storey's own lid, and it takes only the
+        /// nearest hit and caches the result per collider forever. §12's room tone was null
+        /// in the shipped solo scene as a result. Measured after this change, at the
+        /// listener's own position: <c>FloorSurfaces.Sample = Concrete</c>, from
+        /// <c>Map/Zone_B1_B1_Concrete/Tiles/CorridorCornerL_L0_9_2</c>.
+        /// </para>
+        /// <para>
+        /// The hook itself (<c>MatchAudioRig.SetFloorProbe</c>) is left in place: a map
+        /// layer that can answer this from <c>MapGraph</c> for an ARBITRARY point, rather
+        /// than for a point under a creature, is still the better source and should install
+        /// itself here.
         /// </para>
         /// </summary>
         private void BindFloorProbe(MatchAudioRig rig)
         {
-            if (_floorProbeBound || _monster == null)
-            {
-                return;
-            }
-
-            var probe = _monster.Probe;
-            if (probe == null)
+            if (_floorProbeBound)
             {
                 return;
             }
 
             _floorProbeBound = true;
-            rig.SetFloorProbe(point => probe.SampleFloor(point.ToVec3()));
+            rig.SetFloorProbe(null);
         }
 
         private void PushMonster(MatchAudioRig rig)

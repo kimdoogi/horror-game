@@ -320,8 +320,20 @@ namespace HorrorGame.Gameplay.Player
                     continue;
                 }
 
+                // The lookup FIRST, and nearest/found only when it answered. Assigning on
+                // every nearer hit meant one untagged crate lying closer than the floor
+                // overwrote a good answer with null and then blocked the floor behind it
+                // (its own distance had already become `nearest`), so a dressed room went
+                // silent underfoot. FloorSurfaces.Sample gets this right by skipping nulls;
+                // this is the same rule.
+                var source = hit.collider.GetComponentInParent<IFloorMaterialSource>();
+                if (source == null)
+                {
+                    continue;
+                }
+
                 nearest = hit.distance;
-                found = hit.collider.GetComponentInParent<IFloorMaterialSource>();
+                found = source;
             }
 
             return found != null ? found.FloorMaterial : FloorMaterial.None;

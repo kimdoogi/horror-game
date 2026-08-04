@@ -122,8 +122,7 @@ MonoBehaviour:
   - cue: 30
     clips:
       clips:
-      - {fileID: 8300000, guid: 812091a62859e466bb29ea2f3c1abe5a, type: 3}
-      - {fileID: 8300000, guid: 7029d3844cb71433f84dd022f3b768f6, type: 3}
+      - {fileID: 8300000, guid: 41a04835eaf904c398b5ff7a6db5c52d, type: 3}
       gain: 1
   - cue: 42
     clips:

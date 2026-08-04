@@ -253,6 +253,13 @@ namespace HorrorGame.Net
         {
             NetSession.SetPhase(NetSessionPhase.Lobby);
 
+            // §02's frame numbering and its counters, from zero. §13 makes this machine the
+            // only one allowed to decide 순위 · 도착 판정, and NetRace is the wire that
+            // carries the verdict out — see NetRace and RaceStandingsMessage. Nothing is
+            // registered server-side: everything a client says about the race arrives as a
+            // [Command] on the runner it owns, which is what makes the seat unforgeable.
+            NetRace.InstallServer();
+
             // §01's starting line. Installed rather than scanned once, because on the
             // shipped path this runs in the bootstrap scene — the building the runners
             // start in does not exist yet, and the markers arrive with it. See
@@ -285,6 +292,11 @@ namespace HorrorGame.Net
             // position list is static and would otherwise carry a dead layout's markers
             // into the next match.
             NetRaceStartPoints.Uninstall();
+
+            // §02's seam belongs to the race that just ended. Left installed, the next
+            // session's first broadcast would be built from a RaceDirector on a scene that
+            // has been unloaded — the standings of a match nobody is in.
+            NetRace.Authority = null;
 
             NetSession.RaiseEnded(NetSessionEndReason.LocalRequest);
         }
@@ -389,6 +401,14 @@ namespace HorrorGame.Net
                 Debug.Log("[Net] §01 " + conn.connectionId + "번 주자의 몸을 만들었다. "
                           + "지금 서버가 들고 있는 스폰 오브젝트는 " + NetworkServer.spawned.Count + "개다.");
 
+                // §02's standings, to this one connection. A frame is broadcast on every
+                // accepted change and once a second besides (NetRace.HeartbeatSeconds), so a
+                // runner who joins between two of those would draw an empty board until the
+                // next heartbeat. One extra message on join costs ~190 bytes and removes
+                // that window; RaceStandingsMessage.Frame is what keeps it from racing the
+                // broadcast.
+                NetRace.SendTo(conn);
+
                 // AddPlayerForConnection already called SetClientReady and spawned the
                 // observers, so calling base here would send every observed object a
                 // second time.
@@ -459,12 +479,20 @@ namespace HorrorGame.Net
         {
             base.OnStartClient();
             NetRunner.RegisterClientSpawnHandler();
+
+            // Registered here for the same reason and with the same scar: NetworkClient
+            // .Shutdown clears the message handler table, so a §02 handler installed once at
+            // load would be gone by the second session and the standings would simply stop
+            // arriving — silently, because an unregistered message id is dropped rather than
+            // logged.
+            NetRace.InstallClient();
         }
 
         /// <inheritdoc />
         public override void OnStopClient()
         {
             NetRunner.UnregisterClientSpawnHandler();
+            NetRace.UninstallClient();
             base.OnStopClient();
         }
 

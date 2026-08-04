@@ -409,7 +409,17 @@ namespace HorrorGame.EditorTools
         /// </summary>
         public static readonly HashSet<string> LoopingAnimationClips = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "Idle", "Walk", "Run", "Crouch", "CrouchWalk", "Carry", "CarryHeavy", "CarryIdle",
+            "Idle", "Walk", "Run", "Crouch", "CrouchWalk",
+
+            // §01's 총, both cycles. GunWalk loops because it IS Walk's legs —
+            // gen_runner.py asserts the two cadences are identical (CADENCE_WON 16f /
+            // 2.013 m/s each) — and GunIdle loops for the same reason Idle does: it is a
+            // stance, not an event. Carry/CarryHeavy/CarryIdle left with §03's 목표물 and
+            // §08's 대형 전리품; the takes are no longer in Runner.fbx, and a name listed
+            // here that no take carries is silently harmless while a take NOT listed is
+            // reported by AssetImportModelPostprocessor as an unclassified clip.
+            "GunIdle", "GunWalk",
+
             "Patrol", "Alert", "Chase", "Search", "Standstill",
 
             // §09's 유령. Drift is the hover it is always in: there is no such thing as a

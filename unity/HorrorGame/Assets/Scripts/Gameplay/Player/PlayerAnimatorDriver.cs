@@ -35,6 +35,18 @@ namespace HorrorGame.Gameplay.Player
     {
         private const int StateCount = 9;
 
+        /// <summary>
+        /// The crossfade length every animation graph in the project uses, seconds.
+        /// <para>
+        /// A constant rather than only a serialised default because
+        /// <c>NetRunnerAnimation</c> builds a SECOND graph for every remote runner and has
+        /// to blend at the same rate — a hand-copied 0.15 there is a number that drifts
+        /// the first time this one is tuned, and the symptom (remote bodies snapping while
+        /// yours eases) is the kind nobody files.
+        /// </para>
+        /// </summary>
+        public const float DefaultBlendSeconds = 0.15f;
+
         [Header("Wiring")]
         [SerializeField]
         private Animator? _animator;
@@ -67,6 +79,16 @@ namespace HorrorGame.Gameplay.Player
         // holding something, and nothing is held. SoloPlaytest.AnimationSlots and
         // RequiredDriverReferences dropped their matching rows in the same commit, which
         // is the condition the previous round wrote down for removing them.
+        //
+        // Two of those three slot numbers are back, holding the one thing a runner in
+        // 하강 DOES hold: §01's 총. Same argument in reverse — a pose nothing can enter
+        // was removed, and these are entered by RunnerGun.Mount.
+
+        [SerializeField]
+        private AnimationClip? _gunIdle;
+
+        [SerializeField]
+        private AnimationClip? _gunWalk;
 
         [SerializeField]
         private AnimationClip? _death;
@@ -74,7 +96,7 @@ namespace HorrorGame.Gameplay.Player
         [Header("Blending")]
         [Tooltip("Crossfade length in seconds. Presentation only — no rule reads it.")]
         [SerializeField]
-        private float _blendSeconds = 0.15f;
+        private float _blendSeconds = DefaultBlendSeconds;
 
         [Tooltip("Normalised times in the gait cycle where a foot lands. Two per cycle for a biped.")]
         [SerializeField]
@@ -130,13 +152,26 @@ namespace HorrorGame.Gameplay.Player
         public bool Dead { get; set; }
 
         /// <summary>
+        /// Holding §01's 총. Set by <c>RunnerGun.Mount</c>, cleared when the shot is spent.
+        /// <para>
+        /// A property here rather than this class asking <c>RunnerGun</c>, so the arrow
+        /// keeps pointing HorrorGame.Gameplay → HorrorGame.Gameplay.Player and
+        /// <see cref="Resolve"/> stays pure. It is the same shape as
+        /// <see cref="Crouching"/> for the same reason: whoever knows the fact writes it.
+        /// </para>
+        /// </summary>
+        public bool Armed { get; set; }
+
+        /// <summary>
         /// Chooses the pose from what a player is doing. Pure, so the mapping can be
         /// asserted in a test without a graph, an animator or a clip existing.
         /// </summary>
         /// <param name="groundSpeed">Measured horizontal speed, m/s.</param>
         /// <param name="crouching">Crouched.</param>
         /// <param name="dead">§09.</param>
-        public static PlayerAnimationState Resolve(float groundSpeed, bool crouching, bool dead)
+        /// <param name="armed">Holding §01's 총 — see <see cref="Armed"/>.</param>
+        public static PlayerAnimationState Resolve(float groundSpeed, bool crouching, bool dead,
+                                                   bool armed = false)
         {
             if (dead)
             {
@@ -159,13 +194,25 @@ namespace HorrorGame.Gameplay.Player
 
             if (!moving)
             {
-                return PlayerAnimationState.Idle;
+                return armed ? PlayerAnimationState.GunIdle : PlayerAnimationState.Idle;
             }
 
             // Halfway between §06's 걷기 2.0 and 달리기 4.5. Derived from the two speeds
             // rather than picked, so retuning either moves the crossover with it.
             var runThreshold = (GameConstants.WalkSpeed + GameConstants.RunSpeed) * 0.5f;
-            return groundSpeed >= runThreshold ? PlayerAnimationState.Run : PlayerAnimationState.Walk;
+            if (groundSpeed >= runThreshold)
+            {
+                // Armed and RUNNING is deliberately still Run, not GunWalk. There is no
+                // GunRun take — gen_runner.py exports GunIdle and GunWalk only — and
+                // ApplyPlaybackSpeed would drive GunWalk at 5.6/2.0 = 2.8x to keep the
+                // feet honest, which is a visible spin. Run with the mounted Gun_Held prop
+                // reads as a runner carrying something; GunWalk at 2.8x reads as a bug.
+                // The gun stays visible either way — RunnerGun.Mount parents it to the
+                // arm, so the prop does not depend on which clip is playing.
+                return PlayerAnimationState.Run;
+            }
+
+            return armed ? PlayerAnimationState.GunWalk : PlayerAnimationState.Walk;
         }
 
         /// <summary>
@@ -186,6 +233,8 @@ namespace HorrorGame.Gameplay.Player
                 case PlayerAnimationState.Run: return _run;
                 case PlayerAnimationState.Crouch: return _crouch;
                 case PlayerAnimationState.CrouchWalk: return _crouchWalk;
+                case PlayerAnimationState.GunIdle: return _gunIdle;
+                case PlayerAnimationState.GunWalk: return _gunWalk;
                 case PlayerAnimationState.Death: return _death;
                 default: return null;
             }
@@ -202,6 +251,10 @@ namespace HorrorGame.Gameplay.Player
             {
                 case PlayerAnimationState.Walk:
                 case PlayerAnimationState.CrouchWalk:
+                // gen_runner.py asserts GunWalk's cycle is byte-for-byte Walk's cadence
+                // (CADENCE_WON both 16f / 2.013 m/s), so it is scaled by the same
+                // reference. If the two ever diverge the export fails there, not here.
+                case PlayerAnimationState.GunWalk:
                     return GameConstants.WalkSpeed;
                 case PlayerAnimationState.Run:
                     return GameConstants.RunSpeed;
@@ -265,7 +318,7 @@ namespace HorrorGame.Gameplay.Player
             // still assembled with nine clips, PlayerFeelHarness can still drive the poses
             // for a look, and the day something IS carried — a shut door being dragged, a
             // body — the animation exists rather than having to be re-authored.
-            var next = Resolve(speed, CrouchingNow, Dead);
+            var next = Resolve(speed, CrouchingNow, Dead, Armed);
             _state = next;
 
             AdvanceWeights(next, Time.deltaTime);
@@ -295,6 +348,8 @@ namespace HorrorGame.Gameplay.Player
             Attach(PlayerAnimationState.Run, _run);
             Attach(PlayerAnimationState.Crouch, _crouch);
             Attach(PlayerAnimationState.CrouchWalk, _crouchWalk);
+            Attach(PlayerAnimationState.GunIdle, _gunIdle);
+            Attach(PlayerAnimationState.GunWalk, _gunWalk);
             Attach(PlayerAnimationState.Death, _death);
 
             var output = AnimationPlayableOutput.Create(_graph, "PlayerAnimation", _animator);

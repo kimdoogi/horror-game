@@ -172,8 +172,11 @@ FAMILIES: tuple[Family, ...] = (
     Family("Items", "Items", (r"^(flashlight|battery|door|barricade|noisetrap|safe|breaker|zone|flare|"
                               r"chalk|rope|loot|shop|detector|muffler)_.*\.wav$",), "gen_items.py"),
     Family("Monster", "Monster", (r"^monster_.*\.wav$",), "gen_monster_audio.py"),
+    # `caught_` is the only stem in this folder that gen_ui.py does not write —
+    # it comes from gen_caught.py, which is a separate script because §06's catch
+    # is measured against descend_basement rather than against the other UI cues.
     Family("UI", "UI", (r"^(clue|objective|death|ghost|threat|heartbeat|escape|match|shop|voice|"
-                        r"descend|surface)_.*\.wav$",), "gen_ui.py"),
+                        r"descend|surface|caught)_.*\.wav$",), "gen_ui.py"),
 )
 
 #: POSITIONAL — a thing at a place in the world. Unity must spatialise it, so it
@@ -205,9 +208,13 @@ NON_DIEGETIC = (
     r"^amb_stairwell_metal_loop\.wav$",
     r"^amb_surface_vehicle_loop\.wav$",
     r"^amb_tension_t\d_",
+    # caught_sent_home: §06 sending a runner back to B1. Non-diegetic for the same
+    # reason AudioCues.BusOf puts it on the Interface bus — being caught is a fact
+    # about your race, not a sound in the room, and it must not be occluded by the
+    # wall the creature happens to be standing behind.
     r"^(clue_read|objective_|death_transition|threat_|heartbeat_|escape_success|"
     r"match_failure_wipe|shop_open|shop_close|shop_denied|voice_|descend_basement|"
-    r"surface_reached|ghost_rattle_ready)",
+    r"surface_reached|ghost_rattle_ready|caught_sent_home)",
     r"^(loot_sell_credit|shop_purchase_confirm)\.wav$",
 )
 

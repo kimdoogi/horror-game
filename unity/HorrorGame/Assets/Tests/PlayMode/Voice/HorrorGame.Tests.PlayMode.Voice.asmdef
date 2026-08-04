@@ -1,0 +1,30 @@
+{
+    "name": "HorrorGame.Tests.PlayMode.Voice",
+    "rootNamespace": "HorrorGame.Tests.PlayMode.Voice",
+    "references": [
+        "UnityEngine.TestRunner",
+        "UnityEditor.TestRunner",
+        "HorrorGame.Core",
+        "HorrorGame.Gameplay",
+        "HorrorGame.Net",
+        "HorrorGame.Steam",
+        "HorrorGame.Audio",
+        "Mirror",
+        "Mirror.Components",
+        "Mirror.Transports",
+        "kcp2k"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

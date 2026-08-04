@@ -37,6 +37,7 @@ namespace HorrorGame.Gameplay.Race
     public static class RaceParty
     {
         private static int[] _seatConnectionIds = Array.Empty<int>();
+        private static string[] _seatNames = Array.Empty<string>();
 
         /// <summary>True once a lobby has started a descent, and until the session ends.</summary>
         public static bool Settled { get; private set; }
@@ -103,12 +104,58 @@ namespace HorrorGame.Gameplay.Race
             Settled = true;
         }
 
+        /// <summary>
+        /// Who is in each seat, by name, as the lobby's roster had them.
+        /// <para>
+        /// A separate call from <see cref="Settle"/> because it is a different KIND of
+        /// fact: the seat and the connection ids are what §13 needs to run a race, and a
+        /// name is only ever drawn. <see cref="Settle"/> must succeed on a machine that
+        /// has no roster; this may quietly do nothing there.
+        /// </para>
+        /// <para>
+        /// <b>Why it exists at all.</b> <c>RaceDirector.NameOf</c> falls back to "N번"
+        /// whenever <c>_names</c> is empty, and on a client nothing ever filled it —
+        /// <c>SetName</c> has no caller outside the host's own path. So every client drew
+        /// a standings board reading 1번 … 20번 while the host drew people's names, and
+        /// §02's results screen is names.
+        /// </para>
+        /// </summary>
+        /// <param name="names">One per seat, in the same order as <see cref="SeatConnectionIds"/>.</param>
+        public static void SettleNames(IReadOnlyList<string>? names)
+        {
+            if (names == null)
+            {
+                _seatNames = Array.Empty<string>();
+                return;
+            }
+
+            var kept = names.Count < GameConstants.RaceRunnersMax
+                ? names.Count
+                : GameConstants.RaceRunnersMax;
+
+            _seatNames = new string[kept];
+            for (var i = 0; i < kept; i++)
+            {
+                _seatNames[i] = names[i] ?? string.Empty;
+            }
+        }
+
+        /// <summary>
+        /// The lobby's names, or empty. Read by <c>RaceDirector.Begin</c>; empty means
+        /// "nobody told us", which <c>NameOf</c> already answers with 번.
+        /// </summary>
+        public static string[] SeatNames
+        {
+            get { return _seatNames; }
+        }
+
         /// <summary>Forgets the race. Called when the session ends, and by tests.</summary>
         public static void Clear()
         {
             Settled = false;
             LocalSeat = -1;
             _seatConnectionIds = Array.Empty<int>();
+            _seatNames = Array.Empty<string>();
         }
     }
 }

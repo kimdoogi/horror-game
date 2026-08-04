@@ -459,6 +459,13 @@ namespace HorrorGame.Gameplay.Match
             AttachDoors();
             AttachChutes();
 
+            // §01's 총. GunPickup carries a [RuntimeInitializeOnLoadMethod] that covers a
+            // scene loaded by any other path, so this call is the EAGER one: it runs
+            // before the first frame of the match rather than on the next sceneLoaded, and
+            // it prints a count. A zero here on a regenerated map is the whole defect
+            // visible in one line — the alternative is four guns silently not existing.
+            Debug.Log("[Match] §01 총 " + GunPickup.AttachAll() + " 자루 배선됨.", this);
+
             _noise = _playerRoot != null ? _playerRoot.GetComponentInChildren<NoiseMeter>(true) : null;
             _lastFootstepPosition = _playerRoot != null ? _playerRoot.position : Vector3.zero;
             _strideTravelled = 0f;
@@ -1034,10 +1041,10 @@ namespace HorrorGame.Gameplay.Match
                 // finish check and the standings all hang off _raceDirector, and its rule
                 // refuses ReportFinish to a runner it never saw descend. The race was
                 // unwinnable and nothing failed.
-                if (_raceDirector != null)
-                {
-                    _raceDirector.ReportDescent(LocalSeat, _chutes[i].StoreyBelow, _clock.ElapsedSeconds);
-                }
+                // §13: on the host this IS the rule; on a client it is a request the host
+                // answers with the next standings broadcast. The branch lives in
+                // RaceDirector so this class keeps its property of naming no Mirror type.
+                _raceDirector?.ReportLocalDescent(_chutes[i].StoreyBelow, _clock.ElapsedSeconds);
 
                 // The one thing that can tell §01's own falling from falling out of the
                 // world. For the next 0.78 s the runner has no floor within reach and every
@@ -1189,7 +1196,15 @@ namespace HorrorGame.Gameplay.Match
             _raceDirector.Retired -= OnRunnerRetired;
             _raceDirector.Closed -= RaceClosed;
 
-            var seats = GameConstants.RaceRunnersMin;
+            // §11's field is the party that turned up. RaceParty.SeatConnectionIds is what
+            // RaceLobby settled immediately before this scene loaded; RaceRunnersMin is
+            // the solo-playtest fallback and must not be the networked number. Sized from
+            // the constant instead, the loop below withdrew every seat but the constant
+            // LocalSeat = 0 — on a host that is nineteen people eliminated before anybody
+            // took a step, and §02 closing with "우승 좌석 0" over a field that was never
+            // allowed to run.
+            var party = RaceParty.Settled ? RaceParty.SeatConnectionIds.Length : 0;
+            var seats = Mathf.Clamp(party, GameConstants.RaceRunnersMin, GameConstants.RaceRunnersMax);
             if (!_raceDirector.Begin(seats))
             {
                 Debug.LogError("[Match] §02 refused to start with " + seats + " runners.", this);
@@ -1203,16 +1218,16 @@ namespace HorrorGame.Gameplay.Match
 
             if (_playerRoot != null)
             {
-                _raceDirector.Track(LocalSeat, _playerRoot);
+                // The rig belongs to THIS machine's seat, which Begin has already taken
+                // from RaceParty. LocalSeat's constant 0 is true only offline.
+                _raceDirector.Track(_raceDirector.LocalRacerId, _playerRoot);
             }
 
-            for (var seat = 0; seat < seats; seat++)
-            {
-                if (seat != LocalSeat)
-                {
-                    _raceDirector.Withdraw(seat, 0f);
-                }
-            }
+            // Only the seats nobody is sitting in, and the director decides which those
+            // are — knowing that means asking §13 which connections exist, and this class
+            // names no Mirror type. Withdrawing every seat but this machine's own was
+            // right for a solo playtest and eliminated the whole field in a real session.
+            _raceDirector.WithdrawEmptySeats(0f);
 
             var hud = FindFirstObjectByType<RaceHud>();
             if (hud == null)
@@ -1223,6 +1238,24 @@ namespace HorrorGame.Gameplay.Match
             }
 
             hud.Bind(_raceDirector);
+
+            // §06's catch was silent: SendBackToTheStartLine writes the transform and
+            // ReportCaught zeroes the storey, both in one fixed step, and the only output
+            // was a Debug.Log. CaughtFeedback watches the same reading the HUD draws and
+            // spends half a second of black plus one sting naming it. Built here beside
+            // the HUD for the same reason the HUD is built here: SoloPlaytest.BuildScene
+            // throws the scene away and rebuilds it, so anything hand-placed is gone.
+            var caught = FindFirstObjectByType<CaughtFeedback>();
+            if (caught == null)
+            {
+                var caughtHost = new GameObject("CaughtFeedback");
+                caughtHost.transform.SetParent(transform, false);
+                caught = caughtHost.AddComponent<CaughtFeedback>();
+            }
+
+            // Null for the cue player on purpose — CaughtFeedback resolves
+            // MatchAudioRig.Cues itself, and this class holds no audio rig.
+            caught.Bind(_raceDirector, null);
         }
 
         private void OnRunnerFinished(int seat, int place)
@@ -1297,6 +1330,11 @@ namespace HorrorGame.Gameplay.Match
             }
 
             EndMatch();
+
+            // The curtain watches the standings; the standings stop moving here. Left
+            // bound it would keep polling a director whose race is over, and on the next
+            // BeginMatch AttachRace would bind a second time.
+            FindFirstObjectByType<CaughtFeedback>()?.Unbind();
 
             if (_input != null)
             {
@@ -1594,7 +1632,13 @@ namespace HorrorGame.Gameplay.Match
 
                 SendBackToTheStartLine();
                 LocalTimesCaught++;
-                _raceDirector?.ReportCaught(LocalSeat, _clock.ElapsedSeconds);
+                // §13: the catch is REPORTED, not decided, on a machine that is not the
+                // host. ReportLocalCaught is the branch — host goes straight to the rule,
+                // client sends the [Command] that carries no seat, so a client can only
+                // ever report ITSELF caught. ReportCaught(LocalSeat, …) was the host-only
+                // path and LocalSeat is the constant 0, which on a client meant a runner
+                // reporting seat 0 — somebody else — as caught.
+                _raceDirector?.ReportLocalCaught(_clock.ElapsedSeconds);
 
                 // The seat has resolved, so this tick is over. The other creatures' lunges
                 // resume on the next one, by which time the runner is on B1's rim and none

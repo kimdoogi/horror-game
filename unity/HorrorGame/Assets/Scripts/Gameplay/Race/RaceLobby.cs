@@ -612,6 +612,18 @@ namespace HorrorGame.Gameplay.Race
             // RaceParty for why it is two fields and not the whole roster.
             RaceParty.Settle(_localIndex, NetworkServer.active ? _connectionOrder : null);
 
+            // §02's results screen reads names, and on a client they exist ONLY here — the
+            // roster replicated them into _runners, and nothing after the scene load ever
+            // sees this object again. Without this line every client draws "1번 … 20번"
+            // for a field of people whose names it was told half a second ago.
+            var seatNames = new string[_runners.Count];
+            for (var i = 0; i < _runners.Count; i++)
+            {
+                seatNames[i] = _runners[i].Name;
+            }
+
+            RaceParty.SettleNames(seatNames);
+
             var kept = KeepBodiesAcrossTheLoad();
 
             Debug.Log(

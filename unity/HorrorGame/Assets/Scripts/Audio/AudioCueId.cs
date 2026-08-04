@@ -90,8 +90,13 @@ namespace HorrorGame.Audio
         /// <summary>match_failure_wipe — §02's 시간 초과, where §07 runs out and nobody arrives.</summary>
         MatchFailure = 29,
 
-        /// <summary>death_transition_* — §02 탈락, and the moment §09 takes the seat.</summary>
-        DeathTransition = 30,
+        /// <summary>
+        /// caught_sent_home — §06 has caught a runner and sent them back to B1's rim. Was
+        /// <c>DeathTransition</c>; the id does not move because MatchAudioLibrary.asset
+        /// serialises it as a raw int. Being caught stopped being 탈락 when
+        /// <c>RaceState.ReportCaught</c> began leaving the runner Running.
+        /// </summary>
+        Caught = 30,
 
         // ----------------------------------------------------------------
         // §13 — proximity voice.
@@ -141,7 +146,7 @@ namespace HorrorGame.Audio
             AudioCueId.Descend,
             AudioCueId.EscapeSuccess,
             AudioCueId.MatchFailure,
-            AudioCueId.DeathTransition,
+            AudioCueId.Caught,
             AudioCueId.VoiceActivity,
             AudioCueId.VoiceOutOfRange,
         };
@@ -164,7 +169,7 @@ namespace HorrorGame.Audio
                 case AudioCueId.Descend:
                 case AudioCueId.EscapeSuccess:
                 case AudioCueId.MatchFailure:
-                case AudioCueId.DeathTransition:
+                case AudioCueId.Caught:
                 case AudioCueId.VoiceActivity:
                 case AudioCueId.VoiceOutOfRange:
                     return AudioBus.Interface;

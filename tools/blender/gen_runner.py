@@ -58,10 +58,10 @@ argument, and it is why the geometry table below is metres rather than field str
 A SKELETON, AND WHAT RIGGING A STATIC PROP COST THE STATIC PROP
 ---------------------------------------------------------------
 This figure shipped for a while as geometry with **bones=0 actions=0**, so
-``PlayerAnimatorDriver`` — which has nine states, reads the motor's ground speed and fires
-a Footfall event off the phase of whatever clip is playing — was handed a mesh with no
-clips at all, and twenty racers glided through the maze like furniture. It now carries a
-13-bone rig and the nine clips that driver names. The count is argued where the bones are
+``PlayerAnimatorDriver`` — which reads the motor's ground speed and fires a Footfall
+event off the phase of whatever clip is playing — was handed a mesh with no clips at all,
+and twenty racers glided through the maze like furniture. It now carries a 13-bone rig and
+the eight clips ``CLIP_NAMES`` lists. The count is argued where the bones are
 defined; the short version is that a bone earns its place only if the surface it moves has
 somewhere to bend, and after a voxel remesh and eight smoothing passes this body has no
 crease anywhere on it.
@@ -114,7 +114,7 @@ scaled to exactly 1.75 and dropped until its lowest vertex is z = 0. Both are me
 back off the mesh afterwards and both are printed.
 
 **3. bones > 0, actions > 0**, in the ``ASSET_REPORT`` line and asserted against the exact
-counts, plus the nine takes read back out of the FBX's own bytes and the rig read back out
+counts, plus every take read back out of the FBX's own bytes and the rig read back out
 of the written file. The pair *bones=0 actions=0* is the whole defect this revision
 removes, and a generator that can regress to it silently is the generator that shipped it.
 
@@ -158,6 +158,7 @@ from __future__ import annotations
 
 import math
 import os
+import re
 import sys
 import traceback
 from dataclasses import dataclass
@@ -172,6 +173,13 @@ import blendkit  # noqa: E402
 import gen_player_model as gpm  # noqa: E402
 from blendkit import BoneSpec, MaterialSpec  # noqa: E402
 from gen_player_model import Aim  # noqa: E402
+
+REPO_ROOT = blendkit.REPO_ROOT
+"""Where the checkout is, so this file can find the two things outside ``tools/`` it has
+to reach: ``artifacts/runner/`` for the ``--glb`` preview and ``RunnerGun.cs`` for the
+mount cross-check. It was already used by the preview path and never bound, so ``--glb``
+raised a ``NameError`` — a switch nobody runs in a production export, which is exactly how
+it survived."""
 
 # ── The contract with Unity ─────────────────────────────────────────────────
 
@@ -1332,6 +1340,103 @@ def retarget_gait_solver(sk: Skeleton) -> None:
         print(f"RIG_CONTACT {name:5s} offset=({off[0]:+.3f},{off[1]:+.3f},{off[2]:+.3f})")
 
 
+GUN_MOUNT_CONSTANT = "GunMountArmsPerSpine"
+"""The name of the constant in ``RunnerGun.cs`` that this file measures for it."""
+
+GUN_MOUNT_SOURCE = os.path.join(
+    "unity", "HorrorGame", "Assets", "Scripts", "Gameplay", "Race", "RunnerGun.cs")
+
+
+def report_arm(sk: Skeleton) -> tuple[float, float]:
+    """Measures the arm and the spine, and proves the held pose is a silhouette.
+
+    **Why an arm needs measuring at all.** ``RunnerGun`` hangs ``Gun_Held`` off the end of
+    ``RightUpperArm``, and the end of a leaf bone is a thing Unity does not know. Blender
+    writes a bone as a node with a head transform; the LENGTH lives in the bone's tail,
+    the tail of a leaf is not a node, and ``export_fbx`` sets ``add_leaf_bones=False``
+    precisely so that no tip node is invented. So the hand's position is authored here and
+    nowhere else, and if it is not carried across it is guessed.
+
+    **It is carried across as a RATIO, not as metres, and that is deliberate.** This kit
+    exports through ``FBX_SCALE_NONE``, which parks the unit conversion on the root node
+    rather than in the data, so what "1.0" means inside a bone's local transform after
+    Unity's importer has had it is a function of import settings this file cannot see.
+    A ratio has no units to be wrong about: the runtime reads the SPINE's length off the
+    rig it actually loaded — ``Head`` is connected to ``Spine``, so ``Head.localPosition``
+    IS the spine's length in whatever units arrived — and multiplies. Both bones come out
+    of the same skeleton, so the ratio is fixed by the figure and by nothing else.
+
+    The pose check is the other half. ``GUN_ARM_SWING`` claims the hand leaves the body's
+    outline; this measures whether it does, on the body that was actually built rather
+    than on the table that was meant to build it.
+    """
+    arm_len = math.hypot(sk.hand_x - sk.shoulder_x, sk.hand_z - sk.shoulder_z)
+    spine_len = sk.neck_z - sk.spine_z
+    ratio = arm_len / spine_len
+    print(f"RIG_ARM shoulder=({sk.shoulder_x:.4f},{sk.shoulder_z:.4f})m "
+          f"hand=({sk.hand_x:.4f},{sk.hand_z:.4f})m arm={arm_len:.4f}m "
+          f"spine={spine_len:.4f}m {GUN_MOUNT_CONSTANT}={ratio:.4f}")
+    return arm_len, ratio
+
+
+def verify_gun_pose(sk: Skeleton, arm_len: float, half_depth: float) -> None:
+    """The held arm has to be outside the torso, or the pose says nothing at 12 m."""
+    reach = arm_len * math.sin(math.radians(GUN_ARM_SWING))
+    floor_deg = math.degrees(math.asin(min(1.0, half_depth / arm_len)))
+    print(f"GUN_POSE swing={GUN_ARM_SWING:.1f}deg hand_ahead={reach:.4f}m "
+          f"half_depth={half_depth:.4f}m clear={reach / half_depth:.2f}x "
+          f"(floor {floor_deg:.1f}deg, margin needed {GUN_SILHOUETTE_MARGIN:.1f}x)")
+    if reach < half_depth * GUN_SILHOUETTE_MARGIN:
+        blendkit.fail(
+            f"the held arm reaches {reach * 1000.0:.0f} mm in front of the shoulder against a "
+            f"torso that is {half_depth * 1000.0:.0f} mm deep either side of it, which is "
+            f"{reach / half_depth:.2f}x and under the {GUN_SILHOUETTE_MARGIN:.1f}x a "
+            "silhouette needs. GunIdle and GunWalk then differ from Idle and Walk by "
+            "nothing an outline carries, and the whole point of the pose — another runner "
+            "reading 「저 사람 총 들었다」 at Gunplay.RangeMetres — is not in the asset. "
+            f"Either GUN_ARM_SWING is too small (the floor for this arm is "
+            f"{floor_deg:.1f} deg) or the arm got shorter.")
+
+
+def verify_gun_mount(ratio: float) -> None:
+    """Asserts ``RunnerGun.cs`` is still holding the number this file measured.
+
+    A constant copied into another language is a seam, and this repository's standing
+    lesson is that seams go on matching after the thing they named has moved. So the
+    generator reads the consumer. If the rig's proportions change — a longer arm, a
+    different shoulder — this fails in Blender, where the change was made, instead of
+    putting the gun through a runner's elbow in a build nobody re-renders.
+
+    Missing file or missing constant is a warning rather than a failure: this script is
+    run from a checkout of the tools alone often enough that requiring the Unity project
+    to be present would make it unrunnable for the wrong reason.
+    """
+    path = os.path.join(REPO_ROOT, GUN_MOUNT_SOURCE)
+    if not os.path.exists(path):
+        print(f"GUN_MOUNT_CHECK skipped: {GUN_MOUNT_SOURCE} is not in this checkout")
+        return
+
+    with open(path, encoding="utf-8") as handle:
+        source = handle.read()
+
+    found = re.search(GUN_MOUNT_CONSTANT + r"\s*=\s*([0-9]*\.?[0-9]+)f?\s*;", source)
+    if found is None:
+        print(f"GUN_MOUNT_CHECK skipped: no '{GUN_MOUNT_CONSTANT} = ...' in {GUN_MOUNT_SOURCE}")
+        return
+
+    theirs = float(found.group(1))
+    print(f"GUN_MOUNT_CHECK {GUN_MOUNT_CONSTANT} measured={ratio:.4f} "
+          f"RunnerGun.cs={theirs:.4f} delta={abs(theirs - ratio):.5f}")
+    if abs(theirs - ratio) > 0.005:
+        blendkit.fail(
+            f"{GUN_MOUNT_SOURCE} holds {GUN_MOUNT_CONSTANT} = {theirs:.4f} and this rig "
+            f"measures {ratio:.4f}. That constant is where Gun_Held is hung off the arm, "
+            "and Unity cannot recover it from the file — a leaf bone's tail is not a node "
+            "and add_leaf_bones is off. Left stale, the gun floats off the hand or sits "
+            "inside the shoulder, in the third-person view only, which is the view nobody "
+            "is looking at while they play.")
+
+
 SKIN_NOTE = """Bone heat, unedited — and two attempts to edit it are why that line is here.
 
 The crotch and the feet both tore in early renders, and both looked like weighting bugs:
@@ -1483,27 +1588,66 @@ kept quiet: ±9° of swing, not the player's ±26°."""
 WALK_ARM_SWING = 9.0
 RUN_ARM_SWING = 15.0
 
+GUN_ARM_SWING = 55.0
+"""Degrees the RIGHT arm is held forward while a runner carries §01's 총, and the whole of
+what makes GunIdle and GunWalk different from Idle and Walk.
 
-# ── The nine clips ──────────────────────────────────────────────────────────
+**It is a silhouette threshold, and it is measured off this body.** The pose has one job:
+another runner reads *"that one is armed"* at ``Gunplay.RangeMetres`` — 12 m, which is
+``GameConstants.FlashlightRange`` and therefore the furthest anything can be read in this
+building at all. At that distance nobody sees a revolver; a revolver is 0.26 m and the
+figure is 1.75 m, so the gun is a seventh of the outline's height and lost in it. What
+carries is the ARM, and an arm only carries when it leaves the body's outline.
+
+So the floor is geometric rather than aesthetic. This figure measures 0.394 m front to
+back (``RUNNER_SHAPE depth``), so the torso outline reaches 0.197 m either side of the
+shoulder, and an arm of ``RIG_ARM`` puts its hand ``arm × sin(swing)`` in front of the
+shoulder. Below ``asin(0.197 / arm)`` — about 30° on this rig — the hand is still inside
+the body and there is nothing to see. 55° puts it 1.7× the half-depth clear, which is
+unambiguous from the side and still reads from the front as an arm that is not hanging.
+``verify_gun_pose`` re-measures that margin off the built skeleton rather than trusting
+this paragraph.
+
+It is deliberately not the 78° the deleted two-handed carry used. That was both arms level
+in front, which is a person holding a crate; one arm at 55° is a person holding something
+small at low ready, and the two must not read alike now that only one of them exists."""
+
+GUN_SILHOUETTE_MARGIN = 1.5
+"""How many half-depths clear of the torso the gun hand must sit before the pose counts as
+readable. 1.5 rather than 1.0 because 1.0 is the outline itself — a hand exactly on the
+silhouette's edge is a hand nobody can see is there — and because the arm swings ±9° under
+GunWalk's torso twist, which at this arm length is another 0.06 m of wobble either way."""
+
+
+# ── The eight clips ─────────────────────────────────────────────────────────
 #
-# Nine, not three. `PlayerAnimatorDriver.Resolve` has nine states and `AssignClips` in
-# PlayerFeelHarnessMenu looks all nine up by name; a state whose clip is null has weight
-# nowhere to go, so `AdvanceWeights` bails with `total <= 0` and the body FREEZES in
-# whatever pose the last clip left it in. Shipping Walk/Run/Idle alone would make the
-# figure animate until the first crouch and then stop dead — a defect that looks exactly
-# like the one being fixed.
+# A clip exists here because some state can reach it. `PlayerAnimatorDriver.Resolve` is
+# the list of states, and a state whose clip is null has weight nowhere to go, so
+# `AdvanceWeights` bails with `total <= 0` and the body FREEZES in whatever pose the last
+# clip left it in — which is why this file ships every reachable pose rather than
+# Walk/Run/Idle and a shrug.
+#
+# **Three went and two arrived, and the pair is one export.** Carry, CarryIdle and
+# CarryHeavy were §03's 목표물 and §08's 대형 전리품. Both are deleted — nobody carries
+# anything, `PlayerAnimationState` has already dropped the three enum members (its own comment
+# leaves the numbering sparse so Death stays 8), and a clip no state can reach is an
+# asset tombstone: it survives every gate here, ships in the FBX, and is what
+# `PivotAssetTombstoneTests` is red about. GunIdle and GunWalk replace them, for §01's
+# one-shot 총: another runner has to be able to read *"that one is armed"* off an outline
+# at `Gunplay.RangeMetres`, which is the distance a flashlight reaches and therefore the
+# furthest anybody can read anything in this building.
 #
 # EVERY LOCOMOTION CLIP IS AUTHORED AT ITS OWN ReferenceSpeed, which is the whole
 # contract with the driver. It plays a clip at `groundSpeed / ReferenceSpeed(state)`, so
 # the foot travels at `authored × groundSpeed / reference`, and it only stops skating when
-# `authored == reference`. The driver's table says Walk, CrouchWalk and Carry all
-# reference GameConstants.WalkSpeed (2.0) and Run references RunSpeed (4.5) — so those are
-# the four numbers, regardless of what §05 says the player MOVES at while crouched or
-# carrying. CarryHeavy references 0, i.e. plays at 1×, so it is authored at the speed §08
-# actually produces (2.0 × WeightMulOverloaded) and asserted only for ordering.
+# `authored == reference`. The driver's table references GameConstants.WalkSpeed (2.0) for
+# the walking states and RunSpeed (4.5) for Run — so those are the two numbers, regardless
+# of what §05 says the player MOVES at while crouched. GunWalk is a walk: the legs are
+# Walk's legs and only the right arm differs, so it is authored at the same 2.0 and
+# `verify_clip_speeds` asserts the two measure the same.
 
 CLIP_NAMES = ("Idle", "Walk", "Run", "Crouch", "CrouchWalk",
-              "Carry", "CarryIdle", "CarryHeavy", "Death")
+              "GunIdle", "GunWalk", "Death")
 
 DEATH_END_FRAME = 48
 """The last key of the longest clip, and therefore the scene's frame range. Death is the
@@ -1512,9 +1656,6 @@ solved from a cadence."""
 
 WALK_SPEED = 2.0
 RUN_SPEED = 4.5
-HEAVY_SPEED = 2.0 * 0.55
-"""§08 ``WeightMulOverloaded`` = 0.55. Reported, not asserted — §08 fixes no m/s for a
-two-person carry, only that greed costs speed."""
 
 
 SOLE_PASSES = 2
@@ -1541,10 +1682,17 @@ The player's leg is the reference this figure's cadence is scaled from, so it ha
 read while it is still the player's."""
 
 PLAYER_CYCLE_FRAMES = {
-    "Walk": 20, "Run": 16, "Carry": 20, "CarryHeavy": 24, "CrouchWalk": 24,
+    "Walk": 20, "Run": 16, "CrouchWalk": 24, "GunWalk": 20,
 }
-"""``gen_player_model``'s own authored cycle lengths (spacing × keys, from its five
-locomotion builders). Not a target — the reference a shorter leg is scaled from."""
+"""``gen_player_model``'s own authored cycle lengths (spacing × keys, from its locomotion
+builders). Not a target — the reference a shorter leg is scaled from.
+
+``GunWalk`` takes Walk's 20 because it IS Walk below the hips: the gait table, the key
+order and the stance solve are the walk's, and the only difference is which way the right
+arm points. Giving it a reference of its own would let the two clips drift apart in
+cadence for no reason anybody could name, and a runner who visibly changes step the
+instant they pick something up is telling every other runner more than the silhouette is
+supposed to."""
 
 
 def pendulum_frames(name: str, leg_metres: float) -> float:
@@ -1686,14 +1834,21 @@ def _still_clip(rig, name: str, keys, cycle_frames: int, note: str, spec_fn, tab
 
 
 def _cycle_body(lean: float, twist_amp: float, sway_amp: float, swing_amp: float,
-                head_lean: float = 2.0, arm_out: float = ARM_OUT, period: int = 4):
+                head_lean: float = 2.0, arm_out: float = ARM_OUT, period: int = 4,
+                right_held: float | None = None):
     """The shared above-the-hips half of a locomotion cycle.
 
-    One function for all five walking clips because the difference between them lives in
-    the gait table and the posture, not in how a torso counter-rotates against its own
-    legs. ``period`` is the number of keys in one full STRIDE, so the torso and arms run
-    at half the leg frequency in the run's eight-key order and at the leg frequency in the
+    One function for every walking clip because the difference between them lives in the
+    gait table and the posture, not in how a torso counter-rotates against its own legs.
+    ``period`` is the number of keys in one full STRIDE, so the torso and arms run at half
+    the leg frequency in the run's eight-key order and at the leg frequency in the
     four-key walk orders — a torso that counter-rotated twice per stride is a shimmy.
+
+    ``right_held`` pins the right arm at a fixed forward angle instead of swinging it,
+    which is the whole of GunWalk. Everything below the hips — the gait table, the key
+    order, the stance solve, the cadence search — is untouched, so the clip is Walk with
+    one arm stopped and ``verify_clip_speeds`` can assert the two measure the same m/s. A
+    held arm that also swung would be a runner waving a revolver in time with their steps.
     """
     def body(i, left, right):
         phase = math.sin(2.0 * math.pi * i / period)
@@ -1703,7 +1858,8 @@ def _cycle_body(lean: float, twist_amp: float, sway_amp: float, swing_amp: float
             torso(lean=lean, twist=twist, hips_yaw=-twist * 0.8, hips_tilt=sway * 80),
             head(lean=head_lean, yaw=-twist * 0.25),
             arm(1, arm_out, +swing_amp * phase),
-            arm(-1, arm_out, -swing_amp * phase),
+            arm(-1, arm_out,
+                -swing_amp * phase if right_held is None else right_held),
         )
         return spec, (sway, 0.0)
     return body
@@ -1780,84 +1936,64 @@ def clip_crouch_walk(rig) -> gpm.Clip:
         "§04 quiet travel; driver references WalkSpeed", out=6.0)
 
 
-CARRY_ARM_SWING = 78.0
-"""Both arms forward and level, holding §03's objective. There is no elbow to fold, so a
-two-handed carry on this figure is the whole arm rotated forward until the mittens meet in
-front of the chest — which is also the only reading of 「양손을 쓴다」 an outline can
-carry."""
+def clip_gun_idle(rig) -> gpm.Clip:
+    """Standing still with §01's 총 in the right hand.
 
+    Idle's breathing loop with one change: the right arm is held at
+    ``GUN_ARM_SWING`` instead of hanging. It exists for the same reason the deleted
+    CarryIdle did — ``PlayerAnimatorDriver`` falls back to the unarmed pose at zero ground
+    speed, so without it a runner who stops moving drops the arm and the gun goes through
+    their own thigh — and for a reason CarryIdle never had: standing still is when another
+    runner gets the longest look at you, so it is the pose the *"that one is armed"*
+    reading actually has time to happen in.
 
-def clip_carry(rig) -> gpm.Clip:
-    """§03 목표물 운반 — *"양손을 쓴다 → 손전등을 들 수 없다"*, *"운반자는 앞을 보지 못한다"*.
-
-    Torso tipped BACK against the load, head down over it, both arms out in front. Three
-    teammates have to read "that one is carrying it" from the outline alone, and at ten
-    metres the only difference between this and Walk is the arms.
-
-    Authored at 2.0 m/s for the same reason as CrouchWalk: the driver references WalkSpeed
-    and then plays it at ×0.80 (``ObjectiveCarrySpeedMultiplier``) from the measured
-    ground speed.
+    The breath table is Idle's, scaled off the held arm rather than replaced. A held arm
+    is not a rigid one: 1.2 degrees of drift over three seconds is a hand that is tiring,
+    and a limb that is perfectly still next to a torso that is not reads as a prop
+    welded on.
     """
-    def body(i, left, right):
-        phase = math.sin(2.0 * math.pi * i / 4.0)
-        twist, sway = -4.0 * phase, 0.010 * phase
-        spec = gpm.merge(
-            torso(lean=-9.0, twist=twist, hips_yaw=-twist * 0.7, hips_tilt=sway * 80),
-            head(lean=16.0, yaw=-twist * 0.2),
-            arm(1, 10.0, CARRY_ARM_SWING), arm(-1, 10.0, CARRY_ARM_SWING),
-        )
-        return spec, (sway, 0.0)
+    keys, _ = gpm.cycle_frames_for(23)
+    breath = (
+        dict(lean=3.0, hl=2.0, yaw=0.0, sw=0.0),
+        dict(lean=1.6, hl=1.0, yaw=-5.0, sw=-1.2),
+        dict(lean=3.6, hl=2.6, yaw=0.0, sw=0.8),
+        dict(lean=2.2, hl=1.4, yaw=6.0, sw=-0.8),
+    )
+    return _still_clip(rig, "GunIdle", keys, 92, "§01 armed, halted",
+                       lambda b: gpm.merge(
+                           torso(lean=b["lean"], hips_lean=0.4),
+                           head(lean=b["hl"], yaw=b["yaw"]),
+                           arm(1, ARM_OUT, b["sw"]),
+                           arm(-1, ARM_OUT, GUN_ARM_SWING + b["sw"]),
+                           gpm.leg(1, 0.0, -2.0, 0.0, 0.0),
+                           gpm.leg(-1, 0.0, -2.0, 0.0, 0.0)),
+                       breath)
 
+
+def clip_gun_walk(rig) -> gpm.Clip:
+    """Walking with §01's 총, and the clip the whole feature is read off.
+
+    **It is Walk below the hips, exactly.** ``gpm.WALK_GAIT``, ``gpm.WALK_ORDER``, the same
+    three phases, the same target speed and the same cadence candidates — the solver runs
+    again rather than the number being copied, so the 2.0 m/s is MEASURED for this clip
+    instead of inherited, and ``verify_clip_speeds`` asserts the two agree. Everything that
+    changed is above the waist: the right arm stops swinging and holds at
+    ``GUN_ARM_SWING``, and the torso's counter-twist is halved because a body that is
+    carrying something in one hand does not rotate as freely against its own stride.
+
+    Why there is no GunRun. ``PlayerAnimatorDriver`` plays a clip at
+    ``groundSpeed / ReferenceSpeed``, so a runner sprinting with a gun would need a third
+    armed clip and a fourth for the crouch, and each one is another pose that has to stay
+    distinguishable from the other seven at 12 m. Two is what §01 needs: standing and
+    moving. An armed runner at 4.5 m/s plays Run and their arm swings — which is a lie
+    about their hand for as long as they are sprinting, and it is the cheapest lie
+    available, because a sprinting outline at 12 m in the dark is already unreadable.
+    """
     return solve_cadence(
-        rig, "Carry", gpm.CARRY_GAIT, ("contact", "pass", "toeoff"), body,
-        gpm.WALK_ORDER, WALK_SPEED, 0.30, (2, 3, 4, 5),
-        "§03 both hands; driver references WalkSpeed × 0.80", out=3.0)
-
-
-def clip_carry_idle(rig) -> gpm.Clip:
-    """The carry pose standing still — §03's *"잠깐, 기다려"*, the carrier waiting for the
-    escort to clear ahead.
-
-    Without it the driver falls back to Idle at zero speed and the carrier's arms drop
-    through the objective they are supposed to be holding.
-    """
-    keys, _ = gpm.cycle_frames_for(16)
-    strain = (0.0, 1.6, -0.8, 1.2)
-    return _still_clip(
-        rig, "CarryIdle", keys, 64, "§03 carrier halted",
-        lambda s: gpm.merge(
-            torso(lean=-9.0 + s * 0.5, tilt=s * 0.8, hips_lean=-0.9),
-            head(lean=16.0 + s, yaw=s * 2.0),
-            arm(1, 10.0, CARRY_ARM_SWING - s), arm(-1, 10.0, CARRY_ARM_SWING - s),
-            gpm.leg(1, 3.0, -4.0, 1.0, 0.0, out=3.0),
-            gpm.leg(-1, 3.0, -4.0, 1.0, 0.0, out=3.0)),
-        strain)
-
-
-def clip_carry_heavy(rig) -> gpm.Clip:
-    """§08 대형 전리품 (weight 5) — *"2인 운반 or 극심한 감속"*, written to produce one
-    scene: *"두 명이 궤짝을 들고 좁은 통로를 지나는데 괴물이 온다."*
-
-    Hands low and wide on a crate edge, a clear step below Carry's so the two two-handed
-    states are never mistaken for each other in outline. ``ReferenceSpeed`` returns 0 for
-    this state, so the driver plays it at 1× whatever the player's speed — which is why it
-    is authored at §08's own overloaded speed rather than at a reference, and why the only
-    thing asserted about it is the ordering CarryHeavy < Walk.
-    """
-    def body(i, left, right):
-        phase = math.sin(2.0 * math.pi * i / 4.0)
-        twist, sway = -3.0 * phase, 0.014 * phase
-        spec = gpm.merge(
-            torso(lean=-13.0, twist=twist, hips_yaw=-twist * 0.6, hips_tilt=sway * 70),
-            head(lean=10.0, yaw=-twist * 0.15),
-            arm(1, 16.0, 52.0), arm(-1, 16.0, 52.0),
-        )
-        return spec, (sway, 0.0)
-
-    return solve_cadence(
-        rig, "CarryHeavy", gpm.HEAVY_GAIT, ("contact", "pass", "toeoff"), body,
-        gpm.WALK_ORDER, HEAVY_SPEED, 0.30, (4, 5, 6, 7),
-        "§08 w5, two carriers; driver plays at 1×", out=5.0)
+        rig, "GunWalk", gpm.WALK_GAIT, ("contact", "pass", "toeoff"),
+        _cycle_body(lean=6.0, twist_amp=3.5, sway_amp=0.012, swing_amp=WALK_ARM_SWING,
+                    right_held=GUN_ARM_SWING),
+        gpm.WALK_ORDER, WALK_SPEED, 0.25, (2, 3, 4, 5), "§01 armed, 2.0 m/s")
 
 
 def clip_death(rig) -> gpm.Clip:
@@ -1903,7 +2039,7 @@ def clip_death(rig) -> gpm.Clip:
 
 
 CLIP_BUILDERS = (clip_idle, clip_walk, clip_run, clip_crouch, clip_crouch_walk,
-                 clip_carry, clip_carry_idle, clip_carry_heavy, clip_death)
+                 clip_gun_idle, clip_gun_walk, clip_death)
 
 
 FLOOR_TOLERANCE = 0.004
@@ -1996,9 +2132,10 @@ an Idle that does not move below the hips. Both were the same sub-millimetre edg
 nothing visible. What draws a sheet across a corridor is length, not proportion.
 
 100 mm is where the shipped set sits with room and where a regression would not. The nine
-clips measure 4, 33, 56, 53, 93, 45, 37, 27 and 83 mm, and those are the numbers behind the
-renders that were looked at — the 93 is CrouchWalk, which strides on a 110°-flexed knee and
-is the most deformation this figure is ever asked for. This is a regression guard rather
+clips of the carry-era set measured 4, 33, 56, 53, 93, 45, 37, 27 and 83 mm — the 93 is
+CrouchWalk, which strides on a 110°-flexed knee and is still the most deformation this
+figure is ever asked for. GunIdle and GunWalk replaced three of those and the current
+numbers are printed by ``verify_skin_stretch`` on every run, which is the point: This is a regression guard rather
 than a quality bar, and it earns its place by what it caught: at 190 mm the carry drew a
 flat sheet from the forearm to the hip that no other check in this file could see.
 
@@ -2090,19 +2227,31 @@ def pose_measure(rig, clip: gpm.Clip) -> None:
 
 
 def verify_clip_speeds(clips: list[gpm.Clip]) -> None:
-    """§08's *"욕심이 곧 속도 저하"* has to be visible in the animation, not only in the
-    speed table: a burdened figure that strides like a free one says the load is free.
+    """The clips have to agree with §06's speed table, not merely be near it.
 
-    Asserted as an ORDERING rather than as a number, because §08 fixes no m/s for a
-    two-person carry — only that it costs.
+    Two statements, and both are about a clip lying to another system rather than about
+    taste. ``PlayerAnimatorDriver`` plays a clip at ``groundSpeed / ReferenceSpeed``, so a
+    clip authored at the wrong m/s is pure foot skate at the speed the game actually
+    moves at — and §12 makes a footstep a positioning channel, so a foot that is not where
+    the sound says it is lies about where its owner is.
+
+    The CarryHeavy < Walk ordering that used to stand here went with the carry: §08's
+    *"욕심이 곧 속도 저하"* has nothing left to burden.
     """
     by_name = {c.name: c for c in clips if c.speed > 0.0}
-    heavy, walk, run = by_name.get("CarryHeavy"), by_name.get("Walk"), by_name.get("Run")
-    if heavy and walk and not heavy.speed < walk.speed:
+    walk, run, gun = by_name.get("Walk"), by_name.get("Run"), by_name.get("GunWalk")
+
+    # GunWalk is Walk with one arm stopped, so it must MEASURE as Walk. A millimetre per
+    # second is the solver's own residual (CADENCE_WON prints sole_err in mm); anything
+    # past 10 mm/s means a change above the waist has reached the legs, and the symptom in
+    # the game would be a runner who visibly changes step the instant they pick a gun up.
+    if walk and gun and abs(gun.speed - walk.speed) > 0.01:
         blendkit.fail(
-            f"CarryHeavy measures {heavy.speed:.2f} m/s against Walk's {walk.speed:.2f}. "
-            "§08 says 욕심이 곧 속도 저하; a two-person crate that travels as fast as an "
-            "empty pair of hands is the rule stated and then not shown.")
+            f"GunWalk measures {gun.speed:.3f} m/s against Walk's {walk.speed:.3f}. The two "
+            "share a gait table, a key order and a cadence search and differ only in the "
+            "right arm, so a gap here means the arm has moved the legs — check that "
+            "_cycle_body's right_held path is not being fed into the stance solve.")
+
     if walk and run and not walk.speed < run.speed:
         blendkit.fail(
             f"Walk measures {walk.speed:.2f} m/s and Run {run.speed:.2f}. §06 requires "
@@ -2217,7 +2366,7 @@ def verify_takes(path: str, clips: list[gpm.Clip]) -> None:
 
     Read out of the FBX's own bytes rather than out of the Blender session, because the
     session is not what ships. ``PlayerFeelHarnessMenu.AssignClips`` loads every sub-asset
-    of ``Runner.fbx`` and looks the nine up **by name** — ``Idle``, ``Walk``, ``Run`` … —
+    of ``Runner.fbx`` and looks each one up **by name** — ``Idle``, ``Walk``, ``Run`` … —
     so a take that arrives prefixed, duplicated or missing is a null clip field, and a
     null clip field is a pose the body freezes in.
     """
@@ -2318,9 +2467,18 @@ def main() -> None:
           f"tris={_tris(body)} verts={len(body.data.vertices)}")
     report_breadth(body, size)
 
-    # ── The rig, and the nine clips ─────────────────────────────────────────
+    # ── The rig, and the clips ──────────────────────────────────────────────
     skeleton = build_skeleton(body, fit)
     retarget_gait_solver(skeleton)
+
+    # The arm, and the two things that ride on it: the held pose has to be a silhouette,
+    # and RunnerGun.cs has to be holding the ratio this skeleton just produced. Both run
+    # before the clips are built so a rig that cannot carry a gun fails in a second rather
+    # than after a cadence search.
+    arm_len, mount_ratio = report_arm(skeleton)
+    verify_gun_pose(skeleton, arm_len, size[1] * 0.5)
+    verify_gun_mount(mount_ratio)
+
     rig = build_rig(skeleton, body)
     verify_skin(rig, body)
 
@@ -2368,8 +2526,8 @@ def main() -> None:
     # Env-gated and never part of a production run, for gen_player_model's reason: a
     # headless generator that cannot be LOOKED at gets its poses wrong silently, and a
     # figure whose whole job is DESCENT-PIVOT §5's silhouette is not a thing numbers alone
-    # can sign off. Shot per clip by name, so a "Carry" render cannot photograph
-    # CarryHeavy's pose by prefix.
+    # can sign off. Shot per clip by NAME rather than by prefix, so a "GunIdle" render
+    # cannot photograph GunWalk's pose because one name starts with the other.
     preview_dir = os.environ.get("HORROR_RUNNER_PREVIEW_DIR")
     if preview_dir:
         rig.animation_data.action = None

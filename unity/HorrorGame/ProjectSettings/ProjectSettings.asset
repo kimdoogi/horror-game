@@ -171,7 +171,7 @@ PlayerSettings:
   androidMinAspectRatio: 1
   applicationIdentifier: {}
   buildNumber:
-    Standalone: 62
+    Standalone: 70
     VisionOS: 0
     iPhone: 0
     tvOS: 0
@@ -334,7 +334,10 @@ PlayerSettings:
   enableCrashReportAPI: 0
   cameraUsageDescription: 
   locationUsageDescription: 
-  microphoneUsageDescription: 
+  microphoneUsageDescription: "\xA713 \uADFC\uC811 \uC74C\uC131\uC5D0 \uB9C8\uC774\uD06C\uB97C
+    \uC501\uB2C8\uB2E4. \uAC19\uC740 \uCE35\uC758 \uAC00\uAE4C\uC774 \uC788\uB294
+    \uC8FC\uC790\uC5D0\uAC8C\uB9CC \uB4E4\uB9BD\uB2C8\uB2E4. \uB179\uC74C\uD558\uAC70\uB098
+    \uC800\uC7A5\uD558\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4."
   bluetoothUsageDescription: 
   macOSTargetOSVersion: 12.0
   switchNMETAOverride: 

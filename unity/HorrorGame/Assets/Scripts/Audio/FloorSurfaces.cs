@@ -25,6 +25,19 @@ namespace HorrorGame.Audio
     /// be stood up and heard on hand-built geometry before that lands, and so a
     /// stairwell landing that belongs to no zone can still be tagged 금속.
     /// </para>
+    /// <para>
+    /// <b>DO NOT put this one in a saved scene, and prefer
+    /// <c>HorrorGame.Gameplay.Player.FloorSurfaceTag</c> — which implements
+    /// <see cref="IFloorSurface"/> too and answers both layers off one field.</b> This
+    /// class is a <c>MonoBehaviour</c> declared in a file named for something else, and
+    /// Unity keys a <c>MonoScript</c> on the FILE: saved into a scene it serialises as a
+    /// dangling <c>m_Script: {fileID: …}</c> with no guid and comes back as a missing
+    /// script. That is not a theory — the generator's 32 tags were lost that way and §12's
+    /// room tone was null in the shipped solo scene until the other one moved into
+    /// <c>FloorSurfaceTag.cs</c>. It stays here only because hand-built test geometry adds
+    /// it at runtime, where the rule does not bite. The <c>[AddComponentMenu]</c> below is
+    /// the trap: adding it from the inspector and saving loses it.
+    /// </para>
     /// </summary>
     [DisallowMultipleComponent]
     [AddComponentMenu("HorrorGame/Audio/Floor Surface Tag")]
@@ -68,7 +81,13 @@ namespace HorrorGame.Audio
         /// <summary>How far above the sample point the ray starts, metres.</summary>
         private const float GroundProbeLift = 0.5f;
 
-        private static readonly RaycastHit[] Scratch = new RaycastHit[4];
+        // Eight, matching PlayerFootsteps, which says why: RaycastNonAlloc does NOT sort,
+        // so a buffer smaller than the number of colliders on the ray drops an arbitrary
+        // subset — and the dressing pass leaves solid props standing ON the floor
+        // (ScatterSession.Finish keeps their colliders). At four, a floor tile under three
+        // crates could be the hit that never arrives, and the symptom is a room that goes
+        // silent underfoot only where it has been dressed.
+        private static readonly RaycastHit[] Scratch = new RaycastHit[8];
 
         /// <summary>
         /// The surface at a world position, or <see cref="FloorMaterial.None"/> when

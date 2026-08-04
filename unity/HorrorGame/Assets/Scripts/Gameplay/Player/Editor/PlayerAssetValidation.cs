@@ -49,7 +49,9 @@ namespace HorrorGame.Gameplay.PlayerEditor
 
         private static readonly string[] RequiredClips =
         {
-            "Idle", "Walk", "Run", "Crouch", "CrouchWalk", "Carry", "CarryIdle", "CarryHeavy", "Death",
+            // The takes gen_runner.py actually exports. Carry/CarryIdle/CarryHeavy went
+            // with §03's 목표물; GunIdle/GunWalk arrived with §01's 총 in the same export.
+            "Idle", "Walk", "Run", "Crouch", "CrouchWalk", "GunIdle", "GunWalk", "Death",
         };
 
         private static readonly FloorMaterial[] RequiredSurfaces =

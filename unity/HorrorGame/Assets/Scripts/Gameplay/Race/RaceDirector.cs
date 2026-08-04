@@ -6,7 +6,9 @@ using HorrorGame.Core;
 using HorrorGame.Core.Race;
 using HorrorGame.Core.Threat;
 using HorrorGame.Gameplay.Match;
+using HorrorGame.Net;
 using HorrorGame.UI;
+using Mirror;
 using UnityEngine;
 
 namespace HorrorGame.Gameplay.Race
@@ -76,9 +78,41 @@ namespace HorrorGame.Gameplay.Race
     /// itself would be a second, unordered opinion about when §02 runs.
     /// </para>
     /// <para>
-    /// <b>Host only.</b> §02: "도착 판정을 클라이언트가 내리면 경주 게임에서 가장 먼저
-    /// 조작되는 값이 된다." Attach one, on the host, and let clients render the standings
-    /// they are sent.
+    /// <b>Host only — and until now that sentence was a comment rather than a
+    /// mechanism.</b> §02: "도착 판정을 클라이언트가 내리면 경주 게임에서 가장 먼저
+    /// 조작되는 값이 된다." One of these ran on <em>every</em> machine, each fed by its own
+    /// <c>MatchDirector</c> from its own scene, each seating the local player at seat 0.
+    /// Twenty people in one match held twenty private scoreboards and §13's authority
+    /// applied to nothing.
+    /// </para>
+    /// <para>
+    /// <b>So this class is now two things, chosen once at <see cref="Begin"/> by
+    /// <see cref="NetRace.ThisMachineJudges"/>.</b>
+    /// </para>
+    /// <list type="bullet">
+    /// <item><description><b>On the host</b> (and offline, which is the same thing with a
+    /// field of one) it is what it always was: it holds the one <see cref="RaceState"/>,
+    /// measures bodies against §02's finish, and — new — publishes the result through
+    /// <see cref="NetRace"/> after every accepted change. It also implements
+    /// <see cref="IRaceAuthority"/>, which is the whole of what the Net layer is allowed to
+    /// ask of the rule.</description></item>
+    /// <item><description><b>On a client</b> it holds no <see cref="RaceState"/> at all —
+    /// <see cref="Rules"/> is null, deliberately and structurally, because a client with a
+    /// rule object is a client that can answer §02's questions on its own. Every member of
+    /// <see cref="IRaceReadout"/> resolves through <c>NetRace.Standings</c>, which is only
+    /// ever written by a message handler. The HUD is unchanged and cannot tell the
+    /// difference, which is the point: it never named this class.</description></item>
+    /// </list>
+    /// <para>
+    /// <b>The two reports go up, the standings come down.</b> A 투하구 and §06's grab are
+    /// detected on the machine the player is sitting at — the chutes are colliders in the
+    /// local scene, and the creature is simulated locally on every machine because
+    /// <c>MatchDirector</c> contains no reference to Mirror and <c>NetMonster</c> has no
+    /// consumer. <see cref="ReportLocalDescent"/> and <see cref="ReportLocalCaught"/> are
+    /// therefore the only two calls in the game that a client may make about §02, and both
+    /// are requests: the host's <see cref="AcceptDescent"/> and <see cref="AcceptCaught"/>
+    /// return the verdict, and the client learns it the same way everybody else does — from
+    /// the next broadcast.
     /// </para>
     /// <para>
     /// <b>It is also <see cref="IRaceReadout"/>, which is a one-way window.</b>
@@ -89,7 +123,7 @@ namespace HorrorGame.Gameplay.Race
     /// </para>
     /// </summary>
     [DisallowMultipleComponent]
-    public sealed class RaceDirector : MonoBehaviour, IRaceReadout
+    public sealed class RaceDirector : MonoBehaviour, IRaceReadout, IRaceAuthority
     {
         /// <summary>
         /// What <c>DescentMap.MarkPlaces</c> calls the finish: the middle of the deepest
@@ -171,6 +205,34 @@ namespace HorrorGame.Gameplay.Race
         private bool _winnerAnnounced;
 
         /// <summary>
+        /// Whether this machine decides §02. Taken once, at <see cref="Begin"/>, from
+        /// <see cref="NetRace.ThisMachineJudges"/>.
+        /// <para>
+        /// Latched rather than asked per tick, and the difference is a real failure mode: a
+        /// client whose host drops mid-match would see <c>NetworkClient.active</c> go false
+        /// and start judging its own arrivals — awarding itself first place in a race that
+        /// has already ended for everybody. §13 ends a session rather than migrating it, so
+        /// the answer taken at the start line is the answer for the whole descent.
+        /// </para>
+        /// </summary>
+        private bool _judging = true;
+
+        /// <summary>
+        /// §11's field size, kept separately from <see cref="RaceState.Count"/> because a
+        /// client has no <see cref="RaceState"/> to ask.
+        /// </summary>
+        private int _fieldSize;
+
+        /// <summary>Set when the rule accepted something the rest of the field has not been told about yet.</summary>
+        private bool _standingsDirty;
+
+        /// <summary>Next unscaled time a heartbeat frame is due. See <see cref="NetRace.HeartbeatSeconds"/>.</summary>
+        private float _nextHeartbeat;
+
+        /// <summary>Next unscaled time the host re-scans for runner bodies. Same cadence as the heartbeat.</summary>
+        private float _nextBodyScan;
+
+        /// <summary>
         /// A runner has dropped a storey. Seat, then the storey they landed on (0 is B1).
         /// <para>
         /// Raised after <see cref="RaceState"/> accepted it, so a rejected report — §12's
@@ -219,16 +281,35 @@ namespace HorrorGame.Gameplay.Race
             get { return _rules; }
         }
 
-        /// <summary>True once <see cref="Begin"/> has sized a field. Nothing happens before that.</summary>
+        /// <summary>
+        /// True once <see cref="Begin"/> has sized a field. Nothing happens before that.
+        /// <para>
+        /// The field size and not <see cref="Rules"/>, because a client is started and has
+        /// no rule: it renders the host's. Asking <c>_rules != null</c> would make every
+        /// client look like a race that never began.
+        /// </para>
+        /// </summary>
         public bool Started
         {
-            get { return _rules != null; }
+            get { return _fieldSize > 0; }
         }
 
-        /// <summary>True once <see cref="RaceState.Over"/> went true and <see cref="Closed"/> was raised.</summary>
+        /// <summary>
+        /// Whether this machine is the one deciding §02 — arrivals, the timeout, and when
+        /// the race closes. False on a client, which renders the standings it is sent.
+        /// </summary>
+        public bool Judging
+        {
+            get { return _judging; }
+        }
+
+        /// <summary>
+        /// True once <see cref="RaceState.Over"/> went true and <see cref="Closed"/> was
+        /// raised. On a client, true once the host said so — a client never closes a race.
+        /// </summary>
         public bool Over
         {
-            get { return _over; }
+            get { return _rules != null ? _over : NetRace.Standings.Over; }
         }
 
         /// <summary>
@@ -277,16 +358,42 @@ namespace HorrorGame.Gameplay.Race
         /// <summary>The winner's seat, or −1 while nobody has arrived. §02 승리.</summary>
         public int WinnerId
         {
-            get { return _rules != null ? _rules.WinnerId : -1; }
+            get { return _rules != null ? _rules.WinnerId : NetRace.Standings.WinnerId; }
         }
 
         /// <summary>How many have reached the bottom. §02 완주 counts them all, not just the first.</summary>
         public int Finishers
         {
-            get { return _rules != null ? _rules.Finishers : 0; }
+            get
+            {
+                var rules = _rules;
+                if (rules != null)
+                {
+                    return rules.Finishers;
+                }
+
+                var counted = 0;
+                var standings = NetRace.Standings;
+                for (var seat = 0; seat < standings.RunnerCount; seat++)
+                {
+                    if (standings.RowOf(seat).Status == RacerStatus.Finished)
+                    {
+                        counted++;
+                    }
+                }
+
+                return counted;
+            }
         }
 
-        /// <summary>How many are still descending. Zero is what ends the match.</summary>
+        /// <summary>
+        /// How many are still descending. Zero is what ends the match.
+        /// <para>
+        /// On a client this is the length of the host's own live order, not a re-derived
+        /// count: <c>RaceStandingsMessage.LiveOrder</c> names exactly the seats the host
+        /// considers still running.
+        /// </para>
+        /// </summary>
         public int StillRunning
         {
             get
@@ -294,7 +401,7 @@ namespace HorrorGame.Gameplay.Race
                 var rules = _rules;
                 if (rules == null)
                 {
-                    return 0;
+                    return NetRace.Standings.Standings.Count;
                 }
 
                 var live = 0;
@@ -311,12 +418,27 @@ namespace HorrorGame.Gameplay.Race
         }
 
         /// <summary>
-        /// Sizes §02 to the field that actually turned up and finds the finish.
+        /// Sizes §02 to the field that actually turned up, finds the finish, and decides
+        /// which of the two things this component is for the rest of the match.
         /// <para>
         /// The count is the real one, not <see cref="GameConstants.RaceRunnersMax"/>: a
         /// twenty-seat race with six people in it never satisfies
         /// <see cref="RaceState.Over"/>, because fourteen seats stay Running forever and
         /// the match cannot end. Seats that empty later are <see cref="Withdraw"/>n.
+        /// </para>
+        /// <para>
+        /// <b>The <see cref="RaceState"/> is built on the host and nowhere else.</b> That is
+        /// §13 as a structure rather than as a convention: on a client there is no object in
+        /// this process that can answer "who is second", so no future edit can accidentally
+        /// ask one. It also means <see cref="Rules"/> being null is the test for "this
+        /// machine renders rather than decides", and a test can assert it.
+        /// </para>
+        /// <para>
+        /// <b>The seat comes from the lobby, not from a constant.</b>
+        /// <see cref="RaceParty.LocalSeat"/> is the row §11 dealt this machine; every
+        /// machine used to draw its HUD as seat 0 because nothing ever set
+        /// <see cref="LocalRacerId"/> at all — the gauge and the verdict were unreachable in
+        /// the shipped build, since <c>RaceHud</c> draws both only when the seat is ≥ 0.
         /// </para>
         /// </summary>
         /// <param name="runners">Seats in this match. §11: 2~20.</param>
@@ -338,7 +460,9 @@ namespace HorrorGame.Gameplay.Race
                 return false;
             }
 
-            _rules = new RaceState(runners);
+            _judging = NetRace.ThisMachineJudges;
+            _fieldSize = runners;
+            _rules = _judging ? new RaceState(runners) : null;
             _exits = new RaceExit[runners];
             _names = new string[runners];
             _runners.Clear();
@@ -346,13 +470,46 @@ namespace HorrorGame.Gameplay.Race
             _elapsedSeconds = 0f;
             _over = false;
             _winnerAnnounced = false;
+            _standingsDirty = false;
+            _nextHeartbeat = 0f;
+            _nextBodyScan = 0f;
+
+            LocalRacerId = RaceParty.Settled
+                ? Mathf.Clamp(RaceParty.LocalSeat, 0, runners - 1)
+                : 0;
+
+            // §02's board is names, and SetName has no caller on a client — the roster
+            // that knew them was destroyed by the scene load. RaceLobby hands them to
+            // RaceParty on its way out and this is where they are picked up, on the host
+            // and the client alike, so both machines draw one set of names rather than the
+            // host drawing people and every client drawing 1번 … 20번.
+            var lobbyNames = RaceParty.SeatNames;
+            for (var seat = 0; seat < lobbyNames.Length && seat < _names.Length; seat++)
+            {
+                _names[seat] = lobbyNames[seat];
+            }
+
+            if (_judging)
+            {
+                // The seam the Net layer reports into. Installed even offline, where
+                // NetRace.ReportDescent's own NetworkServer.active check makes it inert —
+                // one installation path is worth more than a branch that only the networked
+                // build ever takes, because a branch only the networked build takes is a
+                // branch no offline test covers.
+                NetRace.Authority = this;
+                BindNetworkedRunners();
+            }
+            else
+            {
+                NetRace.Authority = null;
+            }
 
             if (!_finishFound)
             {
                 LocateFinish();
             }
 
-            if (!_finishFound)
+            if (!_finishFound && _judging)
             {
                 Debug.LogError(
                     "[Race] §02의 도착점을 찾지 못했다 — 이 판은 아무도 이길 수 없다. "
@@ -363,8 +520,16 @@ namespace HorrorGame.Gameplay.Race
             }
 
             Debug.Log(
-                "[Race] §02 하강 시작 — " + runners + "명, 도착점은 B" + RaceState.Storeys + " 중심"
+                "[Race] §02 하강 시작 — " + runners + "명, 이 기계의 좌석 " + LocalRacerId + "번, "
+                + (_judging ? "§13 판정자(호스트)" : "§13 관전 렌더러(클라이언트)")
+                + ", 도착점은 B" + RaceState.Storeys + " 중심"
                 + (_finishFound ? " " + _finish.ToString("0.0") : " (미발견)"), this);
+
+            if (_judging)
+            {
+                NetRace.Broadcast();
+            }
+
             return true;
         }
 
@@ -455,6 +620,15 @@ namespace HorrorGame.Gameplay.Race
         /// only so that nineteen runners crossing the middle of B3 do not spend a tick each
         /// being turned down.
         /// </para>
+        /// <para>
+        /// <b>Nothing in here runs on a client, and that is the §02 fix.</b>
+        /// <see cref="Rules"/> is null there, so the first line returns — no arrival is
+        /// judged, no timeout is applied and no race is closed on a machine that is not the
+        /// host. A client's clock and standings come from
+        /// <see cref="RaceStandingsMessage"/> instead, which is why
+        /// <see cref="ElapsedSeconds"/> does not read the field this method writes when
+        /// there is no rule to write it for.
+        /// </para>
         /// </summary>
         /// <param name="elapsedSeconds">Seconds since the start. Becomes a finisher's time.</param>
         public void Tick(float elapsedSeconds)
@@ -470,11 +644,183 @@ namespace HorrorGame.Gameplay.Race
             CheckFinish(rules, elapsedSeconds);
             CheckTimeout(rules, elapsedSeconds);
             CheckOver(rules);
+            Publish();
+        }
+
+        /// <summary>
+        /// Sends the standings out if anything changed, and once a second regardless. Host
+        /// only; called at the end of every <see cref="Tick"/>.
+        /// <para>
+        /// <b>Two cadences, because there are two kinds of change.</b> A descent, a finish
+        /// or a catch is a discrete event a player just caused and must see immediately, so
+        /// the accepting call marks the standings dirty and this flushes on the same step —
+        /// one fixed step, 20 ms, and not a frame later. The race clock changes continuously
+        /// and is printed as mm:ss, so it rides a <see cref="NetRace.HeartbeatSeconds"/>
+        /// heartbeat instead of a per-tick frame. Broadcasting the table at 50 Hz would be
+        /// ~9.5 kB/s per observer for a screen that redraws at 5 Hz.
+        /// </para>
+        /// <para>
+        /// The body re-scan shares the heartbeat: a runner whose <see cref="NetPlayer"/> was
+        /// spawned after the race began — or replaced across a scene load — is picked up
+        /// within a second rather than never. <see cref="Track"/> replaces by seat, so
+        /// re-scanning is idempotent.
+        /// </para>
+        /// </summary>
+        private void Publish()
+        {
+            if (!_judging)
+            {
+                return;
+            }
+
+            var now = Time.unscaledTime;
+
+            if (now >= _nextBodyScan)
+            {
+                _nextBodyScan = now + NetRace.HeartbeatSeconds;
+                BindNetworkedRunners();
+            }
+
+            if (!_standingsDirty && now < _nextHeartbeat)
+            {
+                return;
+            }
+
+            _standingsDirty = false;
+            _nextHeartbeat = now + NetRace.HeartbeatSeconds;
+            NetRace.Broadcast();
+        }
+
+        /// <summary>
+        /// Puts the host's copy of every networked runner in front of §02's finish circle,
+        /// and tells each one which seat it is.
+        /// <para>
+        /// <b>The body the host measures must be the host's, not the player's.</b>
+        /// <c>NetPlayer.CmdReportView</c> writes <c>transform.position</c> on the server
+        /// from the clamped value it just accepted, so the transform on the host's copy of a
+        /// remote runner is §13's own answer to "where is that person" — speed-limited,
+        /// arrived over a socket, and not something the owner can set directly. Measuring
+        /// the local first-person rig instead would be right for exactly one seat and wrong
+        /// for nineteen; before this, <c>MatchDirector.AttachRace</c> tracked only the local
+        /// rig, so on the host nobody else could finish and on a client the only person who
+        /// could was themselves.
+        /// </para>
+        /// <para>
+        /// <b>The seat comes from §11's lobby.</b> <see cref="RaceParty.SeatConnectionIds"/>
+        /// is the host-side seat → connection map <c>RaceLobby</c> settled immediately before
+        /// the descent loaded, so seat <em>i</em> is whoever holds connection
+        /// <c>SeatConnectionIds[i]</c> and a client never chooses its own number.
+        /// <c>NetPlayer.AssignSeat</c> had exactly one caller —
+        /// <c>HorrorGameNetworkManager.OnServerAddPlayer</c>, which Mirror never reaches on
+        /// this project's spawn path (see <c>OnServerReady</c>) — so every runner in every
+        /// shipped session carried seat −1, and a report from one could not have been
+        /// attributed to anybody.
+        /// </para>
+        /// </summary>
+        private void BindNetworkedRunners()
+        {
+            if (!NetworkServer.active)
+            {
+                return;
+            }
+
+            var seats = RaceParty.SeatConnectionIds;
+            for (var seat = 0; seat < seats.Length && seat < _fieldSize; seat++)
+            {
+                if (!NetworkServer.connections.TryGetValue(seats[seat], out var connection)
+                    || connection == null
+                    || connection.identity == null
+                    || !connection.identity.TryGetComponent(out NetPlayer player))
+                {
+                    continue;
+                }
+
+                if (player.SeatIndex != seat)
+                {
+                    player.AssignSeat(seat);
+                }
+
+                // Not the seat this machine is sitting in: that one is the first-person rig
+                // MatchDirector already tracked, and it is a better body than the replicated
+                // proxy because it has not been through a quantised round trip.
+                if (seat != LocalRacerId)
+                {
+                    Track(seat, player.transform);
+                }
+            }
+        }
+
+        /// <summary>
+        /// This machine's own runner fell through a 투하구. The one call
+        /// <c>MatchDirector.CheckChutes</c> should make.
+        /// <para>
+        /// <b>On the host it is the rule; on a client it is a request.</b> That branch is
+        /// the whole of §13 as far as a descent is concerned, and putting it here rather
+        /// than in <c>MatchDirector</c> keeps Mirror out of the class that steps the match —
+        /// which today contains no reference to it at all.
+        /// </para>
+        /// </summary>
+        /// <param name="storey">The storey landed on. 0 is B1.</param>
+        /// <param name="elapsedSeconds">Seconds since the start, on this machine's clock. Ignored on a client — the host times it.</param>
+        /// <returns>
+        /// True if the host's rule accepted it. <b>Always false on a client</b>, where the
+        /// answer has not arrived yet: the caller must not treat that as a refusal, and
+        /// nothing in the game does — the standings arrive as a broadcast a round trip later.
+        /// </returns>
+        public bool ReportLocalDescent(int storey, float elapsedSeconds)
+        {
+            if (_judging)
+            {
+                var accepted = ReportDescent(LocalRacerId, storey, elapsedSeconds);
+                if (accepted)
+                {
+                    // The host's own clamp forgiveness. A client gets this inside
+                    // CmdReportDescent; the host never sends that command, so without this
+                    // line the host is the one runner in the session whose avatar crawls
+                    // the twenty-odd metres from the chute to the rim below at 5.6 m/s.
+                    NetRace.ForgiveLocalClamp();
+                }
+
+                return accepted;
+            }
+
+            NetRace.SendDescent(storey);
+            return false;
+        }
+
+        /// <summary>
+        /// §06's creature caught this machine's own runner. The one call
+        /// <c>MatchDirector.CheckGrab</c> should make. See <see cref="ReportLocalDescent"/>
+        /// for the branch and for what the return value does and does not mean.
+        /// </summary>
+        /// <param name="elapsedSeconds">Seconds since the start, on this machine's clock.</param>
+        /// <returns>True if the host's rule accepted it; always false on a client.</returns>
+        public bool ReportLocalCaught(float elapsedSeconds)
+        {
+            if (_judging)
+            {
+                var accepted = ReportCaught(LocalRacerId, elapsedSeconds);
+                if (accepted)
+                {
+                    // Same as the descent, and the distance is larger: B8's middle to your
+                    // own B1 cell is about thirty-eight metres through eight floors.
+                    NetRace.ForgiveLocalClamp();
+                }
+
+                return accepted;
+            }
+
+            NetRace.SendCaught();
+            return false;
         }
 
         /// <summary>
         /// A runner landed on a lower storey. Forwards §12's one-way drop to the rule, which
         /// is what later lets them finish at all.
+        /// <para>
+        /// Host side. A client reaches this only through <see cref="AcceptDescent"/>, one
+        /// round trip and one seat check earlier.
+        /// </para>
         /// </summary>
         /// <param name="runnerId">Seat index.</param>
         /// <param name="storey">Storey they landed on. 0 is B1.</param>
@@ -492,6 +838,8 @@ namespace HorrorGame.Gameplay.Race
             {
                 return false;
             }
+
+            _standingsDirty = true;
 
             if (_verbose)
             {
@@ -532,6 +880,8 @@ namespace HorrorGame.Gameplay.Race
                 return false;
             }
 
+            _standingsDirty = true;
+
             // Not Untrack, and not an entry in _exits: a runner who has been caught has not
             // stopped racing, so taking them off the standings would leave a live player
             // invisible on every HUD in the match. Retire is now only reached by Withdraw.
@@ -560,6 +910,215 @@ namespace HorrorGame.Gameplay.Race
         /// </summary>
         public event Action<int, int>? Caught;
 
+        // ------------------------------------------------------------------
+        // IRaceAuthority — the only door §02 opens to a client's report, and the
+        // two guards on it. Host side; NetRace refuses to call these anywhere else.
+        // ------------------------------------------------------------------
+
+        /// <summary>
+        /// One seat's standing. <see cref="IRaceAuthority"/>'s read of the table
+        /// <see cref="NetRace"/> packs into a frame.
+        /// </summary>
+        /// <param name="seat">Seat index.</param>
+        public Racer RowOf(int seat)
+        {
+            var rules = _rules;
+            if (rules != null)
+            {
+                return seat >= 0 && seat < rules.Count ? rules[seat] : default;
+            }
+
+            return NetRace.Standings.RowOf(seat);
+        }
+
+        /// <inheritdoc />
+        /// <summary>
+        /// A client says its runner fell onto <paramref name="storey"/>.
+        /// <para>
+        /// <b>One storey, and only the next one.</b> <see cref="RaceState.ReportDescent"/> is
+        /// monotonic — it refuses anything at or above where the runner already is — but
+        /// monotonic is not the same as small: it would happily accept "I am on B8" from a
+        /// runner on B1, which is the entire race in one packet and the single most valuable
+        /// lie available in this build. §12 puts a 투하구 at the middle of a floor and lands
+        /// you on the RIM of the one below, so a descent is by construction exactly one
+        /// storey, and anything else is either a client that has lost track of where it is
+        /// or one that is lying. Both are refused the same way and neither is fatal: the
+        /// runner keeps the storey the host already had for them.
+        /// </para>
+        /// <para>
+        /// <b>What this does not check, said plainly.</b> It does not verify that the runner
+        /// was standing in a 투하구, because the mouths are <c>Chute</c> components the
+        /// gameplay layer owns and this class has never been given the list. The host has
+        /// that scene too, so the check is available the day <c>MatchDirector</c> hands the
+        /// chutes over — see <c>NetPlayer.CmdReportDescent</c>. Until then the cost of the
+        /// gap is bounded by the paragraph above and by §12's one-way structure: a runner
+        /// who claims a storey they are not on still has to walk every floor between here
+        /// and B8 in the world, because <see cref="CheckFinish"/> measures a body and not a
+        /// number.
+        /// </para>
+        /// </summary>
+        /// <param name="seat">The seat the host assigned to the reporting connection.</param>
+        /// <param name="storey">The storey claimed.</param>
+        /// <returns>True if the rule moved them.</returns>
+        public bool AcceptDescent(int seat, int storey)
+        {
+            var rules = _rules;
+            if (rules == null || seat < 0 || seat >= rules.Count)
+            {
+                return false;
+            }
+
+            var expected = rules[seat].Storey + 1;
+            if (storey != expected)
+            {
+                if (_verbose)
+                {
+                    Debug.Log(
+                        "[Race] §13 " + seat + "번의 하강 보고를 거절했다 — B" + (storey + 1)
+                        + "이라고 했지만 호스트가 아는 다음 층은 B" + (expected + 1)
+                        + "이다. §12의 투하구는 한 층씩만 내려간다.", this);
+                }
+
+                return false;
+            }
+
+            return ReportDescent(seat, storey, _elapsedSeconds);
+        }
+
+        /// <inheritdoc />
+        /// <summary>
+        /// A client says §06's creature caught its runner.
+        /// <para>
+        /// <b>Why this is a report and not a host-side verdict — the decision, and what
+        /// would change it.</b> §06 is not on the wire at all today: <c>MatchDirector</c>
+        /// contains no reference to Mirror, <c>PrepareCreatures</c> stands eight
+        /// <c>MonsterAgent</c>s on every machine, and <c>NetMonster</c> — the component
+        /// written for §13's 「괴물 AI를 호스트가 돌린다」 — has <b>zero consumers</b> in the
+        /// project. So the two floors' worth of creature on this machine and on that one are
+        /// not the same creature: each is chasing its own local runner and they diverge from
+        /// the first sighting. "Lift §06 to the host" is therefore not a bandwidth trade, it
+        /// is building the networked monster that does not exist, and it lands on a file
+        /// this change does not own.
+        /// </para>
+        /// <para>
+        /// It would also make the game worse in the one place §06 was rebuilt to be good.
+        /// The lunge commits at 1.8 m and travels at 7.0 m/s for 0.55 s specifically so the
+        /// attack is "an attack somebody can see coming"; a relayed commit arriving 60–150 ms
+        /// late is 0.42–1.05 m of that window spent before the client is told, on a 1.8 m
+        /// commit distance.
+        /// </para>
+        /// <para>
+        /// <b>The cost of the choice, honestly.</b> A client can decline to report its own
+        /// catch. What that buys is much less than it looks: the storey a runner is recorded
+        /// on is the floor their next descent has to be one below, and the only way onto a
+        /// lower floor is to fall through its 투하구 in the world. A cheat that hides a catch
+        /// keeps a standings row saying B6 while walking B1 → B6 again anyway, and cannot
+        /// finish until <see cref="CheckFinish"/> finds its <em>body</em> inside the circle at
+        /// the middle of B8 with the record already reading the bottom storey. The yield is a
+        /// false HUD row and zero race progress. What it cannot do is the thing that would
+        /// matter — report somebody else — because the seat is
+        /// <c>NetPlayer.AssignSeat</c>'s and the transport chooses which object the
+        /// <c>[Command]</c> arrived on.
+        /// </para>
+        /// <para>
+        /// <b>What would change my mind:</b> a consumer for <c>NetMonster</c>. The day
+        /// <c>MatchDirector.StepCreatures</c> is gated on <c>NetworkServer.active</c> and
+        /// the eight creatures are spawned identities, the host holds an authoritative
+        /// creature position per storey and the catch becomes the same shape as the finish —
+        /// a geometric test on the host over bodies it owns — at which point this method
+        /// should be <em>deleted</em> rather than kept beside it, because a report and a
+        /// verdict for one event is two answers to one question, which is the failure this
+        /// whole repository keeps finding.
+        /// </para>
+        /// </summary>
+        /// <param name="seat">The seat the host assigned to the reporting connection.</param>
+        /// <returns>True if the rule sent them back to B1.</returns>
+        public bool AcceptCaught(int seat)
+        {
+            return ReportCaught(seat, _elapsedSeconds);
+        }
+
+        /// <inheritdoc />
+        /// <summary>
+        /// §01's 총 — somebody shot somebody, and this is the only place that decides
+        /// whether it landed.
+        /// <para>
+        /// <b>The range is measured here, not reported.</b> <c>RunnerGun</c> raycasts on the
+        /// shooter's machine to find out WHO is under the crosshair, which is the one fact
+        /// only that machine has. How far away they were is a fact the host has too — it
+        /// tracks a body per seat (<see cref="Track"/>, and on the host
+        /// <c>BindNetworkedRunners</c> tracks the host's own copy of every remote runner) —
+        /// so taking the distance off the wire would be handing the shooter the one number
+        /// that decides whether a rival loses eight storeys. This is the whole reason
+        /// <c>AcceptShot</c> has no distance parameter.
+        /// </para>
+        /// <para>
+        /// A seat the host is not tracking refuses rather than defaulting to zero metres.
+        /// Zero would be inside every range there is, so the failure mode of "the body was
+        /// not found" has to be a miss and not a guaranteed hit.
+        /// </para>
+        /// <para>
+        /// <c>Gunplay.ShotsPerGun</c> rather than a count carried up from the client, for
+        /// the same reason <c>RunnerGun.Fire</c> passes it: the judgement is about the shot
+        /// that was just fired, and a spent counter would make every shot refuse with
+        /// <c>NoGun</c>. The gun itself is spent on the shooter's machine either way — a
+        /// refusal here does not give the bullet back.
+        /// </para>
+        /// </summary>
+        /// <param name="shooterSeat">Read off the NetPlayer the command arrived on.</param>
+        /// <param name="targetSeat">Who the shooter's crosshair was on.</param>
+        /// <returns>True if the rule sent the target back to B1.</returns>
+        public bool AcceptShot(int shooterSeat, int targetSeat)
+        {
+            var rules = _rules;
+            if (rules == null)
+            {
+                return false;
+            }
+
+            var shooter = BodyOf(shooterSeat);
+            var target = BodyOf(targetSeat);
+            if (shooter == null || target == null)
+            {
+                if (_verbose)
+                {
+                    Debug.Log(
+                        "[Race] §01 " + shooterSeat + "번의 사격을 거절했다 — 호스트가 "
+                        + (shooter == null ? shooterSeat : targetSeat)
+                        + "번의 몸을 추적하고 있지 않다. 사거리를 잴 수 없으면 빗나간 것이다.", this);
+                }
+
+                return false;
+            }
+
+            var metresApart = Vector3.Distance(shooter.position, target.position);
+            var outcome = Gunplay.Fire(
+                rules, shooterSeat, targetSeat, Gunplay.ShotsPerGun, metresApart, _elapsedSeconds);
+
+            Debug.Log(outcome == ShotRefusal.None
+                ? "[Race] §01 " + shooterSeat + "번이 " + targetSeat + "번을 맞혔다 — "
+                  + metresApart.ToString("0.0") + " m, 호스트 측정. 출발선으로."
+                : "[Race] §01 " + shooterSeat + "번의 사격 — " + outcome + ", "
+                  + metresApart.ToString("0.0") + " m (호스트 측정).", this);
+
+            return outcome == ShotRefusal.None;
+        }
+
+        /// <summary>The transform this director tracks for a seat, or null. See <see cref="Track"/>.</summary>
+        /// <param name="seat">Seat index.</param>
+        private Transform? BodyOf(int seat)
+        {
+            for (var i = 0; i < _runners.Count; i++)
+            {
+                if (_runners[i].Id == seat)
+                {
+                    return _runners[i].Body;
+                }
+            }
+
+            return null;
+        }
+
         /// <summary>
         /// A seat emptied — somebody disconnected, or the field was padded up to §11's
         /// minimum to rehearse a race with one person in it.
@@ -572,12 +1131,99 @@ namespace HorrorGame.Gameplay.Race
         /// happened is kept here rather than smuggled into the rule.
         /// </para>
         /// </summary>
+        /// <para>
+        /// <b>A seat with somebody in it is refused, loudly.</b> This is not defensive
+        /// tidying — <c>MatchDirector.AttachRace</c> begins a field of
+        /// <see cref="GameConstants.RaceRunnersMin"/> and withdraws every seat except its
+        /// own constant 0, which is correct for the solo playtest it was written for and is
+        /// a match-ending bug the moment the host's <see cref="RaceState"/> is the only one
+        /// that counts: on the host it would eliminate every client in the session before
+        /// anybody had taken a step, and §02's verdict would be "우승 좌석 0" over a field of
+        /// nineteen people who were never allowed to run. §11's field has to be sized from
+        /// the party and the empty seats named individually; until
+        /// <c>MatchDirector</c> does that, this refuses the ones that are not empty, because
+        /// this class can see the connections and that class cannot.
+        /// </para>
+        /// </summary>
         /// <param name="runnerId">Seat index.</param>
         /// <param name="elapsedSeconds">Seconds since the start.</param>
-        /// <returns>True if the seat was still running.</returns>
+        /// <returns>True if the seat was still running and was empty.</returns>
         public bool Withdraw(int runnerId, float elapsedSeconds)
         {
+            if (SeatHasABody(runnerId))
+            {
+                Debug.LogWarning(
+                    "[Race] §11 " + runnerId + "번 자리를 비우라는 요청을 거절했다 — 그 자리에는 "
+                    + "연결된 주자가 있다. 빈 자리만 Withdraw로 닫아라. "
+                    + "MatchDirector.AttachRace가 §11의 인원을 파티가 아니라 상수에서 가져오고 있으면 "
+                    + "이 줄이 매 판 나온다.", this);
+                return false;
+            }
+
             return Retire(runnerId, elapsedSeconds, RaceExit.Withdrawn);
+        }
+
+        /// <summary>
+        /// Closes every seat in the field that nobody is sitting in, and leaves the rest
+        /// alone.
+        /// <para>
+        /// <b>The loop belongs here, not in <c>MatchDirector</c>.</b> Deciding which seats
+        /// are empty means asking §13 which connections exist, and that class deliberately
+        /// names no Mirror type. It used to withdraw every seat except its own and rely on
+        /// <see cref="Withdraw"/> refusing the occupied ones — which worked, and printed a
+        /// warning naming the bug on every machine in every match. Measured on a real
+        /// two-instance session before this existed: 「§11 1번 자리를 비우라는 요청을
+        /// 거절했다」 on the host, for the seat the client was standing in.
+        /// </para>
+        /// <para>
+        /// A seat still has to be closed when nobody is in it, for the reason
+        /// <see cref="Withdraw"/> gives: <c>RaceState.Over</c> means "nobody is still
+        /// Running", so a field padded to §11's minimum for a solo playtest could never
+        /// close and §02's verdict could never be reached.
+        /// </para>
+        /// </summary>
+        /// <param name="elapsedSeconds">Seconds since the start.</param>
+        /// <returns>How many seats were closed.</returns>
+        public int WithdrawEmptySeats(float elapsedSeconds)
+        {
+            var closed = 0;
+            for (var seat = 0; seat < _fieldSize; seat++)
+            {
+                if (seat == LocalRacerId || SeatHasABody(seat))
+                {
+                    continue;
+                }
+
+                if (Withdraw(seat, elapsedSeconds))
+                {
+                    closed++;
+                }
+            }
+
+            return closed;
+        }
+
+        /// <summary>
+        /// Whether §13 has a live connection sitting in this seat. Always false offline,
+        /// where there are no connections and every seat but the local one really is empty.
+        /// </summary>
+        /// <param name="seat">Seat index.</param>
+        private static bool SeatHasABody(int seat)
+        {
+            if (!NetworkServer.active)
+            {
+                return false;
+            }
+
+            var seats = RaceParty.SeatConnectionIds;
+            if (seat < 0 || seat >= seats.Length)
+            {
+                return false;
+            }
+
+            return NetworkServer.connections.TryGetValue(seats[seat], out var connection)
+                   && connection != null
+                   && connection.identity != null;
         }
 
         /// <summary>Why a runner stopped, in §02's words. <see cref="RaceExit.Racing"/> while they have not.</summary>
@@ -595,13 +1241,28 @@ namespace HorrorGame.Gameplay.Race
         /// The rule builds a fresh list each read, so this is a refresh-rate property and
         /// not a per-draw-call one. <c>RaceHud</c> reads it at 5 Hz for exactly that reason.
         /// </para>
+        /// <para>
+        /// <b>On a client this is the host's list, not a re-sort of the host's rows.</b>
+        /// <c>RaceStandingsMessage.LiveOrder</c> carries the ordering the host's own
+        /// <see cref="RaceState.Standings"/> produced; a client that sorted for itself would
+        /// be deciding who is second, which is the sentence §02 spends a paragraph on.
+        /// </para>
         /// </summary>
         public IReadOnlyList<Racer> Standings
         {
-            get { return _rules != null ? _rules.Standings() : Array.Empty<Racer>(); }
+            get { return _rules != null ? _rules.Standings() : NetRace.Standings.Standings; }
         }
 
-        /// <summary>The finishers, winner first. §02 완주 — every one of them has a place.</summary>
+        /// <summary>
+        /// The finishers, winner first. §02 완주 — every one of them has a place.
+        /// <para>
+        /// Host only, and empty on a client rather than rebuilt from the broadcast rows: it
+        /// is a results-screen reading with no consumer on the HUD, and inventing an
+        /// ordering for it on a client would be the one thing this class now exists to
+        /// prevent. The day a results screen needs it on every machine, the place to put the
+        /// order is the frame.
+        /// </para>
+        /// </summary>
         public IReadOnlyList<Racer> Results
         {
             get { return _rules != null ? _rules.Results() : Array.Empty<Racer>(); }
@@ -623,22 +1284,31 @@ namespace HorrorGame.Gameplay.Race
         /// <summary>
         /// That player's standing, read fresh. §09's two announcements — dropping a storey
         /// and being caught — both arrive as a change to this struct and to nothing else.
+        /// <para>
+        /// <b>On a client it is the host's row for this seat, looked up by index.</b> That
+        /// is the whole of why <c>RaceStandingsMessage.Rows</c> is seat-indexed rather than
+        /// a list of rows carrying their own ids: "which of these is me" has to be an array
+        /// index and not a search, or the answer can be missing.
+        /// </para>
         /// </summary>
         public Racer LocalRacer
         {
             get
             {
                 var rules = _rules;
-                return rules != null && LocalRacerId >= 0 && LocalRacerId < rules.Count
-                    ? rules[LocalRacerId]
-                    : default;
+                if (rules == null)
+                {
+                    return NetRace.Standings.RowOf(LocalRacerId);
+                }
+
+                return LocalRacerId >= 0 && LocalRacerId < rules.Count ? rules[LocalRacerId] : default;
             }
         }
 
         /// <summary>How many started. §11's 2~20 — drawn so a runner can read the field thinning.</summary>
         public int RunnerCount
         {
-            get { return _rules != null ? _rules.Count : 0; }
+            get { return _rules != null ? _rules.Count : NetRace.Standings.RunnerCount; }
         }
 
         /// <summary>
@@ -649,10 +1319,16 @@ namespace HorrorGame.Gameplay.Race
         /// deleting that gate. How long you personally have been running is something you
         /// would know from having stood on a starting line.
         /// </para>
+        /// <para>
+        /// <b>The host's clock on a client, at <see cref="NetRace.HeartbeatSeconds"/>.</b>
+        /// It is a race, so two people looking at each other's screens have to see the same
+        /// number; a locally counted clock would drift over §07's thirty-two minutes for
+        /// nothing. One second is exactly the resolution <c>RaceHud</c> prints it at.
+        /// </para>
         /// </summary>
         public float ElapsedSeconds
         {
-            get { return _elapsedSeconds; }
+            get { return _rules != null ? _elapsedSeconds : NetRace.Standings.ElapsedSeconds; }
         }
 
         /// <summary>
@@ -709,6 +1385,45 @@ namespace HorrorGame.Gameplay.Race
             var rules = _rules;
             if (rules == null)
             {
+                // A client draws the host's board and nothing else: the finishers in place
+                // order, then the host's own live order, then the seats that emptied. Every
+                // row and every position came off the wire — see RaceStandingsMessage.
+                var standings = NetRace.Standings;
+
+                for (var place = 1; place <= standings.RunnerCount; place++)
+                {
+                    for (var seat = 0; seat < standings.RunnerCount; seat++)
+                    {
+                        var racer = standings.RowOf(seat);
+                        if (racer.Status == RacerStatus.Finished && racer.Place == place)
+                        {
+                            _board.Add(racer);
+                        }
+                    }
+                }
+
+                var told = standings.Standings;
+                for (var i = 0; i < told.Count; i++)
+                {
+                    _board.Add(told[i]);
+                }
+
+                _retired.Clear();
+                for (var seat = 0; seat < standings.RunnerCount; seat++)
+                {
+                    var racer = standings.RowOf(seat);
+                    if (racer.Status == RacerStatus.Eliminated)
+                    {
+                        _retired.Add(racer);
+                    }
+                }
+
+                _retired.Sort(CompareRetired);
+                for (var i = 0; i < _retired.Count; i++)
+                {
+                    _board.Add(_retired[i]);
+                }
+
                 return _board;
             }
 
@@ -743,6 +1458,25 @@ namespace HorrorGame.Gameplay.Race
             }
 
             return _board;
+        }
+
+        /// <summary>
+        /// Takes §02's seam down with the component.
+        /// <para>
+        /// The match scene is unloaded before the session is, so this runs before
+        /// <c>HorrorGameNetworkManager.OnStopServer</c> clears the same field. Both are
+        /// needed: this one covers a director destroyed while the server keeps running —
+        /// a second match, or a test — and a stale one would have <see cref="NetRace"/>
+        /// building a frame out of a destroyed <c>MonoBehaviour</c>, which in Unity is a
+        /// null that does not compare equal to null.
+        /// </para>
+        /// </summary>
+        private void OnDestroy()
+        {
+            if (ReferenceEquals(NetRace.Authority, this))
+            {
+                NetRace.Authority = null;
+            }
         }
 
         // ------------------------------------------------------------------
@@ -802,6 +1536,7 @@ namespace HorrorGame.Gameplay.Race
                 }
 
                 _exits[id] = RaceExit.Finished;
+                _standingsDirty = true;
                 Untrack(id);
 
                 Debug.Log(
@@ -863,6 +1598,13 @@ namespace HorrorGame.Gameplay.Race
             _over = true;
             _runners.Clear();
 
+            // The last frame, sent before anything else reacts to Closed. §02's verdict is
+            // the one standing a client must not have to infer, and StopRacing stops the
+            // ticks that would otherwise carry it out.
+            _standingsDirty = true;
+            NetRace.Broadcast();
+            _standingsDirty = false;
+
             var winner = rules.WinnerId;
             Debug.Log(
                 winner >= 0
@@ -888,6 +1630,7 @@ namespace HorrorGame.Gameplay.Race
             }
 
             _exits[runnerId] = why;
+            _standingsDirty = true;
             Untrack(runnerId);
 
             if (_verbose)

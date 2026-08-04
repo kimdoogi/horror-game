@@ -30,10 +30,26 @@ namespace HorrorGame.Gameplay.Player
         /// <summary>Crouched and moving.</summary>
         CrouchWalk = 4,
 
-        // DELETED with §03's 목표물 and §08's 대형 전리품: Carry = 5, CarryIdle = 6 and
-        // CarryHeavy = 7. Nobody carries anything, so no runner can ever be in one of
-        // these poses. The numbering is left sparse on purpose — Death stays 8, so the
-        // serialised scenes and the animator's mixer indices do not silently re-point.
+        // DELETED with §03's 목표물 and §08's 대형 전리품: CarryHeavy = 7. Nobody carries
+        // anything, so no runner can ever be in that pose. The numbering is left sparse on
+        // purpose — Death stays 8, so the serialised scenes and the animator's mixer
+        // indices do not silently re-point.
+
+        /// <summary>
+        /// Standing, armed. §01's 총 in the right hand.
+        /// <para>
+        /// Takes the number Carry left rather than extending the enum: the mixer's input
+        /// count is <c>max + 1</c> and every serialised scene already sizes to 9, so
+        /// re-using a hole costs no re-point. A gun is the one thing a runner in 하강
+        /// ever holds, and §12's 문 shape is why the pose has to READ from outside — the
+        /// runner ahead of you taking the floor's gun is information you are meant to
+        /// have at a glance.
+        /// </para>
+        /// </summary>
+        GunIdle = 5,
+
+        /// <summary>Walking, armed — Walk's legs with the right arm held forward.</summary>
+        GunWalk = 6,
 
         /// <summary>Killed. §09 turns the player into a ghost; the body plays this once.</summary>
         Death = 8,
