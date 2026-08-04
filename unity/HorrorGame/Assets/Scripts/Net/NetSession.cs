@@ -79,6 +79,29 @@ namespace HorrorGame.Net
         /// <summary>Why the last session ended, or <see cref="NetSessionEndReason.None"/>.</summary>
         public static NetSessionEndReason LastEndReason { get; private set; } = NetSessionEndReason.None;
 
+        /// <summary>
+        /// The seed §11's lobby agreed on, or 0 before one is agreed.
+        /// <para>
+        /// <b>Pushed in rather than read out.</b> <c>RaceLobby</c> owns the number and
+        /// lives in the gameplay assembly, which this one cannot reference — the
+        /// dependency only runs the other way. So the lobby hands it over at the moment
+        /// it is settled, and the Net layer treats it as read-only.
+        /// </para>
+        /// <para>
+        /// It is here for §01's starting line: the field is dealt from a shuffle of B1's
+        /// ring, and every peer has to draw the same shuffle. The agreed seed is the only
+        /// number all of them already share.
+        /// </para>
+        /// </summary>
+        public static int AgreedSeed { get; private set; }
+
+        /// <summary>Records the seed §11's lobby settled on. Host and client both call it.</summary>
+        /// <param name="seed">The agreed seed. 0 means none.</param>
+        public static void SetAgreedSeed(int seed)
+        {
+            AgreedSeed = seed;
+        }
+
         /// <summary>Raised after <see cref="Phase"/> changes. Carries the new phase.</summary>
         public static event Action<NetSessionPhase>? PhaseChanged;
 

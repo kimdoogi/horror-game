@@ -601,6 +601,10 @@ namespace HorrorGame.Gameplay.Race
             _seed = seed;
             AgreedSeed = seed;
 
+            // The Net layer deals §01's starting line from a shuffle of this number, and
+            // it cannot reference this assembly to come and get it.
+            NetSession.SetAgreedSeed(seed);
+
             SetStage(LobbyStage.Starting, "씨앗 " + seed + " · 같은 건물로 내려간다.");
             Close();
 

@@ -2,6 +2,7 @@
 
 using System.Collections.Generic;
 using HorrorGame.Core;
+using HorrorGame.Core.Session;
 using Mirror;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -224,6 +225,67 @@ namespace HorrorGame.Net
         /// </summary>
         private const float SamePlaceMetres = 1.25f;
 
+        /// <summary>
+        /// §01's starting line, shuffled — the order the ring is handed out in this match.
+        /// <para>
+        /// <b>Why not Mirror's own two options.</b> <c>PlayerSpawnMethod.Random</c> draws
+        /// WITH replacement: twenty runners over twenty-eight places collide with
+        /// probability 1 − 28!/(8!·28²⁰) = 0.99991, which is the birthday problem and not
+        /// a rare accident. <c>RoundRobin</c> never collides and is what shipped, but it
+        /// walks the ring in hierarchy order, so seat 0 and seat 1 are always neighbours
+        /// and the field lines up along one arc in the order people joined the lobby.
+        /// Two real instances started one cell apart every single run.
+        /// </para>
+        /// <para>
+        /// A shuffle is both: a permutation cannot repeat a place, and it is different
+        /// every match. Fisher-Yates over the registered ring, drawn from
+        /// <see cref="NetSession.AgreedSeed"/> — the number §11's lobby already agreed
+        /// with everybody — so the deal is the same on every machine and reproducible from
+        /// a bug report that quotes the seed.
+        /// </para>
+        /// <para>
+        /// <b>Where you start still decides something.</b> §01 seeds the gate bearings per
+        /// storey, so one part of B1's ring is nearer that floor's way in than another.
+        /// Handing the near arc to whoever joined first is a head start for being early to
+        /// a lobby; handing it out at random is the same lottery for everybody, and the
+        /// same one the map already runs on the other seven floors through the 투하구.
+        /// </para>
+        /// </summary>
+        private static List<Transform> Deal()
+        {
+            var ring = new List<Transform>(NetworkManager.startPositions.Count);
+            for (var i = 0; i < NetworkManager.startPositions.Count; i++)
+            {
+                if (NetworkManager.startPositions[i] != null)
+                {
+                    ring.Add(NetworkManager.startPositions[i]);
+                }
+            }
+
+            var seed = NetSession.AgreedSeed;
+            if (seed == 0 || ring.Count < 2)
+            {
+                // No agreed seed is a solo playtest or a fixture, and there the hierarchy
+                // order is the useful one: it makes "where I started" reproducible without
+                // a seed to quote. Falling through to Mirror's RoundRobin would do the
+                // same thing; returning the ring keeps one code path.
+                return ring;
+            }
+
+            // Fisher-Yates, and the project's own DeterministicRandom rather than
+            // UnityEngine.Random: the latter is a shared global that a shader warm-up or
+            // an audio pick can advance between two machines, and the two would then
+            // disagree about the deal while both believing they used the seed.
+            var random = new DeterministicRandom(seed);
+            for (var i = ring.Count - 1; i > 0; i--)
+            {
+                var j = random.NextInt(0, i + 1);
+                (ring[i], ring[j]) = (ring[j], ring[i]);
+            }
+
+            return ring;
+        }
+
         public static int PlaceSpawnedRunners()
         {
             if (!NetworkServer.active || Registered == 0)
@@ -237,6 +299,7 @@ namespace HorrorGame.Net
                 return 0;
             }
 
+            var deal = Deal();
             var placed = 0;
             var bodiless = 0;
             var unplaced = 0;
@@ -252,7 +315,7 @@ namespace HorrorGame.Net
                     continue;
                 }
 
-                var start = manager.GetStartPosition();
+                var start = deal.Count > placed ? deal[placed] : manager.GetStartPosition();
                 if (start == null)
                 {
                     unplaced++;
@@ -309,7 +372,8 @@ namespace HorrorGame.Net
             {
                 Debug.Log(
                     "[Net] Placed " + placed + " runner(s) on B1's rim now that the building exists — "
-                    + taken.Count + "곳에 서로 다르게 (" + collisions + "명 겹침).");
+                    + taken.Count + "곳에 서로 다르게 (" + collisions + "명 겹침), 씨앗 "
+                    + NetSession.AgreedSeed + " 로 섞은 " + deal.Count + "곳 중에서.");
             }
 
             return placed;
