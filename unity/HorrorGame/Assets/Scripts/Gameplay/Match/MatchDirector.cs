@@ -159,6 +159,39 @@ namespace HorrorGame.Gameplay.Match
         private MatchClock _clock = new MatchClock();
 
         /// <summary>
+        /// Seconds after being sent home during which §06 cannot take this runner again.
+        /// <para>
+        /// <b>A field of twenty found this and nothing else could.</b> Twenty real
+        /// instances on B1's rim logged one runner caught <b>245 times in 135 seconds</b> —
+        /// one every 0.55 s, which is the lunge's own cooldown. Being sent to the start
+        /// line puts a runner back inside the reach of whatever is standing near their
+        /// starting cell, and <c>ForgetTarget</c> only drops the seat for one tick before
+        /// the next sight check re-acquires it. A setback became a death spiral, and on B1
+        /// it was a spiral that cost nothing: the log line reads 「0개 층을 다시 내려가야
+        /// 한다」.
+        /// </para>
+        /// <para>
+        /// <b>Where 1.75 comes from.</b> Half a second is the fade
+        /// (<c>CaughtFeedback</c>'s, which is §01's own grammar for "you have been moved" —
+        /// the same half second the 투하구 drop takes). The rest is one cell at
+        /// <see cref="GameConstants.WalkSpeed"/>: 2.5 m / 2.0 m/s = 1.25 s. So the window
+        /// is exactly long enough to see where you are and put one corridor cell between
+        /// you and the floor — the smallest unit of distance this map has — and no longer.
+        /// A runner who stands still when it ends is caught again, which is correct: the
+        /// grace is for the teleport, not for the player.
+        /// </para>
+        /// </summary>
+        public const float CaughtGraceSeconds = 1.75f;
+
+        private float _caughtGraceLeft;
+
+        /// <summary>Whether §06 is currently barred from taking this runner. See <see cref="CaughtGraceSeconds"/>.</summary>
+        public bool InCaughtGrace
+        {
+            get { return _caughtGraceLeft > 0f; }
+        }
+
+        /// <summary>
         /// How many times §06 has caught this machine's runner and sent them back to B1.
         /// <para>
         /// The observable fact of being caught. There used to be one already —
@@ -451,6 +484,7 @@ namespace HorrorGame.Gameplay.Match
             // them and nothing behind. MatchClock dropped the whole 지상 half of its
             // surface, so there is no longer a flag to pass false to.
             LocalTimesCaught = 0;
+            _caughtGraceLeft = 0f;
             _clock = new MatchClock();
             _accumulator = 0d;
 
@@ -1527,6 +1561,24 @@ namespace HorrorGame.Gameplay.Match
                 return;
             }
 
+            // The window after being sent home. It ticks here rather than in StepFixed
+            // because this is the only method that reads it, and a countdown living beside
+            // its one consumer cannot drift out of step with it.
+            if (_caughtGraceLeft > 0f)
+            {
+                _caughtGraceLeft -= GameConstants.FixedStep;
+
+                // Every creature is told to drop this seat for the whole window, not once.
+                // ForgetTarget alone lasted one tick — the next sight check re-acquired
+                // immediately, which is how one runner was taken 245 times in 135 seconds.
+                for (var i = 0; i < _creatures.Count; i++)
+                {
+                    _creatures[i].Agent?.ForgetTarget(LocalSeat);
+                }
+
+                return;
+            }
+
             var here = _playerRoot.position;
 
             for (var i = 0; i < _creatures.Count; i++)
@@ -1632,6 +1684,7 @@ namespace HorrorGame.Gameplay.Match
 
                 SendBackToTheStartLine();
                 LocalTimesCaught++;
+                _caughtGraceLeft = CaughtGraceSeconds;
                 // §13: the catch is REPORTED, not decided, on a machine that is not the
                 // host. ReportLocalCaught is the branch — host goes straight to the rule,
                 // client sends the [Command] that carries no seat, so a client can only
