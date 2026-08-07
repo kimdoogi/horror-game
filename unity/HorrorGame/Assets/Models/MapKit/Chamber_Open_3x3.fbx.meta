@@ -3,7 +3,37 @@ guid: c877f4927118d4ea3b88edb78f81287d
 ModelImporter:
   serializedVersion: 24300
   internalIDToNameTable: []
-  externalObjects: {}
+  externalObjects:
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Ceiling_Structure
+    second: {fileID: 2100000, guid: cd5de6cfd5a6048508f87e550b8215da, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Floor_Concrete
+    second: {fileID: 2100000, guid: 7796812d18c364166823d31149587daf, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Trim_Painted
+    second: {fileID: 2100000, guid: 73b49f6bbcf724994a5c60896497780c, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Trim_Steel
+    second: {fileID: 2100000, guid: 8f1bbdb7ed31349aab8e2ab6250db297, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Wall_Dado
+    second: {fileID: 2100000, guid: 987b1fc2ee51443a9b3512af88bcca51, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Wall_Structure
+    second: {fileID: 2100000, guid: 113eb5dcc9f5345ccba02c3d84c0547f, type: 2}
   materials:
     materialImportMode: 2
     materialName: 0

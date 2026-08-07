@@ -152,11 +152,45 @@ STONE = "Prop_Stone"
 # seam — the surface the host stamped a glyph onto — and §03 단서 is deleted,
 # so both the material and every fitting that carried one are gone.
 
+RUST_DARK = "Prop_RustDark"
+WOOD_WORN = "Prop_WoodWorn"
+MORTAR = "Prop_Mortar"
+
 MATERIALS: dict[str, MaterialSpec] = {
     WOOD: MaterialSpec(WOOD, (0.196, 0.126, 0.072), roughness=0.85),
     IRON: MaterialSpec(IRON, (0.112, 0.116, 0.122), roughness=0.55, metallic=0.90),
     RUST: MaterialSpec(RUST, (0.201, 0.092, 0.046), roughness=0.92, metallic=0.30),
     STONE: MaterialSpec(STONE, (0.302, 0.292, 0.271), roughness=0.90),
+    # ── Weathering set (production detail pass) ─────────────────────────────
+    # RUST is the painted-orange side of oxidation and reads as paint when it
+    # covers a whole pipe; RUST_DARK is the stain — wet, near-dielectric, for
+    # sleeves on a pipe run and the streak a bolt bleeds down a wall or a leg.
+    RUST_DARK: MaterialSpec(RUST_DARK, (0.105, 0.052, 0.030), roughness=0.95, metallic=0.10),
+    # Pale worn timber: shelf deck tops and fresh-broken plank faces. The beam
+    # grazes horizontal surfaces, and at WOOD's 0.196 albedo a deck top under a
+    # torch measured near-black — the worn top is what makes a shelf read as a
+    # shelf instead of an empty frame.
+    WOOD_WORN: MaterialSpec(WOOD_WORN, (0.295, 0.225, 0.150), roughness=0.80),
+    # Mortar/plaster dust for debris: the pale pool that ties a rubble pile to
+    # the floor the way §3.10's contact decals tie a crate to it.
+    MORTAR: MaterialSpec(MORTAR, (0.415, 0.398, 0.368), roughness=0.95),
+    # ── The gun's materials (consumed by gen_gun.py) ────────────────────────
+    # Registered HERE because this table is what write_manifest() serialises and
+    # PropMaterials.cs rebuilds URP materials from — and PropMaterials.Bind walks
+    # every FBX under Assets/Models/Props, Gun_Held.fbx and Gun_Pickup.fbx
+    # included. Before this entry the gun's slots were in NO manifest: Bind
+    # logged them UNBOUND and the revolver shipped on the importer's guess —
+    # metallic 0, no emission keyword, so no crosshair highlight either.
+    # Value hierarchy, measured off the round-2 render: the first grip values
+    # (0.098 wood, 0.038 wrap) rendered BRIGHTER than the steel and the gun read
+    # as a toy with a taped brick for a handle. A gun is steel-first: the wood
+    # sits below the worn steel's luminance and the wrap sits below the wood.
+    "Gun_Steel": MaterialSpec("Gun_Steel", (0.062, 0.066, 0.074), roughness=0.52, metallic=1.0),
+    "Gun_SteelWorn": MaterialSpec("Gun_SteelWorn", (0.330, 0.340, 0.360), roughness=0.30, metallic=1.0),
+    "Gun_Bore": MaterialSpec("Gun_Bore", (0.012, 0.012, 0.013), roughness=0.90),
+    "Gun_Grip": MaterialSpec("Gun_Grip", (0.055, 0.034, 0.022), roughness=0.55),
+    "Gun_GripWrap": MaterialSpec("Gun_GripWrap", (0.020, 0.016, 0.014), roughness=0.88),
+    "Gun_Cloth": MaterialSpec("Gun_Cloth", (0.295, 0.272, 0.228), roughness=0.95),
 }
 
 
@@ -736,6 +770,42 @@ def build_pipes() -> PropBuild:
         b.box((0.060, 0.030, 0.150), (x, -0.014, 2.120), mat=IRON)
         b.cyl(0.062, 0.036, (x, -0.100, 2.120), rot=(0.0, 90.0, 0.0), verts=10, mat=IRON,
               nobevel=True)
+        # Two bolt heads where the wall plate meets the brick. A bracket with no
+        # fixing reads as a block resting against the wall, which is what the
+        # beam render showed.
+        for z in (2.075, 2.165):
+            b.cyl(0.0060, 0.014, (x + 0.017, -0.033, z), rot=(90.0, 0.0, 0.0),
+                  verts=6, mat=IRON, nobevel=True)
+            b.cyl(0.0060, 0.014, (x - 0.017, -0.033, z), rot=(90.0, 0.0, 0.0),
+                  verts=6, mat=RUST, nobevel=True)
+    # A bolted flange pair on the main run. 2.4 m of pipe with no joint reads as
+    # an extrusion; one flange is what says "assembled, and by somebody".
+    for fx in (-0.531, -0.509):
+        b.cyl(0.078, 0.016, (fx, -0.100, 2.120), rot=(0.0, 90.0, 0.0), verts=12,
+              mat=IRON, nobevel=True)
+    for k in range(6):
+        a = math.radians(k * 60.0 + 30.0)
+        b.cyl(0.0072, 0.052, (-0.520, -0.100 + 0.060 * math.cos(a),
+                              2.120 + 0.060 * math.sin(a)),
+              rot=(0.0, 90.0, 0.0), verts=6, mat=RUST, nobevel=True)
+    # A coupling sleeve on the mid pipe, and one on the main where the rust has
+    # crept over the joint.
+    b.cyl(0.040, 0.070, (0.350, -0.190, 2.050), rot=(0.0, 90.0, 0.0), verts=10,
+          mat=IRON, nobevel=True)
+    b.cyl(0.058, 0.080, (1.050, -0.100, 2.120), rot=(0.0, 90.0, 0.0), verts=10,
+          mat=RUST_DARK, nobevel=True)
+    # Stain sleeves: RUST is the painted-orange side of oxidation and a whole
+    # pipe of it reads as paint (the van lesson, again). Two darker wet-stain
+    # bands break the monotone the way real seepage does.
+    b.cyl(0.0528, 0.220, (-0.150, -0.100, 2.120), rot=(0.0, 90.0, 0.0), verts=10,
+          mat=RUST_DARK, nobevel=True)
+    b.cyl(0.0528, 0.160, (0.800, -0.100, 2.120), rot=(0.0, 90.0, 0.0), verts=10,
+          mat=RUST_DARK, nobevel=True)
+    # Rust bleed down the wall under the outer brackets: the §3.10 rust-bleed
+    # decal's cousin, carried by the prop so it arrives wherever the prop does.
+    for x in (-0.900, 0.900):
+        b.box((0.055, 0.006, 0.420), (x, -0.004, 1.900), mat=RUST_DARK, nobevel=True)
+    b.box((0.075, 0.006, 0.300), (0.0, -0.004, 1.950), mat=RUST_DARK, nobevel=True)
     # A valve and a drop leg, so the run reads as plumbing rather than as a stripe.
     b.cyl(0.052, 0.240, (0.560, -0.100, 2.000), verts=10, mat=RUST, nobevel=True)
     b.cyl(0.070, 0.070, (0.560, -0.100, 1.880), verts=12, mat=IRON, nobevel=True)
@@ -744,6 +814,8 @@ def build_pipes() -> PropBuild:
     for i in range(3):
         b.box((0.170, 0.016, 0.016), (0.560, -0.100, 1.830), rot=(0.0, 0.0, i * 60.0),
               mat=RUST, nobevel=True)
+    # Packing-gland nut on the valve stem — the silhouette between body and wheel.
+    b.cyl(0.030, 0.026, (0.560, -0.100, 1.856), verts=6, mat=RUST_DARK, nobevel=True)
     return b
 
 
@@ -762,11 +834,40 @@ def build_shelving() -> PropBuild:
     for z in (0.120, 0.640, 1.180, 1.720):
         b.box((W, D, t), (0.0, 0.0, z), mat=WOOD)
         b.box((W, 0.030, 0.056), (0.0, -D / 2 + 0.015, z + 0.030), mat=IRON)
+        # A pale worn top sheet per deck. The beam grazes horizontals, and at
+        # WOOD's albedo the decks measured near-black — the unit read as an
+        # empty frame in its own beam render. This is the shelf's §7.12 fix:
+        # not brighter iron, a lighter dielectric where the light lands.
+        b.box((W - 0.060, D - 0.040, 0.005), (0.0, 0.0, z + t / 2 + 0.0025),
+              mat=WOOD_WORN, nobevel=True)
+        # Bolt heads through the front legs at every deck rail.
+        for sx in (-1.0, 1.0):
+            b.cyl(0.0068, 0.014, (sx * (W / 2 - 0.035), -0.235, z + 0.030),
+                  rot=(90.0, 0.0, 0.0), verts=6, mat=RUST, nobevel=True)
+    # Corner gussets under the upper decks — the join detail that says bolted
+    # steel rather than glued toy.
+    for z in (0.640, 1.180, 1.720):
+        for sx in (-1.0, 1.0):
+            b.box((0.048, 0.010, 0.048), (sx * (W / 2 - 0.075), -D / 2 + 0.020, z - 0.042),
+                  rot=(0.0, 45.0, 0.0), mat=IRON, nobevel=True)
+    # Feet: base plates with an anchor bolt each. A leg that meets the slab as a
+    # bare 90° edge is what made the unit look dropped-in rather than installed.
+    for (sx, sy) in ((-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)):
+        b.box((0.095, 0.095, 0.014), (sx * (W / 2 - 0.035), sy * (D / 2 - 0.035), 0.007),
+              mat=IRON)
+        b.cyl(0.0060, 0.012, (sx * (W / 2 - 0.010), sy * (D / 2 - 0.010), 0.017),
+              verts=6, mat=RUST, nobevel=True)
     # Back cross-braces.
     b.box((W - 0.10, 0.024, 0.060), (0.0, D / 2 - 0.030, 1.000), rot=(0.0, 26.0, 0.0),
           mat=IRON)
     b.box((W - 0.10, 0.024, 0.060), (0.0, D / 2 - 0.030, 1.000), rot=(0.0, -26.0, 0.0),
           mat=IRON)
+    # Rust bleeding down the front legs from the top and mid rails.
+    for sx in (-1.0, 1.0):
+        b.box((0.032, 0.005, 0.260), (sx * (W / 2 - 0.035), -0.2325, 1.560),
+              mat=RUST_DARK, nobevel=True)
+        b.box((0.026, 0.005, 0.180), (sx * (W / 2 - 0.035), -0.2325, 0.500),
+              mat=RUST_DARK, nobevel=True)
     return b
 
 
@@ -801,13 +902,46 @@ def build_debris() -> PropBuild:
     )
     for (sx, sy, sz, x, y, z, yaw) in chunks:
         b.box((sx, sy, sz), (x, y, z), rot=(6.0, -4.0, yaw), mat=STONE)
+    # Mortar lumps among the stone: broken render is never one mineral. Pale,
+    # dielectric, and the tone gap is what stops the chunks reading as grey dice.
+    for (sx, sy, sz, x, y, z, yaw) in (
+        (0.115, 0.095, 0.075, -0.180, 0.080, 0.038, 71.0),
+        (0.095, 0.085, 0.060, 0.150, 0.260, 0.030, -23.0),
+        (0.080, 0.070, 0.055, -0.380, 0.300, 0.028, 44.0),
+    ):
+        b.box((sx, sy, sz), (x, y, z), rot=(9.0, 7.0, yaw), mat=MORTAR)
     for (x, y, r) in ((-0.100, -0.400, 0.070), (0.360, 0.360, 0.060)):
         b.sph(r, (x, y, r * 0.55), scale=(1.0, 0.9, 0.55), segs=10, rings=5, mat=STONE,
               nobevel=True)
-    b.box((1.100, 0.700, 0.020), (0.0, 0.0, 0.010), mat=STONE, nobevel=True)
+    # The base is two offset slabs rather than one — a single crisp rectangle
+    # under a rubble pile read as a bathmat in the beam render — plus two pale
+    # dust pools that tie the pile to the slab the way §3.10's decals tie a
+    # crate to it.
+    b.box((1.050, 0.680, 0.020), (0.020, 0.010, 0.010), rot=(0.0, 0.0, 9.0), mat=STONE)
+    b.box((0.850, 0.600, 0.018), (-0.060, -0.040, 0.009), rot=(0.0, 0.0, -14.0), mat=STONE)
+    b.cyl(0.160, 0.010, (-0.250, -0.150, 0.005), verts=12, mat=MORTAR, nobevel=True)
+    b.cyl(0.120, 0.010, (0.300, 0.150, 0.005), verts=12, mat=MORTAR, nobevel=True)
+    # Bent rebar out of the rubble — the one silhouette element concrete debris
+    # is never without. Kept low: max tip 0.245 m, still under knee height.
+    b.cyl(0.0055, 0.620, (-0.150, 0.150, 0.100), rot=(0.0, 78.0, 35.0), verts=8,
+          mat=RUST, nobevel=True)
+    b.cyl(0.0055, 0.550, (0.250, -0.050, 0.130), rot=(0.0, 82.0, -20.0), verts=8,
+          mat=RUST_DARK, nobevel=True)
+    b.cyl(0.0055, 0.450, (-0.050, -0.320, 0.160), rot=(0.0, 68.0, 100.0), verts=8,
+          mat=RUST, nobevel=True)
+    # Splintered ends on two planks: a fresh pale break face, angled off the
+    # plank line.
+    b.box((0.085, 0.042, 0.018), (0.392, 0.075, 0.022), rot=(0.0, 4.0, 26.0),
+          mat=WOOD_WORN, nobevel=True)
+    b.box((0.075, 0.038, 0.016), (-0.560, 0.055, 0.024), rot=(0.0, -6.0, 4.0),
+          mat=WOOD_WORN, nobevel=True)
     # One plank propped on the mound. Its only job is to break the flat silhouette
-    # so a beam finds the pile; at 0.30 m it is still well under knee height.
+    # so a beam finds the pile; at 0.30 m it is still well under knee height. Its
+    # top face is the worn pale timber, because it is the one surface the beam
+    # actually lands on.
     b.box((0.760, 0.130, 0.030), (0.050, -0.050, 0.152), rot=(0.0, -20.0, 20.0), mat=WOOD)
+    b.box((0.740, 0.120, 0.006), (0.050, -0.050, 0.170), rot=(0.0, -20.0, 20.0),
+          mat=WOOD_WORN, nobevel=True)
     return b
 
 
@@ -834,7 +968,10 @@ SPECS: list[Spec] = [
     # All that is left. The §08 loot block, the Interactable block and the
     # 궤짝 were deleted with the systems that placed them — see the tombstone
     # above the builders.
-    Spec("Pipes", build_pipes, "Dressing", (2.400, 0.231, 0.388), mount="WALL", bevel=0.004),
+    # Z grew 0.388 → 0.515 in the detail pass: the wall streaks under the outer
+    # brackets run 0.42 m down the brick, and they are part of the prop so they
+    # arrive wherever a level drops it.
+    Spec("Pipes", build_pipes, "Dressing", (2.400, 0.231, 0.515), mount="WALL", bevel=0.004),
     Spec("Shelving", build_shelving, "Dressing", (1.840, 0.460, 1.940), bevel=0.005),
     Spec("Debris", build_debris, "Dressing", (1.237, 1.046, 0.299), bevel=0.004),
 ]

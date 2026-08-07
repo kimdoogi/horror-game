@@ -1013,11 +1013,19 @@ def build_wood(res: int, seed: int) -> MapSet:
     scuff = scratches(res, seed + 7, count=40, length=0.35, width=0.0015)
     dirt = warped_fbm(res, seed + 8, beta=2.1, strength=res * 0.03)
 
+    # Old boards cup: the top face dries faster than the underside, so each
+    # plank curls its edges up a couple of millimetres. Under a beam sweeping
+    # along the corridor that puts a soft highlight-shadow pair on *every*
+    # plank edge — the long parallel read §12 wants from this floor, doubled,
+    # where the gap lines alone gave one thin dark line per board.
+    cup = (np.abs(plank_position - 0.5) * 2.0) ** 2 * (0.5 + 0.5 * board_tone)
+
     height = np.clip(
-        0.80
+        0.78
         + board_tone * 0.06
         + rings * 0.05
         + grain_stretch * 0.06
+        + cup * 0.10
         - gap * 0.85
         - lane * 0.03,
         0.0, 1.0,
@@ -1034,8 +1042,12 @@ def build_wood(res: int, seed: int) -> MapSet:
     colour = tint(colour, np.ones((res, res), np.float32), (0.250, 0.200, 0.148), lane * 0.30)
     colour *= 1.0 - 0.20 * scuff[..., None]
 
+    # Lane polish deepened (−0.16 → −0.26): the traffic path is the *smooth*
+    # population on this floor and it was close enough to the base to read as
+    # the same finish. Feet burnish; the beam should streak down the walk line
+    # and go matte at the walls.
     roughness = np.clip(
-        0.82 - 0.16 * lane - 0.05 * board_tone + 0.10 * grain_stretch + 0.12 * gap + 0.08 * scuff,
+        0.82 - 0.26 * lane - 0.05 * board_tone + 0.10 * grain_stretch + 0.12 * gap + 0.08 * scuff,
         0.05, 1.0,
     )
 
@@ -1052,7 +1064,7 @@ def build_wood(res: int, seed: int) -> MapSet:
         colour, roughness, height, film, np.zeros_like(film), 0.0,
         darkening=0.38, film_roughness=0.40)
 
-    return MapSet(colour, roughness, height, np.zeros((res, res), np.float32), world, 0.010)
+    return MapSet(colour, roughness, height, np.zeros((res, res), np.float32), world, 0.013)
 
 
 def build_tile(res: int, seed: int) -> MapSet:
@@ -1110,8 +1122,15 @@ def build_tile(res: int, seed: int) -> MapSet:
     colour = tint(colour, np.ones((res, res), np.float32), (0.185, 0.172, 0.155), chips * 0.85)
     colour *= 1.0 - 0.10 * crazing[..., None]
 
+    # A minority of tiles have lost their glaze entirely — worn through by
+    # decades of feet, abruptly matte against their neighbours. Per tile, not
+    # noise: glaze fails by the piece, and a checker of gloss answers a moving
+    # beam tile by tile, which is the most legible §12 cue this floor has
+    # after the grid itself.
+    worn_tile = smoothstep(0.72, 0.88, cell_random(tile_index, count * count, seed + 6, 0.0, 1.0))
     roughness = np.clip(
-        0.22 + 0.60 * grout + 0.45 * chips + 0.14 * grime - 0.06 * tile_tone,
+        0.22 + 0.60 * grout + 0.45 * chips + 0.14 * grime - 0.10 * tile_tone
+        + 0.34 * worn_tile * (1.0 - grout),
         0.06, 1.0,
     )
 
@@ -1130,7 +1149,7 @@ def build_tile(res: int, seed: int) -> MapSet:
         colour, roughness, height, film, pool, water_level,
         darkening=0.45, film_roughness=0.16, pool_roughness=0.08)
 
-    return MapSet(colour, roughness, height, np.zeros((res, res), np.float32), world, 0.008)
+    return MapSet(colour, roughness, height, np.zeros((res, res), np.float32), world, 0.010)
 
 
 def build_gravel(res: int, seed: int) -> MapSet:
@@ -1303,7 +1322,19 @@ def build_concrete_floor(res: int, seed: int) -> MapSet:
     colour = tint(colour, np.ones((res, res), np.float32), (0.250, 0.235, 0.205),
                   per_cell(aggregate_owner, 46, seed + 13, 0.0, 1.0) * exposed * 0.6)
 
-    roughness = np.clip(0.74 + 0.16 * fine - 0.10 * damp + 0.14 * crack + 0.10 * pits, 0.30, 1.0)
+    # Burnished traffic patches: forty years of feet polish a floated slab to
+    # a dull sheen in the places people actually walk, and the polish darkens
+    # a touch as it compacts. Broken by slow noise rather than drawn as a lane
+    # so it cannot tile into a painted stripe. This is zone D's roughness
+    # story: the beam streaks on the polish and dies on the dust, where tile
+    # answers as a gloss *lattice* and metal as one hard lozenge — three
+    # different specular signatures on the three hard floors (§12).
+    burnish = smoothstep(0.62, 0.86, warped_fbm(res, seed + 15, beta=2.4,
+                                                strength=res * 0.04, low_cycles=1.6)) \
+        * (1.0 - np.clip(crack * 3.0, 0.0, 1.0))
+    roughness = np.clip(0.74 + 0.16 * fine - 0.10 * damp + 0.14 * crack + 0.10 * pits
+                        - 0.30 * burnish, 0.26, 1.0)
+    colour *= (1.0 - 0.07 * burnish)[..., None]
 
     colour = detile(colour, strength=0.80)
 
@@ -1472,6 +1503,35 @@ def build_wall_brick(res: int, seed: int) -> MapSet:
     face = fbm(res, seed + 3, beta=1.6, low_cycles=12.0)
     pocks = smoothstep(0.72, 0.92, fbm(res, seed + 4, beta=1.2, low_cycles=30.0))
 
+    # ── The relief the wall was missing, measured rather than felt. ──
+    #
+    # The first shipped set carried all of its normal energy in the mortar
+    # grooves: a raking-light render of the normal map alone (flat grey albedo,
+    # spot at 75° incidence) showed a lattice of joints around brick faces that
+    # were *perfectly flat* — mean normal tilt 13.7° with the 95th percentile at
+    # 67°, i.e. joints and nothing else. Under the game's oblique beam that
+    # renders as wallpaper. Three things a hand-laid wall actually has:
+    #
+    # * **Every brick sits at its own depth.** A mason works to a string line,
+    #   ±2 mm; half a century of settlement doubles that. Per-brick, not noise.
+    # * **A fired brick face is bowed.** Clay shrinks in the kiln; stretchers
+    #   crown 1–2 mm proud at the centre. The bow is what turns each brick into
+    #   its own soft highlight under a moving light, which is the per-brick
+    #   read the beam needs at 2 m.
+    # * **Some faces have spalled.** Frost pops the fired skin off a weak brick
+    #   and leaves a ragged crater a few millimetres deep with the soft core
+    #   showing — rougher, redder, and the strongest single "old wall" cue.
+    proud = cell_random(brick_index, courses * per_course, seed + 9, -1.0, 1.0)
+    bow = (4.0 * course_position * (1.0 - course_position)) * \
+        (4.0 * brick_position * (1.0 - brick_position))
+    bow = np.sqrt(np.clip(bow, 0.0, 1.0)).astype(np.float32) * (0.55 + 0.45 * face) \
+        * cell_random(brick_index, courses * per_course, seed + 12, 0.35, 1.0)
+
+    spall_pick = smoothstep(0.80, 0.90,
+                            cell_random(brick_index, courses * per_course, seed + 10, 0.0, 1.0))
+    spall = spall_pick * smoothstep(0.38, 0.72, fbm(res, seed + 11, beta=1.7, low_cycles=9.0)) \
+        * (1.0 - mortar)
+
     # Mortar is not one grey. It was repointed in patches, it carries the same
     # damp as the brick, and where it is old it is darker than the brick rather
     # than brighter — the bright uniform lattice the first render showed is what
@@ -1495,13 +1555,20 @@ def build_wall_brick(res: int, seed: int) -> MapSet:
                length=int(res * 0.14)) * 0.5,
         0.0, 1.0)
 
+    # Weights re-derived for the deeper height_scale below: at 0.024 m full
+    # range the mortar rakes ~14 mm deep, a brick leans ±2.4 mm off the string
+    # line and a face crowns ~1.7 mm — all real dimensions, and between them
+    # they put slope on every texel of the wall instead of only on the joints.
     height = np.clip(
-        0.80
-        + brick_tone * 0.05
+        0.72
+        + brick_tone * 0.04
+        + proud * 0.13
+        + bow * 0.11
         + face * 0.04
-        - mortar * 0.75
-        - pocks * 0.30
-        + paint * 0.03,
+        - mortar * 0.58
+        - pocks * 0.24
+        - spall * 0.30
+        + paint * 0.02,
         0.0, 1.0,
     )
 
@@ -1512,7 +1579,8 @@ def build_wall_brick(res: int, seed: int) -> MapSet:
 
     colour = brick_colour * (1.0 - mortar[..., None] * 0.85) + mortar_colour * mortar[..., None] * 0.85
     colour = tint(colour, np.ones((res, res), np.float32), (0.330, 0.325, 0.290), paint * 0.80)
-    colour *= 1.0 - 0.32 * damp[..., None]
+    # The spalled core: the soft inside of the brick, redder and unpainted.
+    colour = tint(colour, np.ones((res, res), np.float32), (0.225, 0.108, 0.078), spall * 0.80)
     colour *= 1.0 - 0.25 * pocks[..., None]
 
     # Efflorescence: the salt bloom damp masonry pushes out to its own surface as
@@ -1530,12 +1598,28 @@ def build_wall_brick(res: int, seed: int) -> MapSet:
     soot = blur(fbm(res, seed + 44, beta=2.4, low_cycles=2.2), res * 0.02)
     colour *= (1.0 - 0.22 * soot)[..., None]
 
+    # ── Four roughness populations, because one is vinyl. ──
+    # Base paint (mid), bare face and mortar (rough), soot/grease sheen where
+    # hands and coats have burnished the paint (smooth — grime on paint is not
+    # matte, it is greasy, and it is what a beam skates across at a grazing
+    # angle), and the damp handled below by `wet`. The sheen mask is broad slow
+    # noise so it adds no repeatable shape of its own.
+    sheen = smoothstep(0.60, 0.82, warped_fbm(res, seed + 45, beta=2.3,
+                                              strength=res * 0.04, low_cycles=1.6))
     roughness = np.clip(
-        0.86 - 0.30 * paint + 0.10 * face + 0.06 * mortar - 0.12 * damp + 0.14 * bloom, 0.18, 1.0)
+        0.86 - 0.30 * paint + 0.10 * face + 0.06 * mortar + 0.14 * bloom
+        + 0.12 * spall - 0.30 * sheen * (1.0 - mortar), 0.18, 1.0)
 
     colour = detile(colour, strength=0.80)
 
-    return MapSet(colour, roughness, height, np.zeros((res, res), np.float32), world, 0.014)
+    # Damp masonry, by §3.8c's rule: genuinely darker AND smoother, in one
+    # operator, after detile so the patch survives the flat-fielding. This wall
+    # used to darken by 0.32 with a token −0.12 roughness — tinted, not wet.
+    colour, roughness, height = wet(
+        colour, roughness, height, np.clip(damp * 0.85, 0.0, 1.0),
+        np.zeros_like(damp), 0.0, darkening=0.34, film_roughness=0.30)
+
+    return MapSet(colour, roughness, height, np.zeros((res, res), np.float32), world, 0.024)
 
 
 def build_wall_concrete(res: int, seed: int) -> MapSet:
@@ -1551,7 +1635,10 @@ def build_wall_concrete(res: int, seed: int) -> MapSet:
     board_position = stripes(res, boards, axis=0)
     board_index = index_of(res, boards, axis=0)
     board_seam = groove(board_position, 0.045, softness=0.6)
-    board_tone = cell_random(board_index, boards, seed + 1, 0.90, 1.10)
+    # 0.90–1.10 → 0.82–1.18: under the beam the strongest per-board read is
+    # tonal — each board of the shuttering sealed the pour differently, and a
+    # narrow spread left the wall reading as one grey pour with lines on it.
+    board_tone = cell_random(board_index, boards, seed + 1, 0.82, 1.18)
 
     # Snap-tie holes: a regular grid, plugged and slightly proud of the wall.
     tie_y = stripes(res, 4, axis=0)
@@ -1561,6 +1648,46 @@ def build_wall_concrete(res: int, seed: int) -> MapSet:
 
     base = warped_fbm(res, seed + 2, beta=2.2, strength=res * 0.04)
     fine = fbm(res, seed + 3, beta=1.5, low_cycles=20.0)
+
+    # ── What board-formed actually means, which this wall did not have. ──
+    #
+    # The first shipped set was a plane with lines on it: mean normal tilt 3.7°,
+    # every texel between the seams dead flat. In the B1 shots that renders as
+    # a featureless void the beam slides over, because a seam every 25 cm is
+    # all the raking light had to find. Three things real shuttering leaves:
+    #
+    # * **Boards are not coplanar.** Each one deflects under the pour and is
+    #   re-used at a slightly different packing, so adjacent boards step 1–3 mm
+    #   at every seam. The step is the strongest oblique-light feature a formed
+    #   wall has — a continuous shading change across the whole board, not a
+    #   line at its edge.
+    # * **The timber's grain prints.** Concrete is a cast: every fibre of the
+    #   board face comes out in negative. Warped per board so the print breaks
+    #   at each seam the way different boards do.
+    # * **Honeycombing.** Where the pour was badly vibrated the fines never
+    #   reached the form and the wall face is a patch of exposed aggregate
+    #   voids — deeper, darker, and abruptly rough against the cast face.
+    board_offset = cell_random(board_index, boards, seed + 11, -1.0, 1.0)
+    form_grain = ndimage.gaussian_filter1d(
+        fbm(res, seed + 12, beta=1.35, low_cycles=6.0), sigma=res * 0.006,
+        axis=1, mode="wrap").astype(np.float32)
+    form_grain = normalise01(warp(
+        form_grain,
+        cell_random(board_index, boards, seed + 13, 0.0, float(res)),
+        (fbm(res, seed + 14, beta=2.4) - 0.5) * res * 0.02))
+
+    # A step between two *flat* boards is one texel of edge and no shading —
+    # measured in the round-2 raking render, where the offsets were invisible.
+    # What makes a formed wall shade board by board is *deflection*: each board
+    # bowed into the pour, so the cast face crowns out between the seams and
+    # every face carries a continuous normal gradient. Per-board amount,
+    # because a board that has been re-used ten times bows more than a new one.
+    board_bow = (4.0 * board_position * (1.0 - board_position)).astype(np.float32) \
+        * cell_random(board_index, boards, seed + 18, 0.25, 1.0)
+
+    honey = smoothstep(0.76, 0.90, warped_fbm(res, seed + 15, beta=2.3,
+                                              strength=res * 0.03, low_cycles=1.8)) \
+        * smoothstep(0.40, 0.75, fbm(res, seed + 16, beta=1.2, low_cycles=34.0))
 
     # Rust bleed from the ties and lime leaching from the board joints both run
     # downward, so the streaking is sourced from those features and dragged.
@@ -1572,18 +1699,53 @@ def build_wall_concrete(res: int, seed: int) -> MapSet:
         0.0, 1.0)
     pits = smoothstep(0.82, 0.95, fbm(res, seed + 5, beta=1.3, low_cycles=28.0))
 
-    height = np.clip(0.86 + base * 0.06 + fine * 0.03 - board_seam * 0.55 - tie * 0.40 - pits * 0.30, 0.0, 1.0)
+    # At height_scale 0.024 a board steps ±1.9 mm against its neighbour, the
+    # grain prints ~1.2 mm and a honeycombed patch sinks ~7 mm. The seams and
+    # tie holes keep their absolute depth (weights halved as the scale doubled).
+    height = np.clip(
+        0.78
+        + base * 0.05
+        + fine * 0.035
+        + board_offset * 0.08
+        + board_bow * 0.15
+        + form_grain * 0.08
+        - board_seam * 0.30
+        - tie * 0.22
+        - pits * 0.16
+        - honey * 0.28,
+        0.0, 1.0)
 
-    shade = board_tone * (0.88 + 0.24 * base) * (0.94 + 0.12 * fine)
-    shade *= 1.0 - 0.26 * bleed
+    shade = board_tone * (0.88 + 0.24 * base) * (0.94 + 0.12 * fine) * (0.92 + 0.16 * form_grain)
+    shade *= 1.0 - 0.12 * bleed
     colour = tint((0.335, 0.330, 0.318), shade, (0.100, 0.098, 0.095), np.clip(board_seam * 0.7 + pits * 0.6, 0, 1))
     colour = tint(colour, np.ones((res, res), np.float32), (0.215, 0.200, 0.175), tie * 0.55)
+    colour = tint(colour, np.ones((res, res), np.float32), (0.148, 0.138, 0.124), honey * 0.65)
 
-    roughness = np.clip(0.78 + 0.12 * fine - 0.14 * bleed + 0.10 * pits, 0.30, 1.0)
+    # Cast concrete takes the form's finish: each board face has its own sheen
+    # (ply casts near-gloss, sawn timber matte), the honeycombing is abruptly
+    # rough, and the damp streaks below go through `wet`. The old wall ran
+    # 0.757–0.863 roughness across 90 % of its texels — one material, one
+    # answer to the beam, which is the definition of reading as vinyl.
+    board_sheen = cell_random(board_index, boards, seed + 17, -1.0, 1.0)
+    roughness = np.clip(
+        0.62
+        + board_sheen * 0.11
+        + 0.10 * fine
+        + 0.06 * form_grain
+        + 0.26 * honey
+        + 0.12 * pits
+        + 0.10 * board_seam,
+        0.28, 1.0)
 
     colour = detile(colour, strength=0.75)
 
-    return MapSet(colour, roughness, height, np.zeros((res, res), np.float32), world, 0.010)
+    # The tie and seam streaks are water: darker and smoother where they run,
+    # per §3.8c, not just a grey tint in the shade term.
+    colour, roughness, height = wet(
+        colour, roughness, height, np.clip(bleed * 0.9, 0.0, 1.0),
+        np.zeros_like(bleed), 0.0, darkening=0.30, film_roughness=0.34)
+
+    return MapSet(colour, roughness, height, np.zeros((res, res), np.float32), world, 0.024)
 
 
 def build_wall_plaster(res: int, seed: int) -> MapSet:
@@ -1676,11 +1838,15 @@ def build_wall_plaster(res: int, seed: int) -> MapSet:
     # closes at two to ten centimetres, and at 22 cm the pattern reads as a
     # decorative motif — it was the loudest generated-looking thing left on the
     # wall once the brick came back to size.
+    # Masked harder than it was (0.45–0.72 → 0.58–0.82): the raking-light test
+    # showed the crazing running edge to edge as an even net, which reads as a
+    # decorative motif — the same failure the concrete floor's crack network
+    # had. Real crazing lives in patches where the render was over-troweled.
     hairline = np.zeros((res, res), dtype=np.float32)
     for cells, width, offset in ((20, 0.0022, 61), (38, 0.0014, 71)):
         f1, f2, _ = worley(res, cells, seed + offset, jitter=0.95)
         vein = 1.0 - smoothstep(0.0, width, f2 - f1)
-        hairline = np.maximum(hairline, vein * smoothstep(0.45, 0.72, fbm(res, seed + offset + 3, beta=2.2, low_cycles=2.0)))
+        hairline = np.maximum(hairline, vein * smoothstep(0.58, 0.82, fbm(res, seed + offset + 3, beta=2.2, low_cycles=2.0)))
 
     mould = stain(res, seed + 7, threshold=0.76, softness=0.04, detail=0.5, low_cycles=3.0) * marks
 
@@ -1690,8 +1856,15 @@ def build_wall_plaster(res: int, seed: int) -> MapSet:
     # shapes down, and every shape is one more thing that can repeat visibly.
     blown = np.clip(blown * (0.45 + 0.85 * rise), 0.0, 1.0)
 
-    height = np.clip(0.88 + swirl * 0.06 + fine * 0.02 - blown * 0.45 - hairline * 0.50
-                     + salt * 0.04 - junction * 0.03, 0.0, 1.0)
+    # Swirl doubled and the scale below doubled with it: the trowel's broad
+    # undulation is what a raking beam actually shades on a plaster wall — the
+    # old 0.5 mm of it at scale 0.008 measured a mean normal tilt of 6.2°, and
+    # the wall answered oblique light with nothing between its blown patches.
+    # A blown patch is a step, not a dish: plaster leaves the wall as a plate,
+    # so its edge is hardened before it cuts.
+    blown_step = smoothstep(0.25, 0.60, blown)
+    height = np.clip(0.86 + swirl * 0.12 + fine * 0.02 - blown_step * 0.52 - hairline * 0.34
+                     + salt * 0.05 - junction * 0.03, 0.0, 1.0)
 
     shade = (0.86 + 0.28 * swirl) * (0.95 + 0.10 * fine)
     colour = tint((0.430, 0.418, 0.388), shade, (0.250, 0.212, 0.158), marks * 0.60)
@@ -1717,12 +1890,15 @@ def build_wall_plaster(res: int, seed: int) -> MapSet:
     # before the damp, so the damp survives it.
     colour = detile(colour, strength=0.55, cycles=2.6, axes=(1,))
 
+    # film_roughness 0.52 → 0.36. At 0.52 against a 0.80 base the "sheen" was a
+    # rumour; §3.8c's read is the beam turning to a streak on the damp band at
+    # a grazing angle, and that needs the film to be *smooth*, not less rough.
     film = np.clip(rise * (0.35 + 0.65 * damp) - salt * 0.6, 0.0, 1.0)
     colour, roughness, _ = wet(
         colour, roughness, height, film, np.zeros_like(film), 0.0,
-        darkening=0.30, film_roughness=0.52)
+        darkening=0.34, film_roughness=0.36)
 
-    return MapSet(colour, roughness, height, np.zeros((res, res), np.float32), world, 0.008)
+    return MapSet(colour, roughness, height, np.zeros((res, res), np.float32), world, 0.015)
 
 
 # ── Ceiling ─────────────────────────────────────────────────────────────────
@@ -1743,11 +1919,24 @@ def build_ceiling_concrete(res: int, seed: int) -> MapSet:
     board_position = stripes(res, boards, axis=0)
     board_index = index_of(res, boards, axis=0)
     board_seam = groove(board_position, 0.055, softness=0.5)
-    board_tone = cell_random(board_index, boards, seed + 1, 0.88, 1.12)
+    board_tone = cell_random(board_index, boards, seed + 1, 0.84, 1.16)
 
-    # Grain of the shuttering timber, printed into the concrete.
-    grain = blur(fbm(res, seed + 2, beta=1.3, low_cycles=5.0), res * 0.008)
-    grain = warp(grain, np.zeros((res, res)), (fbm(res, seed + 3, beta=2.4) - 0.5) * res * 0.015)
+    # Grain of the shuttering timber, printed into the concrete. Broken per
+    # board (each plank of the shuttering is a different piece of timber) and
+    # drawn out along the board, for the same reason as `build_wall_concrete`.
+    grain = ndimage.gaussian_filter1d(
+        fbm(res, seed + 2, beta=1.3, low_cycles=6.0), sigma=res * 0.006,
+        axis=1, mode="wrap").astype(np.float32)
+    grain = normalise01(warp(
+        grain,
+        cell_random(board_index, boards, seed + 9, 0.0, float(res)),
+        (fbm(res, seed + 3, beta=2.4) - 0.5) * res * 0.015))
+
+    # Shuttering boards deflect and re-seat between pours exactly as the wall's
+    # do; a soffit at 3 m still shows the steps because grazing spill is the
+    # only light it ever gets — the *more* oblique the light, the more a step
+    # reads. Held to ±1.4 mm against the wall's ±1.9: nothing is ever near it.
+    board_offset = cell_random(board_index, boards, seed + 10, -1.0, 1.0)
 
     base = warped_fbm(res, seed + 4, beta=2.2, strength=res * 0.04)
 
@@ -1761,18 +1950,34 @@ def build_ceiling_concrete(res: int, seed: int) -> MapSet:
     soot = stain(res, seed + 6, threshold=0.60, softness=0.10, detail=0.5, low_cycles=1.5)
     pits = smoothstep(0.80, 0.94, fbm(res, seed + 7, beta=1.3, low_cycles=24.0))
 
-    height = np.clip(0.86 + base * 0.05 + grain * 0.05 - board_seam * 0.62 - pits * 0.28, 0.0, 1.0)
+    # Deflection bow across each board, same physics and same round-2 lesson
+    # as `build_wall_concrete`: the offset step alone rendered as a one-texel
+    # line and the soffit stayed a sheet of lined paper under grazing spill.
+    board_bow = (4.0 * board_position * (1.0 - board_position)).astype(np.float32) \
+        * cell_random(board_index, boards, seed + 12, 0.25, 1.0)
+
+    height = np.clip(0.80 + base * 0.04 + grain * 0.08 + board_offset * 0.07
+                     + board_bow * 0.14 - board_seam * 0.36 - pits * 0.16, 0.0, 1.0)
 
     shade = board_tone * (0.88 + 0.22 * base) * (0.90 + 0.20 * grain)
     shade *= 1.0 - 0.30 * soot
     colour = tint((0.300, 0.296, 0.288), shade, (0.090, 0.088, 0.086), np.clip(board_seam * 0.8 + pits * 0.5, 0, 1))
     colour = tint(colour, np.ones((res, res), np.float32), (0.185, 0.165, 0.130), seep * 0.55)
 
-    roughness = np.clip(0.82 + 0.10 * grain - 0.12 * seep + 0.08 * pits, 0.32, 1.0)
+    # Per-board sheen for the same reason as the wall: the form's finish is the
+    # concrete's finish, and a soffit of one roughness answers the beam's spill
+    # as one grey card. Soot is dead matte; the seep tracks go through `wet`.
+    board_sheen = cell_random(board_index, boards, seed + 11, -1.0, 1.0)
+    roughness = np.clip(
+        0.72 + board_sheen * 0.10 + 0.08 * grain + 0.10 * soot + 0.10 * pits, 0.30, 1.0)
 
     colour = detile(colour, strength=0.75)
 
-    return MapSet(colour, roughness, height, np.zeros((res, res), np.float32), world, 0.011)
+    colour, roughness, height = wet(
+        colour, roughness, height, np.clip(seep * 0.8, 0.0, 1.0),
+        np.zeros_like(seep), 0.0, darkening=0.28, film_roughness=0.34)
+
+    return MapSet(colour, roughness, height, np.zeros((res, res), np.float32), world, 0.020)
 
 
 # ── Trim ────────────────────────────────────────────────────────────────────
@@ -2004,13 +2209,13 @@ MATERIALS: Tuple[MaterialSpec, ...] = (
     MaterialSpec(
         "Wall_Brick_Painted", build_wall_brick, seed=2101, target_albedo=0.22,
         slots=("Wall_Structure",),
-        grain=Grain(feature_mm=9.0, relief_mm=0.75, albedo=0.12, roughness=0.06),
+        grain=Grain(feature_mm=9.0, relief_mm=1.0, albedo=0.12, roughness=0.06),
         detail="Detail_Sand",
         note="Painted brick, stretcher bond. Bound to the kit's single wall slot.",
     ),
     MaterialSpec(
         "Wall_Concrete_Bare", build_wall_concrete, seed=2201, target_albedo=0.27,
-        grain=Grain(feature_mm=15.0, relief_mm=1.0, albedo=0.11, roughness=0.06),
+        grain=Grain(feature_mm=15.0, relief_mm=1.5, albedo=0.11, roughness=0.07),
         detail="Detail_Sand",
         note="Board-formed concrete with snap-tie holes. Generated, awaiting a per-zone wall slot.",
     ),
@@ -3061,6 +3266,19 @@ def main(argv: Sequence[str] | None = None) -> int:
           "worst seam ratio %.2f, worst normal error %.4f"
           % (len(reports), min(means), max(means), ALBEDO_MIN_LINEAR, ALBEDO_MAX_LINEAR,
              max(r.seam_ratio for r in reports), max(r.normal_unit_error for r in reports)))
+
+    # The same contract line every asset generator in this repo ends on
+    # (tools/ci/run_blender_generators.sh trusts the marker, not the exit
+    # code). This generator is run through the audio venv rather than through
+    # Blender, but whoever drives it deserves the same "it actually wrote the
+    # set" signal, printed only after every verification above has passed.
+    print("ASSET_REPORT textures materials=%d/%d res=%d albedo=%.3f-%.3f "
+          "worst_seam=%.2f worst_ao_contrast=%.3f details=%d decals=%d glows=%d manifest=%s"
+          % (len(reports), len(MATERIALS), args.res, min(means), max(means),
+             max(r.seam_ratio for r in reports),
+             min(r.ao_contrast for r in reports),
+             len(DETAILS), len(decal_entries), len(glow_entries),
+             "written" if len(selected) == len(MATERIALS) else "kept (--only run)"))
     return 0
 
 

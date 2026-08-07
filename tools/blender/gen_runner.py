@@ -14,18 +14,36 @@ builds and runs every check and writes nothing.
 WHY THIS ASSET EXISTS AND WHY IT IS ANONYMOUS
 ---------------------------------------------
 DESCENT-PIVOT §5 is one line long and settles the whole brief: **「모델 하나. 20명이
-똑같이 생긴다.」** §04's five roles are gone, so role colour has nothing left to encode,
-and the document argues the sameness is worth more than the distinction was —
-**「똑같이 생긴 스무 명이 어두운 복도에서 같은 방향으로 움직이는 것이 각자 다르게 생긴
-스무 명보다 무섭다. 누가 사람이고 누가 아닌지도 한순간 헷갈린다」** — which is also the
-trap §10's 그늘 is built to spring.
+똑같이 생긴다.」** Twenty identical strangers in a dark maze — **「누가 사람이고 누가
+아닌지도 한순간 헷갈린다」** — which is also the trap §10's 그늘 is built to spring.
 
-So this figure is authored for **silhouette only**. §03 keeps the maze dark; at ten
-metres down a B-storey corridor a racer is an outline crossing a doorway and nothing
-else. That is why it carries no face, no hands with fingers, no costume, and one flat
-near-white material (0.86, 0.87, 0.89) at roughness 0.88: a pale matte body is the
-shape that survives being lit by one moving flashlight from an unpredictable angle,
-and every detail finer than the outline is budget spent where nobody is looking.
+The figure is an anonymous WORKER: utility jacket with a raised collar and a hood,
+work trousers tucked into boots, gloved mitten hands, a small headlamp housing on the
+brow (unlit geometry — the game's flashlight component is the only light), and **no
+readable face**: the space under the hood's brim is a near-black material so the beam
+finds a hollow where a face should be. The anonymity is the design, not a budget cut.
+
+WHY IT IS DARK FABRIC AND NOT WHITE PLASTER — the porcelain problem
+-------------------------------------------------------------------
+The previous revision shipped one near-white material (0.86, 0.87, 0.89) on the
+argument that a pale body survives a moving flashlight. ``Shots/prodbase_03m.png`` is
+what that argues into: under the beam the whole figure clips towards white, every
+interior contour is gone, and the body reads as a GLOSSY PORCELAIN MANNEQUIN — a
+light source in the corridor, the exact misread §10's 그늘 already exploits. A
+silhouette does not need to be bright to read; it needs to be *shaped*, and a
+near-white albedo under a 12 m beam destroys shape faster than darkness does.
+
+So the clothes are matte mid-dark fabric (albedo 0.13 down to 0.04, roughness 0.85+,
+metallic 0): under the beam the jacket gives back enough to read folds and outline,
+and it can never bloom. The one bright thing on the body is deliberate and small —
+the ``Runner_Accent`` band (armband + hood strap), which is the slot a per-runner
+tint targets to keep twenty identical strangers tellable-apart by colour accent.
+
+THE MONSTER TEST. ``Shots/prodbase_Acquire_3m.png``: the monster is thin, ribbed,
+hunched, arms to its knees. This figure is its negation in outline — bulky-jacketed,
+upright, arms ending at the hip — so a beam's edge at 15 m can tell runner from
+monster before it can tell anything else. ``report_breadth`` prints the shoulder
+band; the arm/spine ratio the gun mount fixes keeps the arms short.
 
 WHY PRIMITIVES AND NOT METABALLS — seven passes, one failure, seven times
 ------------------------------------------------------------------------
@@ -123,35 +141,20 @@ to be joined where the skeleton says they are (``verify_limbs_hang_free``), no p
 a vertex through the floor (``verify_floor``), and no pose may pull an edge of the skin far
 enough to draw a sheet across a gap (``verify_skin_stretch``).
 
-PROVENANCE — this file was written against the live model, and checked against it
-------------------------------------------------------------------------------------
-Until this script existed the figure was a mesh in one interactive Blender session and
-nothing else, which is one crash from being an asset nobody can rebuild. The
-regeneration was measured against that session before it was trusted, and then the rig
-moved three of those numbers on purpose:
-
-======================  ====================  ====================  ==================
-measure                 live session          this script, static   with the rig
-======================  ====================  ====================  ==================
-height                  1.750000 m            1.750000 m            1.750 m
-width (hand to hand)    0.778444 m            0.778 m               **0.907 m**
-depth (heel to toe)     0.392557 m            0.394 m               0.394 m
-material                ``Runner_Plaster.011``  ``Runner_Plaster``  ``Runner_Plaster``
-mesh                    1765 verts/3307 faces 1748 v / 3496 tris    1879 v / 3754 tris
-======================  ====================  ====================  ==================
-
-The static column was under 2 mm on every axis; the vertex counts differ because the
-interactive decimation left n-gons where this one triangulates, and the material name
-differs because ``.011`` is Blender's duplicate-name suffix from a session that had built
-the figure twelve times — a name Unity would have imported and kept, and a generated asset
-does not have one.
-
-The **13 cm of span** is the rig's bill and it is itemised at ``LEG_X``: the arms had to
-come off the torso and the legs had to come apart at the crotch, and the legs were thinned
-and the arms moved out to pay for it. §12's corridor still takes two of these abreast and
-its doors are the same 2.20 m. The mesh is also genus 0 now rather than genus 1 — the loop
-of material that used to close between the mitten and the thigh is the loop §03's carry was
-tearing.
+TWO CONTRACTS THE UNITY PROJECT PINS FROM OUTSIDE THIS FILE
+------------------------------------------------------------
+* ``Runner.fbx.meta`` defines every clip as an explicit frame range
+  (Walk 0–16, Run 0–16, CrouchWalk 0–20, Idle/GunIdle 0–92, Crouch 0–80, GunWalk
+  0–16, Death 0–47). A .meta is never edited by a generator, so a regenerated take
+  that lands on a different cycle length is silently TRUNCATED by the importer —
+  a walk missing the last quarter of its stride, looping with a pop. The cadence
+  search is free to run, but ``EXPECTED_CYCLE_FRAMES`` asserts the winners; the
+  pendulum maths says the winners only change if the leg leaves the 0.47–0.67 m
+  band, which is why ``LEG_Z_TOP``/``ANKLE_Z`` must stay near where they are.
+* ``RunnerGun.GunMountArmsPerSpine = 0.9904`` hangs the gun off the arm as an
+  arm/spine ratio. ``HAND_Z`` is SOLVED from that constant (see the placement
+  table) rather than eyeballed, and ``verify_gun_mount`` re-reads the C# to prove
+  the two still agree.
 """
 
 from __future__ import annotations
@@ -195,45 +198,72 @@ anything larger means the measurement and the scale disagree, which is a bug, no
 MESH_NAME = "Runner"
 """The object name, and therefore the FBX Model node Unity binds a prefab to."""
 
-MATERIAL_NAME = "Runner_Plaster"
-"""One slot, one name. The live-session export carried ``Runner_Plaster.011`` — Blender's
-duplicate-name suffix, which becomes a real material name in Unity and a second material
-in the project the first time anyone edits it. A generated asset has no ``.011``."""
+# ── The five materials, and why five ────────────────────────────────────────
+#
+# The FBX's embedded materials ARE the in-game materials: Runner.fbx.meta imports them
+# in place (materialImportMode 2, no externalObjects remap), so the numbers below are
+# the numbers the beam lights. Nothing in the project references the old
+# ``Runner_Plaster`` name — the slot vocabulary is owned here, and it is deliberately
+# small: five slots is five SRP-batcher buckets across twenty runners, not eighty.
+#
+# Every roughness is 0.85+ except the accent, and nothing is metallic. A specular
+# hotspot on a body tracks the viewer's own flashlight and reads as a light source in
+# the corridor — the misread §10's 그늘 already exploits. Matte fabric cannot do it.
+#
+# The VALUES are separated so the beam reads them as different garments even in a
+# grazing hit: jacket 0.13, trousers 0.085, gear 0.045, void 0.012. That ordering —
+# bright core, darker legs, darkest extremities, hole for a face — is what makes the
+# outline parse as a clothed person instead of one blob.
 
-BASE_COLOUR = (0.86, 0.87, 0.89)
-"""Slightly cool near-white. §03 is dark and §05's flashlight is the only reliable light,
-so the body has to give back most of what little lands on it or it is not a silhouette,
-it is a hole. Faintly blue rather than neutral so it separates from the warm concrete of
-the map kit under the same beam."""
+MAT_JACKET = MaterialSpec("Runner_Jacket", (0.130, 0.135, 0.142), roughness=0.92)
+"""Utility jacket and hood. Cool mid-dark grey — desaturated workwear, faintly blue so
+it separates from the warm concrete of the map kit under the same beam."""
 
-ROUGHNESS = 0.88
-"""Matte to the point of chalk. A glossy body would throw a specular hotspot that tracks
-the viewer's own flashlight, and that hotspot reads as a *light source in the corridor* —
-the exact misread §10's 그늘 already exploits. Plaster does not do that."""
+MAT_TROUSERS = MaterialSpec("Runner_Trousers", (0.085, 0.085, 0.080), roughness=0.92)
+"""Work trousers, tucked into the boots. A step darker than the jacket so the waist
+reads even when the outline is soft."""
+
+MAT_GEAR = MaterialSpec("Runner_Gear", (0.045, 0.043, 0.040), roughness=0.86)
+"""Boots, gloves and the headlamp housing — the worn near-black leather/rubber/plastic
+kit. One slot for all three: they are the same value at 12 m and nobody retints boots."""
+
+MAT_VOID = MaterialSpec("Runner_Void", (0.012, 0.012, 0.014), roughness=0.95)
+"""The face that is not there. The recess under the hood's brim wears this so the beam
+finds a hollow — the anonymity read, done with albedo instead of geometry."""
+
+MAT_ACCENT = MaterialSpec("Runner_Accent", (0.50, 0.33, 0.09), roughness=0.65)
+"""THE TINTABLE SLOT. Armband on the left sleeve plus the strap band around the hood.
+A future per-runner tint colours THIS material and nothing else — twenty identical
+strangers stay tellable-apart by one accent, which is the production pattern (an
+armband / helmet stripe). Default is safety amber."""
+
+MATERIAL_SPECS = (MAT_JACKET, MAT_TROUSERS, MAT_GEAR, MAT_VOID, MAT_ACCENT)
+"""Slot order in the mesh. Index 0 is the default (jacket); ``assign_materials``
+classifies every polygon into one of these by region."""
 
 # ── The weld pipeline ───────────────────────────────────────────────────────
 
-VOXEL_SIZE = 0.012
-"""12 mm, and this number is doing two jobs. It has to be **smaller than the thinnest
-overlap in the table** or the union drops a join — the tightest is the wrist, where the
-arm's 62 mm end-ball sits inside the hand ellipsoid, and 12 mm resolves it with room
-over. It also has to be big enough that a 1.4 m figure stays a few tens of thousands of
-faces, because everything downstream of it is per-face work."""
+VOXEL_SIZE = 0.009
+"""9 mm, down from the mannequin's 12. The number is doing three jobs now. It has to be
+smaller than the thinnest overlap in the table or the union drops a join. It has to be
+big enough that a 1.7 m figure stays a few tens of thousands of faces. And it has to
+RESOLVE THE CLOTHING: the hem ledge is a 50 mm step, the boot cuff a 34 mm ridge, the
+cap brim 26 mm and the headlamp housing a 64×50×52 mm box — features a 12 mm grid
+records as two voxels of noise and a 9 mm grid records as shape."""
 
 SMOOTH_FACTOR = 1.0
-SMOOTH_ITERATIONS = 8
-"""Full-strength Laplacian, eight passes. The remesh output is a voxel staircase — every
-surface is made of 12 mm axis-aligned steps, and the steps catch the flashlight as a
-grid. Smoothing is what turns the union back into a body. It is topology-preserving, so
-it cannot break the single shell; what it does cost is volume, which is why the height is
-measured *after* this and not before."""
+SMOOTH_ITERATIONS = 3
+"""Three passes, not the mannequin's eight. The remesh output is a voxel staircase and
+smoothing is what turns the union back into a body — but every pass also erodes the
+garment features the table now spends its placements on. Three passes kills the 9 mm
+staircase and leaves the collar, hem, cuffs and brim standing; eight passes returns the
+Michelin man. Topology-preserving, so it cannot break the single shell."""
 
-DECIMATE_RATIO = 0.10
-"""Keep a tenth. The remesh spends its faces uniformly, which is the wrong distribution
-for a shape that is mostly smooth: after eight smoothing passes nine faces in ten are
-describing a curve their neighbours already describe. Collapse mode, so the budget goes
-to the silhouette — §05's answer to a dark game is that the outline is the only thing a
-player ever resolves, and DESCENT-PIVOT §5 doubles down on it."""
+DECIMATE_RATIO = 0.13
+"""Keep 13%. The 9 mm remesh spends ~84k triangles uniformly; after three smoothing
+passes most describe curves their neighbours already describe. Collapse mode aims the
+~11k that survive at the silhouette and the garment creases — the budget for a clothed
+body drawn twenty times is 8–12k, and ``assert_asset`` holds the ceiling at 12.5k."""
 
 SAMPLE_CHORD = VOXEL_SIZE * 0.5
 """Target edge length on the input primitives: half a voxel. Any coarser and the remesh
@@ -261,70 +291,142 @@ mechanic. If the kit ever narrows and this stops printing 2, the figure is the p
 #
 # −Y is not a preference, it is the toolchain's one axis convention, stated in the same
 # words in ``gen_props``, ``gen_dressing``, ``gen_monster_model`` and ``gen_player_model``:
-# *export_fbx's axis_forward='-Z' turns into +Z forward in Unity*. This file said "+Y
-# forward" and pushed its feet to +0.048, which put the toes out of the figure's BACK.
-# Invisible while the Runner was furniture; the first thing a walk cycle shows.
+# *export_fbx's axis_forward='-Z' turns into +Z forward in Unity*.
 #
 # The placements are named rather than inlined because ``bone_specs`` is derived from
 # them. A rig table that repeats the mesh table by hand is two tables that drift, and a
 # hip bone 3 cm off the hip is a thigh that swings the belly with it.
+#
+# THE WORKER, top to bottom. The table is authored at ~1.71 m pre-fit; the fit scales
+# whatever the smoothing leaves to exactly 1.750.
 
-TORSO_C, TORSO_R = (0.0, 0.0, 0.86), (0.190, 0.140, 0.300)
-BELLY_C, BELLY_R = (0.0, 0.0, 0.68), (0.175, 0.135, 0.180)
-NECK_C, NECK_R = (0.0, 0.0, 1.17), (0.072, 0.072, 0.080)
-HEAD_C, HEAD_R = (0.0, 0.0, 1.30), (0.150, 0.145, 0.150)
+# THE TRUNK IS A LOFT, NOT A STACK — the third shape this jacket has worn, and the
+# first that is not a Michelin man. Round one stacked three big ellipsoids and got
+# three balls; round two stacked five close ones and got a QUILTED PUFFER — a union of
+# spheres keeps a concave crease at every intersection, and the smoothing is now
+# deliberately too light to erase creases (it must keep the hem and the brim). A loft
+# has no intersections: one surface through cosine-interpolated elliptical rings, so
+# the profile below is drawn ONCE, crease-free, and the garment cues are authored as
+# profile moves — flare to 0.200 at the hem, a pull-in ledge above the hip, a slight
+# waist, a fuller chest carried a touch backward, and a real shoulder slope where
+# round two had a pauldron shelf.
+TRUNK_RINGS = (
+    #  z      rx     ry     y-centre
+    (0.740, 0.178, 0.128, 0.000),   # hem's bottom edge
+    (0.780, 0.198, 0.142, 0.000),   # hem flare — the jacket's widest line
+    (0.815, 0.200, 0.144, 0.000),
+    (0.850, 0.183, 0.131, 0.000),   # pull-in: the ledge that says "jacket ends here"
+    (0.980, 0.176, 0.126, 0.000),
+    (1.120, 0.178, 0.128, 0.000),   # waist
+    (1.260, 0.188, 0.138, 0.005),   # chest, carried slightly back
+    (1.360, 0.184, 0.132, 0.008),
+    (1.425, 0.150, 0.108, 0.008),   # shoulder slope
+    (1.465, 0.092, 0.078, 0.005),   # into the collar
+)
 
-SHOULDER_X, SHOULDER_Z, SHOULDER_R = 0.220, 1.02, 0.100
-ARM_X, ARM_R_TOP, ARM_R_BOTTOM = 0.285, 0.076, 0.062
-HAND_C, HAND_R = (0.290, 0.0, 0.62), (0.078, 0.074, 0.070)
+HEM_BOTTOM_Z = TRUNK_RINGS[0][0]
+"""Where the jacket ends and the trousers show. The material paint and the crotch
+ceiling both key off it, so it is named once."""
+
+COLLAR_C, COLLAR_R = (0.0, 0.005, 1.445), (0.120, 0.118, 0.045)
+"""Raised jacket collar: a flat disc proud of the trunk's top in depth (its 118 mm
+front-to-back against the trunk's ~98 there), so the head sits IN the jacket instead
+of on a bare stalk."""
+
+NECK_C, NECK_R = (0.0, 0.0, 1.48), (0.058, 0.058, 0.055)
+HEAD_C, HEAD_R = (0.0, 0.005, 1.565), (0.096, 0.108, 0.108)
+HOOD_C, HOOD_R = (0.0, 0.030, 1.578), (0.118, 0.130, 0.115)
+HOODSKIRT_C, HOODSKIRT_R = (0.0, 0.040, 1.495), (0.112, 0.120, 0.070)
+"""Head inside hood, hood draped into the collar. The hood shell is shifted 30 mm BACK
+(+Y) so the crown bulges rearward, and the hood-skirt carries that bulge down onto the
+shoulders — without it round one's head read as a bald helmet. In front the head pokes
+past the hood: that recess is what ``Runner_Void`` darkens."""
+
+BRIM_C, BRIM_R = (0.0, -0.078, 1.630), (0.090, 0.070, 0.020)
+"""Cap brim / hood peak: a thin ledge reaching 70 mm forward over the face recess. It
+shadows the void under a high beam hit and is the one crisp horizontal in the head's
+silhouette — round one authored it 26 mm thick and it vanished into the hood."""
+
+LAMP_C, LAMP_HALF = (0.0, -0.108, 1.606), (0.037, 0.030, 0.027)
+"""Headlamp housing, a 74×60×54 mm box under the brim, welded 17 mm into the brow.
+UNLIT geometry — the real light is the game's flashlight component; this is the shape
+that says the beam comes from somewhere. Wears ``Runner_Gear``."""
+
+# Shoulders and arms. Short by design — the monster's hands reach its knees, so this
+# figure's stop at the hip and the two outlines can never be confused (module docstring,
+# THE MONSTER TEST). The arm hangs ~24 mm clear of the chest: the armpit slot is over
+# two voxels, wide enough that the remesh cannot re-close it
+# (``verify_limbs_hang_free``) and far too fine to resolve at ten metres of corridor.
+SHOULDER_X, SHOULDER_Z, SHOULDER_R = 0.230, 1.395, 0.087
+ARM_X, ARM_Y = 0.276, -0.020
+ARM_Z_BOTTOM = 0.86
+ARM_R_TOP, ARM_R_BOTTOM = 0.066, 0.057
+
+CUFF_C, CUFF_R = (0.274, -0.045, 0.83), (0.056, 0.068, 0.052)
+"""Sleeve cuff: a ring bump where the glove meets the sleeve, and the weld that carries
+the wrist — it contains the arm shaft's bottom ball and reaches deep into the glove."""
+
+GUN_MOUNT_RATIO = 0.9904
+"""``RunnerGun.GunMountArmsPerSpine``, restated. The C# is the consumer and
+``verify_gun_mount`` re-reads it every run; this copy exists so the hand can be PLACED
+from the contract instead of drifting toward it. The gun mount is why the arm length is
+solved, not sculpted."""
+
+SPINE_JOIN_Z = 0.80
+"""Where Hips ends and Spine begins. 20 mm above the hip joint so the Hips bone rests
+pointing UP — the pose solver aims bones at absolute world directions, and a pelvis bone
+resting downward would flip the body the first time ``torso()`` aimed it."""
+
+NECK_BASE_Z = 1.44
+"""Where Spine ends and Head begins — the top of the collar. ``Head.localPosition`` in
+Unity IS the spine length ``RunnerGun`` multiplies by the mount ratio."""
+
+HAND_X, HAND_Y = 0.272, -0.060
+HAND_Z = SHOULDER_Z - math.sqrt(
+    (GUN_MOUNT_RATIO * (NECK_BASE_Z - SPINE_JOIN_Z)) ** 2 - (HAND_X - SHOULDER_X) ** 2)
+"""SOLVED, not authored: the z that makes arm/spine measure exactly
+``GUN_MOUNT_RATIO``. Lands at ~0.787 — the glove hangs at the hip, fingertip-height on a
+person, which is also the short-armed contrast the monster test wants. The hand sits
+60 mm FORWARD (−Y) of the thigh rather than beside it: a natural stance, and the 3D
+clearance to the thigh and the hem stays over two voxels where a side-by-side placement
+welded the mitten to the hip."""
+
+HAND_C, HAND_R = (HAND_X, HAND_Y, HAND_Z), (0.054, 0.066, 0.082)
+
+ARMBAND_C, ARMBAND_R = (0.279, -0.020, 1.13), (0.074, 0.074, 0.045)
+"""LEFT sleeve only (not mirrored): a ring 13 mm proud of the sleeve. Carries
+``Runner_Accent`` — the tint band that tells twenty runners apart."""
 
 LEG_PART_FRACTION = 0.33
 """How far down from the hip the two thighs are still allowed to be one mass.
 
-A third, which is to say the pelvis. Below that a leg has to be a leg: the crotch weld is
-what a scissoring stride tears into a fringe, and the fringe hangs from wherever the weld
-ends. Measured off the mesh by ``verify_limbs_hang_free``, not assumed — the smoothing
-fills the notch between the thighs well below where the placement table leaves it open."""
+A third, which is to say the pelvis. Below that a leg has to be a leg: a crotch weld is
+what a scissoring stride tears into a fringe. Measured off the mesh by
+``verify_limbs_hang_free``, not assumed. On this figure the thighs never weld at all —
+the pelvis mass is the skirt/hem, which OVERHANGS the legs instead of joining them."""
 
-LEG_X = 0.096
-LEG_Z_TOP, LEG_R_TOP = 0.66, 0.076
-LEG_Z_BOTTOM, LEG_R_BOTTOM = 0.17, 0.068
-"""THE ARMS HANG OFF A SHOULDER, THEY ARE NO LONGER PART OF THE TORSO — and this is the
-one change to the figure's outline that rigging it forced.
+LEG_X = 0.110
+LEG_Z_TOP, LEG_R_TOP = 0.78, 0.092
+TROUSER_Z_BOTTOM, TROUSER_R_BOTTOM = 0.31, 0.058
+ANKLE_Z = 0.15
+"""The leg: trouser shaft from hip to boot, ankle joint at 0.15. **The leg length is a
+contract, not a taste** — Runner.fbx.meta pins Walk at 16 frames and CrouchWalk at 20,
+and the cadence search only reproduces those winners while the final leg is inside
+roughly 0.47–0.67 m (pendulum maths in ``pendulum_frames``). hip−ankle = 0.63 pre-fit
+≈ 0.65 m final: human enough to stop the Michelin read, short enough that the meta's
+frame ranges stay true. ``EXPECTED_CYCLE_FRAMES`` is the guard."""
 
-As authored, the arm shaft ran 32 mm inside the torso, the mitten 49 mm inside the thigh
-and 17 mm inside the belly, and the module docstring above is right that for a STATIC
-silhouette none of that is a defect: it is what makes the shoulder read and it is why this
-figure is made of overlapping placements. It becomes a defect the moment the arm moves.
-The body is one closed shell, so a weld a pose pulls apart does not open a gap — it draws
-a **sheet of skin across the gap**. §03's two-handed carry swings the shoulder 78° forward
-and pulled one edge to 190 mm over its rest length; the render shows a flat membrane from
-the forearm down to the hip. On a model whose entire job is DESCENT-PIVOT §5's outline,
-that membrane IS the outline.
+BOOT_TOP_C, BOOT_TOP_R = (0.110, 0.0, 0.35), (0.079, 0.084, 0.034)
+BOOT_Z_TOP, BOOT_Z_BOTTOM = 0.345, 0.13
+BOOT_R_TOP, BOOT_R_BOTTOM = 0.072, 0.066
+"""The boot: a shaft WIDER than the trouser bottom it swallows (72 vs 58 mm), topped
+with a flat cuff ring — the tucked-in read is a ridge where trouser meets boot, kept by
+the light smoothing. ``Runner_Gear`` colours everything below the cuff."""
 
-So the arm is separated from the body everywhere except at the shoulder ball, which is
-enlarged to 100 mm and is now the only bridge: it eats 41 mm into the torso and 111 mm
-into the arm, and it sits AT the pivot, so rotating about it barely stretches anything.
-The armpit slot that opens up is 31 mm — three voxels, enough that the remesh cannot
-re-close it (``verify_limbs_hang_free``) and far too fine to resolve at §03's ten metres of
-dark corridor. This is not the T-pose gap the metaball essay rejected: the arms still
-hang, they hang 3 cm clear.
-
-The legs come in and thin down by the same amount the arms went out, so the figure pays
-for it in span rather than in bulk: **0.778 m → 0.919 m**, still two abreast in §12's
-2.20 m corridor and through its 2.20 m doors. Thinner legs are also the direction a
-walking figure wants — the swing is visible against the body instead of merging with it."""
-
-FOOT_C, FOOT_R = (0.112, -0.048, 0.11), (0.086, 0.130, 0.066)
-"""The pads sat at 0.102 with a 0.094 half-width, which left their inner faces **13.6 mm
-apart** — inside the 12 mm voxel, so the remesh joined them and eight smoothing passes set
-the join. Standing, that is invisible: it is buried between two touching feet, the shell
-count is 1, the height is exact and the preflight is right that the two SOLIDS do not
-overlap. Take a stride and the bridge is drawn 0.7 m into a bright membrane from heel to
-toe. Out 10 mm and in 8 mm puts the gap at 65 mm — five voxels — and ``verify_feet_are_separate``
-is what will notice if it ever closes again. The pad is also 19 mm narrower than it was,
-which is the direction a foot wants: this one was 234 mm across and 324 mm long, and a
-foot reads as a foot by being longer than it is wide."""
+FOOT_C, FOOT_R = (0.110, -0.050, 0.072), (0.072, 0.125, 0.056)
+"""Toe forward (−Y — see the axis note above), longer than wide, chunky like a work
+boot. Inner faces sit 76 mm apart — eight voxels — so the remesh cannot weld the pads
+into the heel-to-toe sail the mannequin once grew (``verify_limbs_hang_free``)."""
 
 
 @dataclass(frozen=True)
@@ -470,53 +572,211 @@ class Shaft:
         return [cone] + top.build() + bottom.build()
 
 
-Part = Ellipsoid | Shaft
+@dataclass(frozen=True)
+class Box:
+    """An axis-aligned box: the headlamp housing.
+
+    The one part that must NOT be round — a lamp housing reads as gear precisely
+    because it has flats, and the light smoothing pass rounds its edges just enough
+    to stop it reading as a debug cube."""
+
+    name: str
+    centre: tuple[float, float, float]
+    half: tuple[float, float, float]
+
+    def contains(self, p: Vector) -> bool:
+        c, h = self.centre, self.half
+        return all(abs(p[i] - c[i]) < h[i] for i in range(3))
+
+    def depth(self, p: Vector) -> float:
+        c, h = self.centre, self.half
+        margins = [h[i] - abs(p[i] - c[i]) for i in range(3)]
+        return max(0.0, min(margins))
+
+    def aabb(self) -> tuple[Vector, Vector]:
+        c, h = Vector(self.centre), Vector(self.half)
+        return c - h, c + h
+
+    def samples(self) -> list[Vector]:
+        """Grid samples over all six faces."""
+        c, h = self.centre, self.half
+        pts: list[Vector] = []
+        n = max(3, int(math.sqrt(PREFLIGHT_SAMPLES / 6)))
+        for axis in range(3):
+            u, v = (axis + 1) % 3, (axis + 2) % 3
+            for sign in (-1.0, 1.0):
+                for i in range(n):
+                    for j in range(n):
+                        p = [0.0, 0.0, 0.0]
+                        p[axis] = c[axis] + sign * h[axis]
+                        p[u] = c[u] + h[u] * (2.0 * (i + 0.5) / n - 1.0)
+                        p[v] = c[v] + h[v] * (2.0 * (j + 0.5) / n - 1.0)
+                        pts.append(Vector(p))
+        return pts
+
+    def build(self) -> list[bpy.types.Object]:
+        obj = blendkit.add_box(self.name, tuple(2.0 * h for h in self.half),
+                               location=self.centre)
+        _bake_transform(obj)
+        return [obj]
+
+
+@dataclass(frozen=True)
+class Loft:
+    """One crease-free surface through elliptical rings: the jacket's trunk.
+
+    Control rings are ``(z, rx, ry, y_centre)``; between them the profile is COSINE
+    interpolated — tangent-flat at every control ring, so no slope discontinuity
+    survives into the level set to read as a fold. That is the whole reason this class
+    exists: a stack of ellipsoids keeps a concave crease at every mutual intersection
+    (rounds one and two of this figure, Michelin then quilted), and a loft has no
+    intersections to crease at. Emitted as dense rings every ~15 mm so the linear mesh
+    between them is far below what a 9 mm voxel can record.
+    """
+
+    name: str
+    rings: tuple[tuple[float, float, float, float], ...]
+
+    def _profile(self, z: float) -> tuple[float, float, float]:
+        """(rx, ry, yc) at height z, cosine-eased between control rings."""
+        rings = self.rings
+        if z <= rings[0][0]:
+            return rings[0][1], rings[0][2], rings[0][3]
+        for a, b in zip(rings, rings[1:]):
+            if z <= b[0]:
+                t = (z - a[0]) / (b[0] - a[0])
+                e = 0.5 * (1.0 - math.cos(math.pi * t))
+                return (a[1] + (b[1] - a[1]) * e,
+                        a[2] + (b[2] - a[2]) * e,
+                        a[3] + (b[3] - a[3]) * e)
+        return rings[-1][1], rings[-1][2], rings[-1][3]
+
+    def _frac(self, p: Vector) -> float:
+        rx, ry, yc = self._profile(p.z)
+        return (p.x / rx) ** 2 + ((p.y - yc) / ry) ** 2
+
+    def contains(self, p: Vector) -> bool:
+        return self.rings[0][0] < p.z < self.rings[-1][0] and self._frac(p) < 1.0
+
+    def depth(self, p: Vector) -> float:
+        """Conservative: radial margin scaled by the smaller radius, capped by the
+        distance to either end. A lower bound is the safe direction here — the trunk's
+        joins are all tens of millimetres deep, and under-reporting them cannot make
+        the preflight pass a join that is really shallow."""
+        if not self.contains(p):
+            return 0.0
+        rx, ry, _ = self._profile(p.z)
+        radial = (1.0 - math.sqrt(self._frac(p))) * min(rx, ry)
+        return min(radial, p.z - self.rings[0][0], self.rings[-1][0] - p.z)
+
+    def aabb(self) -> tuple[Vector, Vector]:
+        rx = max(r[1] for r in self.rings)
+        lo_y = min(r[3] - r[2] for r in self.rings)
+        hi_y = max(r[3] + r[2] for r in self.rings)
+        return (Vector((-rx, lo_y, self.rings[0][0])),
+                Vector((rx, hi_y, self.rings[-1][0])))
+
+    def _dense(self) -> list[tuple[float, float, float, float]]:
+        z0, z1 = self.rings[0][0], self.rings[-1][0]
+        count = max(8, int((z1 - z0) / 0.015))
+        out = []
+        for i in range(count + 1):
+            z = z0 + (z1 - z0) * i / count
+            rx, ry, yc = self._profile(z)
+            out.append((z, rx, ry, yc))
+        return out
+
+    def samples(self) -> list[Vector]:
+        pts: list[Vector] = []
+        dense = self._dense()
+        per_ring = max(12, PREFLIGHT_SAMPLES // len(dense))
+        for z, rx, ry, yc in dense:
+            for j in range(per_ring):
+                a = 2.0 * math.pi * j / per_ring
+                pts.append(Vector((rx * math.cos(a), yc + ry * math.sin(a), z)))
+        return pts
+
+    def build(self) -> list[bpy.types.Object]:
+        """The lofted mesh: dense rings bridged with quads, ngon caps at both ends."""
+        segments = 96
+        dense = self._dense()
+        verts: list[tuple[float, float, float]] = []
+        for z, rx, ry, yc in dense:
+            for j in range(segments):
+                a = 2.0 * math.pi * j / segments
+                verts.append((rx * math.cos(a), yc + ry * math.sin(a), z))
+        faces: list[tuple[int, ...]] = []
+        for i in range(len(dense) - 1):
+            base, nxt = i * segments, (i + 1) * segments
+            for j in range(segments):
+                k = (j + 1) % segments
+                faces.append((base + j, base + k, nxt + k, nxt + j))
+        faces.append(tuple(range(segments - 1, -1, -1)))                      # bottom
+        faces.append(tuple((len(dense) - 1) * segments + j for j in range(segments)))
+        mesh = bpy.data.meshes.new(self.name)
+        mesh.from_pydata(verts, [], faces)
+        mesh.update()
+        obj = bpy.data.objects.new(self.name, mesh)
+        bpy.context.collection.objects.link(obj)
+        return [obj]
+
+
+Part = Ellipsoid | Shaft | Box | Loft
 
 
 def build_parts() -> list[Part]:
-    """The figure's placement table.
+    """The worker's placement table — 28 parts.
 
-    The spine is four blobs rather than one because a single ellipsoid tall enough to
-    reach from the hips to the collarbone is also, at that aspect ratio, a bin liner:
-    ``Belly`` is wider than ``Torso`` at the same height, which is what puts a waist in
-    the outline, and DESCENT-PIVOT §5 says the outline is all this model has.
-
-    Every part overlaps at least one other by design; ``verify_parts_interpenetrate``
-    proves that rather than trusting it.
+    The torso is a STACK (hem, skirt, belly, chest, yoke) rather than two blobs
+    because a jacket is a stack: wider at the chest and the hem than at the waist,
+    squared at the shoulders, stepped where it ends. Every part overlaps at least one
+    other by design; ``verify_parts_interpenetrate`` proves that rather than trusting
+    it, and its spanning-tree bottleneck is the number that says the weld will hold.
     """
     parts: list[Part] = [
-        Ellipsoid("Torso", TORSO_C, TORSO_R),
-        Ellipsoid("Belly", BELLY_C, BELLY_R),
+        Loft("Trunk", TRUNK_RINGS),
+        Ellipsoid("Collar", COLLAR_C, COLLAR_R),
         Ellipsoid("Neck", NECK_C, NECK_R),
         Ellipsoid("Head", HEAD_C, HEAD_R),
+        Ellipsoid("Hood", HOOD_C, HOOD_R),
+        Ellipsoid("HoodSkirt", HOODSKIRT_C, HOODSKIRT_R),
+        Ellipsoid("Brim", BRIM_C, BRIM_R),
+        Box("Lamp", LAMP_C, LAMP_HALF),
+        # Left sleeve only — the armband is what breaks the mirror, on purpose: it is
+        # the one asymmetry that lets a spectating runner tell front-left from
+        # front-right on an otherwise symmetric stranger.
+        Ellipsoid("Armband", ARMBAND_C, ARMBAND_R),
     ]
 
     # Mirrored, not modelled twice. s = -1 is the figure's right.
     for s in (-1.0, +1.0):
         tag = "L" if s > 0 else "R"
         parts += [
-            # 8.5 cm ball, centred 20.5 cm out — far enough to be a shoulder in the
-            # outline, near enough that it eats 44 mm into the torso and welds.
+            # The shoulder ball welds arm to yoke and sits AT the arm's pivot, so
+            # rotating about it barely stretches the skin (the carry-era lesson).
             Ellipsoid(f"Shoulder_{tag}", (s * SHOULDER_X, 0.0, SHOULDER_Z),
                       (SHOULDER_R,) * 3),
-            # Straight down from the shoulder to just above the wrist. A-pose, not
-            # T-pose: the arms hang, so the silhouette is a person walking a corridor
-            # rather than a mannequin, and the elbows stay inside §12's 2.20 m clear
-            # width even with two racers abreast.
-            Shaft(f"Arm_{tag}", s * ARM_X, 0.0,
+            # The sleeve: hangs from the shoulder, leaning 20 mm forward, ending
+            # above the glove. A-pose — elbows stay inside §12's corridor two-abreast.
+            Shaft(f"Arm_{tag}", s * ARM_X, ARM_Y,
                   z_top=SHOULDER_Z, r_top=ARM_R_TOP,
-                  z_bottom=LEG_Z_TOP, r_bottom=ARM_R_BOTTOM),
-            # A mitten, deliberately. Fingers are ~15 mm features seen at ten metres in
-            # the dark; they cost geometry and survive as noise.
+                  z_bottom=ARM_Z_BOTTOM, r_bottom=ARM_R_BOTTOM),
+            Ellipsoid(f"Cuff_{tag}", (s * CUFF_C[0], CUFF_C[1], CUFF_C[2]), CUFF_R),
+            # A gloved mitten. Fingers are ~15 mm features seen at ten metres in the
+            # dark; a work glove is a mitten anyway.
             Ellipsoid(f"Hand_{tag}", (s * HAND_C[0], HAND_C[1], HAND_C[2]), HAND_R),
-            # Legs at 10 cm from centreline — a 20 cm stance, narrow enough that the two
-            # thighs share the belly's volume and the pelvis welds as one mass.
+            # Trouser leg, hip ball buried in the skirt (the pelvis join), tapering
+            # into the boot.
             Shaft(f"Leg_{tag}", s * LEG_X, 0.0,
                   z_top=LEG_Z_TOP, r_top=LEG_R_TOP,
-                  z_bottom=LEG_Z_BOTTOM, r_bottom=LEG_R_BOTTOM),
-            # Pushed 4.8 cm forward — **−Y**, see the axis note above — because a foot is
-            # the one part of a person that is not symmetric front-to-back, and the toes
-            # are what tell a viewer at a glance which way a distant racer is facing.
+                  z_bottom=TROUSER_Z_BOTTOM, r_bottom=TROUSER_R_BOTTOM),
+            Ellipsoid(f"BootTop_{tag}",
+                      (s * BOOT_TOP_C[0], BOOT_TOP_C[1], BOOT_TOP_C[2]), BOOT_TOP_R),
+            Shaft(f"Boot_{tag}", s * LEG_X, 0.0,
+                  z_top=BOOT_Z_TOP, r_top=BOOT_R_TOP,
+                  z_bottom=BOOT_Z_BOTTOM, r_bottom=BOOT_R_BOTTOM),
+            # Toe forward: the toes are what tell a viewer which way a distant racer
+            # is facing.
             Ellipsoid(f"Foot_{tag}", (s * FOOT_C[0], FOOT_C[1], FOOT_C[2]), FOOT_R),
         ]
     return parts
@@ -716,6 +976,89 @@ def fit_height_and_ground(obj: bpy.types.Object, target: float) -> Fit:
 
     obj.data.update()
     return Fit(scale=k, drop=drop)
+
+
+def assign_materials(body: bpy.types.Object, fit: Fit) -> None:
+    """Classifies every polygon of the welded body into one of the five slots.
+
+    Painting by REGION rather than by part, because after the remesh no face knows
+    which primitive it came from. The regions are re-derived from the same placement
+    constants the parts were built from, carried through the fit, so the paint cannot
+    drift from the geometry. Order matters: the first rule that claims a face keeps
+    it (lamp before void before accent, else the strap band would recolour the lamp).
+
+    Every slot must land on at least one face — a slot with zero faces means a
+    threshold and the geometry have come apart, and in Unity it would be an invisible
+    contract: the material imports, nothing wears it, and the first person to "clean
+    it up" deletes the tint slot the whole 20-runner accent system targets.
+    """
+    for spec in MATERIAL_SPECS:
+        body.data.materials.append(blendkit.make_material(spec))
+
+    slot = {spec.name: i for i, spec in enumerate(MATERIAL_SPECS)}
+    counts = {spec.name: 0 for spec in MATERIAL_SPECS}
+
+    # Region thresholds, in final metres. Round one painted the void 1.50–1.635 and
+    # ±75 mm wide, and the black spilled over the brow and cheek — a smashed face, not
+    # a hollow. The void now stops UNDER the lamp, inside the brim's shadow, and only
+    # claims FORWARD-FACING triangles (normal test below), so its ragged per-triangle
+    # border cannot wrap around the head's side.
+    # lamp_y sits at the hood's own front surface (−0.098 at that height): only the
+    # box that PROTRUDES past the hood is painted, or the hood's front-left grew a
+    # black hole beside the strap band (round three). void_lo starts above the collar
+    # or the chin wears a black bib (same round).
+    lamp_x, lamp_y = fit.d(0.050), -fit.d(0.108)
+    lamp_lo, lamp_hi = fit.z(LAMP_C[2] - LAMP_HALF[2] - 0.004), fit.z(1.642)
+    void_lo, void_hi = fit.z(1.515), fit.z(1.592)
+    void_x, void_y = fit.d(0.056), -fit.d(0.082)
+    band_lo, band_hi = fit.z(1.600), fit.z(1.634)
+    armband_x = fit.d(0.198)
+    armband_lo, armband_hi = fit.z(ARMBAND_C[2] - 0.035), fit.z(ARMBAND_C[2] + 0.042)
+    glove_c = (fit.d(0.290), -fit.d(0.050), fit.z(0.78))
+    glove_r = (fit.d(0.085), fit.d(0.115), fit.d(0.135))
+    boot_top = fit.z(0.385)
+    trouser_top = fit.z(HEM_BOTTOM_Z - 0.005)
+
+    def in_glove(p: Vector) -> bool:
+        return (((abs(p.x) - glove_c[0]) / glove_r[0]) ** 2
+                + ((p.y - glove_c[1]) / glove_r[1]) ** 2
+                + ((p.z - glove_c[2]) / glove_r[2]) ** 2) < 1.0
+
+    for poly in body.data.polygons:
+        p = body.matrix_world @ poly.center
+        facing = poly.normal.y            # < 0 means the triangle faces forward
+        if lamp_lo < p.z < lamp_hi and abs(p.x) < lamp_x and p.y < lamp_y:
+            name = MAT_GEAR.name          # headlamp housing
+        elif (void_lo < p.z < void_hi and abs(p.x) < void_x and p.y < void_y
+              and facing < -0.45):
+            name = MAT_VOID.name          # the face that is not there
+        elif band_lo < p.z < band_hi:
+            name = MAT_ACCENT.name        # headlamp strap, a full ring round the hood
+        elif armband_lo < p.z < armband_hi and p.x > armband_x:
+            name = MAT_ACCENT.name        # left-sleeve armband
+        elif in_glove(p):
+            name = MAT_GEAR.name          # glove + cuff
+        elif p.z < boot_top:
+            name = MAT_GEAR.name          # boots and feet
+        elif p.z < trouser_top:
+            name = MAT_TROUSERS.name      # trousers between boot cuff and hem
+        else:
+            name = MAT_JACKET.name
+        poly.material_index = slot[name]
+        counts[name] += 1
+
+    for spec in MATERIAL_SPECS:
+        print(f"MATERIAL {spec.name:15s} faces={counts[spec.name]:5d} "
+              f"base=({spec.color[0]:.3f},{spec.color[1]:.3f},{spec.color[2]:.3f}) "
+              f"roughness={spec.roughness:.2f} metallic=0.00")
+
+    empty = [name for name, n in counts.items() if n == 0]
+    if empty:
+        blendkit.fail(
+            "these material slots claimed no faces: " + ", ".join(empty) + ". A region "
+            "threshold and the placement table have come apart — Unity would import an "
+            "unused material, and Runner_Accent with no faces is the per-runner tint "
+            "system silently gone.")
 
 
 # ── The two checks that cost hours ──────────────────────────────────────────
@@ -954,7 +1297,11 @@ def verify_limbs_hang_free(obj: bpy.types.Object, ankle_z: float, crotch_z: floa
     print("LEG_SLOT " + " ".join(f"{z:.2f}m:{gap * 1000.0:.0f}mm" for z, gap in profile))
 
     welded = [z for z, gap in profile if gap < VOXEL_SIZE * 2.0]
-    parted_to = min(welded) if welded else crotch_z
+    # Never welded is the BEST case, not a failure: on the worker the pelvis mass is
+    # the jacket's skirt, which overhangs the thighs instead of joining them, so the
+    # whole profile can honestly come back open. The mannequin's crotch always closed
+    # just under the belly, which is why the old else-branch never fired.
+    parted_to = min(welded) if welded else ankle_z
     print(f"LEG_PART legs_are_two_below={parted_to:.3f}m required_below={leg_part_z:.3f}m "
           f"(hip {hip_z:.3f}m, ankle {ankle_z:.3f}m)")
     if parted_to > leg_part_z:
@@ -1232,7 +1579,7 @@ def build_skeleton(body: bpy.types.Object, fit: Fit) -> Skeleton:
     upper surface at y = 0.
     """
     hip_z = fit.z(LEG_Z_TOP)
-    ankle_z = fit.z(LEG_Z_BOTTOM)
+    ankle_z = fit.z(ANKLE_Z)
     knee_z = hip_z - (hip_z - ankle_z) * KNEE_FRACTION
 
     ball_y, ball_sole = _sole(fit, BALL_T)
@@ -1256,9 +1603,9 @@ def build_skeleton(body: bpy.types.Object, fit: Fit) -> Skeleton:
     return Skeleton(
         hip_z=hip_z, knee_z=knee_z, ankle_z=ankle_z, leg_x=fit.d(LEG_X),
         thigh=hip_z - knee_z, shank=knee_z - ankle_z,
-        spine_z=fit.z(BELLY_C[2]),
-        neck_z=fit.z(NECK_C[2] - NECK_R[2]),
-        crown_z=fit.z(HEAD_C[2] + HEAD_R[2] * 0.8),
+        spine_z=fit.z(SPINE_JOIN_Z),
+        neck_z=fit.z(NECK_BASE_Z),
+        crown_z=fit.z(HOOD_C[2] + HOOD_R[2] * 0.8),
         shoulder_x=fit.d(SHOULDER_X), shoulder_z=fit.z(SHOULDER_Z),
         hand_x=fit.d(HAND_C[0]), hand_z=fit.z(HAND_C[2]),
         ball=ball, toe_tip=tip, contacts=contacts)
@@ -1648,6 +1995,15 @@ GunWalk's torso twist, which at this arm length is another 0.06 m of wobble eith
 
 CLIP_NAMES = ("Idle", "Walk", "Run", "Crouch", "CrouchWalk",
               "GunIdle", "GunWalk", "Death")
+
+EXPECTED_CYCLE_FRAMES = {"Idle": 92, "Walk": 16, "Run": 16, "Crouch": 80,
+                         "CrouchWalk": 20, "GunIdle": 92, "GunWalk": 16}
+"""``Runner.fbx.meta`` pins every clip to an explicit frame range, and a generator
+never edits a .meta — so a cadence winner that drifts is not a different-but-fine clip,
+it is a clip Unity TRUNCATES mid-stride on import (a walk looping with a pop, a
+measured m/s that no longer matches the driver's reference). The pendulum search stays
+free; this is the fence at the cliff. If a legitimate figure change moves a winner,
+the meta's clipAnimations must move with it — by hand, in the same commit."""
 
 DEATH_END_FRAME = 48
 """The last key of the longest clip, and therefore the scene's frame range. Death is the
@@ -2446,25 +2802,25 @@ def main() -> None:
 
     body = weld(primitives)
 
-    blendkit.assign_material(body, blendkit.make_material(MaterialSpec(
-        name=MATERIAL_NAME, color=BASE_COLOUR, roughness=ROUGHNESS, metallic=0.0)))
-    print(f"MATERIAL name={MATERIAL_NAME} "
-          f"base=({BASE_COLOUR[0]:.2f},{BASE_COLOUR[1]:.2f},{BASE_COLOUR[2]:.2f}) "
-          f"roughness={ROUGHNESS:.2f} metallic=0.00 slots={len(body.data.materials)}")
-
     fit = fit_height_and_ground(body, TARGET_HEIGHT)
     print(f"RUNNER_FIT scale={fit.scale:.5f}x drop={fit.drop:.5f}m "
           f"(the smoothing shrinks the union, so the height is solved after it, "
           f"never authored into the table)")
+
+    # After the fit, because the paint regions are stated in final metres.
+    assign_materials(body, fit)
 
     verify_one_shell(body)
     # The ceilings are the joints themselves: below the ankle the only way across is the
     # floor, and below the shoulder ball the only way across is the chest.
     # The crotch ceiling is the belly's own underside: above it the legs are allowed to
     # be one mass, because that mass is the pelvis. Below it they are two legs.
-    hip_z, ankle_z = fit.z(LEG_Z_TOP), fit.z(LEG_Z_BOTTOM)
+    hip_z, ankle_z = fit.z(LEG_Z_TOP), fit.z(ANKLE_Z)
     verify_limbs_hang_free(
-        body, ankle_z=ankle_z, crotch_z=fit.z(BELLY_C[2] - BELLY_R[2]), hip_z=hip_z,
+        # The crotch ceiling stops UNDER the hem: the jacket's skirt legitimately
+        # crosses the midline above 0.74, and a profile that included it would read
+        # the hem as a thigh weld.
+        body, ankle_z=ankle_z, crotch_z=fit.z(HEM_BOTTOM_Z - 0.02), hip_z=hip_z,
         # The lower two thirds of a leg has to be a leg. The top third is inside the
         # pelvis, where being one mass is the point.
         leg_part_z=hip_z - LEG_PART_FRACTION * (hip_z - ankle_z),
@@ -2506,6 +2862,17 @@ def main() -> None:
             "PlayerAnimatorDriver has no clip for " + ", ".join(missing) + ". A null clip "
             "field leaves that state with nowhere to put its weight, so AdvanceWeights "
             "bails and the body freezes in whatever pose it was last in.")
+
+    for clip in clips:
+        expected = EXPECTED_CYCLE_FRAMES.get(clip.name)
+        if expected is not None and clip.cycle_frames != expected:
+            blendkit.fail(
+                f"{clip.name} solved to a {clip.cycle_frames}-frame cycle and "
+                f"Runner.fbx.meta imports it as 0–{expected}. The importer would "
+                "truncate the take mid-stride and the loop pops every cycle. The leg "
+                "left the cadence band ANKLE_Z's note describes — shorten the leg in "
+                "the placement table, or update the meta's clipAnimations by hand in "
+                "the same commit.")
     verify_clip_speeds(clips)
     verify_floor(rig, body, clips)
     verify_skin_stretch(rig, body, clips)
@@ -2583,7 +2950,10 @@ def main() -> None:
 
     export_fbx(rig, body, out)
     report = blendkit.describe(out)
-    blendkit.assert_asset(report, min_vertices=200, max_triangles=8000,
+    # 12.5k ceiling, up from the mannequin's 8k: a clothed body at 8–12k is the right
+    # spend for the one asset twenty of which are on screen (task brief; URP Forward+
+    # budget in the module docstring). Still a fifth of the monster.
+    blendkit.assert_asset(report, min_vertices=200, max_triangles=12500,
                           max_dimension=3.0, expect_bones=len(bone_specs(skeleton)),
                           exact_actions=len(CLIP_NAMES))
     blendkit.print_report(report)

@@ -89,14 +89,18 @@ namespace HorrorGame.EditorTools.Rendering
         /// <summary>
         /// One row per §12 floor material.
         /// <para>
-        /// Luminance moves by at most +22 % and −3 %, and that asymmetry is not timidity. ART.md
-        /// holds every zone view to 10–40 % of the frame crushed and 30–75 % legible,
-        /// and three of the five were outside that band on the low side before any of
-        /// this. So the two zones whose character is "pale" pay for the identity and the
-        /// two whose character is "dark" are not allowed to: a tint that made 저탄장
-        /// properly black would be the right decision about coal and the wrong one about
-        /// a game whose entire difficulty is reading shape in the dark. Hue carries the
-        /// identity in both directions; luminance only ever moves upward.
+        /// This table used to say "luminance only ever moves upward", written when three
+        /// of five zones failed ART.md's band on the DARK side. On 2026-08-08 the ambient
+        /// gain rose 0.62 → 0.78 and the wall sets regenerated with stronger response, and
+        /// the same measurement flipped: 하역장 89.8 % legible and 기계실 86.5 against the
+        /// 75 ceiling, 저수조 20.1 and the three unrowed deep floors 8.4-and-below against
+        /// the 30 floor. So the rule is now stated by its purpose rather than its
+        /// direction: <b>every row moves its zone toward the 30–75 band, whichever way
+        /// that is, and hue carries the identity.</b> The two bright zones pay luminance
+        /// back; the pale zones keep it; the three deep floors finally get rows at all,
+        /// graded darker with depth so §07's descent is felt without leaving the band.
+        /// Every tint below was set against the measured prodfix_Zone_* frames, and the
+        /// re-measure after this edit is the only judge of it.
         /// </para>
         /// </summary>
         private static readonly ZoneLook[] Looks =
@@ -108,10 +112,12 @@ namespace HorrorGame.EditorTools.Rendering
                 + "25.9 % legible against a 30 % floor) and warm distemper over brick is what "
                 + "an archive is actually finished in."),
             new ZoneLook(
-                "Tile", "저수조", new Color(0.98f, 1.11f, 1.05f), 1.00f, 1.0f, 1.0f, "",
+                "Tile", "저수조", new Color(1.32f, 1.50f, 1.42f), 1.00f, 1.0f, 1.0f, "",
                 "Institutional glazed green over the water tanks — the one wall in the "
                 + "building that is *wiped down*, so it keeps its gloss and takes a "
-                + "specular streak off §03's beam."),
+                + "specular streak off §03's beam. Scaled ×1.35 on 2026-08-08: measured "
+                + "20.1 % legible / 50.0 % crushed under the regenerated sets, the ratio "
+                + "(and the green) kept exactly."),
             new ZoneLook(
                 "Gravel", "저탄장", new Color(1.10f, 1.12f, 1.21f), 0.85f, 0.95f, 0.92f, "",
                 "Damp limewash over brick, gone cold and blue — the flooded end of the coal "
@@ -128,17 +134,52 @@ namespace HorrorGame.EditorTools.Rendering
                 + "unmistakable at any brightness; the walls now go the other way and pay "
                 + "into the band instead of out of it."),
             new ZoneLook(
-                "Concrete", "하역장", new Color(1.00f, 1.00f, 1.03f), 0.90f, 1.0f, 1.0f,
+                "Concrete", "하역장", new Color(0.95f, 0.95f, 0.97f), 0.90f, 1.0f, 1.0f,
                 "Wall_Concrete_Bare",
                 "The only zone that gets a different wall rather than a different colour. "
                 + "Board-formed concrete with snap-tie holes was generated for exactly this "
                 + "and had no slot; the loading bay, nearest the surface and built to take "
-                + "vehicles, is where a building stops being masonry."),
+                + "vehicles, is where a building stops being masonry. Tint history, one "
+                + "day, three measurements: 1.00 measured 89.8 % legible under a flat "
+                + "1-in-5 working-bulb roll that put 23 lights on this storey — §03's lock "
+                + "open. Cut to 0.74; then the bulb gradient landed (14 lights here) and "
+                + "the two corrections double-dipped to 12.0 % legible. 0.95 is the tint "
+                + "for the building that actually ships: the gradient carries the storey's "
+                + "brightness now, and the wall only gives back the sliver the brighter "
+                + "board-formed set added."),
             new ZoneLook(
                 "Metal", "기계실", new Color(1.08f, 0.99f, 0.85f), 1.00f, 1.10f, 1.05f, "",
                 "Plant room: hard yellow lamp light on oil-stained walls. The warmest zone, "
                 + "against 저수조's green two storeys down — ART.md §7.8 notes the building "
-                + "is monotone, and these two are the poles it now runs between."),
+                + "is monotone, and these two are the poles it now runs between. This tint "
+                + "made a round trip on 2026-08-08 — ×0.77 when the zone measured 86.5 % "
+                + "legible, back to exactly its original value once the bulb gradient and "
+                + "the AO-corrected ambient gain were carrying the brightness (26.9 % at "
+                + "×0.94, three points shy of the band floor). The cuts belonged to the "
+                + "levers that landed later, not to this colour."),
+            new ZoneLook(
+                "Carpet", "병동", new Color(1.35f, 1.42f, 1.30f), 0.85f, 1.0f, 0.92f,
+                "Wall_Plaster_Stained",
+                "The ward: institutional plaster gone grey-green over the beds, the one "
+                + "storey finished for people rather than plant. New row 2026-08-08 — "
+                + "Carpet had no look at all, so B6 kept bare dark brick and measured "
+                + "8.4 % legible / 71.5 % crushed, a black rectangle. The plaster override "
+                + "plus a ward-green lift is the largest correction in the table because "
+                + "it starts from the deepest hole."),
+            new ZoneLook(
+                "Water", "수몰층", new Color(1.18f, 1.30f, 1.38f), 1.20f, 1.0f, 1.0f, "",
+                "The flooded storey: cold cyan on brick that has been under water, smoothness "
+                + "lifted so §03's beam comes back off the walls as a wet streak. New row "
+                + "2026-08-08 — B7 had no look. Graded dimmer than 병동 above it on purpose: "
+                + "§07 wants the descent felt, so the deep floors walk the band's dark edge "
+                + "rather than its middle."),
+            new ZoneLook(
+                "Earth", "굴착층", new Color(1.12f, 1.06f, 0.96f), 0.80f, 1.05f, 0.95f, "",
+                "The dig face: raw excavation, shored in timber, the bottom of the race. "
+                + "New row 2026-08-08 — B8 had no look. The smallest lift in the table: the "
+                + "last storey is allowed to sit at the band's dark edge, because §02 puts "
+                + "the finish light here and §07 has been promising this darkness for seven "
+                + "floors."),
         };
 
         /// <summary>

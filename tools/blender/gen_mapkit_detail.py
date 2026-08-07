@@ -77,8 +77,17 @@ PREFIX_TRIM = "T_"
 PREFIX_RAW = "P_"
 """Already round, or too thin to chamfer at all. Pipes, slats, cables, chips."""
 
+PREFIX_PILLAR = "C_"
+"""Free-standing verticals — piers, posts, column shafts. They get a wider,
+two-segment chamfer, because a pier is the one shape the beam always rakes
+edge-on in a 2.5 m maze: a 12 mm arris is a hairline at half a metre, a 22 mm
+double chamfer is a lit facet. This is the whole difference between "3D asset"
+and "untextured block" in the near field."""
+
 BEVEL_STRUCTURE = 0.012
 BEVEL_TRIM = 0.004
+BEVEL_PILLAR = 0.022
+BEVEL_PILLAR_SEGMENTS = 2
 
 MIN_BEVEL_THICKNESS = 0.06
 """Below this, a box is auto-routed to the trim group. A 12 mm offset on a 40 mm
@@ -163,7 +172,37 @@ RAIL_TOP = 1.11
 RAIL_D = 0.055
 """Dado rail at 1.02–1.11 m. Deliberately at chest height: §05 holds the
 flashlight from the chest, so this is the one moulding the cone rakes along at a
-grazing angle, and a grazing highlight is the strongest depth cue available."""
+grazing angle, and a grazing highlight is the strongest depth cue available.
+Built as a two-step profile — a deep lower band and a shallower top ledge — so
+the cap reads as a chamfered moulding rather than one extruded strip. The total
+projection never exceeds RAIL_D, which design_checks() counts."""
+
+PANEL_PITCH = 1.25
+"""Sub-bay pitch for wall panelling, wainscot and upper field alike. Half the
+2.5 m grid, and the same pitch as the ceiling joists, so vertical reveals arrive
+every 1.25 m — near enough that a beam raking a wall at half a metre always has
+a shadow slot inside the cone. The measured failure this fixes: at oblique
+incidence the old one-panel-per-bay upper field lit as a single featureless
+rectangle 2.2 m wide, which is exactly the flat-quad read of an unfinished
+level."""
+
+PANEL_D = 0.020
+"""Relief of the upper bay panels. Was 0.016 and raw (unbevelled) — a hairline.
+20 mm plus the 4 mm trim chamfer is a real facet under grazing light, and still
+far inside the pilaster's 60 mm, so no clearance below carry height changes."""
+
+WAINS_GAP = 0.07
+"""Width of the vertical reveal slots between wainscot panels. The wall body
+shows at the bottom of each slot, 22 mm deeper and a value step lighter — a
+repeating hard shadow line the beam finds at any angle."""
+
+CROWN_H = 0.07
+CROWN_D = 0.030
+"""Crown band at the very top of the wall, in the ceiling's darker material.
+Its underside is the shadow gap where wall meets soffit: without it the
+junction is a single unbroken crease and the top third of the near field is a
+flat quad. 30 mm proud at 2.93 m — far above anything carried (CAP_D = 85 mm
+already governs the overhead pinch)."""
 
 FRIEZE_H = 0.10
 FRIEZE_D = 0.042
@@ -214,7 +253,7 @@ wall field where it will not foul the dado rail."""
 def slab(name: str, x0: float, x1: float, y0: float, y1: float,
          z0: float, z1: float, material: bpy.types.Material,
          floor: bool = False, trim: bool | None = None,
-         raw: bool = False) -> bpy.types.Object:
+         raw: bool = False, pillar: bool = False) -> bpy.types.Object:
     """A box given as an axis-aligned extent rather than centre+size.
 
     Every dimension in §12 is expressed as "from here to there", so building from
@@ -231,6 +270,8 @@ def slab(name: str, x0: float, x1: float, y0: float, y1: float,
 
     if floor:
         prefix = PREFIX_FLOOR
+    elif pillar:
+        prefix = PREFIX_PILLAR
     elif raw:
         prefix = PREFIX_RAW
     elif trim is True or (trim is None and min(sx, sy, sz) < MIN_BEVEL_THICKNESS):
@@ -370,7 +411,17 @@ def wall_box(wall: Wall, name: str, a0: float, a1: float, d0: float, d1: float,
     ``d`` is depth measured from the finished face, positive *into the room*. That
     single sign convention is what lets one elevation description serve all four
     wall orientations without a rotation matrix anywhere.
+
+    ``d0 == 0.0`` — a box whose back sits exactly on the wall face — is sunk 6 mm
+    into the wall body instead. A back face coincident with the face it mounts on
+    exports two coplanar surfaces into one joined mesh, and the round-1 renders of
+    this pass showed what that costs: clean-edged black voids down the Doorway
+    piers and along the ceiling edge beams, where the renderer resolved the
+    coincidence arbitrarily. The 6 mm is invisible (it is inside solid wall) and
+    the projection into the room is unchanged.
     """
+    if abs(d0) < 1e-9:
+        d0 = -0.006
     c0 = wall.face + wall.inward * d0
     c1 = wall.face + wall.inward * d1
     lo, hi = min(c0, c1), max(c0, c1)
@@ -463,18 +514,36 @@ def dressed_wall(
         objs.append(wall_box(wall, f"{name}_skirt{i}", s0, s1, 0.0, SKIRT_D,
                              z_base, z_base + SKIRT_H, mat("Trim_Painted")))
 
-    # ── Damp / tanking band ──
+    # ── Wainscot: the damp band, panelled ──
+    #
+    # It used to be one flat strip 0.022 proud, and the round-1 beam test showed
+    # what that is worth up close: nothing. The band is now emitted as panels at
+    # PANEL_PITCH with WAINS_GAP reveal slots between them, so the wall body
+    # shows at the bottom of each slot — a 22 mm-deep, 70 mm-wide vertical
+    # shadow line every 1.25 m at exactly the height a lowered beam rakes.
+    # Projection unchanged at DADO_D, so no clearance moves.
     if dado and dado_top > z_base + SKIRT_H + 0.05:
         for i, (s0, s1) in enumerate(_clip(wall.a0, wall.a1, z_base + SKIRT_H,
                                            dado_top, openings)):
-            objs.append(wall_box(wall, f"{name}_dado{i}", s0, s1, 0.0, DADO_D,
-                                 z_base + SKIRT_H, dado_top, mat("Wall_Dado")))
+            n = max(1, int(round((s1 - s0) / PANEL_PITCH)))
+            for k in range(n):
+                p0 = s0 + k * (s1 - s0) / n + (WAINS_GAP / 2 if k else 0.0)
+                p1 = s0 + (k + 1) * (s1 - s0) / n - (WAINS_GAP / 2 if k < n - 1 else 0.0)
+                if p1 - p0 < 0.15:
+                    continue
+                objs.append(wall_box(wall, f"{name}_dado{i}_{k}", p0, p1, 0.0,
+                                     DADO_D, z_base + SKIRT_H, dado_top,
+                                     mat("Wall_Dado")))
 
-    # ── Dado rail ──
+    # ── Wainscot cap rail, two-step profile ──
     if rail and rail_top > dado_top + 0.02:
+        step_z = dado_top + (rail_top - dado_top) * 0.6
         for i, (s0, s1) in enumerate(_clip(wall.a0, wall.a1, dado_top, rail_top, openings)):
             objs.append(wall_box(wall, f"{name}_rail{i}", s0, s1, 0.0, RAIL_D,
-                                 dado_top, rail_top, mat("Trim_Painted")))
+                                 dado_top, step_z, mat("Trim_Painted")))
+            objs.append(wall_box(wall, f"{name}_railcap{i}", s0, s1, 0.0,
+                                 RAIL_D - 0.018, step_z, rail_top,
+                                 mat("Trim_Painted")))
 
     # ── Cornice band ──
     if frieze and frieze_z0 > rail_top + 0.30:
@@ -484,13 +553,16 @@ def dressed_wall(
 
     # ── Bay panels ──
     #
-    # One raised field per bay between the rail and the cornice. It is the cheapest
-    # geometry in the kit — a single box — and it does the most, because it turns
-    # each bay into a rectangle with its own shadow edge. Without it a lit bay is a
-    # flat trapezoid of one value and the corridor reads as a tunnel; with it the
-    # beam crosses a border and the player sees a *wall*.
+    # Raised fields between the rail and the cornice, at PANEL_PITCH. The first
+    # version was one raw 16 mm panel per 2.5 m bay, and the round-1 beam test
+    # measured its worth in the near field: a raked 2.2 m rectangle of one value,
+    # indistinguishable from a bare quad. Split at 1.25 m with 90 mm reveals and
+    # a 4 mm chamfer on every edge (trim group, not raw), the same wall gives the
+    # beam a lit facet and a shadow slot inside every cone-width.
     panel_z0 = rail_top + 0.10
-    panel_z1 = frieze_z0 - 0.09
+    # Cap the field height: on a 6 m hall wall a single 4 m panel is a
+    # skyscraper, and it would run through the gallery string course.
+    panel_z1 = min(frieze_z0 - 0.09, z_base + 2.9)
     if panel_z1 > panel_z0 + 0.25:
         inset = PILASTER_W / 2.0 + 0.13
         stations = []
@@ -499,7 +571,7 @@ def dressed_wall(
             while a < wall.a1 - 1e-6:
                 stations.append(a)
                 a += pilaster_pitch
-        # A wall with no pilasters still gets one panel across its whole run. Those
+        # A wall with no pilasters still gets panels across its whole run. Those
         # are the closing walls at corners and dead ends — the surface a player is
         # looking straight at when the corridor stops, and the last place in the
         # kit that can afford to be a blank rectangle.
@@ -507,10 +579,28 @@ def dressed_wall(
         for k in range(len(edges) - 1):
             b0 = edges[k] + (inset if k > 0 else 0.13)
             b1 = edges[k + 1] - (inset if k < len(edges) - 2 else 0.13)
-            if b1 - b0 < 0.35 or _blocked((b0 + b1) / 2, (b1 - b0) / 2, openings):
+            if b1 - b0 < 0.35:
                 continue
-            objs.append(wall_box(wall, f"{name}_panel{k}", b0, b1, 0.0, 0.016,
-                                 panel_z0, panel_z1, w, raw=True))
+            n = max(1, int(round((b1 - b0) / PANEL_PITCH)))
+            for j in range(n):
+                p0 = b0 + j * (b1 - b0) / n + (0.045 if j else 0.0)
+                p1 = b0 + (j + 1) * (b1 - b0) / n - (0.045 if j < n - 1 else 0.0)
+                if p1 - p0 < 0.30 or _blocked((p0 + p1) / 2, (p1 - p0) / 2, openings):
+                    continue
+                objs.append(wall_box(wall, f"{name}_panel{k}_{j}", p0, p1, 0.0,
+                                     PANEL_D, panel_z0, panel_z1, w, trim=True))
+
+    # ── Crown shadow gap ──
+    #
+    # The top of the wall, in the ceiling's darker material, with its underside
+    # throwing a shadow line across the wall head. The 0.5 m above the cornice
+    # band was the last strip of bare quad on a dressed wall, and it is the strip
+    # the beam crosses every time a player checks the ceiling.
+    if frieze and z_top - CROWN_H > frieze_z1 + 0.15:
+        for i, (s0, s1) in enumerate(_clip(wall.a0, wall.a1, z_top - CROWN_H,
+                                           z_top, openings)):
+            objs.append(wall_box(wall, f"{name}_crown{i}", s0, s1, 0.0, CROWN_D,
+                                 z_top - CROWN_H, z_top, mat("Ceiling_Structure")))
 
     # ── Pilasters ──
     if pilaster_pitch > 0.0:
@@ -628,8 +718,11 @@ def framed_ceiling(name: str, x0: float, x1: float, y0: float, y1: float,
     s0, s1 = (x0, x1) if span == "X" else (y0, y1)
 
     # Edge beams: the joists have to land on something, and the line where the
-    # ceiling meets the wall is otherwise a single unbroken crease.
-    for tag, e0, e1 in (("A", s0, s0 + edge_w), ("B", s1 - edge_w, s1)):
+    # ceiling meets the wall is otherwise a single unbroken crease. Their outer
+    # face is inset 20 mm from the piece extent — it lands buried inside the
+    # 150 mm wall body either way, and flush with the extent it exported a face
+    # coplanar with the wall's own back, which round 1 rendered as a black band.
+    for tag, e0, e1 in (("A", s0 + 0.02, s0 + edge_w), ("B", s1 - edge_w, s1 - 0.02)):
         if span == "X":
             objs.append(slab(f"{name}_edge{tag}", e0, e1, r0, r1,
                              ceiling - edge_d, ceiling, c, trim=False))
@@ -637,21 +730,60 @@ def framed_ceiling(name: str, x0: float, x1: float, y0: float, y1: float,
             objs.append(slab(f"{name}_edge{tag}", r0, r1, e0, e1,
                              ceiling - edge_d, ceiling, c, trim=False))
 
+    # Joist ends stop 20 mm inside the piece extent, for the same reason as the
+    # edge beams: they die into 150 mm wall bodies either way, and run to the
+    # extent they exported end faces on the boundary plane — round 2's studio
+    # render showed them as black slots punched through the wall head.
     n = max(1, int(round((r1 - r0) / joist_pitch)))
     pitch = (r1 - r0) / n
     for k in range(n):
         cpos = r0 + (k + 0.5) * pitch
         if span == "X":
-            objs.append(slab(f"{name}_joist{k}", s0, s1, cpos - joist_w / 2,
-                             cpos + joist_w / 2, ceiling - joist_d, ceiling, c))
+            objs.append(slab(f"{name}_joist{k}", s0 + 0.02, s1 - 0.02,
+                             cpos - joist_w / 2, cpos + joist_w / 2,
+                             ceiling - joist_d, ceiling, c))
         else:
             objs.append(slab(f"{name}_joist{k}", cpos - joist_w / 2,
-                             cpos + joist_w / 2, s0, s1,
+                             cpos + joist_w / 2, s0 + 0.02, s1 - 0.02,
                              ceiling - joist_d, ceiling, c))
     return objs
 
 
 # ── Services ────────────────────────────────────────────────────────────────
+
+
+def soffit_conduit(name: str, axis: str, a0: float, a1: float, cross: float,
+                   ceiling: float, count: int = 2,
+                   radius: float = 0.018, clip_pitch: float = 1.25) -> list:
+    """A pair of small conduits clipped to the ceiling soffit, run the length of
+    a corridor as if drilled through the joists.
+
+    §05 makes the ceiling a third of the screen, and the up-glance between the
+    joists was bare slab — the round-1 beam_up render is two blank trapezoids.
+    Two parallel runs with saddle clips at the joist pitch give the glance the
+    same scrolling distance cue the wall services give the forward view. Bottom
+    of the run sits at ~ceiling − 0.06, far above MIN_SOFFIT.
+    """
+    objs: list = []
+    st = mat("Trim_Steel")
+    for k in range(count):
+        c = cross + k * (2 * radius + 0.030)
+        z = ceiling - radius - 0.024
+        objs.append(pipe(f"{name}_c{k}", axis, a0, a1, c, z, radius, st, sides=6))
+    span_c = (count - 1) * (2 * radius + 0.030)
+    n = max(1, int((a1 - a0) / clip_pitch))
+    for k in range(n):
+        a = a0 + (k + 0.5) * (a1 - a0) / n
+        lo = cross - radius - 0.016
+        hi = cross + span_c + radius + 0.016
+        z0 = ceiling - 2 * radius - 0.036
+        if axis == "X":
+            objs.append(slab(f"{name}_clip{k}", a - 0.014, a + 0.014, lo, hi,
+                             z0, ceiling + 0.01, st, raw=True))
+        else:
+            objs.append(slab(f"{name}_clip{k}", lo, hi, a - 0.014, a + 0.014,
+                             z0, ceiling + 0.01, st, raw=True))
+    return objs
 
 
 def pipe_run(name: str, axis: str, a0: float, a1: float, cross: float,
@@ -720,8 +852,12 @@ def cable_tray(name: str, axis: str, a0: float, a1: float, cross: float,
     # Brackets reach back to the wall the tray is carried on. A tray floating in
     # mid-air is the classic modular-kit tell; a cantilever bracket says the wall
     # is holding it up, which is the whole reason the run reads as a building.
-    b_lo = min(cross - half, wall_face if wall_face is not None else cross - half)
-    b_hi = max(cross + half, wall_face if wall_face is not None else cross + half)
+    # They overreach the wall face by 8 mm — buried in solid wall — because a
+    # bracket ending exactly on the face is a coplanar pair (see wall_box).
+    b_lo = min(cross - half,
+               wall_face - 0.008 if wall_face is not None else cross - half)
+    b_hi = max(cross + half,
+               wall_face + 0.008 if wall_face is not None else cross + half)
     n = max(1, int((a1 - a0) / bracket_pitch))
     for k in range(n):
         a = a0 + (k + 0.5) * (a1 - a0) / n
@@ -1119,8 +1255,11 @@ def column(name: str, cx: float, cy: float, height: float, size: float = 0.50,
 
     objs.append(slab(f"{name}_base", cx - bh, cx + bh, cy - bh, cy + bh,
                      0.0, base_h, tp))
+    # The shaft rides the pillar bevel group: a 22 mm two-segment chamfer on
+    # every arris, which is what a raking beam actually reports as "a column"
+    # rather than "a box" from half a metre away.
     objs.append(slab(f"{name}_shaft", cx - h, cx + h, cy - h, cy + h,
-                     0.0, height - cap_h, w, trim=False))
+                     0.0, height - cap_h, w, pillar=True))
     objs.append(slab(f"{name}_cap", cx - bh, cx + bh, cy - bh, cy + bh,
                      height - cap_h, height, tp))
     # A shallow flute on each face: one recessed strip that reads as a chamfered

@@ -108,7 +108,7 @@ from typing import Callable
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import bpy  # noqa: E402
-from mathutils import Vector  # noqa: E402
+from mathutils import Euler, Vector  # noqa: E402
 
 import blendkit  # noqa: E402
 import gen_props  # noqa: E402
@@ -296,7 +296,7 @@ def rads(degrees):
 # the entire 좌↔우 mechanism: one glyph, two sides, one of them reversed. With no
 # glyph the mapping has nothing to map and the flip nothing to reverse.
 def _case(f: Frame, side: float, height: float, wood: str = TIMBER_PALE,
-          batten: str = TIMBER_DARK) -> None:
+          batten: str = TIMBER_DARK, lid_pop: bool = False) -> None:
     """One packing case: a body plus corner battens and a lid.
 
     **Named `_case`, not `_crate`.** 「crate」 is §01's 궤짝 — the two-person 전리품
@@ -306,9 +306,13 @@ def _case(f: Frame, side: float, height: float, wood: str = TIMBER_PALE,
     wall is §12's 시야 차단 지점, nothing picks it up and nothing is inside it. Only
     the name was wrong, so only the name changed.
 
-    Kept to six primitives because these are stacked three deep and the whole
-    stack has to stay inside the per-piece triangle budget §05 justifies (dark,
-    first person — detail buys nothing, silhouette buys everything).
+    Kept to a handful of primitives because these are stacked three deep and the
+    whole stack has to stay inside the per-piece triangle budget §05 justifies
+    (dark, first person — detail buys nothing, silhouette buys everything).
+
+    `lid_pop` rotates the lid off its seat with packing straw in the gap — the
+    round-1 renders showed a stack of intact cases fusing into one extruded
+    monolith, and a popped lid is the cheapest break in that top line.
     """
     t = 0.028
     f.box((side - 0.03, side - 0.03, height - 0.03), (0.0, 0.0, height / 2), mat=wood)
@@ -316,16 +320,35 @@ def _case(f: Frame, side: float, height: float, wood: str = TIMBER_PALE,
         for sy in (-1.0, 1.0):
             f.box((0.052, 0.052, height), (sx * (side / 2 - 0.026), sy * (side / 2 - 0.026),
                                            height / 2), mat=batten, nobevel=True)
-    f.box((side, side, t), (0.0, 0.0, height - t / 2), mat=wood, nobevel=True)
+    if lid_pop:
+        f.box((side, side, t), (0.05, -0.03, height + 0.016), rot=(3.0, 7.0, -6.0),
+              mat=wood, nobevel=True)
+        # Packing straw pushed out of the open corner.
+        for (dx, dy, yaw) in ((0.16, 0.20, 24.0), (0.24, 0.10, -18.0), (0.08, 0.26, 58.0)):
+            f.box((0.150, 0.060, 0.010), (dx, dy, height - 0.006), rot=(4.0, 0.0, yaw),
+                  mat=PAPER, nobevel=True)
+    else:
+        f.box((side, side, t), (0.0, 0.0, height - t / 2), mat=wood, nobevel=True)
 
 
 def _barrel(f: Frame, radius: float, height: float, body: str = RUST_HEAVY,
-            hoop: str = STEEL_BARE) -> None:
-    """A 55-gallon drum: body, two rolling hoops, a rim and a bung.
+            hoop: str = STEEL_BARE, dent: bool = False,
+            streaks: tuple = (), streak_mat: str = RUST_HEAVY,
+            skirt: bool = True) -> None:
+    """A 55-gallon drum: body, two rolling hoops, a rim, a bung — and its history.
 
     The hoops are `STEEL_BARE` on purpose. A drum in one flat rust tone is a
     cylinder-shaped hole in the frame; two bright rings around it are what let a
     beam say "drum" from 8 m.
+
+    Round 1 showed the rest: a perfectly smooth cylinder with clean ends reads
+    as a flowerpot, not as forty years of basement. So a drum now carries
+    *asymmetric* wear — `dent` sinks one side of the lid and creases it,
+    `streaks` runs thin stain strips down the body at the given (azimuth°,
+    width, drop) triples, and `skirt` is the §03 grime gradient: a dark ring
+    where the floor's dirt climbs the steel. Streaks are thin boxes hugging the
+    surface rather than texture because the kit has no texture pipeline — and at
+    beam range a 4 mm relief strip reads exactly like a stain.
     """
     f.cyl(radius, height, (0.0, 0.0, height / 2), verts=16, mat=body, nobevel=True)
     for z in (height * 0.28, height * 0.72):
@@ -333,10 +356,39 @@ def _barrel(f: Frame, radius: float, height: float, body: str = RUST_HEAVY,
     # The end rims take the *body* material, not the hoop's. They are solid discs,
     # so a bare-steel rim paints the whole lid — and a mirror-finish lid in a dark
     # basement reads as a white hole rather than as a drum.
-    f.cyl(radius + 0.010, 0.030, (0.0, 0.0, height - 0.015), verts=16, mat=body, nobevel=True)
     f.cyl(radius + 0.010, 0.030, (0.0, 0.0, 0.015), verts=16, mat=body, nobevel=True)
-    f.cyl(0.036, 0.018, (radius * 0.5, 0.0, height + 0.006), verts=10, mat=BRASS_FITTING,
-          nobevel=True)
+    if dent:
+        # Rim stays level; the lid disc tips 6° into the drum, its low side
+        # sunk 5 cm with a grime wedge in the fold. Round 2 taught the number:
+        # a 3° dent is invisible at beam range, a 6° one reads from the floor.
+        f.cyl(radius + 0.010, 0.030, (0.0, 0.0, height - 0.019), verts=16, mat=body,
+              nobevel=True)
+        f.cyl(radius - 0.032, 0.016, (0.014, -0.022, height - 0.032),
+              rot=(6.0, 2.6, 0.0), mat=body, verts=16, nobevel=True)
+        f.box((radius * 1.4, 0.052, 0.010), (0.02, -0.07, height - 0.030),
+              rot=(6.0, 0.0, 20.0), mat=GRIME, nobevel=True)
+    else:
+        f.cyl(radius + 0.010, 0.030, (0.0, 0.0, height - 0.015), verts=16, mat=body,
+              nobevel=True)
+    for (az, width, drop) in streaks:
+        # Two layers per streak: a rust bleed at the source and a DARK tail
+        # running further down. Round 2's even strip read as pinstripe tape and
+        # round 3's rust-on-rust pair read no better — the tail has to lose
+        # both width and value as it falls, so it falls in GRIME.
+        a = math.radians(az)
+        top = height * 0.72 - 0.030
+        f.box((width, 0.004, drop * 0.4), (math.cos(a) * (radius + 0.003),
+                                           math.sin(a) * (radius + 0.003),
+                                           top - drop * 0.2),
+              rot=(0.0, 0.0, az + 90.0), mat=streak_mat, nobevel=True)
+        f.box((width * 0.5, 0.004, drop), (math.cos(a) * (radius + 0.0025),
+                                           math.sin(a) * (radius + 0.0025),
+                                           top - drop / 2),
+              rot=(0.0, 0.0, az + 90.0), mat=GRIME, nobevel=True)
+    if skirt:
+        f.cyl(radius + 0.006, 0.070, (0.0, 0.0, 0.035), verts=16, mat=GRIME, nobevel=True)
+    f.cyl(0.036, 0.018, (radius * 0.5, 0.0, height - (0.010 if dent else -0.006)),
+          verts=10, mat=BRASS_FITTING, nobevel=True)
 
 
 def _shelf_frame(b: PropBuild, w: float, d: float, h: float, decks: tuple) -> None:
@@ -387,22 +439,115 @@ def _plank_scatter(b: PropBuild, planks: tuple, mat_name: str = TIMBER_PALE) -> 
 
 
 def _rubble(b: PropBuild, chunks: tuple, mat_name: str = CONCRETE_BROKEN) -> None:
-    for (sx, sy, sz, x, y, z, yaw) in chunks:
-        b.box((sx, sy, sz), (x, y, z), rot=(7.0, -5.0, yaw), mat=mat_name, nobevel=True)
+    """Chunks as (sx, sy, sz, x, y, z, pitch, roll, yaw).
+
+    Every chunk used to share one hard-coded (7°, −5°) tilt, and the round-1
+    render said so out loud: eight parallel top faces read as boxes from one
+    mould, not as a collapsed ceiling. The tilts are data now, and no two
+    chunks in a pile repeat one."""
+    for (sx, sy, sz, x, y, z, pitch, roll, yaw) in chunks:
+        b.box((sx, sy, sz), (x, y, z), rot=(pitch, roll, yaw), mat=mat_name, nobevel=True)
 
 
 def _chain(b: PropBuild, x: float, y: float, z_top: float, z_bottom: float,
-           links: int, radius: float = 0.022) -> None:
-    """A hanging chain built from alternating flattened tori.
+           links: int = 0, radius: float = 0.024) -> None:
+    """A hanging chain built from alternating elongated links that OVERLAP.
 
-    Six-segment minor rings: at 2.5 m away in a torch beam a chain is a dotted
-    bright line, and anything smoother is triangles nobody sees.
+    The round-1 renders are why this is spelled out: links spaced by span/count
+    with a diameter smaller than the step rendered as a dotted line of floating
+    rings — a chain where no link touches the next is the single fastest way to
+    make a piece read as programmer art. So the link count is now derived from
+    the span (`links` is only a floor), each torus is stretched 1.6× along the
+    hang so its long axis threads through its neighbours, and the step is ~60 %
+    of a link's length. Eight-by-three segment tori: at 2.5 m in a torch beam a
+    chain is alternating bright bars, and anything smoother is triangles nobody
+    sees.
     """
-    step = (z_top - z_bottom) / max(1, links)
-    for i in range(links):
+    span = z_top - z_bottom
+    n = max(links, max(2, int(round(span / (radius * 2.6)))))
+    step = span / n
+    for i in range(n):
         z = z_top - step * (i + 0.5)
-        b.torus(radius, 0.0055, (x, y, z), rot=(90.0, 0.0, 0.0 if i % 2 else 90.0),
-                mseg=8, nseg=4, mat=STEEL_BARE)
+        obj = b.torus(radius, 0.006, (x, y, z), rot=(0.0, 0.0, 0.0),
+                      mseg=8, nseg=3, mat=STEEL_BARE)
+        obj.scale = Vector((1.0, 1.6, 1.0))
+        blendkit.apply_transforms(obj, scale=True)
+        obj.rotation_euler = Euler(
+            (math.radians(90.0), 0.0, math.radians(0.0 if i % 2 else 90.0)), "XYZ")
+
+
+# ── Stencilled Hangul ───────────────────────────────────────────────────────
+# §12 wants a corridor to read as a PLACE, and a Korean basement's walls say
+# 위험 and 출입금지 in stencilled paint. No font is licensed for baking, so the
+# glyphs are drawn as geometry: each stroke is one flat quad a millimetre proud
+# of the enamel, each ㅇ/ㅎ ring one 8-segment torus. Two rules keep this inside
+# the deleted-단서 line: the text is IDENTICAL on every instance (it is paint,
+# not information), and nothing directional or numeric — no arrows, no 좌/우, no
+# storey numbers a racer could misread as wayfinding.
+#
+# Strokes are ("q", cx, cz, w, h[, tilt°]) quads or ("o", cx, cz, r) rings, in a
+# 0..1 glyph square (x right, z up), drawn stencil-fat so they survive a moving
+# beam at 8 m.
+
+GLYPH_지 = (("q", 0.34, 0.82, 0.56, 0.10), ("q", 0.22, 0.52, 0.11, 0.46, 20.0),
+            ("q", 0.46, 0.52, 0.11, 0.46, -20.0), ("q", 0.82, 0.50, 0.12, 0.88))
+GLYPH_하 = (("q", 0.24, 0.93, 0.20, 0.08), ("q", 0.24, 0.80, 0.38, 0.08),
+            ("o", 0.24, 0.55, 0.16), ("q", 0.74, 0.50, 0.12, 0.92),
+            ("q", 0.88, 0.52, 0.16, 0.09))
+GLYPH_위 = (("o", 0.30, 0.76, 0.17), ("q", 0.30, 0.44, 0.56, 0.09),
+            ("q", 0.30, 0.29, 0.11, 0.24), ("q", 0.84, 0.50, 0.12, 0.94))
+GLYPH_험 = (("q", 0.24, 0.95, 0.16, 0.06), ("q", 0.24, 0.86, 0.34, 0.06),
+            ("o", 0.24, 0.68, 0.13), ("q", 0.57, 0.74, 0.14, 0.07),
+            ("q", 0.72, 0.70, 0.11, 0.54), ("q", 0.34, 0.45, 0.46, 0.08),
+            ("q", 0.34, 0.20, 0.46, 0.08), ("q", 0.14, 0.32, 0.09, 0.32),
+            ("q", 0.54, 0.32, 0.09, 0.32))
+GLYPH_출 = (("q", 0.40, 0.96, 0.10, 0.06), ("q", 0.40, 0.88, 0.46, 0.06),
+            ("q", 0.30, 0.78, 0.10, 0.16, 20.0), ("q", 0.50, 0.78, 0.10, 0.16, -20.0),
+            ("q", 0.40, 0.64, 0.58, 0.07), ("q", 0.40, 0.54, 0.10, 0.14),
+            ("q", 0.40, 0.44, 0.50, 0.07), ("q", 0.61, 0.37, 0.08, 0.09),
+            ("q", 0.40, 0.30, 0.50, 0.07), ("q", 0.19, 0.23, 0.08, 0.09),
+            ("q", 0.40, 0.16, 0.50, 0.07))
+GLYPH_입 = (("o", 0.30, 0.78, 0.15), ("q", 0.76, 0.76, 0.11, 0.40),
+            ("q", 0.22, 0.30, 0.09, 0.36), ("q", 0.58, 0.30, 0.09, 0.36),
+            ("q", 0.40, 0.34, 0.30, 0.07), ("q", 0.40, 0.15, 0.45, 0.07))
+GLYPH_금 = (("q", 0.50, 0.88, 0.54, 0.08), ("q", 0.71, 0.74, 0.10, 0.22),
+            ("q", 0.50, 0.56, 0.62, 0.08), ("q", 0.50, 0.38, 0.46, 0.07),
+            ("q", 0.50, 0.13, 0.46, 0.07), ("q", 0.30, 0.25, 0.09, 0.26),
+            ("q", 0.70, 0.25, 0.09, 0.26))
+
+TEXT_위험 = (GLYPH_위, GLYPH_험)
+TEXT_출입금지 = (GLYPH_출, GLYPH_입, GLYPH_금, GLYPH_지)
+TEXT_지하 = (GLYPH_지, GLYPH_하)
+
+
+def _stencil(b: PropBuild, glyphs: tuple, x0: float, z0: float, s: float,
+             y: float, gap: float = 0.18, back: bool = False,
+             mat_name: str = GRIME) -> None:
+    """Paints a glyph run onto a vertical face.
+
+    `x0`/`z0` is the bottom-left of the first glyph square, `s` the square side,
+    `y` the plane the quads sit on. `back=True` renders the run mirrored for the
+    +Y face of a double-sided plate, so the text reads correctly from that side
+    (a quad is single-sided; the back face needs its own strokes anyway).
+    """
+    total = len(glyphs) * s + (len(glyphs) - 1) * gap * s
+    for gi, glyph in enumerate(glyphs):
+        gx = x0 + (gi * (1.0 + gap)) * s
+        if back:
+            gx = x0 + total - s - (gi * (1.0 + gap)) * s
+        for stroke in glyph:
+            if stroke[0] == "q":
+                _k, cx, cz, w, h = stroke[:5]
+                tilt = stroke[5] if len(stroke) > 5 else 0.0
+                x = gx + (1.0 - cx if back else cx) * s
+                b.quad(w * s, h * s, (x, y, z0 + cz * s),
+                       rot=(-90.0 if back else 90.0, -tilt if back else tilt, 0.0),
+                       mat=mat_name)
+            else:
+                _k, cx, cz, r = stroke
+                x = gx + (1.0 - cx if back else cx) * s
+                b.torus(r * s, max(0.0045, 0.05 * s), (x, y, z0 + cz * s),
+                        rot=(90.0, 0.0, 0.0), mseg=8, nseg=3, mat=mat_name)
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -421,9 +566,23 @@ def build_case_stack_tall() -> PropBuild:
     stops three boxes reading as one extruded box."""
     b = PropBuild("Dress_CaseStack_Tall")
     _case(b.frame((0.0, 0.0, 0.0), yaw=0.0), 0.640, 0.600)
-    _case(b.frame((0.03, -0.02, 0.600), yaw=7.0), 0.600, 0.560)
-    _case(b.frame((-0.02, 0.03, 1.160), yaw=-11.0), 0.560, 0.520)
+    _case(b.frame((0.05, -0.04, 0.600), yaw=9.0), 0.600, 0.560)
+    _case(b.frame((-0.05, 0.04, 1.160), yaw=-14.0), 0.560, 0.520, lid_pop=True)
     b.pivot_part = b.parts[0]
+    # Round 1's stack fused into one extruded monolith: the offsets above are
+    # now real steps, the top lid is popped, and the bottom case carries the
+    # shipping marks and floor grime that break the flat faces up.
+    b.quad(0.40, 0.055, (0.0, -0.308, 0.410), rot=(90.0, 0.0, 0.0), mat=GRIME)
+    b.quad(0.30, 0.045, (-0.04, -0.308, 0.330), rot=(90.0, 8.0, 0.0), mat=GRIME)
+    b.quad(0.055, 0.30, (0.308, 0.06, 0.370), rot=(90.0, 0.0, 90.0), mat=GRIME)
+    b.box((0.130, 0.014, 0.090), (0.12, -0.310, 0.480), rot=(0.0, 0.0, -7.0), mat=PAPER,
+          nobevel=True)  # torn shipping label
+    # Worn pale edges down the two corridor-facing battens.
+    for sx in (-1.0, 1.0):
+        b.box((0.014, 0.008, 0.520), (sx * 0.312, -0.318, 0.290), mat=PLY, nobevel=True)
+    # Grime skirt.
+    b.box((0.648, 0.030, 0.070), (0.0, -0.310, 0.035), mat=GRIME, nobevel=True)
+    b.box((0.030, 0.648, 0.070), (-0.310, 0.0, 0.035), mat=GRIME, nobevel=True)
     return b
 
 
@@ -474,10 +633,21 @@ def build_case_broken() -> PropBuild:
 
 
 def build_barrel_upright() -> PropBuild:
-    """One steel drum, 0.88 m. The kit's most reusable single silhouette."""
+    """One steel drum, 0.88 m. The kit's most reusable single silhouette.
+
+    Painted body, not rust: a painted drum with rust BLEEDING DOWN it carries
+    two materials in one silhouette, which is the §03 break-up a flat rust
+    cylinder never had. The dented lid is its one asymmetric feature — the
+    scatterer repeats this piece more than anything else in the kit, and a
+    dent is what stops instance three reading as instance one."""
     b = PropBuild("Dress_BarrelUpright")
-    _barrel(b.frame((0.0, 0.0, 0.0)), 0.290, 0.880)
+    _barrel(b.frame((0.0, 0.0, 0.0)), 0.290, 0.880, body=STEEL_PAINTED, dent=True,
+            streaks=((36.0, 0.050, 0.520), (162.0, 0.080, 0.360), (208.0, 0.034, 0.620)))
     b.pivot_part = b.parts[0]
+    # Rust bloom where the bottom hoop meets the body, one side only.
+    f = b.frame((0.0, 0.0, 0.0))
+    f.box((0.180, 0.004, 0.110), (math.cos(2.4) * 0.293, math.sin(2.4) * 0.293, 0.175),
+          rot=(0.0, 0.0, math.degrees(2.4) + 90.0), mat=RUST_HEAVY, nobevel=True)
     return b
 
 
@@ -486,23 +656,33 @@ def build_barrel_cluster() -> PropBuild:
 
     Wide on purpose: §12 asks for cover at 15~25 m spacing and a single drum is
     too narrow to break a corridor's line of sight. The toppled one gives the
-    cluster a horizontal element so it does not read as three copies."""
+    cluster a horizontal element, and the three now differ in HISTORY as well as
+    pose — one rusted through, one painted with a dented lid, one leaking — so
+    the group reads as three drums rather than three copies."""
     b = PropBuild("Dress_BarrelCluster")
-    _barrel(b.frame((-0.36, 0.10, 0.0), yaw=17.0), 0.290, 0.880)
+    _barrel(b.frame((-0.36, 0.10, 0.0), yaw=17.0), 0.290, 0.880,
+            streaks=((70.0, 0.060, 0.420), (210.0, 0.040, 0.300)), streak_mat=GRIME)
     b.pivot_part = b.parts[0]
-    _barrel(b.frame((0.28, -0.14, 0.0), yaw=-53.0), 0.290, 0.880, body=STEEL_PAINTED)
-    # Toppled, lying along X, resting on its hoops.
-    f = b.frame((0.30, 0.52, 0.306), yaw=0.0)
+    _barrel(b.frame((0.28, -0.14, 0.0), yaw=-53.0), 0.290, 0.880, body=STEEL_PAINTED,
+            dent=True, streaks=((120.0, 0.055, 0.480),))
+    # Toppled, lying along X with a slight yaw, resting on its hoops.
+    f = b.frame((0.30, 0.52, 0.306), yaw=8.0)
     f.cyl(0.290, 0.880, (0.0, 0.0, 0.0), rot=(0.0, 90.0, 0.0), verts=16, mat=RUST_HEAVY,
           nobevel=True)
     for x in (-0.246, 0.246):
         f.cyl(0.306, 0.052, (x, 0.0, 0.0), rot=(0.0, 90.0, 0.0), verts=16, mat=STEEL_BARE,
               nobevel=True)
+    # What it spilled, dried dark under the open end.
+    f.cyl(0.240, 0.005, (-0.560, -0.060, -0.3035), verts=14, mat=WET_STAIN, nobevel=True)
+    f.cyl(0.150, 0.006, (-0.660, 0.080, -0.3030), verts=12, mat=WET_STAIN, nobevel=True)
     return b
 
 
 def build_barrel_toppled() -> PropBuild:
-    """A drum on its side with a wedge under it, 0.62 m tall — walk-over-able cover."""
+    """A drum on its side with a wedge under it, 0.62 m tall — walk-over-able cover.
+
+    The crease across the upper flank is the one asymmetric feature: a drum that
+    fell gets a dent where it landed, and the beam rakes it at close range."""
     b = PropBuild("Dress_BarrelToppled")
     body = b.cyl(0.290, 0.880, (0.0, 0.0, 0.300), rot=(0.0, 90.0, 0.0), verts=16,
                  mat=STEEL_PAINTED, nobevel=True)
@@ -513,6 +693,17 @@ def build_barrel_toppled() -> PropBuild:
     b.cyl(0.010, 0.020, (0.0, 0.0, 0.596), verts=8, mat=BRASS_FITTING, nobevel=True)
     b.box((0.180, 0.220, 0.070), (0.36, 0.0, 0.035), rot=(0.0, 12.0, 0.0), mat=TIMBER_DARK,
           nobevel=True)
+    # Impact crease along the upper flank, and the scrape it left.
+    b.box((0.360, 0.030, 0.008), (-0.10, -0.196, 0.518), rot=(-42.0, 0.0, 7.0),
+          mat=GRIME, nobevel=True)
+    b.box((0.240, 0.004, 0.090), (0.05, -0.284, 0.360), rot=(-14.0, 0.0, 3.0),
+          mat=RUST_HEAVY, nobevel=True)
+    # Rust weeping around the circumference from each rim, gravity-honest for a
+    # drum on its side.
+    b.box((0.030, 0.004, 0.200), (-0.360, -0.276, 0.240), rot=(-24.0, 0.0, 0.0),
+          mat=RUST_HEAVY, nobevel=True)
+    b.box((0.022, 0.004, 0.150), (0.330, -0.284, 0.210), rot=(-16.0, 0.0, 0.0),
+          mat=RUST_HEAVY, nobevel=True)
     return b
 
 
@@ -538,10 +729,16 @@ def build_shelf_stocked() -> PropBuild:
     f.box((0.320, 0.300, 0.240), (-0.32, 0.01, 0.773), rot=(0.0, 0.0, 4.0), mat=CARD)
     f.box((0.260, 0.260, 0.200), (0.02, -0.02, 0.753), rot=(0.0, 0.0, -9.0), mat=CARD)
     f.box((0.220, 0.240, 0.180), (0.34, 0.03, 0.743), mat=CARD)
-    # Deck 3 — bottles and jars, the bright row.
-    for i, x in enumerate((-0.44, -0.30, -0.16, 0.10, 0.24)):
-        f.cyl(0.046, 0.230, (x, 0.0, 1.268), verts=10, mat=GLASS_DIRTY, nobevel=True)
-        f.cyl(0.022, 0.070, (x, 0.0, 1.418), verts=8, mat=GLASS_DIRTY, nobevel=True)
+    # Deck 3 — bottles and jars, the bright row. One has gone over and rolled
+    # to the shelf lip: five identical soldiers was the copy-paste tell.
+    for i, x in enumerate((-0.44, -0.30, -0.16, 0.10)):
+        lean = 4.0 if i == 2 else 0.0
+        f.cyl(0.046, 0.230, (x, 0.0, 1.268), rot=(lean, 0.0, 0.0), verts=10,
+              mat=GLASS_DIRTY, nobevel=True)
+        f.cyl(0.022, 0.070, (x, 0.0, 1.418), rot=(lean, 0.0, 0.0), verts=8,
+              mat=GLASS_DIRTY, nobevel=True)
+    f.cyl(0.046, 0.260, (0.26, -0.12, 1.202), rot=(90.0, 0.0, 74.0), verts=10,
+          mat=GLASS_DIRTY, nobevel=True)
     f.box((0.180, 0.300, 0.120), (0.42, 0.0, 1.213), mat=PAPER, nobevel=True)
     # Deck 4 — ledgers and a folded sheet.
     for i, x in enumerate((-0.42, -0.36, -0.30, -0.24)):
@@ -588,14 +785,23 @@ def build_filing_cabinet() -> PropBuild:
     W, D, H = 0.460, 0.620, 1.320
     body = b.box((W, D, H), (0.0, 0.0, H / 2), mat=STEEL_PAINTED)
     b.pivot_part = body
-    b.box((W + 0.02, D + 0.02, 0.026), (0.0, 0.0, H), mat=STEEL_PAINTED, nobevel=True)
+    # The top took a blow once: the cap sits with a 2° list and carries a box's
+    # worth of ring stains. The cabinet's one asymmetric feature after the
+    # pulled drawer.
+    b.box((W + 0.02, D + 0.02, 0.026), (0.004, 0.0, H - 0.003), rot=(0.0, 2.0, 0.0),
+          mat=STEEL_PAINTED, nobevel=True)
+    b.box((0.140, 0.120, 0.004), (0.09, -0.12, H + 0.013), rot=(0.0, 2.0, 31.0),
+          mat=GRIME, nobevel=True)
     for i, z in enumerate((0.190, 0.500, 0.810, 1.120)):
         out = 0.320 if i == 2 else 0.0
-        b.box((W - 0.04, 0.026, 0.280), (0.0, -D / 2 - 0.013 - out, z), mat=STEEL_PAINTED,
-              nobevel=True)
-        b.box((0.140, 0.030, 0.030), (0.0, -D / 2 - 0.030 - out, z + 0.070),
+        tilt = 2.5 if i == 0 else 0.0  # bottom drawer never quite shuts square
+        b.box((W - 0.04, 0.026, 0.280), (0.0, -D / 2 - 0.013 - out - (0.012 if i == 0 else 0.0), z),
+              rot=(0.0, tilt, 0.0), mat=STEEL_PAINTED, nobevel=True)
+        b.box((0.140, 0.030, 0.030), (0.0, -D / 2 - 0.030 - out - (0.012 if i == 0 else 0.0),
+                                      z + 0.070), rot=(0.0, tilt, 0.0),
               mat=STEEL_BARE, nobevel=True)
-        b.box((0.110, 0.024, 0.044), (0.0, -D / 2 - 0.027 - out, z - 0.080),
+        b.box((0.110, 0.024, 0.044), (0.0, -D / 2 - 0.027 - out - (0.012 if i == 0 else 0.0),
+                                      z - 0.080), rot=(0.0, tilt, 0.0),
               mat=PAPER, nobevel=True)
     # The open drawer's sides and its paper, which is the bright bit.
     b.box((W - 0.06, 0.300, 0.230), (0.0, -D / 2 - 0.170, 0.810), mat=STEEL_PAINTED,
@@ -603,11 +809,23 @@ def build_filing_cabinet() -> PropBuild:
     for i in range(4):
         b.box((W - 0.10, 0.260, 0.030), (0.0, -D / 2 - 0.170, 0.760 + i * 0.036),
               rot=(0.0, 2.0 * i - 3.0, 0.0), mat=PAPER, nobevel=True)
+    # Boot grime up the plinth line, rust weeping from under the listing cap.
+    b.box((W + 0.006, 0.005, 0.070), (0.0, -D / 2 - 0.0035, 0.035), mat=GRIME,
+          nobevel=True)
+    b.quad(0.045, 0.260, (W / 2 + 0.002, -0.05, H - 0.180), rot=(90.0, 2.0, 90.0),
+           mat=RUST_HEAVY)
     return b
 
 
 def build_locker_bank() -> PropBuild:
-    """A three-door locker bank, one door ajar. 1.82 m — a full sightline blocker.
+    """Three locker bays in three states: shut, hanging at 4°, swung open on its
+    hinges. 1.82 m — a full sightline blocker.
+
+    Round 1's "ajar" door was a box yawed 62° in mid-air, and the render showed
+    exactly that: a plank floating beside the cabinet. The open leaf now lives
+    on two visible hinge knuckles at its own jamb and the cavity behind it is
+    furnished, because an open door is only convincing if there is somewhere it
+    opened FROM.
 
     Distinct from §12's 은폐 지점 (`gen_props`' HidingSpot_Locker) on purpose: this
     one is shallow, has no usable cavity and reads as furniture, so a player does
@@ -615,33 +833,85 @@ def build_locker_bank() -> PropBuild:
     b = PropBuild("Dress_LockerBank")
     W, D, H = 1.050, 0.420, 1.820
     plinth = 0.090
+    door_w, door_h = 0.330, H - plinth - 0.060
+    zc = (H + plinth) / 2
     base = b.box((W, D, plinth), (0.0, 0.0, plinth / 2), mat=STEEL_PAINTED)
     b.pivot_part = base
-    b.box((W, D, H - plinth), (0.0, 0.02, (H + plinth) / 2), mat=STEEL_PAINTED)
+    b.box((W, D, H - plinth), (0.0, 0.02, zc), mat=STEEL_PAINTED)
     b.box((W + 0.04, D + 0.03, 0.040), (0.0, 0.0, H + 0.020), mat=STEEL_PAINTED, nobevel=True)
-    for i, x in enumerate((-0.348, 0.0, 0.348)):
-        ajar = i == 2
-        if not ajar:
-            b.box((0.330, 0.028, H - plinth - 0.060), (x, -D / 2 - 0.006,
-                                                       (H + plinth) / 2), mat=STEEL_PAINTED,
-                  nobevel=True)
-            for j in range(3):
-                b.box((0.180, 0.016, 0.020), (x, -D / 2 - 0.020, H - 0.230 + j * 0.058),
-                      mat=GRIME, nobevel=True)
-            b.box((0.030, 0.030, 0.130), (x + 0.132, -D / 2 - 0.026, (H + plinth) / 2 - 0.10),
-                  mat=STEEL_BARE, nobevel=True)
-            b.box((0.110, 0.016, 0.070), (x, -D / 2 - 0.016, H - 0.420), mat=PAPER,
-                  nobevel=True)
-        else:
-            # The open leaf, swung 62° toward −Y so it eats a little corridor.
-            b.box((0.330, 0.028, H - plinth - 0.060), (x + 0.238, -D / 2 - 0.150,
-                                                       (H + plinth) / 2),
-                  rot=(0.0, 0.0, 62.0), mat=STEEL_PAINTED, nobevel=True)
-            b.box((0.030, 0.030, 0.130), (x + 0.375, -D / 2 - 0.290, (H + plinth) / 2 - 0.10),
-                  mat=STEEL_BARE, nobevel=True)
-            # A coat left inside — cloth, so the dark opening is not a black hole.
-            b.box((0.220, 0.100, 0.760), (x, -0.05, 1.100), rot=(0.0, 2.0, 0.0),
-                  mat=CLOTH_STAINED, nobevel=True)
+
+    # Bay 1 — shut and squared. The control the other two read against.
+    x = -0.348
+    b.box((door_w, 0.028, door_h), (x, -D / 2 - 0.006, zc), mat=STEEL_PAINTED, nobevel=True)
+    for j in range(3):
+        b.box((0.180, 0.016, 0.020), (x, -D / 2 - 0.020, H - 0.230 + j * 0.058),
+              mat=GRIME, nobevel=True)
+    b.box((0.030, 0.030, 0.130), (x + 0.132, -D / 2 - 0.026, zc - 0.10),
+          mat=STEEL_BARE, nobevel=True)
+    b.box((0.110, 0.016, 0.070), (x, -D / 2 - 0.016, H - 0.420), mat=PAPER, nobevel=True)
+    # Rust bleeding out of the vent slots — two narrow tapering strips starting
+    # AT the slots, not the round-2 brown rectangle that read as a poster.
+    b.quad(0.030, 0.190, (x - 0.055, -D / 2 - 0.021, H - 0.335), rot=(90.0, 2.0, 0.0),
+           mat=RUST_HEAVY)
+    b.quad(0.016, 0.300, (x + 0.030, -D / 2 - 0.021, H - 0.390), rot=(90.0, -1.5, 0.0),
+           mat=RUST_HEAVY)
+    b.box((0.014, 0.006, 0.220), (x + 0.158, -D / 2 - 0.021, zc + 0.30),
+          mat=STEEL_BARE, nobevel=True)
+
+    # Bay 2 — the HANGING door: still latched at the bottom, torn off its top
+    # hinge, so the whole leaf rolls 4° about its own face normal and opens a
+    # dark wedge at the top corner. This is the asymmetry a corridor of
+    # repeated banks is bought with — a 4° line in a wall of verticals is
+    # visible three cells away in a moving beam.
+    x = 0.0
+    b.quad(door_w - 0.04, 0.30, (x + 0.02, -D / 2 - 0.004, H - 0.24),
+           rot=(90.0, 0.0, 0.0), mat=GRIME)
+    b.box((door_w, 0.028, door_h), (x + 0.012, -D / 2 - 0.006, zc - 0.014),
+          rot=(0.0, 4.0, 0.0), mat=STEEL_PAINTED, nobevel=True)
+    for j in range(3):
+        dz = H - 0.244 + j * 0.058 - zc
+        b.box((0.180, 0.016, 0.020), (x + 0.012 + dz * 0.0698, -D / 2 - 0.020,
+                                      H - 0.244 + j * 0.058),
+              rot=(0.0, 4.0, 0.0), mat=GRIME, nobevel=True)
+    b.box((0.030, 0.030, 0.130), (x + 0.140, -D / 2 - 0.026, zc - 0.125),
+          rot=(0.0, 4.0, 0.0), mat=STEEL_BARE, nobevel=True)
+    b.box((0.110, 0.016, 0.070), (x + 0.020, -D / 2 - 0.016, H - 0.434),
+          rot=(0.0, 4.0, 0.0), mat=PAPER, nobevel=True)
+
+    # Bay 3 — properly open: a leaf on visible hinge knuckles at its jamb,
+    # swung 38° into the corridor, and the cavity behind it furnished (shelf,
+    # coat, floor grime) so the beam finds a used locker rather than a hole.
+    x = 0.348
+    hinge_x = x - door_w / 2
+    a = math.radians(38.0)
+    b.box((0.024, D - 0.02, door_h), (x + door_w / 2 - 0.012, 0.01, zc),
+          mat=GRIME, nobevel=True)  # cavity shadow wall
+    b.box((door_w - 0.03, 0.020, 0.020), (x, -0.02, H - 0.360), mat=STEEL_PAINTED,
+          nobevel=True)  # hat shelf
+    b.box((0.220, 0.100, 0.760), (x + 0.02, -0.03, 1.080), rot=(0.0, 2.0, -3.0),
+          mat=CLOTH_STAINED, nobevel=True)  # the coat
+    b.box((0.200, 0.150, 0.060), (x - 0.03, -0.06, plinth + 0.030), rot=(0.0, 0.0, 24.0),
+          mat=CARD, nobevel=True)  # kicked-in box on the locker floor
+    for hz in (zc + door_h * 0.38, zc - door_h * 0.38):
+        b.cyl(0.011, 0.070, (hinge_x, -D / 2 - 0.010, hz), verts=8, mat=STEEL_BARE,
+              nobevel=True)
+    leaf_cx = hinge_x + (door_w / 2) * math.cos(a)
+    leaf_cy = -D / 2 - 0.014 - (door_w / 2) * math.sin(a)
+    b.box((door_w, 0.028, door_h), (leaf_cx, leaf_cy, zc), rot=(0.0, 0.0, -38.0),
+          mat=STEEL_PAINTED, nobevel=True)
+    b.box((0.030, 0.030, 0.130),
+          (hinge_x + (door_w - 0.03) * math.cos(a), -D / 2 - 0.014 - (door_w - 0.03) * math.sin(a),
+           zc - 0.10), rot=(0.0, 0.0, -38.0), mat=STEEL_BARE, nobevel=True)
+
+    # §03's grime gradient, floor up: a dark skirt along the plinth and one
+    # long rust weep from under the cap — the beam rakes these at boot height.
+    b.box((W + 0.006, 0.005, 0.085), (0.0, -D / 2 - 0.0035, 0.0475), mat=GRIME,
+          nobevel=True)
+    for sx in (-1.0, 1.0):
+        b.box((0.005, D - 0.02, 0.085), (sx * (W / 2 + 0.0035), 0.0, 0.0475), mat=GRIME,
+              nobevel=True)
+    b.quad(0.060, 0.500, (-0.46, -D / 2 - 0.0075, H - 0.30), rot=(90.0, 0.0, 0.0),
+           mat=RUST_HEAVY)
     return b
 
 
@@ -662,24 +932,55 @@ def build_workbench() -> PropBuild:
                                               (H - 0.060) / 2), mat=TIMBER_DARK, nobevel=True)
     b.box((W - 0.20, 0.040, 0.140), (0.0, -D / 2 + 0.040, H - 0.140), mat=TIMBER_DARK,
           nobevel=True)
-    b.box((W - 0.24, D - 0.20, 0.030), (0.0, 0.0, 0.240), mat=PLY, nobevel=True)
-    # Vice.
-    b.box((0.180, 0.160, 0.130), (-0.640, -0.150, H + 0.065), mat=STEEL_BARE)
-    b.box((0.150, 0.060, 0.110), (-0.640, -0.245, H + 0.055), mat=STEEL_BARE, nobevel=True)
+    # The lower shelf SAGS: two halves pitched toward a dropped midpoint, the
+    # load (a full paint tin) sitting exactly over the dip. A dead-flat shelf
+    # was half of why round 1 read as a furniture showroom.
+    hw = (W - 0.24) / 2
+    b.box((hw, D - 0.20, 0.028), (-hw / 2 - 0.01, 0.0, 0.238), rot=(0.0, 2.8, 0.0),
+          mat=PLY, nobevel=True)
+    b.box((hw, D - 0.20, 0.028), (hw / 2 + 0.01, 0.0, 0.238), rot=(0.0, -2.8, 0.0),
+          mat=PLY, nobevel=True)
+    f = b.frame((0.0, 0.0, 0.0))
+    _tin(f, 0.085, 0.200, (0.06, 0.03, 0.220), mat_name=STEEL_PAINTED)
+    # One diagonal brace, one side only — the other one is long gone.
+    b.box((0.060, 0.024, H - 0.18), (W / 2 - 0.070, 0.0, (H - 0.10) / 2),
+          rot=(38.0, 0.0, 0.0), mat=TIMBER_DARK, nobevel=True)
+    # Vice — dark cast body, BRIGHT worked faces. The jaw plate and the handle
+    # are what a beam actually catches at bench height.
+    b.box((0.180, 0.160, 0.130), (-0.640, -0.150, H + 0.065), mat=STEEL_PAINTED)
+    b.box((0.150, 0.060, 0.110), (-0.640, -0.245, H + 0.055), mat=STEEL_PAINTED,
+          nobevel=True)
+    b.box((0.160, 0.014, 0.040), (-0.640, -0.212, H + 0.110), mat=STEEL_BARE, nobevel=True)
     b.cyl(0.018, 0.300, (-0.640, -0.320, H + 0.065), rot=(90.0, 0.0, 0.0), verts=8,
           mat=STEEL_BARE, nobevel=True)
-    b.cyl(0.014, 0.220, (-0.640, -0.460, H + 0.065), rot=(0.0, 90.0, 0.0), verts=8,
+    b.cyl(0.014, 0.220, (-0.655, -0.460, H + 0.058), rot=(8.0, 90.0, 0.0), verts=8,
           mat=STEEL_BARE, nobevel=True)
-    # Tool board on the back edge, with hanging tools.
+    b.sph(0.022, (-0.545, -0.460, H + 0.043), segs=8, rings=5, mat=STEEL_BARE,
+          nobevel=True)
+    # Tool board — pale ply so the dark tools silhouette against it. Two hooks
+    # hang empty, one tool hangs crooked, and the missing one lies on the top:
+    # seven identical verticals were the round-1 giveaway. The dark patch is
+    # the grime shadow of a board that was unscrewed and carried off — round 2
+    # tried it bright-on-dark and it read as a pinned-up sheet of paper.
     b.box((W, 0.024, 0.620), (0.0, D / 2 - 0.012, H + 0.310), mat=PLY, nobevel=True)
-    for i, x in enumerate((-0.62, -0.42, -0.22, 0.06, 0.26, 0.48, 0.68)):
-        h = 0.180 + 0.055 * (i % 3)
-        b.box((0.036, 0.020, h), (x, D / 2 - 0.030, H + 0.520 - h / 2), mat=STEEL_BARE,
+    b.quad(0.30, 0.34, (-0.42, D / 2 - 0.0255, H + 0.330), rot=(90.0, 0.0, 0.0),
+           mat=TIMBER_DARK)  # grime shadow where a board used to hang
+    tools = ((-0.62, 0.200, 0.0, True), (-0.42, 0.0, 0.0, False), (-0.22, 0.260, 0.0, True),
+             (0.06, 0.180, 12.0, True), (0.26, 0.0, 0.0, False), (0.48, 0.290, -4.0, True),
+             (0.68, 0.150, 0.0, True))
+    for (x, h, tilt, present) in tools:
+        b.box((0.036, 0.020, 0.070), (x, D / 2 - 0.030, H + 0.540), mat=STEEL_BARE,
               nobevel=True)
-        b.box((0.070, 0.022, 0.032), (x, D / 2 - 0.030, H + 0.520 - h), mat=TIMBER_DARK,
-              nobevel=True)
+        if present:
+            b.box((0.040, 0.018, h), (x + 0.012 * (tilt != 0.0), D / 2 - 0.034,
+                                      H + 0.500 - h / 2), rot=(0.0, tilt, 0.0),
+                  mat=STEEL_BARE, nobevel=True)
+            b.box((0.070, 0.022, 0.036), (x, D / 2 - 0.034, H + 0.500 - h),
+                  rot=(0.0, tilt, 0.0), mat=TIMBER_DARK, nobevel=True)
+    # The dropped tool, where it landed.
+    b.box((0.340, 0.042, 0.020), (-0.30, 0.16, H + 0.010), rot=(0.0, 0.0, -28.0),
+          mat=STEEL_BARE, nobevel=True)
     # Clutter on the deck.
-    f = b.frame((0.0, 0.0, 0.0))
     _tin(f, 0.060, 0.140, (0.360, 0.060, H + 0.030))
     _tin(f, 0.052, 0.110, (0.500, -0.070, H + 0.030), mat_name=BRASS_FITTING)
     f.box((0.360, 0.260, 0.070), (0.030, 0.080, H + 0.065), rot=(0.0, 0.0, 8.0),
@@ -688,6 +989,21 @@ def build_workbench() -> PropBuild:
         f.box((0.300, 0.220, 0.006), (0.760, -0.060 + i * 0.02, H + 0.033 + i * 0.007),
               rot=(0.0, 0.0, yaw), mat=PAPER, nobevel=True)
     f.box((0.220, 0.160, 0.180), (-0.220, 0.070, H + 0.120), rot=(0.0, 0.0, -6.0), mat=CARD)
+    # Twenty years of use, floor up: oil soak around the vice, a scorch by the
+    # tins, a rag over the front edge, grime socks on the legs.
+    b.box((0.300, 0.240, 0.004), (-0.500, -0.020, H + 0.0025), rot=(0.0, 0.0, 14.0),
+          mat=GRIME, nobevel=True)
+    b.box((0.200, 0.170, 0.005), (-0.360, 0.120, H + 0.0030), rot=(0.0, 0.0, -31.0),
+          mat=GRIME, nobevel=True)
+    b.box((0.160, 0.130, 0.004), (0.300, -0.180, H + 0.0025), rot=(0.0, 0.0, 40.0),
+          mat=GRIME, nobevel=True)
+    b.box((0.190, 0.070, 0.026), (0.620, -D / 2 + 0.012, H - 0.010), rot=(0.0, 0.0, 6.0),
+          mat=CLOTH_STAINED, nobevel=True)
+    b.box((0.180, 0.048, 0.150), (0.620, -D / 2 - 0.017, H - 0.105), rot=(4.0, 0.0, 0.0),
+          mat=CLOTH_STAINED, nobevel=True)
+    for sx in (-1.0, 1.0):
+        b.box((0.086, 0.086, 0.070), (sx * (W / 2 - 0.070), -(D / 2 - 0.070), 0.035),
+              mat=GRIME, nobevel=True)
     return b
 
 
@@ -729,6 +1045,11 @@ def build_chair() -> PropBuild:
     for z in (0.700, 0.830):
         b.box((0.360, 0.030, 0.070), (0.0, 0.170, z), mat=TIMBER_PALE, nobevel=True)
     b.box((0.380, 0.030, 0.030), (0.0, -0.170, 0.230), mat=TIMBER_DARK, nobevel=True)
+    # A work jacket left over the backrest — the person who did not come back.
+    b.box((0.380, 0.070, 0.240), (0.01, 0.170, 0.780), rot=(0.0, -2.0, 3.0),
+          mat=CLOTH_STAINED, nobevel=True)
+    b.box((0.120, 0.060, 0.330), (-0.170, 0.150, 0.560), rot=(0.0, -7.0, 8.0),
+          mat=CLOTH_STAINED, nobevel=True)  # one sleeve hanging
     return b
 
 
@@ -761,42 +1082,66 @@ def build_rubble_pile() -> PropBuild:
     Pale broken concrete over a dark floor is one of the few places this kit gets
     a genuine value step without a texture."""
     b = PropBuild("Dress_RubblePile")
-    bed = b.box((1.060, 0.860, 0.024), (0.0, 0.0, 0.012), mat=CONCRETE, nobevel=True)
+    # Two offset, rotated dust beds instead of one axis-aligned mat: round 1
+    # showed a crisp rectangle under the chunks, which no ceiling has ever left.
+    bed = b.box((1.000, 0.780, 0.022), (0.02, 0.0, 0.011), rot=(0.0, 0.0, 9.0),
+                mat=CONCRETE, nobevel=True)
     b.pivot_part = bed
+    b.box((0.680, 0.560, 0.026), (-0.18, -0.10, 0.013), rot=(0.0, 0.0, -24.0),
+          mat=CONCRETE, nobevel=True)
     _rubble(b, (
-        (0.230, 0.200, 0.170, -0.300, -0.090, 0.096, 18.0),
-        (0.190, 0.170, 0.140, 0.060, 0.070, 0.088, -34.0),
-        (0.160, 0.150, 0.120, 0.330, -0.140, 0.070, 52.0),
-        (0.140, 0.130, 0.100, -0.120, 0.290, 0.062, -12.0),
-        (0.120, 0.110, 0.090, 0.420, 0.230, 0.056, 41.0),
-        (0.200, 0.150, 0.130, -0.430, 0.220, 0.078, -58.0),
-        (0.130, 0.120, 0.095, 0.170, -0.320, 0.058, 24.0),
-        (0.105, 0.100, 0.080, -0.020, -0.180, 0.130, 66.0),
+        (0.230, 0.200, 0.170, -0.300, -0.090, 0.090, 16.0, -9.0, 18.0),
+        (0.190, 0.170, 0.140, 0.060, 0.070, 0.082, -11.0, 14.0, -34.0),
+        (0.160, 0.150, 0.120, 0.330, -0.140, 0.066, 22.0, 5.0, 52.0),
+        (0.140, 0.130, 0.100, -0.120, 0.290, 0.058, -7.0, -17.0, -12.0),
+        (0.120, 0.110, 0.090, 0.420, 0.230, 0.052, 12.0, 8.0, 41.0),
+        (0.200, 0.150, 0.130, -0.430, 0.220, 0.072, 4.0, 19.0, -58.0),
+        (0.130, 0.120, 0.095, 0.170, -0.320, 0.054, -19.0, 3.0, 24.0),
+        (0.105, 0.100, 0.080, -0.020, -0.180, 0.125, 31.0, -12.0, 66.0),
     ))
     _rubble(b, (
-        (0.215, 0.100, 0.062, 0.230, 0.360, 0.034, -21.0),
-        (0.215, 0.100, 0.062, -0.360, -0.320, 0.034, 39.0),
-        (0.215, 0.100, 0.062, 0.480, -0.020, 0.096, 8.0),
+        (0.215, 0.100, 0.062, 0.230, 0.360, 0.032, 6.0, -8.0, -21.0),
+        (0.215, 0.100, 0.062, -0.360, -0.320, 0.032, -13.0, 4.0, 39.0),
+        (0.215, 0.100, 0.062, 0.480, -0.020, 0.090, 9.0, 15.0, 8.0),
     ), mat_name=BRICK)
-    # Two rebar ends sticking out — the detail that says "ceiling", not "gravel".
+    # One big slab leaning against the tallest chunk — the pile's silhouette
+    # feature, and the shadow pocket the beam digs into.
+    b.box((0.360, 0.050, 0.300), (-0.190, -0.020, 0.150), rot=(-56.0, 6.0, 30.0),
+          mat=CONCRETE_BROKEN, nobevel=True)
+    # Grime pockets where the dust settled between chunks.
+    for (x, y, yaw) in ((0.20, 0.02, 33.0), (-0.30, 0.16, -12.0), (0.05, -0.26, 61.0)):
+        b.box((0.190, 0.150, 0.005), (x, y, 0.026), rot=(0.0, 0.0, yaw), mat=GRIME,
+              nobevel=True)
+    # Rebar — two straight ends and one bent double, which says "ceiling", not
+    # "gravel".
     for (x, y, pitch, yaw) in ((-0.10, 0.06, 62.0, 24.0), (0.24, -0.04, 71.0, -46.0)):
         b.cyl(0.011, 0.520, (x, y, 0.180), rot=(pitch, 0.0, yaw), verts=6, mat=RUST_HEAVY,
               nobevel=True)
+    b.cyl(0.010, 0.300, (-0.380, -0.230, 0.120), rot=(48.0, 0.0, -70.0), verts=6,
+          mat=RUST_HEAVY, nobevel=True)
+    b.cyl(0.010, 0.220, (-0.430, -0.330, 0.200), rot=(112.0, 0.0, -70.0), verts=6,
+          mat=RUST_HEAVY, nobevel=True)
     return b
 
 
 def build_rubble_small() -> PropBuild:
     """A scatter of chunks, 0.18 m tall. Filler for corners and wall feet."""
     b = PropBuild("Dress_RubbleSmall")
-    bed = b.box((0.560, 0.460, 0.016), (0.0, 0.0, 0.008), mat=CONCRETE, nobevel=True)
+    bed = b.box((0.520, 0.420, 0.015), (0.0, 0.0, 0.0075), rot=(0.0, 0.0, 13.0),
+                mat=CONCRETE, nobevel=True)
     b.pivot_part = bed
     _rubble(b, (
-        (0.150, 0.130, 0.110, -0.120, -0.040, 0.062, 22.0),
-        (0.120, 0.110, 0.090, 0.110, 0.070, 0.052, -41.0),
-        (0.100, 0.095, 0.075, 0.190, -0.120, 0.044, 63.0),
-        (0.085, 0.080, 0.065, -0.190, 0.130, 0.040, -17.0),
-        (0.070, 0.070, 0.055, 0.020, 0.160, 0.036, 48.0),
+        (0.150, 0.130, 0.110, -0.120, -0.040, 0.058, 14.0, -11.0, 22.0),
+        (0.120, 0.110, 0.090, 0.110, 0.070, 0.048, -18.0, 6.0, -41.0),
+        (0.100, 0.095, 0.075, 0.190, -0.120, 0.042, 25.0, 9.0, 63.0),
+        (0.085, 0.080, 0.065, -0.190, 0.130, 0.038, -6.0, 16.0, -17.0),
+        (0.070, 0.070, 0.055, 0.020, 0.160, 0.034, 9.0, -21.0, 48.0),
     ))
+    # One brick and a dust pocket, so five grey chunks are not the whole story.
+    b.box((0.180, 0.085, 0.055, ), (0.060, -0.030, 0.030), rot=(7.0, 12.0, -33.0),
+          mat=BRICK, nobevel=True)
+    b.box((0.150, 0.120, 0.004), (-0.05, 0.06, 0.018), rot=(0.0, 0.0, 27.0), mat=GRIME,
+          nobevel=True)
     return b
 
 
@@ -865,7 +1210,12 @@ def build_tool_scatter() -> PropBuild:
           mat=TIMBER_DARK, nobevel=True)
     b.box((0.090, 0.040, 0.048), (-0.24, -0.10, 0.024), rot=(0.0, 0.0, 62.0), mat=STEEL_BARE,
           nobevel=True)
-    b.cyl(0.090, 0.060, (0.20, 0.14, 0.030), verts=12, mat=RUST_HEAVY, nobevel=True)
+    # The abrasive wheel: dark rubber-bound grit with a bright arbour, not the
+    # round-1 "pink cake" of raw rust material.
+    b.cyl(0.090, 0.060, (0.20, 0.14, 0.030), verts=12, mat=RUBBER, nobevel=True)
+    b.cyl(0.024, 0.066, (0.20, 0.14, 0.030), verts=8, mat=STEEL_BARE, nobevel=True)
+    b.box((0.130, 0.100, 0.004), (0.16, 0.10, 0.0025), rot=(0.0, 0.0, 18.0), mat=RUST_HEAVY,
+          nobevel=True)  # rust shadow where it has sat for years
     for (x, y) in ((0.04, 0.16), (-0.02, 0.19), (0.10, 0.20)):
         b.cyl(0.010, 0.014, (x, y, 0.007), verts=6, mat=STEEL_BARE, nobevel=True)
     return b
@@ -922,7 +1272,9 @@ def build_puddle_small() -> PropBuild:
         (-0.18, -0.09, 0.150, 12),
     ), 0.008)
     b.pivot_part = b.parts[0]
-    b.cyl(0.330, 0.004, (0.0, 0.0, 0.002), verts=16, mat=WET_STAIN, nobevel=True)
+    # Rim tucked nearly under the water: round 1's wide pale ring made the pool
+    # read as a grey dinner plate instead of a dark mirror with a damp edge.
+    b.cyl(0.305, 0.004, (0.01, 0.0, 0.002), verts=16, mat=WET_STAIN, nobevel=True)
     return b
 
 
@@ -993,13 +1345,33 @@ def build_pipe_run_wall() -> PropBuild:
     b = PropBuild("Dress_PipeRun_Wall")
     specs = ((0.062, 2.230, GALVANISED, 12), (0.044, 2.060, RUST_HEAVY, 10),
              (0.026, 1.950, COPPER, 8))
-    _pipe_run(b, RUN_LENGTH, -0.130, specs, (-0.960, 0.0, 0.960))
+    _pipe_run(b, RUN_LENGTH, -0.130, specs, (-0.960, 0.960))
     b.pivot_part = b.parts[0]
     # A union and a drop leg, so the run reads as plumbing rather than as a stripe.
     b.cyl(0.072, 0.090, (0.520, -0.130, 2.230), rot=(0.0, 90.0, 0.0), verts=12,
           mat=STEEL_BARE, nobevel=True)
     b.cyl(0.030, 0.420, (-0.480, -0.130, 1.760), verts=8, mat=COPPER, nobevel=True)
     b.cyl(0.038, 0.050, (-0.480, -0.130, 1.955), verts=8, mat=BRASS_FITTING, nobevel=True)
+    # Flange pairs give the top run a rhythm along its length — round 1 showed
+    # three sterile rods, and a pipe with no joints is a stripe, not plumbing.
+    for x in (-0.700, 0.150):
+        for dx in (-0.022, 0.022):
+            b.cyl(0.080, 0.026, (x + dx, -0.130, 2.230), rot=(0.0, 90.0, 0.0), verts=10,
+                  mat=STEEL_BARE, nobevel=True)
+    # A rusted-through sleeve on the middle pipe, off-centre.
+    b.cyl(0.047, 0.180, (0.680, -0.130, 2.060), rot=(0.0, 90.0, 0.0), verts=10,
+          mat=RUST_HEAVY, nobevel=True)
+    # The middle bracket has torn its lower fixing and hangs 14° off plumb —
+    # the run's one asymmetric feature.
+    lo = 1.950 - 0.09
+    hi = 2.230 + 0.09
+    b.box((0.056, 0.026, hi - lo), (0.020, -0.078, (lo + hi) / 2 - 0.020),
+          rot=(14.0, 0.0, 6.0), mat=STEEL_PAINTED, nobevel=True)
+    # What the wall remembers: rust weeping from the union and the flanges,
+    # and a long damp streak under the leak. All of it on the mount plane.
+    b.quad(0.070, 0.560, (0.520, -0.002, 1.920), rot=(90.0, 0.0, 0.0), mat=RUST_HEAVY)
+    b.quad(0.048, 0.320, (-0.700, -0.002, 2.030), rot=(90.0, 0.0, 0.0), mat=RUST_HEAVY)
+    b.quad(0.110, 0.550, (0.560, -0.001, 1.720), rot=(90.0, 0.0, 4.0), mat=WET_STAIN)
     return b
 
 
@@ -1020,6 +1392,12 @@ def build_pipe_run_ceiling() -> PropBuild:
         b.box((0.560, 0.050, 0.030), (x, -0.010, -0.055), mat=STEEL_PAINTED, nobevel=True)
         for (y, z, radius) in ((-0.150, -0.320, 0.070), (0.130, -0.300, 0.048),
                                (0.010, -0.150, 0.030)):
+            if x == 0.0 and radius == 0.048:
+                # One drop rod has torn its ceiling anchor and hangs kinked —
+                # the run's asymmetric feature, right where a beam sweeps it.
+                b.cyl(0.011, abs(z) - 0.055, (x + 0.030, y, (-0.055 + z + radius) / 2),
+                      rot=(0.0, 16.0, 0.0), verts=6, mat=STEEL_BARE, nobevel=True)
+                continue
             b.cyl(0.011, abs(z) - 0.055, (x, y, (-0.055 + z + radius) / 2), verts=6,
                   mat=STEEL_BARE, nobevel=True)
             b.box((0.036, 0.030, 0.030), (x, y, z + radius + 0.014), mat=STEEL_BARE,
@@ -1084,12 +1462,16 @@ def build_gauge_board() -> PropBuild:
     b.box((0.680, 0.020, 0.040), (0.0, -0.030, 1.940), mat=STEEL_PAINTED, nobevel=True)
     b.box((0.680, 0.020, 0.040), (0.0, -0.030, 1.460), mat=STEEL_PAINTED, nobevel=True)
     for (x, r) in ((-0.200, 0.090), (0.020, 0.072), (0.220, 0.062)):
-        b.cyl(r + 0.014, 0.044, (x, -0.052, 1.760), rot=(90.0, 0.0, 0.0), verts=16,
-              mat=BRASS_FITTING, nobevel=True)
-        b.cyl(r, 0.012, (x, -0.078, 1.760), rot=(90.0, 0.0, 0.0), verts=16, mat=GAUGE_FACE,
-              nobevel=True)
-        b.box((r * 1.5, 0.006, 0.008), (x + r * 0.3, -0.086, 1.760), rot=(0.0, -34.0, 0.0),
-              mat=GRIME, nobevel=True)
+        # The smallest meter has lost its lower mount and hangs 11° off level.
+        droop = 11.0 if r == 0.062 else 0.0
+        b.cyl(r + 0.014, 0.044, (x, -0.052, 1.760 - (0.008 if droop else 0.0)),
+              rot=(90.0, droop, 0.0), verts=16, mat=BRASS_FITTING, nobevel=True)
+        b.cyl(r, 0.012, (x, -0.078, 1.760 - (0.008 if droop else 0.0)),
+              rot=(90.0, droop, 0.0), verts=16, mat=GAUGE_FACE, nobevel=True)
+        b.box((r * 1.5, 0.006, 0.008), (x + r * 0.3, -0.086, 1.760 - (0.008 if droop else 0.0)),
+              rot=(0.0, -34.0 - droop, 0.0), mat=GRIME, nobevel=True)
+    # The board itself has streaked below the leakiest meter.
+    b.quad(0.055, 0.180, (-0.245, -0.032, 1.560), rot=(90.0, -2.0, 0.0), mat=RUST_HEAVY)
     # A meter with a glass window and a paper chart behind it.
     b.box((0.260, 0.070, 0.170), (-0.060, -0.050, 1.560), mat=STEEL_PAINTED, nobevel=True)
     b.box((0.210, 0.014, 0.120), (-0.060, -0.090, 1.560), mat=GLASS_DIRTY, nobevel=True)
@@ -1115,12 +1497,17 @@ def build_conduit_wall() -> PropBuild:
     for x in (-1.050, -0.350, 0.350, 1.050):
         b.box((0.036, 0.070, 0.036), (x, -0.038, 2.480), mat=STEEL_BARE, nobevel=True)
         b.box((0.030, 0.062, 0.030), (x, -0.036, 2.380), mat=STEEL_BARE, nobevel=True)
-    # Junction box and a drop to switch height.
+    # Junction box and a drop to switch height. The box has rust-bled down the
+    # wall, and one strap on the drop has sheared so the conduit bows off plumb.
     b.box((0.180, 0.090, 0.180), (0.680, -0.045, 2.430), mat=GALVANISED)
     b.cyl(0.012, 0.010, (0.680, -0.092, 2.430), verts=8, mat=STEEL_BARE, nobevel=True)
-    b.cyl(0.020, 1.020, (0.680, -0.048, 1.920), verts=8, mat=GALVANISED, nobevel=True)
+    b.cyl(0.020, 1.020, (0.687, -0.052, 1.920), rot=(0.0, 1.2, 0.0), verts=8,
+          mat=GALVANISED, nobevel=True)
     b.box((0.110, 0.070, 0.160), (0.680, -0.050, 1.400), mat=GALVANISED, nobevel=True)
     b.box((0.040, 0.030, 0.070), (0.680, -0.094, 1.400), mat=ENAMEL, nobevel=True)
+    b.quad(0.070, 0.240, (0.660, -0.001, 2.220), rot=(90.0, -3.0, 0.0), mat=RUST_HEAVY)
+    b.box((0.052, 0.020, 0.016), (0.700, -0.060, 1.760), rot=(0.0, 0.0, 32.0),
+          mat=STEEL_BARE, nobevel=True)  # the sheared strap, still bolted one side
     # A cable that came loose and hangs in a loop.
     for i, (x, z) in enumerate(((-0.60, 2.300), (-0.44, 2.180), (-0.28, 2.240))):
         b.cyl(0.010, 0.230, (x, -0.040, z), rot=(0.0, 62.0 - i * 44.0, 0.0), verts=6,
@@ -1136,11 +1523,22 @@ def build_vent_grille() -> PropBuild:
     b.pivot_part = frame_obj
     b.box((0.560, 0.030, 0.360), (0.0, -0.030, 2.250), mat=GRIME, nobevel=True)
     for i in range(6):
+        if i == 1:
+            # One louvre pried and left bent — every grille in a building this
+            # old has met a crowbar. The piece's asymmetric feature.
+            b.box((0.270, 0.026, 0.036), (-0.135, -0.052, 2.166), rot=(52.0, 0.0, -4.0),
+                  mat=GALVANISED, nobevel=True)
+            b.box((0.250, 0.026, 0.036), (0.140, -0.044, 2.160), rot=(28.0, 0.0, 0.0),
+                  mat=GALVANISED, nobevel=True)
+            continue
         b.box((0.540, 0.026, 0.036), (0.0, -0.044, 2.100 + i * 0.060), rot=(28.0, 0.0, 0.0),
               mat=GALVANISED, nobevel=True)
     for (sx, sz) in ((-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)):
         b.cyl(0.012, 0.014, (sx * 0.280, -0.046, 2.250 + sz * 0.190), rot=(90.0, 0.0, 0.0),
               verts=6, mat=STEEL_BARE, nobevel=True)
+    # Exhaust grime blown through the slats onto the frame's lower lip.
+    b.quad(0.480, 0.052, (0.02, -0.0405, 2.068), rot=(90.0, -2.0, 0.0), mat=GRIME)
+    b.quad(0.030, 0.110, (-0.270, -0.0405, 2.130), rot=(90.0, 3.0, 0.0), mat=RUST_HEAVY)
     return b
 
 
@@ -1165,14 +1563,26 @@ def build_bulb_cord() -> PropBuild:
     b = PropBuild("Dress_BulbCord")
     rose = b.cyl(0.062, 0.030, (0.0, 0.0, -0.015), verts=12, mat=GRIME, nobevel=True)
     b.pivot_part = rose
-    b.cyl(0.007, 0.640, (0.0, 0.0, -0.350), verts=6, mat=RUBBER, nobevel=True)
-    b.cyl(0.026, 0.090, (0.0, 0.0, -0.700), verts=10, mat=STEEL_PAINTED, nobevel=True)
-    # Conical tin shade.
-    b.cone(0.170, 0.045, 0.180, (0.0, 0.0, -0.800), rot=(180.0, 0.0, 0.0), verts=14,
-           mat=STEEL_BARE, nobevel=True)
-    b.cyl(0.022, 0.055, (0.0, 0.0, -0.885), verts=10, mat=BRASS_FITTING, nobevel=True)
-    b.sph(0.048, (0.0, 0.0, -0.955), scale=(1.0, 1.0, 1.25), segs=12, rings=6,
+    # The flex has a kink where somebody once yanked it — two segments, not one.
+    b.cyl(0.007, 0.400, (0.0, 0.0, -0.230), verts=6, mat=RUBBER, nobevel=True)
+    b.cyl(0.007, 0.260, (-0.011, 0.007, -0.552), rot=(2.5, -4.0, 0.0), verts=6,
+          mat=RUBBER, nobevel=True)
+    b.cyl(0.026, 0.090, (-0.018, 0.011, -0.700), verts=10, mat=STEEL_PAINTED, nobevel=True)
+    # Conical shade: painted steel OUTSIDE, white enamel INSIDE. Round 1 proved
+    # the docstring wrong the way only a render can — a metallic=1 cone over a
+    # black world is a black hole, so the "albedo 0.72 underside" claim now has
+    # an actual dielectric enamel surface to be true OF. The inner cone is what
+    # a player's beam lights from below.
+    b.cone(0.170, 0.045, 0.180, (-0.018, 0.011, -0.800), rot=(180.0, 0.0, 0.0), verts=14,
+           mat=STEEL_PAINTED, nobevel=True)
+    b.cone(0.160, 0.040, 0.170, (-0.018, 0.011, -0.806), rot=(180.0, 0.0, 0.0), verts=14,
+           mat=ENAMEL, nobevel=True)
+    b.cyl(0.022, 0.055, (-0.018, 0.011, -0.885), verts=10, mat=BRASS_FITTING, nobevel=True)
+    b.sph(0.048, (-0.018, 0.011, -0.955), scale=(1.0, 1.0, 1.25), segs=12, rings=6,
           mat=BULB_DEAD, nobevel=True)
+    # Fly dirt on the shade rim — one dark bite out of a bright edge.
+    b.box((0.070, 0.020, 0.014), (0.120, 0.052, -0.884), rot=(0.0, 0.0, 24.0), mat=GRIME,
+          nobevel=True)
     return b
 
 
@@ -1191,6 +1601,13 @@ def build_bulb_caged() -> PropBuild:
           mat=BULB_DEAD, nobevel=True)
     for i in range(6):
         a = math.radians(i * 60.0)
+        if i == 2:
+            # One wire pried outward — every cage in the building was hit by
+            # something once, and it is this piece's asymmetric feature.
+            b.box((0.012, 0.012, 0.210), (0.082 * math.cos(a), 0.082 * math.sin(a),
+                                          -0.345), rot=(14.0, 0.0, math.degrees(a)),
+                  mat=STEEL_BARE, nobevel=True)
+            continue
         b.box((0.012, 0.012, 0.200), (0.072 * math.cos(a), 0.072 * math.sin(a), -0.345),
               rot=(0.0, 0.0, math.degrees(a)), mat=STEEL_BARE, nobevel=True)
     b.torus(0.074, 0.008, (0.0, 0.0, -0.300), mseg=12, nseg=4, mat=STEEL_BARE)
@@ -1213,10 +1630,15 @@ def build_chain_hang() -> PropBuild:
     b.pivot_part = plate
     b.torus(0.038, 0.010, (0.0, 0.0, -0.056), rot=(90.0, 0.0, 0.0), mseg=10, nseg=4,
             mat=STEEL_BARE)
-    _chain(b, 0.0, 0.0, -0.086, -0.840, links=9, radius=0.026)
-    b.cyl(0.044, 0.120, (0.0, 0.0, -0.900), verts=10, mat=RUST_HEAVY, nobevel=True)
-    b.torus(0.028, 0.009, (0.0, 0.0, -0.968), rot=(0.0, 0.0, 0.0), mseg=10, nseg=4,
+    _chain(b, 0.0, 0.0, -0.086, -0.760, radius=0.028)
+    # It ends in HARDWARE, not a plug: a rusted shackle ring with an S-hook
+    # dropped through it, hanging a few degrees off the chain's axis.
+    b.torus(0.048, 0.011, (0.006, 0.0, -0.800), rot=(90.0, 0.0, 20.0), mseg=10, nseg=4,
             mat=RUST_HEAVY)
+    b.torus(0.034, 0.009, (0.018, 0.010, -0.878), rot=(84.0, 0.0, 110.0), mseg=10,
+            nseg=4, mat=RUST_HEAVY)
+    b.torus(0.030, 0.009, (0.026, 0.016, -0.940), rot=(96.0, 0.0, 110.0), mseg=10,
+            nseg=4, mat=STEEL_BARE)
     return b
 
 
@@ -1235,18 +1657,33 @@ def build_sheet_hanging() -> PropBuild:
     for sx in (-1.0, 1.0):
         b.box((0.050, 0.100, 0.090), (sx * 0.740, 0.0, -0.045), mat=STEEL_PAINTED,
               nobevel=True)
-    # Cloth as a set of slightly rotated panels — folds, not a plane.
-    panels = ((-0.560, 0.300, -3.5), (-0.280, 0.310, 2.0), (0.0, 0.300, -1.5),
-              (0.280, 0.305, 3.0), (0.560, 0.300, -2.5))
-    for (x, w, tilt) in panels:
-        b.box((w, 0.030, 1.860), (x, 0.0, -1.020), rot=(0.0, tilt, 0.0), mat=CLOTH_DUST,
-              nobevel=True)
-    # A torn corner and a hem, so the bottom edge is not a ruled line.
-    b.box((0.320, 0.026, 0.360), (0.560, 0.010, -1.760), rot=(0.0, -14.0, 0.0),
+    # Cloth as folds with real DEPTH: panels alternate toward and away from the
+    # rail plane and stop at staggered heights. Round 1's coplanar panels with
+    # ±3° tilts rendered as one flat poster — a fold that does not displace in Y
+    # cannot catch a shadow, and cloth with a ruled bottom edge is paper.
+    panels = ((-0.560, 0.300, -0.016, 1.800, -4.0), (-0.290, 0.310, 0.018, 1.900, 2.5),
+              (-0.010, 0.300, -0.020, 1.860, -1.5), (0.270, 0.305, 0.014, 1.930, 3.5),
+              (0.545, 0.300, -0.014, 1.760, -3.0))
+    for (x, w, y, drop, tilt) in panels:
+        b.box((w, 0.026, drop), (x, y, -0.090 - drop / 2), rot=(0.0, tilt, 0.0),
+              mat=CLOTH_DUST, nobevel=True)
+    # The bottom third kicks out where feet and carts have brushed it.
+    b.box((0.560, 0.024, 0.420), (0.28, -0.052, -1.930), rot=(7.0, 2.0, 0.0),
+          mat=CLOTH_DUST, nobevel=True)
+    # A torn corner hanging by a thread.
+    b.box((0.300, 0.022, 0.380), (0.585, 0.012, -1.700), rot=(0.0, -16.0, 3.0),
           mat=CLOTH_DUST, nobevel=True)
     b.box((1.420, 0.036, 0.060), (0.0, 0.0, -0.130), mat=CLOTH_DUST, nobevel=True)
-    b.box((0.900, 0.020, 0.240), (-0.20, -0.024, -1.640), rot=(0.0, 2.0, 0.0),
+    # Water-mark tide lines, irregular and overlapping, not one neat patch.
+    b.box((0.700, 0.014, 0.300), (-0.24, -0.032, -1.700), rot=(0.0, 1.5, -2.0),
           mat=CLOTH_STAINED, nobevel=True)
+    b.box((0.460, 0.012, 0.200), (0.10, -0.036, -1.850), rot=(0.0, -2.0, 3.0),
+          mat=CLOTH_STAINED, nobevel=True)
+    b.box((0.330, 0.012, 0.130), (-0.48, -0.034, -1.560), rot=(0.0, 0.0, -5.0),
+          mat=CLOTH_STAINED, nobevel=True)
+    # Grime hem where it has dragged on the floor.
+    b.box((0.520, 0.014, 0.070), (0.30, -0.056, -2.100), rot=(7.0, 0.0, 0.0), mat=GRIME,
+          nobevel=True)
     return b
 
 
@@ -1259,23 +1696,61 @@ def build_cobweb_corner() -> PropBuild:
     geometry stops, which is exactly the cue that tells a player a corner is a
     corner and not a doorway."""
     b = PropBuild("Dress_CobwebCorner")
+    # DUST FUNNEL, third attempt, and the reasoning is worth keeping: round 1
+    # built big regular fan sheets (read: stacked paper); round 2 built straight
+    # bright threads (read: umbrella skeleton). What a basement corner actually
+    # holds is a broken FUNNEL of dusty membrane — small ragged patches dense at
+    # the corner, thinning outward, with only a few short trailing threads. So:
+    # membrane scraps as thin boxes (two-sided, unlike a quad) in a rough cone
+    # around the corner diagonal, gaps between them, every one differently
+    # tilted; threads short and few; the heavy hank hanging below.
     first = None
-    # Radial strands from the corner, as thin triangular sheets at several angles.
-    for i in range(7):
-        t = i / 6.0
-        span = 0.600 - 0.048 * i
-        obj = b.box((span, 0.004, span * 0.9),
-                    (-span / 2 - 0.02, -0.024 - 0.042 * i, -span * 0.45 - 0.02),
-                    rot=(0.0, 22.0 - 44.0 * t, 0.0), mat=COBWEB, nobevel=True)
-        first = first or obj
+    # The corner pocket: two membranes snug against the walls' meeting line,
+    # angled like a funnel throat.
+    first = b.box((0.30, 0.003, 0.26), (-0.10, -0.10, -0.115), rot=(38.0, -34.0, 45.0),
+                  mat=COBWEB, nobevel=True)
+    b.box((0.22, 0.003, 0.18), (-0.065, -0.065, -0.24), rot=(-26.0, -48.0, 45.0),
+          mat=COBWEB, nobevel=True)
     b.pivot_part = first
-    # Cross strands, so it reads as a web rather than as a fan.
-    for i in range(4):
-        d = 0.130 + i * 0.125
-        b.box((d * 1.35, d * 1.35, 0.004), (-d * 0.55, -d * 0.55, -0.030 - i * 0.10),
-              rot=(0.0, 0.0, 45.0), mat=COBWEB, nobevel=True)
-    # A heavier hank hanging out of the corner.
-    b.box((0.060, 0.060, 0.260), (-0.185, -0.185, -0.300), rot=(6.0, -8.0, 45.0),
+    # Torn curtains hanging off both wall-ceiling edges: slim strips of varied
+    # drop, each with its own lean, dense near the corner and ragged further
+    # out. This is the read that finally says "web" in one glance — drooping
+    # fringe — where flat scraps said "paper" and threads said "umbrella".
+    # Each strip is a flattened 4-vert cone — wide where it roots at the
+    # ceiling line, tapering to a point as it hangs. Straight box strips read
+    # as venetian blinds; the taper is what makes them tatters. A dust band
+    # runs along both wall-ceiling edges so the fringe grows out of something.
+    b.box((0.005, 0.640, 0.055), (-0.012, -0.330, -0.026), mat=COBWEB, nobevel=True)
+    b.box((0.640, 0.005, 0.055), (-0.330, -0.012, -0.026), mat=COBWEB, nobevel=True)
+
+    def _tatter(loc, drop, w, rot):
+        obj = b.cone(w * 0.16, w * 0.62, drop, loc, rot=rot, verts=4, mat=COBWEB,
+                     nobevel=True)
+        obj.scale = Vector((1.0, 0.10, 1.0))
+        blendkit.apply_transforms(obj, scale=True)
+
+    for (yy, w, drop, lean) in ((-0.11, 0.11, 0.36, -7.0), (-0.20, 0.08, 0.21, 5.0),
+                                (-0.30, 0.12, 0.48, -4.0), (-0.41, 0.07, 0.17, 10.0),
+                                (-0.54, 0.09, 0.30, -12.0)):
+        _tatter((-0.013, yy, -drop / 2 - 0.010), drop, w, (lean, 3.0, 90.0))
+    for (xx, w, drop, lean) in ((-0.15, 0.10, 0.32, 8.0), (-0.25, 0.07, 0.44, -6.0),
+                                (-0.36, 0.11, 0.24, 5.0), (-0.49, 0.08, 0.31, -9.0)):
+        _tatter((xx, -0.013, -drop / 2 - 0.010), drop, w, (3.0, lean, 0.0))
+    # Threads tying the outermost curtains back toward the pocket.
+    threads = ((218.0, -26.0, 0.10, 0.44), (236.0, -40.0, 0.12, 0.40),
+               (207.0, -48.0, 0.10, 0.38))
+    for (yaw, pitch, start, length) in threads:
+        ya, pa = math.radians(yaw), math.radians(pitch)
+        d = Vector((math.cos(pa) * math.cos(ya), math.cos(pa) * math.sin(ya),
+                    math.sin(pa)))
+        mid = d * (start + length / 2)
+        b.box((0.005, 0.005, length), (mid.x - 0.01, mid.y - 0.01, mid.z - 0.01),
+              rot=(math.degrees(math.acos(max(-1.0, min(1.0, d.z)))), 0.0, yaw + 90.0),
+              mat=COBWEB, nobevel=True)
+    # The heavy hank, hanging out of the corner with a bend in it.
+    b.box((0.045, 0.045, 0.240), (-0.185, -0.185, -0.290), rot=(6.0, -8.0, 45.0),
+          mat=COBWEB, nobevel=True)
+    b.box((0.028, 0.028, 0.150), (-0.205, -0.240, -0.470), rot=(14.0, -16.0, 45.0),
           mat=COBWEB, nobevel=True)
     return b
 
@@ -1312,6 +1787,17 @@ def build_wall_sign() -> PropBuild:
     for (sx, sz) in ((-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)):
         b.cyl(0.010, 0.014, (sx * (W / 2 - 0.026), -0.040, 1.600 + sz * (H / 2 - 0.026)),
               rot=(90.0, 0.0, 0.0), verts=6, mat=STEEL_BARE, nobevel=True)
+    # 위험 in stencilled red on a red-bordered field — the standard Korean plant
+    # danger plate, drawn as geometry (no font licence to survey). Identical on
+    # every instance: paint, not information.
+    for (cx, cz, w, h) in ((0.0, 1.752, W - 0.10, 0.016), (0.0, 1.448, W - 0.10, 0.016),
+                           (-0.212, 1.600, 0.016, H - 0.10), (0.212, 1.600, 0.016, H - 0.10)):
+        b.quad(w, h, (cx, -0.0395, cz), rot=(90.0, 0.0, 0.0), mat=ENAMEL_RED)
+    _stencil(b, TEXT_위험, -0.2015, 1.505, 0.185, -0.040, mat_name=ENAMEL_RED)
+    # One rust drip from the top-left bolt, and grime settling on the lower rail.
+    b.quad(0.026, 0.150, (-0.234, -0.041, 1.500), rot=(90.0, 0.0, 3.0), mat=RUST_HEAVY)
+    b.box((W - 0.20, 0.006, 0.012), (0.03, -0.0405, 1.600 - H / 2 + 0.036), mat=GRIME,
+          nobevel=True)
     return b
 
 
@@ -1334,7 +1820,7 @@ def build_hanging_sign() -> PropBuild:
                 mat=STEEL_BARE, nobevel=True)
     b.pivot_part = bar
     for sx in (-1.0, 1.0):
-        _chain(b, sx * 0.290, 0.0, -0.030, top, links=5, radius=0.020)
+        _chain(b, sx * 0.290, 0.0, -0.030, top, radius=0.026)
         b.torus(0.026, 0.007, (sx * 0.290, 0.0, top - 0.030), rot=(0.0, 0.0, 0.0),
                 mseg=8, nseg=4, mat=STEEL_BARE)
     b.box((0.090, 0.090, 0.020), (0.0, 0.0, -0.010), mat=STEEL_PAINTED, nobevel=True)
@@ -1350,20 +1836,29 @@ def build_hanging_sign() -> PropBuild:
     for sx in (-1.0, 1.0):
         b.cyl(0.012, 0.048, (sx * (W / 2 - 0.030), 0.0, zc + H / 2 + 0.008), verts=6,
               mat=STEEL_BARE, nobevel=True)
+    # 출입금지, stencilled on BOTH faces — geometry, not a font, and identical
+    # on every instance, so it is paint the way §12 wants a place painted, not
+    # information the deleted 단서 system would have owned. Both faces carry it,
+    # which keeps the plate's no-front symmetry.
+    _stencil(b, TEXT_출입금지, -0.295, zc - 0.065, 0.13, -0.027)
+    _stencil(b, TEXT_출입금지, -0.295, zc - 0.065, 0.13, 0.027, back=True)
+    # Rust weep from each chain eye, mirrored — weather is symmetric too.
+    for sy in (-1.0, 1.0):
+        b.quad(0.040, 0.110, (-0.260, sy * 0.023, zc + H / 2 - 0.070),
+               rot=(90.0 if sy < 0 else -90.0, 0.0, 0.0), mat=RUST_HEAVY)
     return b
 
 
 def build_pipe_label() -> PropBuild:
-    """A labelled pipe section at 2.05 m. WALL mount. §03's 6↔9, "뒤집힌 각도에서".
+    """A colour-banded pipe section at 2.05 m. WALL mount.
 
-    The plate is bolted to a band around a pipe and is built with **no up-cue**:
-    four identical corner bolts, an identical band each side, and a rectangular
-    field — so the whole assembly is symmetric under a half-turn about the plate's
-    own face normal. Walk to the other end of the corridor, look back, and the
-    label is upside down with nothing in the geometry to say so. That is exactly
-    the condition §03 asks for, and it is asserted to a millimetre rather than
-    eyeballed, because one asymmetric bolt restores the orientation and kills the
-    pair."""
+    This carried §03's 6↔9 pair — a plate with no up-cue, asserted symmetric
+    under a half-turn to a millimetre. The pair died with 단서, and the symmetry
+    died with this production pass, on purpose: the banded section now rusts
+    harder at one clamp than the other and weeps down the wall on one side,
+    because an anonymous rectangle repeated down a corridor was exactly the
+    copy-paste read this pass exists to remove. The plate itself still says
+    nothing — red hazard chevrons, no text."""
     b = PropBuild("Dress_PipeLabel")
     zc = 2.050
     y = -0.130
@@ -1386,6 +1881,18 @@ def build_pipe_label() -> PropBuild:
     for (sx, sz) in ((-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)):
         b.cyl(0.009, 0.014, (sx * 0.140, y - 0.086, zc + sz * 0.070), rot=(90.0, 0.0, 0.0),
               verts=6, mat=STEEL_BARE, nobevel=True)
+    # Red hazard chevrons across the enamel — colour-coded pipe banding, which
+    # is what a Korean plant room really labels a line with. No text: the plate
+    # keeps its half-turn anonymity.
+    for i, sx in enumerate((-0.105, -0.035, 0.035, 0.105)):
+        b.quad(0.034, 0.150, (sx, y - 0.0845, zc), rot=(90.0, 38.0, 0.0), mat=ENAMEL_RED)
+    # The banded section has rusted where the clamps bite, and wept onto the wall.
+    b.cyl(0.0705, 0.050, (0.205, y, zc), rot=(0.0, 90.0, 0.0), verts=12, mat=RUST_HEAVY,
+          nobevel=True)
+    b.cyl(0.0705, 0.032, (-0.240, y, zc), rot=(0.0, 90.0, 0.0), verts=12, mat=RUST_HEAVY,
+          nobevel=True)
+    b.quad(0.060, 0.300, (0.330, -0.001, zc - 0.230), rot=(90.0, 2.0, 0.0),
+           mat=RUST_HEAVY)
     return b
 
 
@@ -1405,6 +1912,12 @@ def build_door_plate() -> PropBuild:
     for sx in (-1.0, 1.0):
         b.cyl(0.007, 0.012, (sx * (W / 2 - 0.016), -0.018, 1.420), rot=(90.0, 0.0, 0.0),
               verts=6, mat=STEEL_BARE, nobevel=True)
+    # 지하 — the one word every door in this building can honestly carry. Drawn
+    # as geometry, identical on every instance, deliberately NOT a number: a
+    # storey digit is exactly the wayfinding §03's deletion removed.
+    _stencil(b, TEXT_지하, -0.076, 1.382, 0.072, -0.0185)
+    # The plate has been polished by hands at one corner and grimed at the other.
+    b.quad(0.052, 0.030, (-0.056, -0.0165, 1.362), rot=(90.0, -8.0, 0.0), mat=GRIME)
     return b
 
 
@@ -1448,16 +1961,16 @@ PALETTES: dict[str, str] = {
 
 PIECES: list[Piece] = [
     # ── Bulk — cover, and §12's 시야 차단 지점 ───────────────────────────────
-    Piece("Dress_CaseStack_Tall", build_case_stack_tall, "Bulk", (0.713, 0.713, 1.680),
+    Piece("Dress_CaseStack_Tall", build_case_stack_tall, "Bulk", (0.783, 0.763, 1.759),
           palettes=("storage", "utility"), weight=1.2, max_tris=1200,
           note="sightline break just under eye height"),
     Piece("Dress_CaseStack_Low", build_case_stack_low, "Bulk", (1.492, 0.860, 1.140),
           palettes=("storage", "wet"), weight=1.0, max_tris=1300, note="crouch cover"),
     Piece("Dress_CaseBroken", build_case_broken, "Debris", (1.181, 1.072, 0.397),
           palettes=("storage", "wet"), weight=0.8, max_tris=900),
-    Piece("Dress_BarrelUpright", build_barrel_upright, "Bulk", (0.612, 0.612, 0.895),
+    Piece("Dress_BarrelUpright", build_barrel_upright, "Bulk", (0.612, 0.612, 0.911),
           weight=1.3, max_tris=700),
-    Piece("Dress_BarrelCluster", build_barrel_cluster, "Bulk", (1.405, 1.269, 0.895),
+    Piece("Dress_BarrelCluster", build_barrel_cluster, "Bulk", (1.441, 1.311, 0.895),
           palettes=("wet", "utility"), weight=0.9, max_tris=1600),
     Piece("Dress_BarrelToppled", build_barrel_toppled, "Bulk", (0.895, 0.612, 0.624),
           palettes=("wet", "utility", "storage"), weight=0.7, max_tris=700),
@@ -1468,20 +1981,20 @@ PIECES: list[Piece] = [
           palettes=("storage", "institutional"), weight=0.6, max_tris=1200),
     Piece("Dress_FilingCabinet", build_filing_cabinet, "Bulk", (0.480, 0.995, 1.333),
           palettes=("institutional", "utility"), weight=1.0, max_tris=1100),
-    Piece("Dress_LockerBank", build_locker_bank, "Bulk", (1.283, 0.745, 1.860),
+    Piece("Dress_LockerBank", build_locker_bank, "Bulk", (1.090, 0.668, 1.860),
           palettes=("institutional",), weight=0.9, max_tris=1600),
-    Piece("Dress_Workbench", build_workbench, "Bulk", (1.839, 0.814, 1.520),
+    Piece("Dress_Workbench", build_workbench, "Bulk", (1.839, 0.829, 1.520),
           palettes=("utility", "storage"), weight=0.8, max_tris=2600),
     Piece("Dress_TableBroken", build_table_broken, "Bulk", (1.501, 0.902, 0.831),
           palettes=("storage", "institutional"), weight=0.7, max_tris=1100),
-    Piece("Dress_Chair", build_chair, "Bulk", (0.420, 0.400, 0.920),
+    Piece("Dress_Chair", build_chair, "Bulk", (0.463, 0.415, 0.920),
           palettes=("storage", "institutional"), weight=0.7, max_tris=800),
     Piece("Dress_ChairBroken", build_chair_broken, "Debris", (0.851, 0.817, 0.416),
           palettes=("storage", "institutional"), weight=0.6, max_tris=800),
     # ── Debris — never above knee height (§05's 65 % backward speed) ────────
-    Piece("Dress_RubblePile", build_rubble_pile, "Debris", (1.151, 0.878, 0.324),
+    Piece("Dress_RubblePile", build_rubble_pile, "Debris", (1.201, 0.957, 0.348),
           palettes=("wet", "utility", "storage"), weight=1.2, max_tris=1200),
-    Piece("Dress_RubbleSmall", build_rubble_small, "Debris", (0.560, 0.460, 0.138),
+    Piece("Dress_RubbleSmall", build_rubble_small, "Debris", (0.601, 0.526, 0.164),
           weight=1.4, max_tris=700),
     Piece("Dress_PlanksFallen", build_planks_fallen, "Debris", (1.580, 1.124, 0.255),
           palettes=("storage", "wet"), weight=1.0, max_tris=800),
@@ -1502,7 +2015,7 @@ PIECES: list[Piece] = [
           mount="WALL", palettes=("wet", "institutional"), weight=0.9, max_tris=900,
           solid=False),
     # ── Wall services ──────────────────────────────────────────────────────
-    Piece("Dress_PipeRun_Wall", build_pipe_run_wall, "Wall", (2.500, 0.205, 0.770),
+    Piece("Dress_PipeRun_Wall", build_pipe_run_wall, "Wall", (2.500, 0.213, 0.860),
           mount="WALL", weight=1.6, max_tris=900, solid=False,
           note="tiles on the 2.5 m grid; galvanised = the corridor's depth cue"),
     Piece("Dress_PipeValve_Cluster", build_pipe_valve_cluster, "Wall",
@@ -1513,7 +2026,7 @@ PIECES: list[Piece] = [
           solid=False),
     Piece("Dress_Conduit_Wall", build_conduit_wall, "Wall", (2.500, 0.104, 1.240),
           mount="WALL", weight=1.2, max_tris=1200, solid=False),
-    Piece("Dress_VentGrille", build_vent_grille, "Wall", (0.620, 0.070, 0.420),
+    Piece("Dress_VentGrille", build_vent_grille, "Wall", (0.620, 0.084, 0.426),
           mount="WALL", weight=1.0, max_tris=900, solid=False),
     # ── Hanging ────────────────────────────────────────────────────────────
     Piece("Dress_PipeRun_Ceiling", build_pipe_run_ceiling, "Ceiling",
@@ -1531,11 +2044,11 @@ PIECES: list[Piece] = [
     # on 3 s without sight), and the manifest flags it `hangs_low` so the scatter
     # tool keeps it flat against a wall and out of dead-end mouths rather than
     # slung across a route a fleeing player has to take at 5.6 m/s.
-    Piece("Dress_SheetHanging", build_sheet_hanging, "Ceiling", (1.531, 0.100, 1.973),
+    Piece("Dress_SheetHanging", build_sheet_hanging, "Ceiling", (1.554, 0.140, 2.150),
           mount="CEILING", palettes=("storage", "institutional"), weight=0.5,
           max_tris=900, checks=("hangs_low",),
           note="a §06 line-of-sight break that is not a wall; hangs into the room"),
-    Piece("Dress_CobwebCorner", build_cobweb_corner, "Corner", (0.964, 0.964, 0.725),
+    Piece("Dress_CobwebCorner", build_cobweb_corner, "Corner", (0.708, 0.736, 0.602),
           mount="CORNER", palettes=("storage", "wet"), weight=1.0, max_tris=900,
           solid=False),
     # ── Signage ────────────────────────────────────────────────────────────
@@ -1551,7 +2064,7 @@ PIECES: list[Piece] = [
     Piece("Dress_HangingSign", build_hanging_sign, "Sign", (0.800, 0.086, 0.930),
           mount="CEILING", weight=0.7, max_tris=1600, solid=False,
           note="double-sided plate on two chains, blank"),
-    Piece("Dress_PipeLabel", build_pipe_label, "Sign", (1.100, 0.224, 0.191), mount="WALL",
+    Piece("Dress_PipeLabel", build_pipe_label, "Sign", (1.100, 0.226, 0.477), mount="WALL",
           weight=0.9, max_tris=1200, solid=False, note="labelled pipe band, blank"),
     Piece("Dress_DoorPlate", build_door_plate, "Sign", (0.200, 0.026, 0.140), mount="WALL",
           weight=1.1, max_tris=400, solid=False, note="door number plate, blank"),

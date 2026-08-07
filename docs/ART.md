@@ -78,6 +78,42 @@ cd unity/HorrorGame/Shots && python3 ../../../tools/render/frame_stats.py 'final
 > `Map_FirstSketch_Solo` reproduces these figures exactly, so it is not scene-specific.
 > Do not quote the table below as current.
 
+> 🟢 **Found and closed, 2026-08-08 — and it was three causes stacked, which is why no
+> single suspect ever fit.** (1) The 08-01 regens went through layout-only entry points
+> that save the scene without re-running the atmosphere pass, stripping every decal and
+> glow — the distributed mid-tone pool in all zones at once; the committed scene had
+> been a bare 1-light layout since 08-05, so the shots were grading a building that was
+> not the game. (2) `NightAtmosphere.AmbientGain = 0.62`, tuned that day against the
+> torch-OFF lock with the torch-ON bands never re-measured. (3) The production texture
+> pass then landed real baked AO, which eats the ambient term — invalidating even the
+> corrected gain on the same day it was applied. Fixes, each measured on the artefact:
+> the full `MapPipeline` is the only sanctioned regeneration path (the atmosphere pass
+> restores 5,900+ decals and the glows); `AmbientGain = 1.15` (the 0.62-era level under
+> materials that now occlude — derivation in `NightAtmosphere.cs`); working bulbs are
+> chosen **per storey, spatially stratified around the ring, count falling with depth**
+> (`ScatterSession.LightStratifiedBulbs` — per-bulb dice made one reroll move a storey
+> from 16 working lights to 4, and a zone view in and out of this band with no code
+> change); and the deep floors got the `ZoneIdentity` rows they never had (병동, 수몰층,
+> 굴착층 — B6 measured 8.4 % legible with none). Measured, tag `prodship_`, all six
+> zones, **all 18 measures in band for the first time since `land_main`**:
+>
+> ```
+> shot                                     mean    p50    p90    p99  black%  legible%  blown%
+> prodship_Zone_B1_B1_Concrete.png          8.8    6.4   17.8   45.5    20.1      42.7    0.00
+> prodship_Zone_B2_B2_Wood.png              8.7    6.2   19.1   47.2    26.7      40.2    0.00
+> prodship_Zone_B3_B3_Metal.png             7.2    4.4   17.9   41.7    32.7      30.2    0.00
+> prodship_Zone_B4_B4_Gravel.png            9.8    6.5   22.5   54.6    24.1      44.0    0.00
+> prodship_Zone_B5_B5_Tile.png             12.9   10.9   26.7   52.5    21.1      59.2    0.00
+> prodship_Zone_B6_B6_Carpet.png           17.4   13.4   42.0   66.3    29.6      58.0    0.00
+> ```
+>
+> Two cautions carried forward. B3 sits 0.2 above the legible floor — inside, with no
+> margin. And these six viewpoints sample a seeded building: the stratified bulbs
+> removed the worst of the variance (three consecutive regenerations had left B2's
+> frame byte-identical while every constant around it swung ×2), but a future reroll
+> can still move any single frame by a few points. Judge a regression by all six moving
+> together, which is what this section's own history says a real one looks like.
+
 **Superseded — the reading when this section was written.** Measured
 2026-08-01 on `Shots/final_*`, which is the same command and the same viewpoints as
 the `map_*` figures it supersedes — only the tag differs:

@@ -11,10 +11,10 @@
       "locomotion": true,
       "ground_speed_mps": 1.196,
       "residual_slide_mps": 0.0,
-      "ground_lift_m": 0.0432,
+      "ground_lift_m": 0.0416,
       "foot_sink_m": -0.0,
       "foot_float_m": 0.0,
-      "hip_bob_m": 0.08064
+      "hip_bob_m": 0.08126
     },
     {
       "name": "Chase",
@@ -24,10 +24,10 @@
       "locomotion": true,
       "ground_speed_mps": 4.6729,
       "residual_slide_mps": 0.0,
-      "ground_lift_m": 0.1525,
+      "ground_lift_m": 0.1317,
       "foot_sink_m": -0.0,
       "foot_float_m": 0.0,
-      "hip_bob_m": 0.18558
+      "hip_bob_m": 0.16692
     },
     {
       "name": "Alert",
@@ -37,7 +37,7 @@
       "locomotion": false,
       "ground_speed_mps": 0.0,
       "residual_slide_mps": 0.0,
-      "ground_lift_m": 0.0156,
+      "ground_lift_m": 0.0317,
       "foot_sink_m": -0.0,
       "foot_float_m": 0.0,
       "hip_bob_m": 0.0
@@ -50,10 +50,10 @@
       "locomotion": false,
       "ground_speed_mps": 0.2631,
       "residual_slide_mps": 0.2811,
-      "ground_lift_m": 0.0149,
+      "ground_lift_m": 0.0167,
       "foot_sink_m": -0.0,
       "foot_float_m": 0.0,
-      "hip_bob_m": 0.00858
+      "hip_bob_m": 0.01287
     },
     {
       "name": "Standstill",
@@ -63,7 +63,7 @@
       "locomotion": false,
       "ground_speed_mps": 0.0,
       "residual_slide_mps": 0.0,
-      "ground_lift_m": 0.0131,
+      "ground_lift_m": 0.0151,
       "foot_sink_m": -0.0,
       "foot_float_m": 0.0,
       "hip_bob_m": 0.0
@@ -76,10 +76,10 @@
       "locomotion": false,
       "ground_speed_mps": 0.2499,
       "residual_slide_mps": 2.9647,
-      "ground_lift_m": 0.0378,
+      "ground_lift_m": 0.0242,
       "foot_sink_m": -0.0,
       "foot_float_m": 0.0,
-      "hip_bob_m": 0.05096
+      "hip_bob_m": 0.01532
     },
     {
       "name": "Grab",
@@ -89,10 +89,10 @@
       "locomotion": false,
       "ground_speed_mps": 0.6612,
       "residual_slide_mps": 1.7696,
-      "ground_lift_m": 0.0153,
+      "ground_lift_m": 0.0219,
       "foot_sink_m": -0.0,
       "foot_float_m": 0.0,
-      "hip_bob_m": 0.02501
+      "hip_bob_m": 0.01704
     }
   ]
 }

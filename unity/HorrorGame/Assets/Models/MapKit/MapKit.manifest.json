@@ -69,8 +69,8 @@
         "Floor_Concrete",
         "Wall_Dado"
       ],
-      "triangles": 1804,
-      "vertices": 1030,
+      "triangles": 2260,
+      "vertices": 1278,
       "docks": [
         {
           "edge": "-Y",
@@ -119,8 +119,8 @@
         "Floor_Concrete",
         "Wall_Dado"
       ],
-      "triangles": 2428,
-      "vertices": 1392,
+      "triangles": 3236,
+      "vertices": 1832,
       "docks": [
         {
           "edge": "-Y",
@@ -169,8 +169,8 @@
         "Floor_Concrete",
         "Wall_Dado"
       ],
-      "triangles": 3908,
-      "vertices": 2244,
+      "triangles": 5420,
+      "vertices": 3068,
       "docks": [
         {
           "edge": "-Y",
@@ -219,8 +219,8 @@
         "Floor_Concrete",
         "Wall_Dado"
       ],
-      "triangles": 1876,
-      "vertices": 1062,
+      "triangles": 2344,
+      "vertices": 1310,
       "docks": [
         {
           "edge": "-Y",
@@ -269,8 +269,8 @@
         "Floor_Concrete",
         "Wall_Dado"
       ],
-      "triangles": 7016,
-      "vertices": 4000,
+      "triangles": 10080,
+      "vertices": 5664,
       "docks": [
         {
           "edge": "-Y",
@@ -319,8 +319,8 @@
         "Trim_Steel",
         "Floor_Concrete"
       ],
-      "triangles": 1492,
-      "vertices": 834,
+      "triangles": 1816,
+      "vertices": 1002,
       "docks": [
         {
           "edge": "-Y",
@@ -379,8 +379,8 @@
         "Floor_Concrete",
         "Trim_Steel"
       ],
-      "triangles": 2880,
-      "vertices": 1574,
+      "triangles": 6944,
+      "vertices": 3814,
       "docks": [
         {
           "edge": "-Y",
@@ -443,14 +443,14 @@
       "floor_slot": "Floor_Concrete",
       "material_slots": [
         "Ceiling_Structure",
-        "Wall_Structure",
         "Trim_Painted",
         "Wall_Dado",
         "Trim_Steel",
-        "Floor_Concrete"
+        "Floor_Concrete",
+        "Wall_Structure"
       ],
-      "triangles": 1428,
-      "vertices": 778,
+      "triangles": 1684,
+      "vertices": 906,
       "docks": [
         {
           "edge": "-Y",
@@ -519,8 +519,8 @@
         "Floor_Concrete",
         "Wall_Dado"
       ],
-      "triangles": 3108,
-      "vertices": 1768,
+      "triangles": 4036,
+      "vertices": 2272,
       "docks": [
         {
           "edge": "-Y",
@@ -559,8 +559,8 @@
         "Wall_Dado",
         "Trim_Steel"
       ],
-      "triangles": 8554,
-      "vertices": 4763,
+      "triangles": 12938,
+      "vertices": 7131,
       "docks": [
         {
           "edge": "-Y",
@@ -669,8 +669,8 @@
         "Floor_Metal",
         "Wall_Dado"
       ],
-      "triangles": 3292,
-      "vertices": 1868,
+      "triangles": 4552,
+      "vertices": 2548,
       "docks": [
         {
           "edge": "-Y",
@@ -719,8 +719,8 @@
         "Floor_Concrete",
         "Wall_Dado"
       ],
-      "triangles": 3564,
-      "vertices": 1988,
+      "triangles": 4580,
+      "vertices": 2532,
       "docks": [
         {
           "edge": "-Y",
@@ -769,8 +769,8 @@
         "Floor_Concrete",
         "Wall_Dado"
       ],
-      "triangles": 2296,
-      "vertices": 1270,
+      "triangles": 2832,
+      "vertices": 1558,
       "docks": [
         {
           "edge": "-Y",
@@ -809,8 +809,8 @@
         "Floor_Concrete",
         "Wall_Dado"
       ],
-      "triangles": 1812,
-      "vertices": 1006,
+      "triangles": 2356,
+      "vertices": 1294,
       "docks": [
         {
           "edge": "-Y",

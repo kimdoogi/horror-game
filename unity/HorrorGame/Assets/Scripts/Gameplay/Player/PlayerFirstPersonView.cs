@@ -246,9 +246,13 @@ namespace HorrorGame.Gameplay.Player
             {
                 Debug.LogWarning(
                     "[Player] No renderer under this rig reads as the owner's hands, so they will "
-                    + "see nothing of themselves. §05 asks for 손. Player.fbx must export "
-                    + "Player_Body, Player_Arms and Player_Torch as separate meshes — check "
-                    + "MESH_SPLIT in the gen_player_model.py output." + detail,
+                    + "see nothing of themselves. §05 asks for 손. This is the expected state of "
+                    + "Runner.fbx today: gen_runner.py exports ONE mesh whose materials are all "
+                    + "Runner_* — no Player_Skin, so nothing classifies as Arms and no gear-only "
+                    + "mesh exists to be the torch. The first-person arms split off the "
+                    + "third-person rig is its own pending task; until it lands the owner's only "
+                    + "self-evidence is the beam (see PlayerFlashlight's derived mount) and their "
+                    + "shadow." + detail,
                     this);
                 return;
             }

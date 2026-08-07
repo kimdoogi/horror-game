@@ -3,6 +3,72 @@
   "note": "Material values as authored on the Principled BSDF. FBX loses metallic entirely; the Unity binder rebuilds URP Lit from these.",
   "materials": [
     {
+      "name": "Gun_Bore",
+      "color": [
+        0.012,
+        0.012,
+        0.013
+      ],
+      "roughness": 0.9,
+      "metallic": 0.0,
+      "emission": 0.0
+    },
+    {
+      "name": "Gun_Cloth",
+      "color": [
+        0.295,
+        0.272,
+        0.228
+      ],
+      "roughness": 0.95,
+      "metallic": 0.0,
+      "emission": 0.0
+    },
+    {
+      "name": "Gun_Grip",
+      "color": [
+        0.055,
+        0.034,
+        0.022
+      ],
+      "roughness": 0.55,
+      "metallic": 0.0,
+      "emission": 0.0
+    },
+    {
+      "name": "Gun_GripWrap",
+      "color": [
+        0.02,
+        0.016,
+        0.014
+      ],
+      "roughness": 0.88,
+      "metallic": 0.0,
+      "emission": 0.0
+    },
+    {
+      "name": "Gun_Steel",
+      "color": [
+        0.062,
+        0.066,
+        0.074
+      ],
+      "roughness": 0.52,
+      "metallic": 1.0,
+      "emission": 0.0
+    },
+    {
+      "name": "Gun_SteelWorn",
+      "color": [
+        0.33,
+        0.34,
+        0.36
+      ],
+      "roughness": 0.3,
+      "metallic": 1.0,
+      "emission": 0.0
+    },
+    {
       "name": "Prop_Iron",
       "color": [
         0.112,
@@ -14,6 +80,17 @@
       "emission": 0.0
     },
     {
+      "name": "Prop_Mortar",
+      "color": [
+        0.415,
+        0.398,
+        0.368
+      ],
+      "roughness": 0.95,
+      "metallic": 0.0,
+      "emission": 0.0
+    },
+    {
       "name": "Prop_Rust",
       "color": [
         0.201,
@@ -22,6 +99,17 @@
       ],
       "roughness": 0.92,
       "metallic": 0.3,
+      "emission": 0.0
+    },
+    {
+      "name": "Prop_RustDark",
+      "color": [
+        0.105,
+        0.052,
+        0.03
+      ],
+      "roughness": 0.95,
+      "metallic": 0.1,
       "emission": 0.0
     },
     {
@@ -43,6 +131,17 @@
         0.072
       ],
       "roughness": 0.85,
+      "metallic": 0.0,
+      "emission": 0.0
+    },
+    {
+      "name": "Prop_WoodWorn",
+      "color": [
+        0.295,
+        0.225,
+        0.15
+      ],
+      "roughness": 0.8,
       "metallic": 0.0,
       "emission": 0.0
     }

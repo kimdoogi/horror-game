@@ -337,8 +337,33 @@ namespace HorrorGame.Rendering
         /// a corridor turns, not enough to read a clue"</i>, and this file's own
         /// history has the other failure recorded too, at 89% pure black.
         /// </para>
+        /// <para>
+        /// <b>0.62 → 0.78, 2026-08-08.</b> 0.62 was tuned against §03's torch-OFF lock
+        /// and nobody re-measured the torch-ON bands after it; they had regressed to
+        /// legible 15.7–52.8% against ART.md §1's 30–75 band (measured, prodbase set).
+        /// 0.78 is not a taste call: ambient-lit code values scale ~linearly with this
+        /// gain (measured in the 0.62 commit itself), so the six real zone frames were
+        /// rescaled by 0.78/0.62 and re-measured — legible 30.7/30.8/36.0/37.7/49.5/59.3,
+        /// all six in-band, crushed 21.0–36.2 (headroom above the 10% floor for the
+        /// dressing restore to spend, which arrives in the same regeneration). At 1.0
+        /// the same simulation puts B5's crushed at 11.0 BEFORE the practicals return,
+        /// which reopens the §03 lock 0.62 was built to close.
+        /// </para>
+        /// <para>
+        /// <b>0.78 → 1.15, same day.</b> 0.78 was computed by rescaling the OLD zone
+        /// frames — and the same integration that applied it also regenerated every
+        /// material with real baked AO for the first time. AO multiplies the ambient
+        /// term, so the calibration's premise died in the same commit that used it:
+        /// with the new sets, four of six zones measured 14–19 % legible at 0.78, and
+        /// the frames pinned it on ambient (they were byte-stable while practical
+        /// counts and wall tints swung ×2 around them). 1.15 ≈ 0.78 ÷ the measured
+        /// ambient response ratio, aiming the four failing zones at the band middle;
+        /// the torch-off lock is not reopened because the AO that ate the ambient eats
+        /// the torch-off frame equally — this restores the level 0.62 was tuned to,
+        /// under materials that now occlude.
+        /// </para>
         /// </summary>
-        public const float AmbientGain = 0.62f;
+        public const float AmbientGain = 1.15f;
 
         /// <summary>
         /// Writes <paramref name="settings"/> into the scene's environment lighting.

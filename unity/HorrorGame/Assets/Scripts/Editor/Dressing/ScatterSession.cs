@@ -221,7 +221,7 @@ namespace HorrorGame.EditorTools.Dressing
         /// <summary>
         /// How far a working fitting reaches. Under half
         /// <see cref="GameConstants.FlashlightRange"/>, so §03's beam is always the
-        /// longer reach; see <see cref="MaybeLight"/> for why it is not one cell.
+        /// longer reach; see <see cref="LightStratifiedBulbs"/> for why it is not one cell.
         /// </summary>
         private const float PracticalRangeMetres = 5.5f;
 
@@ -233,6 +233,7 @@ namespace HorrorGame.EditorTools.Dressing
             CornerPass();
             BulkPass();
             FloorPass();
+            LightStratifiedBulbs();
             Verify();
         }
 
@@ -389,7 +390,7 @@ namespace HorrorGame.EditorTools.Dressing
                             _random.NextFloat(0f, 360f));
                         if (placedObject != null && piece.name.StartsWith("Dress_Bulb", StringComparison.Ordinal))
                         {
-                            MaybeLight(placedObject, info);
+                            RecordBulb(placedObject, info);
                         }
                     }
                 }
@@ -1077,13 +1078,68 @@ namespace HorrorGame.EditorTools.Dressing
         /// that into a corridor with a far end.
         /// </para>
         /// </summary>
-        private void MaybeLight(GameObject bulb, DressingSpace.CellInfo info)
-        {
-            if (_random.NextInt(0, WorkingBulbInN) != 0)
-            {
-                return;
-            }
+        /// <summary>A placed bulb fitting waiting for <see cref="LightStratifiedBulbs"/>'s selection.</summary>
+        private readonly List<(GameObject Bulb, int Depth, string Palette)> _bulbFittings
+            = new List<(GameObject, int, string)>();
 
+        private void RecordBulb(GameObject bulb, DressingSpace.CellInfo info)
+        {
+            _bulbFittings.Add((bulb, Mathf.Max(0, -info.Cell.Level), info.Palette));
+        }
+
+        /// <summary>
+        /// Chooses which fittings still work — after placement, so the choice can be
+        /// spatial. Three schemes were shipped in one day and each taught the next:
+        /// <list type="number">
+        /// <item>Per-bulb dice at a flat 1-in-<see cref="WorkingBulbInN"/>: the count is
+        /// binomial, so one reroll moved a storey from 16 working lights to 4 and its
+        /// zone view from in-band to 51 % crushed with no code change — and it put ~23
+        /// on B1 (88.8 % legible, §03's lock open) against 5 elsewhere.</item>
+        /// <item>Every-Nth over placement order: mean fixed, variance zero — but the
+        /// scatter walks cell-by-cell, so the chosen bulbs cluster along one arc, and
+        /// whether a corridor viewpoint saw a light was still a lottery. Measured: B2's
+        /// zone frame was IDENTICAL to the decimal across two regenerations that changed
+        /// every count, because no chosen bulb ever stood near it.</item>
+        /// <item>This: per storey, order every fitting by its angle around that storey's
+        /// own centroid — the building is a concentric ring maze, so angular spacing IS
+        /// corridor spacing — and take K evenly spaced picks. Deterministic, zero
+        /// variance, and the ring is lit at even intervals instead of in one lucky arc.</item>
+        /// </list>
+        /// K falls with depth — ceil(count / (<see cref="WorkingBulbInN"/> + 2 × depth)),
+        /// about a fifth of B1's fittings down to a nineteenth of B8's — because §07 says
+        /// the night deepens as the race descends; the gradient must darken the descent
+        /// without deleting the middle of it (slope 3 dropped B4 to 19 % legible; 2 is
+        /// measured to keep it in ART.md §1's band). Every storey keeps at least one.
+        /// The finish keeps its own light regardless — BuildFinishLight, §02's promise.
+        /// </summary>
+        private void LightStratifiedBulbs()
+        {
+            foreach (var group in _bulbFittings.GroupBy(f => f.Depth))
+            {
+                var fittings = group.ToList();
+                var centre = Vector3.zero;
+                foreach (var f in fittings)
+                {
+                    centre += f.Bulb.transform.position;
+                }
+
+                centre /= fittings.Count;
+                fittings.Sort((a, b) =>
+                    Mathf.Atan2(a.Bulb.transform.position.z - centre.z, a.Bulb.transform.position.x - centre.x)
+                        .CompareTo(Mathf.Atan2(b.Bulb.transform.position.z - centre.z, b.Bulb.transform.position.x - centre.x)));
+
+                var everyNth = WorkingBulbInN + (2 * group.Key);
+                var picks = Mathf.Max(1, Mathf.CeilToInt(fittings.Count / (float)everyNth));
+                for (var i = 0; i < picks; i++)
+                {
+                    var f = fittings[Mathf.Min(fittings.Count - 1, Mathf.RoundToInt(i * (fittings.Count / (float)picks)))];
+                    LightBulb(f.Bulb, f.Palette);
+                }
+            }
+        }
+
+        private void LightBulb(GameObject bulb, string palette)
+        {
             // Both bulb props are authored with dead glass, and the emissive material is
             // swapped in here. That keeps §03's rule — a lit fitting is the exception —
             // in one place instead of in the geometry of two FBXs, where the first
@@ -1101,7 +1157,7 @@ namespace HorrorGame.EditorTools.Dressing
             light.type = LightType.Point;
             light.range = PracticalRangeMetres;
             light.intensity = 1.1f;
-            light.color = PracticalColour(info.Palette);
+            light.color = PracticalColour(palette);
             light.shadows = LightShadows.None;
             light.bounceIntensity = 0f;
             _workingBulbs++;

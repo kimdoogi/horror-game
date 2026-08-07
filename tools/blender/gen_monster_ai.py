@@ -106,14 +106,23 @@ FPS = 30
 TARGET_HEIGHT = 2.336      # AssetImportPolicy.MonsterHeightMetres
 TRI_BUDGET = 50000         # PC-only on Steam; see docs/ART.md — the old 6000 was a mobile number
 TRI_TARGET = 46000         # headroom, because the crest is added after decimation
-TEX_RES = 1024             # matches Monster.textures.json "resolution"
+TEX_RES = 2048             # the monster's own allowance — docs/ART.md caps every set at
+                           # 1024² "2048² only for the monster". The procedural dressing
+                           # (craquelure, cavity wetness) is authored at this res and is
+                           # what needs it; the baked 512² base is bilinear underneath.
 CORRIDOR_DARKEST = 0.21    # linear albedo of the darkest §12 wall
 ALBEDO_MEAN = 0.17         # what the hide must sit at: under the corridor, not over
 ALBEDO_MAX = 0.2016
 SHOULDER_LIMIT = 0.98      # §12 corridors — a hard constraint, not taste
 
-EYE_RADIUS = 0.036         # gen_monster_model.EYE_RADIUS — the same lens, on a new head
-EYE_PROUD = 0.013          # gen_monster_model.EYE_PROUD — proud of the face, not socketed
+# The pair is asymmetric on purpose — the 2026-08 shot review's first finding was
+# that two equal round lenses on a smooth skull read as a cartoon robot, "almost
+# cute". Production horror eyes are unequal: one sunken hooded socket, one hot
+# pinpoint. §04 still gets its two separated points (the merge rule below holds
+# them ≥5 cm apart); what dies is the symmetry.
+SOCKET_RADIUS = 0.024      # creature's left: a shallow cap sunk into the face
+PIN_RADIUS = 0.010         # creature's right: a bead, barely proud, reads as a point
+EYE_MERGE_MIN = 0.05       # under 5 cm of separation the pair reads as one light
 
 SOURCE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "source")
 
@@ -483,7 +492,7 @@ def add_crest(obj: bpy.types.Object, m: dict, specs: list[BoneSpec]) -> list[tup
 
 
 def add_eyes(obj: bpy.types.Object, m: dict) -> list[tuple]:
-    """Grows two lenses on the front of the sculpt's head and welds them on.
+    """Grows the asymmetric lens pair on the front of the sculpt's head and welds it on.
 
     The pair is the whole of §04's channel at range. ``MonsterSkin.EyeGlow``'s own note
     puts it plainly: at ``GameConstants.ObserverRange`` the creature is about forty
@@ -492,13 +501,18 @@ def add_eyes(obj: bpy.types.Object, m: dict) -> list[tuple]:
     every zone to hold 관측 지점 that make that readable at 15 m and says that without
     them 관측자는 죽으러 가야 한다, so this is a mechanic, not a highlight.
 
+    The pair is UNEQUAL on purpose — a hooded socket sunk into the creature's left,
+    a hot pinpoint bead on its right, staggered in height. Two equal round lenses at
+    one height on a smooth skull was the 2026-08 shot review's first finding: it
+    reads as a cartoon robot. §04 keeps its two points; what dies is the symmetry.
+
     **Found, never typed.** The same rule ``gen_monster_model.build_eyes_on`` arrived at
     the hard way, applied to a surface this file did not author. A ray is cast from in
     front of the creature at every candidate (height, x) across the head, and a hit only
     counts when the surface it lands on is actually facing the player — ``ray_cast``
     returns the frontmost surface, so that one test rejects the back of the skull, the
-    inside of the mouth and anything the snout occludes. The lens then sits ``EYE_PROUD``
-    in front of what the ray hit.
+    inside of the mouth and anything the snout occludes. Each lens is then built at an
+    authored depth against whatever surface its ray actually hit.
 
     **What "the best place" means, measured.** The hull generator took the widest hit
     that faced forward at all, and on two flat head blades that was the right answer. On
@@ -518,9 +532,10 @@ def add_eyes(obj: bpy.types.Object, m: dict) -> list[tuple]:
     only symptom was that sweeping the eye brightness from 1.5 to 12 moved the measured
     frame by 0.0003.
 
-    Returns ``(start, end, bone)`` vertex ranges so the caller can weight them rigidly
-    to the head — proximity weighting would share a lens between Head and Jaw and the
-    gape would tear it in half.
+    Returns two lists of ``(start, end, bone)`` vertex ranges — the lenses, then the
+    brow hood — so the caller can weight them rigidly to the head (proximity weighting
+    would share a lens between Head and Jaw and the gape would tear it in half) and
+    put only the lenses on the eye material.
     """
     depsgraph = bpy.context.evaluated_depsgraph_get()
     evaluated = obj.evaluated_get(depsgraph)
@@ -546,30 +561,39 @@ def add_eyes(obj: bpy.types.Object, m: dict) -> list[tuple]:
         facing = normal.dot(forward) if hit else 0.0
         return (location, facing) if hit and facing > 0.15 else None
 
-    # Only the upper two thirds of the head. Below that is the jaw, and a lens on the
-    # jaw is an eye that opens when the creature roars.
-    lo_z = neck + (top - neck) * 0.32
-    hi_z = top - (top - neck) * 0.06
-    step_z = max(unit * 0.004, (hi_z - lo_z) / 48.0)
     step_x = unit * 0.004
 
-    best = None
-    z = lo_z
-    while z <= hi_z:
-        pair, score = [], 0.0
-        for side in (1, -1):
-            x, found, mark = unit * 0.010, None, 0.0
-            while x <= half_width * 0.99:
-                probed = probe(z, side * x)
-                if probed is not None and x * probed[1] > mark:
-                    found, mark = probed[0], x * probed[1]
-                x += step_x
-            pair.append(found)
-            score += mark
+    def search(lo_z: float, hi_z: float):
+        step_z = max(unit * 0.004, (hi_z - lo_z) / 48.0)
+        found_best = None
+        z = lo_z
+        while z <= hi_z:
+            pair, score = [], 0.0
+            for side in (1, -1):
+                x, found, mark = unit * 0.010, None, 0.0
+                while x <= half_width * 0.99:
+                    probed = probe(z, side * x)
+                    if probed is not None and x * probed[1] > mark:
+                        found, mark = probed[0], x * probed[1]
+                    x += step_x
+                pair.append(found)
+                score += mark
 
-        if all(p is not None for p in pair) and (best is None or score > best[0]):
-            best = (score, z, pair)
-        z += step_z
+            if all(p is not None for p in pair) and (found_best is None
+                                                     or score > found_best[0]):
+                found_best = (score, z, pair)
+            z += step_z
+        return found_best
+
+    # A face band, not the whole skull. The unrestricted search maximises x·facing and
+    # on an ovoid skull that lands near the crown — the shot review's frog eyes. The
+    # band is where a face's eye line actually sits, above the jaw (a lens on the jaw
+    # is an eye that opens when the creature roars) and decisively below the crown.
+    # The wide band is kept as a fallback so a re-sculpt whose face band is all snout
+    # degrades to the old placement instead of failing the build.
+    best = search(neck + (top - neck) * 0.30, neck + (top - neck) * 0.62)
+    if best is None:
+        best = search(neck + (top - neck) * 0.32, top - (top - neck) * 0.06)
 
     if best is None:
         blendkit.fail(
@@ -577,15 +601,14 @@ def add_eyes(obj: bpy.types.Object, m: dict) -> list[tuple]:
             "관측자 reads the creature's facing off the pair and §12 obliges every zone to hold "
             "관측 지점 that make that readable at 15 m; a head with nowhere to put them is a head "
             "that has to be re-sculpted, not shipped.")
-        return []
+        return [], []
 
     score, z, pair = best
     separation = abs(pair[0].x - pair[1].x)
 
     # Two lenses that have merged into one point carry no facing at all, which is half
-    # of what the pair exists for. EYE_RADIUS's own note puts the merge at roughly 5 cm
-    # of separation, so anything under three radii is not a pair.
-    if separation < EYE_RADIUS * 3.0:
+    # of what the pair exists for.
+    if separation < EYE_MERGE_MIN:
         blendkit.fail(f"the widest forward-facing pair on this head is {separation * 100:.1f} cm "
                       f"apart, which at ObserverRange merges into a single point — and the point "
                       f"of two lenses is the facing, not the glow.")
@@ -595,28 +618,72 @@ def add_eyes(obj: bpy.types.Object, m: dict) -> list[tuple]:
     bm.from_mesh(me)
     bm.verts.ensure_lookup_table()
 
-    ranges = []
-    for location in pair:
-        centre = location + forward * EYE_PROUD
+    def hull_range(pts: list[Vector], bone: str, out: list[tuple]) -> None:
         start = len(bm.verts)
-
-        # A lens, not a ball: a ring in the X–Z plane domed forward, flattened along the
-        # view axis so it reads as glass set into a face rather than a bead glued on.
-        for i in range(8):
-            angle = i * math.pi / 4.0
-            bm.verts.new(Vector((centre.x + EYE_RADIUS * math.cos(angle),
-                                 centre.y + EYE_PROUD * 0.35,
-                                 centre.z + EYE_RADIUS * 0.86 * math.sin(angle))))
-            bm.verts.new(Vector((centre.x + EYE_RADIUS * 0.62 * math.cos(angle),
-                                 centre.y - EYE_PROUD * 0.55,
-                                 centre.z + EYE_RADIUS * 0.53 * math.sin(angle))))
-        bm.verts.new(Vector((centre.x, centre.y - EYE_PROUD * 0.95, centre.z)))
-        bm.verts.new(Vector((centre.x, centre.y + EYE_PROUD * 0.9, centre.z)))
-
+        for p in pts:
+            bm.verts.new(p)
         bm.verts.ensure_lookup_table()
-        bmesh.ops.convex_hull(bm, input=bm.verts[start:])
+        if len(bm.verts) - start >= 4:
+            bmesh.ops.convex_hull(bm, input=bm.verts[start:])
         bm.verts.ensure_lookup_table()
-        ranges.append((start, len(bm.verts), "Head"))
+        out.append((start, len(bm.verts), bone))
+
+    ranges: list[tuple] = []
+    extra: list[tuple] = []
+    left, right = pair          # pair[0] is +X — the creature's left
+
+    # ── The socket: creature's left. A larger cap SUNK into the face and hooded. ──
+    # Sunk 4.5 mm, so only a shallow sliver of lens breaks the surface — the glow
+    # arrives dim and edge-broken. Raised 16 mm off the shared eye line, because two
+    # eyes at one height is the symmetry being killed. Deliberate millimetres, not
+    # the hand-typed-coordinate failure the docstring above recounts: the position
+    # still comes from the ray hit; only the depth and stagger are authored.
+    centre = left + forward * (-0.0045)
+    centre.z += 0.016
+    pts = []
+    for i in range(8):
+        angle = i * math.pi / 4.0
+        pts.append(Vector((centre.x + SOCKET_RADIUS * math.cos(angle),
+                           centre.y + 0.004,
+                           centre.z + SOCKET_RADIUS * 0.92 * math.sin(angle))))
+        pts.append(Vector((centre.x + SOCKET_RADIUS * 0.55 * math.cos(angle),
+                           centre.y - 0.004,
+                           centre.z + SOCKET_RADIUS * 0.50 * math.sin(angle))))
+    pts.append(Vector((centre.x, centre.y - 0.007, centre.z)))
+    hull_range(pts, "Head", ranges)
+
+    # The hood: a brow of hide drooping over the socket's upper half, running out
+    # into a broken spur past the skull's outline. The spur is what puts a wound in
+    # the head's FRONT silhouette — the sockets vanish in black-on-white, and a dead
+    # human dome up top was the last thing on this creature a runner could be
+    # mistaken for. On the hide material and returned separately, so it is welded,
+    # weighted to Head and unwrapped like the crest but never lights up.
+    pts = []
+    for k in range(5):
+        angle = math.pi * (0.15 + 0.70 * k / 4.0)
+        hx = centre.x + math.cos(angle) * (SOCKET_RADIUS + 0.012)
+        hz = centre.z + math.sin(angle) * (SOCKET_RADIUS + 0.010)
+        pts.append(Vector((hx, left.y + 0.006, hz + 0.004)))
+        pts.append(Vector((hx, left.y - 0.020, hz - 0.007)))
+    for dx, dy, dz in ((0.052, -0.004, 0.030), (0.066, 0.004, 0.044),
+                      (0.058, 0.014, 0.052)):
+        pts.append(Vector((centre.x + dx, left.y + dy, centre.z + dz)))
+    hull_range(pts, "Head", extra)
+
+    # ── The pinpoint: creature's right. A bead, barely proud, dropped 12 mm. ──
+    # Small is what makes it hot: the same EyeGlow through a tenth of the area reads
+    # as a point of heat rather than a lamp.
+    centre = right + forward * 0.008
+    centre.z -= 0.012
+    pts = []
+    for i in range(8):
+        angle = i * math.pi / 4.0
+        pts.append(Vector((centre.x + PIN_RADIUS * math.cos(angle),
+                           centre.y + 0.004,
+                           centre.z + PIN_RADIUS * 0.90 * math.sin(angle))))
+    pts.append(Vector((centre.x, centre.y - 0.008, centre.z)))
+    pts.append(Vector((centre.x, centre.y + 0.010, centre.z)))
+    hull_range(pts, "Head", ranges)
 
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
     bm.to_mesh(me)
@@ -624,8 +691,8 @@ def add_eyes(obj: bpy.types.Object, m: dict) -> list[tuple]:
     me.update()
 
     print(f"EYES {obj.name} z={z:.3f} separation={separation:.3f} m "
-          f"({separation / EYE_RADIUS:.1f} lens radii)")
-    return ranges
+          f"socket=+X r={SOCKET_RADIUS} pin=-X r={PIN_RADIUS}")
+    return ranges, extra
 
 
 def project_uvs(obj: bpy.types.Object, ranges: list[tuple], density: float) -> None:
@@ -780,12 +847,18 @@ def build_rig(obj: bpy.types.Object, m: dict, want_crest: bool) -> tuple:
     the crest's to unwrap it and the lenses' to unwrap them *and* to put them on their
     own material slot.
     """
+    import gen_monster_model as gmm  # noqa: PLC0415
+
     specs = fit_bones(m)
     crest_ranges = add_crest(obj, m, specs) if want_crest else []
+    # The pelvis shroud rides with the crest ranges: same rigid weighting, same
+    # planar unwrap, same hide material — only the bone differs (Hips).
+    crest_ranges += gmm.grow_pelvis_shroud(obj, m)
     # After the crest and before the armature modifier, so the ray-cast sees the final
     # exported surface and nothing posed. A lens placed against the rest sculpt and
     # then re-evaluated under a modifier would sit where the head used to be.
-    eye_ranges = add_eyes(obj, m)
+    eye_ranges, hood_ranges = add_eyes(obj, m)
+    crest_ranges += hood_ranges
 
     arm_obj = blendkit.build_armature("Monster_Rig", specs)
     obj.parent = arm_obj
@@ -825,11 +898,25 @@ def _linear_to_srgb(x: np.ndarray) -> np.ndarray:
 
 
 def _resample(img: np.ndarray, res: int) -> np.ndarray:
-    """Nearest-neighbour resample. The maps are 512²; the project ships 1024²."""
+    """Bilinear resample. Rodin bakes 512²; the monster ships 2048².
+
+    Bilinear and not the nearest-neighbour this used to be: at a 4× upsample nearest
+    leaves 4-texel stairs across every baked gradient, and the procedural crack
+    relief that now rides on top of these maps traces those stairs faithfully —
+    a grid etched into the hide at exactly the range the beam resolves it.
+    """
     h, w = img.shape[:2]
-    ys = (np.arange(res) * (h / res)).astype(np.int32).clip(0, h - 1)
-    xs = (np.arange(res) * (w / res)).astype(np.int32).clip(0, w - 1)
-    return img[ys][:, xs]
+    y = np.clip((np.arange(res) + 0.5) * (h / res) - 0.5, 0.0, h - 1.0)
+    x = np.clip((np.arange(res) + 0.5) * (w / res) - 0.5, 0.0, w - 1.0)
+    y0 = np.floor(y).astype(np.int32)
+    x0 = np.floor(x).astype(np.int32)
+    y1 = np.minimum(y0 + 1, h - 1)
+    x1 = np.minimum(x0 + 1, w - 1)
+    fy = (y - y0).astype(np.float32)[:, None, None]
+    fx = (x - x0).astype(np.float32)[None, :, None]
+    top = img[y0][:, x0] * (1.0 - fx) + img[y0][:, x1] * fx
+    bottom = img[y1][:, x0] * (1.0 - fx) + img[y1][:, x1] * fx
+    return (top * (1.0 - fy) + bottom * fy).astype(np.float32)
 
 
 def _image_array(image: bpy.types.Image) -> np.ndarray:
@@ -983,53 +1070,60 @@ def build_textures(obj: bpy.types.Object, material: str, tex_root: str) -> dict:
 
     folder = os.path.join(tex_root, material)
     diffuse = _resample(_image_array(maps["diffuse"]), TEX_RES)
-    graded, stats = grade_albedo(diffuse)
+    normal = (_resample(_image_array(maps["normal"]), TEX_RES)
+              if "normal" in maps else None)
+    orm = _resample(_image_array(maps["orm"]), TEX_RES) if "orm" in maps else None
+
+    # Dress the turntable bake into dead flesh BEFORE any grading: cadaveric mottle,
+    # cavity-gated craquelure, dry-shell/wet-crevice roughness, real AO. The dressing
+    # is shape only — the grades below still own the mean and the corridor ceiling,
+    # so §03's albedo policy is enforced on what actually ships. See the docstring on
+    # gen_monster_model.dress_sculpt_maps for the shot-review findings this answers.
+    world_size = 1.0 / max(gmm.uv_units_per_metre(obj), 1e-6)
+    dressed = gmm.dress_sculpt_maps(diffuse, normal,
+                                    orm[..., 1] if orm is not None else None,
+                                    TEX_RES, world_size)
+
+    graded, stats = grade_albedo(dressed["albedo"])
+    stats.update(dressed["stats"])
     written = {"albedo": write_png(os.path.join(folder, f"{material}_albedo.png"), graded)}
 
-    if "normal" in maps:
-        write_png(os.path.join(folder, f"{material}_normal.png"),
-                  _resample(_image_array(maps["normal"]), TEX_RES))
+    if dressed["normal"] is not None:
+        write_png(os.path.join(folder, f"{material}_normal.png"), dressed["normal"])
         written["normal"] = True
 
-    # glTF packs occlusion/roughness/metallic into one RGB map. Unity's pipeline here
-    # wants them split, plus the metallic-smoothness pair Standard shaders read.
-    if "orm" in maps:
-        orm = _resample(_image_array(maps["orm"]), TEX_RES)
-        occl = orm[..., 0]
+    limits = gmm.pipeline_constants()
+    rough, rough_stats = grade_roughness(dressed["rough"], hide_roughness(),
+                                         limits["MIN_ROUGHNESS"])
+    stats.update(rough_stats)
 
-        limits = gmm.pipeline_constants()
-        rough, rough_stats = grade_roughness(orm[..., 1], hide_roughness(),
-                                             limits["MIN_ROUGHNESS"])
-        stats.update(rough_stats)
+    rgba = np.ones((TEX_RES, TEX_RES, 4), dtype=np.float32)
+    rgba[..., 0] = rgba[..., 1] = rgba[..., 2] = rough
+    write_png(os.path.join(folder, f"{material}_rough.png"), rgba)
 
-        rgba = np.ones_like(orm)
-        rgba[..., 0] = rgba[..., 1] = rgba[..., 2] = rough
-        write_png(os.path.join(folder, f"{material}_rough.png"), rgba)
-
-        # Skin is a dielectric. Rodin's metallic channel comes back around 0.45 mean,
-        # which under §03's hard spot renders as wet sheet metal — so it is discarded
-        # rather than carried through, matching the 0.0 the previous asset shipped.
-        # Nothing is written for it: an all-zero map is a texture fetch that returns
-        # what the shader's default already is.
+    # Skin is a dielectric. Rodin's metallic channel comes back around 0.45 mean,
+    # which under §03's hard spot renders as wet sheet metal — so it is discarded
+    # rather than carried through, matching the 0.0 the previous asset shipped.
+    # Nothing is written for it: an all-zero map is a texture fetch that returns
+    # what the shader's default already is.
+    if orm is not None:
         stats["metallic_source_mean"] = round(float(orm[..., 2].mean()), 4)
-        stats["metallic_mean"] = 0.0
+    stats["metallic_mean"] = 0.0
 
-        # Rodin bakes no occlusion — the channel comes back a constant 1.0. Writing a
-        # 1 MB white PNG for Unity to sample per pixel buys nothing, so it is only
-        # emitted when it actually carries relief.
-        if float(occl.std()) > 0.01:
-            rgba = np.ones_like(orm)
-            rgba[..., 0] = rgba[..., 1] = rgba[..., 2] = occl
-            write_png(os.path.join(folder, f"{material}_ao.png"), rgba)
-            stats["ao_mean"] = round(float(occl.mean()), 4)
-        else:
-            stats["ao_mean"] = None
+    # Rodin bakes no occlusion, so this used to be skipped as a constant-white map.
+    # The dressing derives a real one from the normal map's own cavities, and it is
+    # load-bearing now: §3.14's rim light samples _OcclusionMap, and a rim over
+    # creviced skin without AO flattens it back into a paper cut-out.
+    rgba = np.ones((TEX_RES, TEX_RES, 4), dtype=np.float32)
+    rgba[..., 0] = rgba[..., 1] = rgba[..., 2] = dressed["ao"]
+    write_png(os.path.join(folder, f"{material}_ao.png"), rgba)
+    stats["ao_mean"] = round(float(dressed["ao"].mean()), 4)
 
-        ms = np.zeros_like(orm)
-        ms[..., 3] = 1.0 - rough          # Unity reads smoothness out of alpha
-        write_png(os.path.join(folder, f"{material}_ms.png"), ms)
+    ms = np.zeros((TEX_RES, TEX_RES, 4), dtype=np.float32)
+    ms[..., 3] = 1.0 - rough          # Unity reads smoothness out of alpha
+    write_png(os.path.join(folder, f"{material}_ms.png"), ms)
 
-        stats["roughness_mean"] = round(float(rough.mean()), 4)
+    stats["roughness_mean"] = round(float(rough.mean()), 4)
 
     stats["resolution"] = TEX_RES
     stats["bytes"] = written["albedo"]
@@ -1305,13 +1399,17 @@ def build_eye_textures() -> dict:
     """
     import gen_monster_model as gmm  # noqa: PLC0415
 
+    # 1024, not TEX_RES: the 2048 allowance exists for the hide, which is the whole
+    # creature on one unwrap. A lens is 5 cm; at 1024² it already carries more texels
+    # per centimetre than the hide does.
     return gmm.write_skin(EYE_MATERIAL, gmm.build_eyes, 0.152,
-                          "The two lenses. At the pipeline's albedo floor because they are "
-                          "unlit black glass; everything anybody ever sees of them is "
-                          "MonsterSkin.EyeGlow multiplied through this map. §04's 관측자 reads "
-                          "the creature's facing off the pair, which is the only thing on it "
-                          "that carries that information at ObserverRange.",
-                          TEX_RES, gmm.pipeline_constants())
+                          "The lenses: a dying lamp behind fouled glass — dead soot cells, "
+                          "a drifting membrane, hot pin flecks. Everything anybody ever sees "
+                          "of them is MonsterSkin.EyeGlow multiplied through this map, and "
+                          "the map's mean still lands on the calibrated target, so §04's "
+                          "관측자 keeps the same pair luminance at ObserverRange while the "
+                          "near field stops reading as two cartoon irises.",
+                          1024, gmm.pipeline_constants())
 
 
 def build(variant: dict) -> dict:
@@ -1340,6 +1438,12 @@ def build(variant: dict) -> dict:
     m = monster_fit.measure(obj)
     decimate(obj, TRI_TARGET)
     normalise(obj)
+
+    # Displacement-only asymmetry (leg bulk, dragged claw, staved temple) — after
+    # decimation so it sculpts the vertices that ship, before the rig fit so the
+    # eye ray-cast and the skirt anchor against the final surface. Z is untouched,
+    # so the landmark heights measured above stay valid.
+    gmm.sculpt_asymmetry(obj, m)
 
     # Measured on the bare sculpt, before anything is welded on. This is the density
     # Rodin's own unwrap holds, and it is what the crest and the lenses are then

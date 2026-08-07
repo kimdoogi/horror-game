@@ -2090,33 +2090,56 @@ def build_maw(res: int) -> dict:
 
 
 def build_eyes(res: int) -> dict:
-    """The two lenses. Wet, near-black, and almost featureless — on purpose.
+    """The lenses: a dying lamp behind fouled glass, not a lit pair of irises.
 
     This map's real job is not albedo, it is the *shape of the light*: MonsterSkin
     binds each material's albedo as its own emission map, so whatever is painted here
-    is what the glow looks like. A patterned iris was the obvious idea and is wrong at
-    the distance that matters — the unwrap is a smart projection, so nothing here can
-    be aimed at a particular part of a 6 cm lens, and at 15 m the lens is three pixels
-    across and any pattern averages to its mean anyway. What survives at three pixels
-    is a single even point, so that is what this is.
+    is what the glow looks like. The previous paint was a nearly flat field, and the
+    shot review named the result precisely — two even glowing discs on a smooth skull,
+    which is a cartoon robot. An even disc is what a manufactured lamp looks like;
+    nothing organic emits evenly.
 
-    What the faint structure does buy is the near field. At 3 m the same lens is 250
-    pixels across and a perfectly flat one reads as a painted dot; the fine crazing and
-    the 0.16 roughness give the beam something to catch across it.
+    So the field is broken three ways, all of them multiplicative into EyeGlow:
+
+    * **dead cells** — whole Worley cells crushed to near-black, like soot baked onto
+      glass. Roughly a third of the lens does not glow at all.
+    * **membrane drift** — a broad low-frequency occlusion, so one side of a lens is
+      always dimmer, and because the two lenses sit at different points of the tiled
+      map, the left and right eye come out *unequal* without either being authored.
+    * **pin flecks** — a few texels near the albedo ceiling. At 3 m they read as
+      points of heat behind the glass; at 15 m they average away.
+
+    The MEAN is untouched policy: write_skin still lands it on its target, so at
+    ObserverRange the pair carries exactly the luminance §04 was calibrated against —
+    the redistribution only exists inside the lens, at the range where a player is
+    close enough to see what the light is coming out of.
     """
     crazing = _fbm(res, 5401, beta=2.4, low_cycles=26.0)
-    bloom = _fbm(res, 5402, beta=1.7, low_cycles=5.0)
+    bloom = _fbm(res, 5402, beta=1.7, low_cycles=2.6)
+    _, _, soot_owner = _worley(res, 9, 5403, jitter=1.0)
+    dead = _smoothstep(0.42, 0.70, _per_cell(soot_owner, 9, 5404, 0.0, 1.0))
+    membrane = _smoothstep(0.20, 0.85, bloom)
+    smoulder = 0.30 + 0.70 * _smoothstep(0.40, 0.92, bloom)
+    flecks = _smoothstep(0.905, 0.985, crazing) * 1.8
 
-    height = np.clip(0.55 + (crazing - 0.5) * 0.30 + (bloom - 0.5) * 0.12,
-                     0.0, 1.0).astype(np.float32)
+    # The three occlusions multiply, so their floors are generous — the first cut of
+    # this stacked them at ~0.02 mean and write_skin's gain guard rightly refused the
+    # 9.7x correction. The mean is write_skin's job; this field only owns the RATIO
+    # between the dead glass and the live glass (about 8:1).
+    level = np.clip(smoulder * (1.0 - dead * 0.78) * (0.45 + 0.55 * (1.0 - membrane))
+                    + flecks, 0.03, 3.0)
 
-    # Barely coloured. The emission colour is authored in MonsterSkin, and a tint here
-    # would multiply into it — two places deciding one hue is how a green eye quietly
-    # becomes a yellow one when somebody adjusts the other.
-    base = np.array([0.150, 0.156, 0.146], dtype=np.float32)
-    colour = base.reshape(1, 1, 3) * (0.88 + 0.24 * bloom)[..., None]
+    height = np.clip(0.55 + (crazing - 0.5) * 0.34 + (bloom - 0.5) * 0.12
+                     - dead * 0.10, 0.0, 1.0).astype(np.float32)
 
-    roughness = (0.17 + 0.10 * crazing).astype(np.float32)
+    # Faintly warm, still nearly neutral. The hue is authored in MonsterSkin and a
+    # strong tint here would multiply into it; 5% of warmth only keeps the glass from
+    # reading as an LED when the beam itself lands on it.
+    base = np.array([0.330, 0.315, 0.285], dtype=np.float32)
+    colour = base.reshape(1, 1, 3) * level[..., None]
+
+    # Sooted patches are dry; live glass stays wet.
+    roughness = (0.14 + 0.10 * crazing + 0.42 * dead).astype(np.float32)
 
     return dict(albedo=colour, roughness=roughness, height=height,
                 metallic=np.zeros((res, res), dtype=np.float32),
@@ -2171,15 +2194,19 @@ def write_skin(name: str, build, target_albedo: float, note: str, res: int,
     # not what an eye finds in a dark frame; the brightest thing in it is.
     #
     # So the bright tail is rolled off under the darkest wall or ceiling in the room
-    # and the whole map re-scaled to land back on its intended mean. Two passes,
-    # because the roll-off moves the mean it was scaled to; the second correction is
-    # sub-percent and the assertion below is on the value that actually gets written.
+    # and the whole map re-scaled to land back on its intended mean. Iterated, because
+    # the roll-off moves the mean it was scaled to. Two passes used to be enough; the
+    # eye map is now deliberately heavy-tailed (a third of it is dead soot, part of it
+    # rides the ceiling) and each clip claws back what the rescale added, so this
+    # loops until the mean settles — six passes bounds it for any sane paint.
     ceiling = limits["CORRIDOR_DARKEST"]
     albedo = np.clip(colour * gain, 0.012, 0.90).astype(np.float32)
-    for _ in range(2):
+    for _ in range(6):
         albedo = _soft_ceiling(albedo, ceiling)
         albedo = np.clip(albedo * (target_albedo / max(float(albedo.mean()), 1e-6)),
                          0.012, ceiling).astype(np.float32)
+        if abs(float(albedo.mean()) - target_albedo) < 2e-4:
+            break
 
     roughness = np.clip(maps["roughness"], limits["MIN_ROUGHNESS"], 1.0).astype(np.float32)
     metallic = np.clip(maps["metallic"], 0.0, 1.0).astype(np.float32)
@@ -2302,6 +2329,304 @@ def write_skin_manifest(reports: list, uv_per_metre: float, res: int) -> None:
     with open(SKIN_MANIFEST, "w", encoding="utf-8") as handle:
         json.dump(payload, handle, indent=2, ensure_ascii=False)
         handle.write("\n")
+
+
+# ── Dressing the adopted sculpt ─────────────────────────────────────────────
+#
+# Everything below is imported by gen_monster_ai.py, which owns the shipped
+# Monster.fbx. It lives here for the same reason the clip authors do: this module is
+# the library of monster-specific art decisions, and gen_monster_ai is the pipeline
+# that applies them to whatever sculpt has been adopted.
+#
+# WHY THE SCULPT NEEDS DRESSING AT ALL — the 2026-08 shot review, three findings:
+#
+# 1. Rodin's graded diffuse is one material: a single grey with baked turntable
+#    shading and pink blush stains at the groin and knuckles. Under §03's beam it
+#    reads as moulded plastic, because optically that is what a uniform-albedo
+#    uniform-roughness surface is.
+# 2. The pelvis is a smooth closed panel. At 3 m it reads as a nappy; in silhouette
+#    the thigh gap above two thin legs reads as a naked person, not a creature.
+# 3. The body is mirror-symmetric to the millimetre, and symmetry is the single
+#    strongest "manufactured object" cue a shape can carry.
+
+
+def cavity_from_normal(normal_rgb: np.ndarray, res: int, blur_px: float = 2.5) -> np.ndarray:
+    """Concavity, measured off the sculpt's own baked tangent-space normal map.
+
+    Rodin bakes no occlusion (the ORM channel arrives constant), but the normal map
+    knows where the hollows are: across a crease the normals *converge*, so the
+    negative divergence of the tangent-space XY is a cavity signal — the rib hollows,
+    the throat pleats, the pit of the pelvis all light up. That is exactly the mask
+    the wet-crevice roughness and the craquelure need, and deriving it beats painting
+    it because it follows any future re-sculpt with no coordinates typed here.
+    """
+    nx = normal_rgb[..., 0] * 2.0 - 1.0
+    ny = normal_rgb[..., 1] * 2.0 - 1.0
+    div = ((np.roll(nx, -1, axis=1) - np.roll(nx, 1, axis=1)) * 0.5
+           + (np.roll(ny, -1, axis=0) - np.roll(ny, 1, axis=0)) * 0.5)
+    cav = _blur(np.clip(-div, 0.0, None), blur_px * res / 1024.0)
+    lo, hi = np.percentile(cav, (2.0, 99.0))
+    if hi - lo < 1e-9:
+        return np.zeros_like(cav, dtype=np.float32)
+    return np.clip((cav - lo) / (hi - lo), 0.0, 1.0).astype(np.float32)
+
+
+def _slopes(normal_xyz: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    z = np.maximum(normal_xyz[..., 2], 0.35)
+    return normal_xyz[..., 0] / z, normal_xyz[..., 1] / z
+
+
+def dress_sculpt_maps(diffuse: np.ndarray, normal: np.ndarray | None,
+                      rough: np.ndarray | None, res: int,
+                      world_size: float) -> dict:
+    """Turns Rodin's turntable maps into dead flesh. Shape only — no albedo policy.
+
+    The caller still runs its mean/ceiling grade afterwards, so everything here is
+    *relative*: mottle, craquelure and staining move texels against each other and
+    the grade then lands the whole field back on §03's numbers. That split is what
+    lets this function paint freely without being able to break the corridor policy.
+
+    What it paints, and why each piece is there:
+
+    * **Desaturation first.** The sculpt's pink blush patches (groin, knuckles) read
+      as skin-care, not horror. Chroma is halved before anything else so the marbling
+      painted below is the dominant colour event.
+    * **Cadaveric mottle** — two scales of fbm multiplied in, ±30%, with a slow
+      hue drift between a cold bruised grey and a pallid warm grey. This is the
+      "dead flesh" read: livor mortis is patchy, and patchiness at 10–30 cm scale is
+      what a beam crossing the torso picks out.
+    * **Craquelure, gated by cavity.** A fine Worley edge net, warped so it meanders,
+      weighted 3× inside the cavity mask — the dark cracking concentrates around the
+      ribs and pleats exactly where drying skin actually splits, and the flat outer
+      shells stay comparatively clean.
+    * **Roughness rebuilt: dry shells, wet crevices.** The base is pulled to a
+      bone-dry 0.88 matte (keeping a quarter of Rodin's variation), then the cavity
+      and crack masks cut it down toward wet. Under a 12 m beam this is the whole
+      material read: the hotspot dies on the dry hide and *glints out of the seams*,
+      which is the difference between plastic and something that seeps.
+    * **Real AO** from the same masks, because Unity's _OcclusionMap is sampled by
+      the rim light §3.14 added, and a rim over creviced skin without AO flattens it
+      back into a paper cut-out.
+    * **Crack relief folded into the normal map**, so the seams are not just dark
+      paint but catch the beam's grazing angle.
+    """
+    lin = _srgb_to_linear(np.clip(diffuse[..., :3], 0.0, 1.0)).astype(np.float32)
+    lum = (lin @ np.array([0.2126, 0.7152, 0.0722], dtype=np.float32))[..., None]
+    lin = lin * 0.48 + lum * 0.52
+
+    cav = (cavity_from_normal(normal[..., :3], res) if normal is not None
+           else np.zeros((res, res), dtype=np.float32))
+
+    mottle = _fbm(res, 7301, beta=2.0, low_cycles=5.0)
+    blotch = _fbm(res, 7302, beta=2.3, low_cycles=2.4)
+    tone = (0.76 + 0.48 * mottle) * (0.86 + 0.28 * blotch)
+    lin = lin * tone[..., None]
+
+    cold = np.array([0.94, 1.00, 1.07], dtype=np.float32).reshape(1, 1, 3)
+    pale = np.array([1.06, 1.00, 0.93], dtype=np.float32).reshape(1, 1, 3)
+    w = _smoothstep(0.35, 0.75, blotch)[..., None]
+    lin = lin * (cold * (1.0 - w) + pale * w)
+
+    warp_y = (_fbm(res, 7303, beta=2.2, low_cycles=3.0) - 0.5) * 0.05
+    warp_x = (_fbm(res, 7304, beta=2.2, low_cycles=3.0) - 0.5) * 0.05
+    fine_f1, fine_f2, _ = _worley(res, 96, 7305, jitter=1.0)
+    coarse_f1, coarse_f2, _ = _worley(res, 34, 7306, jitter=1.0)
+    fine_edge = _warp(fine_f2 - fine_f1, warp_y, warp_x)
+    coarse_edge = _warp(coarse_f2 - coarse_f1, warp_y, warp_x)
+    crack = np.clip(
+        _smoothstep(0.014, 0.0, fine_edge) * (0.30 + 0.70 * _smoothstep(0.12, 0.55, cav))
+        + _smoothstep(0.010, 0.0, coarse_edge) * 0.45, 0.0, 1.0).astype(np.float32)
+
+    lin = lin * (1.0 - crack[..., None] * 0.66)
+
+    ao = np.clip(1.0 - 0.52 * cav - 0.38 * crack, 0.30, 1.0).astype(np.float32)
+
+    base_rough = rough if rough is not None else np.full((res, res), 0.60, dtype=np.float32)
+    dry = 0.88 + (base_rough - float(base_rough.mean())) * 0.25
+    wet = np.clip(cav * 1.15 + crack * 0.85, 0.0, 1.0)
+    rough_out = np.clip(dry - wet * 0.55, 0.10, 1.0).astype(np.float32)
+
+    if normal is not None:
+        crack_n = _height_to_normal(np.clip(0.5 - crack * 0.5 - cav * 0.10, 0.0, 1.0),
+                                    world_size, 0.010)
+        sx, sy = _slopes(normal[..., :3] * 2.0 - 1.0)
+        cx, cy = _slopes(crack_n)
+        merged = np.stack([sx + cx, sy + cy, np.ones_like(sx)], axis=-1)
+        merged /= np.linalg.norm(merged, axis=-1, keepdims=True)
+        normal_out = np.ones((res, res, 4), dtype=np.float32)
+        normal_out[..., :3] = merged * 0.5 + 0.5
+    else:
+        normal_out = None
+
+    albedo_out = np.ones((res, res, 4), dtype=np.float32)
+    albedo_out[..., :3] = _linear_to_srgb(np.clip(lin, 0.0, 1.0))
+
+    return {
+        "albedo": albedo_out,
+        "rough": rough_out,
+        "normal": normal_out,
+        "ao": ao,
+        "stats": {
+            "cavity_mean": round(float(cav.mean()), 4),
+            "crack_cover": round(float((crack > 0.25).mean()), 4),
+            "dressed": True,
+        },
+    }
+
+
+def sculpt_asymmetry(obj: bpy.types.Object, m: dict) -> None:
+    """Breaks the sculpt's mirror symmetry, in place, before the rig is fitted.
+
+    Three deliberate injuries, all displacement-only (no topology change, so the
+    baked UVs ride along and the maps keep sampling correctly):
+
+    * **The left leg bulks out** ~16% radially below the knee, ~fading to nothing at
+      the crotch. One heavy leg and one wasted one is the strongest cheap "wrong"
+      cue a biped silhouette can carry, and it survives at 8 m where texture is gone.
+    * **The right forefoot drags into a claw** — toes stretched forward and pinched.
+      Z is never touched, so the grounding solver and the height pin see the same
+      floor contact they always did.
+    * **The right temple is staved in** — a 3 cm elliptical dent. The skull stops
+      being a bulb exactly where the eye pair used to sit, and the asymmetric
+      socket the eye pass builds lands beside a wound instead of on clean bone.
+      Verts within 3 cm of the very top are excluded so the 2.336 m height pin
+      cannot move.
+    """
+    me = obj.data
+    crotch, knee, ankle = m["crotch"], m["knee"], m["ankle"]
+    neck, top = m["neck"], m["top"]
+    lx_hip, lx_knee, lx_ank = m["leg_x_hip"], m["leg_x_knee"], m["leg_x_ankle"]
+
+    dent_centre = Vector((-0.085, m["head_y"] - 0.03, neck + (top - neck) * 0.66))
+
+    for v in me.vertices:
+        c = v.co
+
+        # ── legs: radial bulk, asymmetric ──
+        if ankle + 0.04 < c.z < crotch + 0.04 and abs(c.x) > 0.015:
+            side = 1.0 if c.x > 0.0 else -1.0
+            if c.z >= knee:
+                t = (c.z - knee) / max(crotch - knee, 1e-4)
+                axis_x = side * _lerp(lx_knee, lx_hip, t)
+            else:
+                t = (c.z - ankle) / max(knee - ankle, 1e-4)
+                axis_x = side * _lerp(lx_ank, lx_knee, t)
+            dx, dy = c.x - axis_x, c.y
+            if math.hypot(dx, dy) < 0.30:
+                gain = 0.16 if side > 0 else 0.035
+                fade = min(1.0, max(0.0, (crotch + 0.04 - c.z) / 0.22))
+                below_knee = 1.0 if c.z < knee + 0.08 else 0.72
+                s = 1.0 + gain * fade * below_knee
+                v.co.x = axis_x + dx * s
+                v.co.y = dy * s
+
+        # ── right forefoot: dragged claw ──
+        if c.z < ankle * 0.9 and c.x < -0.02 and c.y < 0.02:
+            fade = (ankle * 0.9 - c.z) / max(ankle * 0.9, 1e-4)
+            axis_x = -lx_ank
+            v.co.y = c.y * (1.0 + 0.50 * fade) - 0.030 * fade
+            v.co.x = axis_x + (c.x - axis_x) * (1.0 - 0.14 * fade)
+
+        # ── right temple: staved in ──
+        if neck + (top - neck) * 0.40 < c.z < top - 0.03 and c.x < 0.0:
+            d = Vector((c.x, c.y, c.z)) - dent_centre
+            d.x *= 1.7
+            fall = max(0.0, 1.0 - d.length / 0.18)
+            if fall > 0.0:
+                v.co.x += 0.048 * fall * fall
+
+    me.update()
+
+
+def grow_pelvis_shroud(obj: bpy.types.Object, m: dict) -> list[tuple]:
+    """Hangs a ragged hide skirt off the pelvis and welds it on. Bridges the hip gap.
+
+    The sculpt's pelvis is a smooth closed panel with a thigh gap under it; at 3 m it
+    reads as underwear and in silhouette as a person. Thirteen-odd tattered strips
+    rooted in a band just above the hip pivot fix both: the silhouette becomes one
+    continuous mass from ribs to mid-thigh, and what hangs there reads as torn hide.
+
+    Anchored to the sculpt's *measured* radius per angle, the same argument
+    add_crest makes: a skirt at a typed radius floats off one sculpt and buries
+    itself in another. Strips vary by hashed length/width/skew, one position in ten
+    is torn out entirely, and the front strips hang longest — they are what covers
+    the pelvis panel from the §06 head-on view.
+
+    Returns ``(start, end, "Hips")`` ranges: the caller weights them rigidly to Hips
+    so the skirt swings with the pelvis. Rigid to Hips and not proximity-blended into
+    the thighs, deliberately — a tatter that half-follows a femur stretches into a
+    membrane between the legs, which is a worse artefact than a stiff tatter.
+    """
+    me = obj.data
+    crotch, shoulder, knee = m["crotch"], m["shoulder"], m["knee"]
+    z_root = crotch + (shoulder - crotch) * 0.155
+
+    band = [v.co.copy() for v in me.vertices if abs(v.co.z - z_root) < 0.06]
+    if not band:
+        return []
+
+    def radius_at(theta: float) -> float:
+        dx, dy = math.cos(theta), math.sin(theta)
+        best = 0.0
+        for c in band:
+            along = c.x * dx + c.y * dy
+            perp = abs(-c.x * dy + c.y * dx)
+            if along > best and perp < 0.09:
+                best = along
+        return best if best > 0.02 else 0.12
+
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bm.verts.ensure_lookup_table()
+
+    ranges = []
+    count = 15
+    for i in range(count):
+        if _hash01(9100, i) > 0.88:      # a torn-out gap; the raggedness is the point
+            continue
+        theta = (i + 0.5) / count * 2.0 * math.pi
+        cx, cy = math.cos(theta), math.sin(theta)
+        tx, ty = -math.sin(theta), math.cos(theta)
+
+        r0 = radius_at(theta) - 0.006
+        length = 0.20 + 0.15 * _hash01(9101, i)
+        if cy < -0.3:                    # front (-Y): longest, covers the pelvis panel
+            length *= 1.15
+        if abs(cx) > 0.72:               # the flanks: the thigh is well inboard of the
+            length *= 0.80               # iliac shelf, so a long strip here floats
+        tip_z = max(z_root - length, knee + 0.05)
+        width = 0.050 + 0.045 * _hash01(9102, i)
+        skew = (0.5 - _hash01(9105, i)) * width * 1.2
+
+        start = len(bm.verts)
+        pts = []
+        for u in (-0.5, 0.5):
+            px, py = cx * r0 + tx * width * u, cy * r0 + ty * width * u
+            # root edge, buried deep into the body so the strip never floats
+            pts.append((px - cx * 0.035, py - cy * 0.035, z_root + 0.035))
+            pts.append((px + cx * 0.008, py + cy * 0.008, z_root - 0.025))
+        # The tip tucks INBOARD, not out. Round 2 flared the tips outward and the
+        # strips photographed as a ring of planks jutting off the hips — a hula
+        # skirt, not torn hide. Hide with weight hangs down the thigh it covers.
+        tip_r = r0 * (0.72 + 0.12 * _hash01(9103, i))
+        for du in (-0.12, 0.12):
+            pts.append((cx * tip_r + tx * (skew + width * du),
+                        cy * tip_r + ty * (skew + width * du), tip_z))
+        for p in pts:
+            bm.verts.new(Vector(p))
+        bm.verts.ensure_lookup_table()
+        new = bm.verts[start:]
+        if len(new) >= 4:
+            bmesh.ops.convex_hull(bm, input=new)
+        bm.verts.ensure_lookup_table()
+        ranges.append((start, len(bm.verts), "Hips"))
+
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+    bm.to_mesh(me)
+    bm.free()
+    me.update()
+    print(f"SHROUD {obj.name} {len(ranges)} strip(s) rooted at z={z_root:.3f}")
+    return ranges
 
 
 # ── Measurement ─────────────────────────────────────────────────────────────

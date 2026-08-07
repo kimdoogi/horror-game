@@ -349,6 +349,12 @@ def corridor_services(objs: list, axis: str, a0: float, a1: float,
     objs.append(pipe("PipeSmall", axis, a0, a1, west_face + 0.62,
                      detail.PIPE_Z + 0.11, 0.035, st, sides=6))
     objs += cable_tray("Tray", axis, a0, a1, tray_at, wall_face=east_face)
+    # A conduit pair clipped to the soffit, threaded through the joists. §05
+    # makes the ceiling a third of every frame, and between the joists the
+    # up-glance was bare slab.
+    objs += detail.soffit_conduit("CeilRun", axis,
+                                  a0, a1, (west_face + east_face) / 2.0 + 0.55,
+                                  ceiling)
 
 
 def corridor_floor(objs: list, x0: float, x1: float, y0: float, y1: float,
@@ -446,7 +452,7 @@ def build_corner_l() -> list:
     # read against. Quoins — alternating projecting blocks — cost six boxes and
     # turn a bare arris into the single most legible vertical in the piece.
     objs.append(slab("PostSE", GRID - WALL_T, GRID, 0, WALL_T, 0.0, CLEAR_H, w,
-                     trim=False))
+                     pillar=True))
     for k in range(6):
         z0 = 0.10 + k * 0.42
         objs.append(slab(f"Quoin{k}", GRID - WALL_T - 0.055, GRID,
@@ -557,7 +563,10 @@ def corner_pier(objs: list, x0: float, y0: float, height: float = CLEAR_H) -> No
         return (x0 if ix > 0 else x0 - e, x1 + e if ix > 0 else x1,
                 y0 if iy > 0 else y0 - e, y1 + e if iy > 0 else y1)
 
-    objs.append(slab(f"Post{tag}", x0, x1, y0, y1, 0.0, height, w, trim=False))
+    # The post itself rides the pillar bevel group — 22 mm, two segments. A
+    # junction post is the single most-repeated near-field shape in the maze,
+    # and the chamfer is what its arris returns to a raking beam.
+    objs.append(slab(f"Post{tag}", x0, x1, y0, y1, 0.0, height, w, pillar=True))
     bx0, bx1, by0, by1 = grown(0.055)
     objs.append(slab(f"PostBase{tag}", bx0, bx1, by0, by1, 0.0, detail.SKIRT_H, tp))
     nx0, nx1, ny0, ny1 = grown(0.030)
@@ -663,12 +672,25 @@ def build_chamber() -> list:
     # meet the room anywhere along it, and MapSceneBuilder.VerifyRoomWalls exists to
     # refuse exactly that — the check is the reason a room is safer here than a
     # pattern of corridors.
-    for tag, x0, x1, y0, y1 in (
-            ("S0", 0, GRID, 0, WALL_T), ("S1", 2 * GRID, span, 0, WALL_T),
-            ("N0", 0, GRID, span - WALL_T, span), ("N1", 2 * GRID, span, span - WALL_T, span),
-            ("W0", 0, WALL_T, 0, GRID), ("W1", 0, WALL_T, 2 * GRID, span),
-            ("E0", span - WALL_T, span, 0, GRID), ("E1", span - WALL_T, span, 2 * GRID, span)):
-        objs.append(slab(f"Wall{tag}", x0, x1, y0, y1, 0.0, CLEAR_H, c))
+    #
+    # They used to be bare slabs in the *ceiling* material — eight full-height
+    # flat quads ringing the one room every runner crosses (§01's 투하구, the B8
+    # finish). Now they are dressed walls like every other closing wall in the
+    # kit. Each stub is shortened by WALL_T at its outer end: the corner there is
+    # already occupied by corner_pier's post, and overlapping it did two bad
+    # things round 1 made visible — buried duplicate geometry, and a stub end
+    # face coincident with the post's own face on the piece boundary plane.
+    for tag, x0, x1, y0, y1, room, seed in (
+            ("S0", WALL_T, GRID, 0, WALL_T, "+Y", 811),
+            ("S1", 2 * GRID, span - WALL_T, 0, WALL_T, "+Y", 821),
+            ("N0", WALL_T, GRID, span - WALL_T, span, "-Y", 823),
+            ("N1", 2 * GRID, span - WALL_T, span - WALL_T, span, "-Y", 827),
+            ("W0", 0, WALL_T, WALL_T, GRID, "+X", 829),
+            ("W1", 0, WALL_T, 2 * GRID, span - WALL_T, "+X", 839),
+            ("E0", span - WALL_T, span, WALL_T, GRID, "-X", 853),
+            ("E1", span - WALL_T, span, 2 * GRID, span - WALL_T, "-X", 857)):
+        objs += dressed_wall(f"Wall{tag}", x0, x1, y0, y1, room, CLEAR_H,
+                             pilaster_pitch=0.0, wear_seed=seed)
 
     for nx, ny in ((0, 0), (1, 0), (0, 1), (1, 1)):
         corner_pier(objs, 0.0 if nx == 0 else span - WALL_T,
@@ -1168,12 +1190,27 @@ def build_doorway_frame() -> list:
     objs.append(slab("Lintel", WALL_T, GRID - WALL_T, cy0, cy1, DOOR_H, CLEAR_H, w,
                      trim=False))
     # Piers: the partition thickens against each side wall so the opening is a hole
-    # in a wall rather than a lintel floating between two corridor surfaces. They
-    # project along the corridor, not into it, so the 2.20 m opening is untouched.
-    for tag, px0, px1 in (("W", 0.0, WALL_T), ("E", GRID - WALL_T, GRID)):
-        objs.append(slab(f"Pier{tag}", px0, px1, cy0 - 0.14, cy1 + 0.14, 0.0, CLEAR_H,
-                         w, trim=False))
-        objs.append(slab(f"PierCap{tag}", px0, px1, cy0 - 0.19, cy1 + 0.19,
+    # in a wall rather than a lintel floating between two corridor surfaces.
+    #
+    # They stand 18 mm PROUD of the side-wall face and 8 mm shy of the piece's
+    # outer plane, and ride the pillar bevel group. Both offsets are load-bearing:
+    # flush, the pier's faces were exported coplanar with the wall body's — round 1
+    # rendered that coincidence as a clean-edged black channel down the west face —
+    # and proud, the pier finally has its own arris for the beam to rake. 18 mm
+    # takes the corridor to 2.164 m at the pier, which is still wider than the
+    # 2.14 m the door linings already impose, so the doorway's pinch is unchanged
+    # and §08's 1.80 m carry keeps its margin. Nothing extends past the 2.20 m
+    # structural opening in Y, so the face-hung leaves still swing clear.
+    for tag in ("W", "E"):
+        if tag == "W":
+            bx0, bx1 = 0.008, WALL_T + 0.018            # 0.008 .. 0.168
+            cx0, cx1 = 0.012, WALL_T + 0.035            # cap wraps the pier face
+        else:
+            bx0, bx1 = GRID - WALL_T - 0.018, GRID - 0.008
+            cx0, cx1 = GRID - WALL_T - 0.035, GRID - 0.012
+        objs.append(slab(f"Pier{tag}", bx0, bx1, cy0 - 0.14, cy1 + 0.14,
+                         0.0, CLEAR_H, w, pillar=True))
+        objs.append(slab(f"PierCap{tag}", cx0, cx1, cy0 - 0.19, cy1 + 0.19,
                          DOOR_H + 0.10, DOOR_H + 0.28, mat("Trim_Painted")))
 
     # The frame proper: jamb linings, a head lining, a stop bead and architraves on
@@ -1195,10 +1232,13 @@ def build_doorway_frame() -> list:
                      DOOR_H + 0.12, DOOR_H + 0.24, st))
     # Pintles hang on the partition *face*, clear of the opening, so the hardware
     # costs no passing width at all — the kit's old 2.08 m pinch was here.
+    # Pintles start 10 mm inside the wall body rather than exactly on its face —
+    # a back face coincident with the wall face is the coplanar-export defect
+    # wall_box() documents, spelled out here because these are plain slabs.
     for k, z in enumerate((0.20, 1.10, 2.15)):
-        objs.append(slab(f"PintleW{k}", WALL_T, WALL_T + 0.075, cy1 + 0.028, cy1 + 0.115,
-                         z, z + 0.14, st))
-        objs.append(slab(f"PintleE{k}", GRID - WALL_T - 0.075, GRID - WALL_T,
+        objs.append(slab(f"PintleW{k}", WALL_T - 0.010, WALL_T + 0.075,
+                         cy1 + 0.028, cy1 + 0.115, z, z + 0.14, st))
+        objs.append(slab(f"PintleE{k}", GRID - WALL_T - 0.075, GRID - WALL_T + 0.010,
                          cy1 + 0.028, cy1 + 0.115, z, z + 0.14, st))
     # Strike keep at the meeting stile: what the Engineer's lock actually engages.
     objs.append(slab("StrikeKeep", GRID / 2 - 0.05, GRID / 2 + 0.05, cy1 + 0.012,
@@ -1532,7 +1572,7 @@ PIECES: list[PieceSpec] = [
               2 * GRID, 4000, "corridor", "Floor_Concrete", docks_ns(2 * GRID),
               "§12 straight section, 5 m."),
     PieceSpec("Corridor_Straight_10m", build_straight(4 * GRID), (GRID, 4 * GRID),
-              4 * GRID, 4200, "corridor", "Floor_Concrete", docks_ns(4 * GRID),
+              4 * GRID, 6500, "corridor", "Floor_Concrete", docks_ns(4 * GRID),
               "§12 straight section, 10 m. Longest straight in the kit — half the 20 m cap."),
     PieceSpec("Corridor_Corner_L", build_corner_l, (GRID, GRID), GRID, 4000,
               "corridor", "Floor_Concrete",
@@ -1540,7 +1580,7 @@ PIECES: list[PieceSpec] = [
                {"edge": "+X", "centre": [GRID, GRID / 2], "width": CLEAR_W, "height": CLEAR_H, "level": 0.0}],
               "90° turn. Composes the S-corridor by hand."),
     PieceSpec("SCorridor_Unit_10m_x2", build_s_corridor, (2 * GRID, 7 * GRID),
-              S_LEG, 8000, "corridor", "Floor_Concrete",
+              S_LEG, 12000, "corridor", "Floor_Concrete",
               [{"edge": "-Y", "centre": [GRID / 2, 0.0], "width": CLEAR_W, "height": CLEAR_H, "level": 0.0},
                {"edge": "+Y", "centre": [1.5 * GRID, 7 * GRID], "width": CLEAR_W, "height": CLEAR_H, "level": 0.0}],
               "§12 맵의 기본 단위: two 10 m legs, 20.00 m of path, 4.17 s of broken sight."),
@@ -1562,11 +1602,11 @@ PIECES: list[PieceSpec] = [
                for e, c in (("-Y", [GRID / 2, 0.0]), ("+Y", [GRID / 2, GRID]),
                             ("-X", [0.0, GRID / 2]), ("+X", [GRID, GRID / 2]))],
               "§12 순환로: 전체 3+ required, 트리 구조는 사형선고."),
-    PieceSpec("DeadEnd_Cap", build_dead_end, (GRID, 2 * GRID), 2 * GRID, 4200,
+    PieceSpec("DeadEnd_Cap", build_dead_end, (GRID, 2 * GRID), 2 * GRID, 5800,
               "deadend", "Floor_Concrete",
               [{"edge": "-Y", "centre": [GRID / 2, 0.0], "width": CLEAR_W, "height": CLEAR_H, "level": 0.0}],
               "§12 막힌 길 20~25%. 경주에서 잘못 든 길의 대가는 시간뿐 — the plinth that stood in the middle of it is deleted (it stood in the NavMesh too); the wall alcove stays and holds nothing."),
-    PieceSpec("Hall_Open_20x20", build_hall, (8 * GRID, 8 * GRID), 8 * GRID, 16000,
+    PieceSpec("Hall_Open_20x20", build_hall, (8 * GRID, 8 * GRID), 8 * GRID, 17000,
               "open", "Floor_Tile",
               [{"edge": e, "centre": c, "width": CLEAR_W, "height": CLEAR_H, "level": 0.0}
                for e, c in (("-Y", [6.25, 0.0]), ("-Y", [13.75, 0.0]),
@@ -1635,9 +1675,10 @@ def build_piece(spec: PieceSpec) -> tuple[blendkit.AssetReport, list]:
         raise AssertionError(f"{spec.name}: builder produced no objects")
 
     groups = {detail.PREFIX_FLOOR: [], detail.PREFIX_TRIM: [], detail.PREFIX_RAW: [],
-              "": []}
+              detail.PREFIX_PILLAR: [], "": []}
     for o in objs:
-        for prefix in (detail.PREFIX_FLOOR, detail.PREFIX_TRIM, detail.PREFIX_RAW):
+        for prefix in (detail.PREFIX_FLOOR, detail.PREFIX_TRIM, detail.PREFIX_RAW,
+                       detail.PREFIX_PILLAR):
             if o.name.startswith(prefix):
                 groups[prefix].append(o)
                 break
@@ -1645,14 +1686,21 @@ def build_piece(spec: PieceSpec) -> tuple[blendkit.AssetReport, list]:
             groups[""].append(o)
 
     parts = []
-    for prefix, bevel_w in (("", BEVEL_W), (detail.PREFIX_TRIM, detail.BEVEL_TRIM),
-                            (detail.PREFIX_RAW, 0.0), (detail.PREFIX_FLOOR, 0.0)):
+    for prefix, bevel_w, bevel_segs in (
+            ("", BEVEL_W, 1),
+            (detail.PREFIX_TRIM, detail.BEVEL_TRIM, 1),
+            # Piers, posts and column shafts: a wider two-segment chamfer,
+            # because they are the shapes the beam rakes edge-on in the near
+            # field and a 12 mm arris reads as an untextured block there.
+            (detail.PREFIX_PILLAR, detail.BEVEL_PILLAR, detail.BEVEL_PILLAR_SEGMENTS),
+            (detail.PREFIX_RAW, 0.0, 1),
+            (detail.PREFIX_FLOOR, 0.0, 1)):
         members = groups[prefix]
         if not members:
             continue
         joined = blendkit.join(members, f"{spec.name}_{prefix or 'S'}")
         if bevel_w > 0.0:
-            blendkit.bevel(joined, bevel_w, 1)
+            blendkit.bevel(joined, bevel_w, bevel_segs)
         parts.append(joined)
 
     piece = blendkit.join(parts, spec.name)

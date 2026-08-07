@@ -65,6 +65,49 @@ namespace HorrorGame.Gameplay.Player
         private bool _resolved;
 
         /// <summary>
+        /// Name of the transform this component creates when the rig carries no
+        /// <c>FlashlightMount</c> bone. Deliberately the exact bone name: every consumer
+        /// that finds the mount by name — the hands shot's torch-viewport column, a future
+        /// prop mounter — then agrees with the beam about where the torch is, and the
+        /// normal <see cref="PlayerRigBones.Find"/> lookup re-discovers this transform on a
+        /// scene reload instead of stacking a second one.
+        /// </summary>
+        public const string DerivedMountName = PlayerRigBones.FlashlightMount;
+
+        /// <summary>
+        /// Where the torch hand sits in view space when the rig has no mount bone:
+        /// metres right, up and forward of the pitch pivot (the eye).
+        /// <para>
+        /// <b>Why it exists.</b> Runner.fbx has 13 bones and none of them is
+        /// <c>FlashlightMount</c> (Player.fbx had one; the model swap dropped it, and the
+        /// arms-split that restores a real mount is its own task). With the lookup failing,
+        /// <see cref="SnapBeamToMount"/> never moved the light, so the beam emitted from
+        /// where the rig builder authored it — the rig root, i.e. <b>the floor between the
+        /// player's boots</b> — and <see cref="Cone"/> told the perception queries the same
+        /// lie. Every review frame of a lit torch was a frame of a light nobody was holding.
+        /// </para>
+        /// <para>
+        /// <b>Each number's derivation.</b> z = 0.45 m is a bent-arm fist ahead of the
+        /// chest: the rig's arm bone is 0.667 m (shoulder (±0.240, 1.439) to hand tail
+        /// (±0.284, 0.774), measured in the FBX), and an elbow at ~90° puts the fist about
+        /// two-thirds of that ahead of the sternum; it is also 9× the camera's 0.05 near
+        /// plane, so the torch mesh that will one day sit here cannot clip. x = +0.25 and
+        /// y = −0.22 put the hand atan(0.25/0.45) = 29.1° right and atan(0.22/0.45) = 26.1°
+        /// below the view axis — inside the frame at §05's whole FOV clamp (the tightest
+        /// legal frame, 70° vertical at 16:9, reaches 35.0° down and 51.2° right), entering
+        /// from the bottom-right the way a held torch does.
+        /// </para>
+        /// <para>
+        /// <b>Under the pivot, not the camera.</b> <c>PlayerViewMotion</c> bobs the camera
+        /// beneath the pivot; §05 makes the beam a pointing device other players read
+        /// ("남의 손전등 방향이 정보다") and the view-motion component's own contract is that
+        /// the beam never rides the bob. Direction already comes from <see cref="PlayerLook"/>;
+        /// hanging the origin off the pivot keeps the position bob-free too.
+        /// </para>
+        /// </summary>
+        public static readonly Vector3 DerivedMountViewOffset = new Vector3(0.25f, -0.22f, 0.45f);
+
+        /// <summary>
         /// The rules object: on, or off. That is the whole of it now — the cell behind it
         /// and §08's 강화 손전등 upgrade are deleted. Everything that needs to know whether
         /// this player is visible asks this, not the <see cref="Light"/>.
@@ -185,6 +228,10 @@ namespace HorrorGame.Gameplay.Player
             }
 
             _mount = PlayerRigBones.Find(_rigRoot, PlayerRigBones.FlashlightMount);
+            if (_mount == null)
+            {
+                _mount = BuildDerivedMount();
+            }
 
             if (_spot != null)
             {
@@ -194,6 +241,54 @@ namespace HorrorGame.Gameplay.Player
                 _spot.shadows = LightShadows.Hard;
                 _spot.enabled = false;
             }
+        }
+
+        /// <summary>
+        /// Builds the stand-in mount at <see cref="DerivedMountViewOffset"/> under the
+        /// pitch pivot, for a rig whose skeleton has no <c>FlashlightMount</c> bone.
+        /// <para>
+        /// The pivot is taken from <see cref="PlayerLook"/> first — the rig builder and the
+        /// test fixtures both assign it explicitly — and from the first camera's parent
+        /// when the look has none. A rig with neither (a bare capsule harness, a remote
+        /// body with no camera) gets no derived mount and keeps the old behaviour: the
+        /// beam stays where its scene author put it. That is deliberate — inventing an eye
+        /// for a rig that does not have one would aim §05's pointing device from a place
+        /// no player is looking.
+        /// </para>
+        /// <para>
+        /// Reuses an existing <see cref="DerivedMountName"/> child rather than stacking a
+        /// second: the rig builder saves its result into the solo scene, so a transform
+        /// created before the save arrives again on load.
+        /// </para>
+        /// </summary>
+        private Transform? BuildDerivedMount()
+        {
+            var pivot = _look != null ? _look.PitchPivot : null;
+            if (pivot == null)
+            {
+                var camera = GetComponentInChildren<Camera>(true);
+                if (camera != null)
+                {
+                    pivot = camera.transform.parent;
+                }
+            }
+
+            if (pivot == null)
+            {
+                return null;
+            }
+
+            var existing = pivot.Find(DerivedMountName);
+            if (existing != null)
+            {
+                return existing;
+            }
+
+            var mount = new GameObject(DerivedMountName).transform;
+            mount.SetParent(pivot, worldPositionStays: false);
+            mount.localPosition = DerivedMountViewOffset;
+            mount.localRotation = Quaternion.identity;
+            return mount;
         }
 
         // DELETED with the carry system and the light economy:
