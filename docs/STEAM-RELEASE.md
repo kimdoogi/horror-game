@@ -81,7 +81,7 @@ Ordered by what blocks what, not by size.
 | 4 | Reconcile the 4-vs-20 player cap | §I.4.3 | small, but touches Net |
 | 5 | A Windows **IL2CPP** player — never once produced | §I.2.3 | needs a Windows host |
 | 6 | Real App ID into `SteamAppConfig.cs` **and** `steam.config` together | §5.1 | one line each |
-| 7 | `steam_appid.txt` must not reach a depot | §I.2.5 defect 1 | one line in `EXCLUSIONS` |
+| ~~7~~ | ~~`steam_appid.txt` must not reach a depot~~ | §I.2.5 defects 1–3 | **done 2026-08-08** — and it was never one line |
 | 8 | Store copy + screenshots rewritten for the race | §I.3.3 | days |
 | 9 | A real trailer — the current file is a 3-second 720p clip | §I.3.3 | days |
 | 10 | Scale 20 players: interest management is written for 4 | §I.4.3 | weeks |
@@ -276,41 +276,56 @@ route §5.1 does not cover.
 `.DS_Store`, `._*`, `__MACOSX`, `*.log`, `.git*` — and **`steam_appid.txt` is not
 among them**.
 
-*The fix is two lines, and it is not in my files. Reported, not made:*
+**Fixed 2026-08-08 — and the diagnosis above was half right, in the dangerous
+direction.** This section originally closed by saying the condition *"self-corrects
+the day `SteamAppConfig.AppId` becomes the real ID — `ShouldWrite` goes false and
+the post-build step stands down"*, and recommended adding the `EXCLUSIONS` lines as
+belt-and-braces. That is wrong, and acting on it would have left the defect in
+place permanently: the second clause, `|| Debug.isDebugBuild`, is evaluated **inside
+an editor callback**, where the editor is answering about itself. The editor is
+always a debug build. `ShouldWrite` was therefore true for every build this project
+has ever produced, and no App ID would ever have changed that.
 
-```python
-# in tools/steam/lib/steampipe.py, EXCLUSIONS
-("steam_appid.txt",
- "Development-only App ID hint. Valve: 'Make sure to remove the steam_appid.txt "
- "file when uploading the game to your Steam depot!' — a shipped copy also makes "
- "SteamAPI_RestartAppIfNecessary return false, defeating the ownership restart."),
-("MONO-FALLBACK-DO-NOT-SHIP.txt",
- "The build pipeline's own marker that this player must not be published."),
-```
+Three things had to move, and all three are in:
 
-The condition self-corrects the day `SteamAppConfig.AppId` becomes the real ID —
-`ShouldWrite` goes false and the post-build step stands down. Add the exclusions
-anyway: the whole point of the `EXCLUSIONS` list is that it does not depend on
-another file being correct.
+| | Change | Why the others are not enough |
+|---|---|---|
+| cause | `SteamAppIdFile.ShouldWrite` is now `Debug.isDebugBuild` alone, and the post-build step is an `IPostprocessBuildWithReport` that reads `BuildOptions.Development` off the build being processed | the App ID and the configuration are different questions; asking one to answer the other is what produced the bug |
+| detection | `BuildPipelineRunner` scans the finished output for `steam_appid.txt` and the report fails `shippable on Steam` on any hit | a note saying the pipeline did not write the file is a claim about the pipeline; two other writers exist |
+| containment | `steam_appid.txt` and `MONO-FALLBACK-DO-NOT-SHIP.txt` are both in `EXCLUSIONS` | the point of that list is not to depend on another file being correct |
+
+Measured on the rebuilt Release player, not inferred: `find dist/macos-universal
+-name steam_appid.txt` returns nothing, and the post-build step logs the branch it
+had never taken — *"Release build, so steam_appid.txt was deliberately not shipped
+with it."*
 
 **Defect 2 — `MONO-FALLBACK-DO-NOT-SHIP.txt` is not excluded either.** It sits in
 `dist/windows-x64/` today. Staging that folder as a depot would publish the
-pipeline's own do-not-ship marker to players. Same one-line fix, above.
+pipeline's own do-not-ship marker to players.
+
+**Fixed 2026-08-08.** In `EXCLUSIONS`, beside `steam_appid.txt`. The stale copy is
+still in `dist/windows-x64/` and is meant to be: it is a real record that that
+player fell back to Mono, and the uploader now refuses to carry it either way.
 
 **Defect 3 — `shippable on Steam` does not look at the App ID.** The expression in
 §I.2.4 checks `Succeeded && Release && !MonoFallback` and nothing else. A Release
 IL2CPP build stamped with App ID 480, carrying a `steam_appid.txt` that says 480,
-will print `shippable on Steam: yes`. `BuildPipelineOptions.IsReleaseWithDevelopmentAppId`
-already computes exactly the missing condition and is only used for a note. The
-owner is being told to gate on a flag that cannot see the most likely release-day
-mistake.
+will print `shippable on Steam: yes`. The owner is being told to gate on a flag
+that cannot see the most likely release-day mistake.
 
-*Reported, not made — `BuildPipelineReport.cs` is outside my files:*
+**Fixed 2026-08-08.** `ShippableOnSteam` now also requires a non-placeholder App ID
+and an output with no `steam_appid.txt` in it. Both directions were checked against
+real builds rather than reasoned about, because a gate that can only ever say *no*
+is worth exactly as much as one that can only ever say *yes*:
 
-```csharp
-// Add to ShippableOnSteam, and surface IsReleaseWithDevelopmentAppId as the reason:
-&& SteamAppId != BuildPipelineOptions.DefaultSteamAppId
-```
+| `--app-id` | report says |
+|---|---|
+| *(default)* | `no — the App ID is still 480, Valve's Spacewar sample` |
+| `3216540` | `yes` |
+
+The second build was made only to prove the gate discriminates, and the tree was
+rebuilt back to 480 afterwards so nothing on disk claims to be shippable while
+stamped with an App ID nobody owns.
 
 ---
 

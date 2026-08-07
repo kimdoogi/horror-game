@@ -66,8 +66,35 @@ namespace HorrorGame.EditorTools
         /// <summary>What Unity itself reported for the build step alone.</summary>
         public TimeSpan UnityReportedDuration { get; set; }
 
-        /// <summary>Bytes on disk under <see cref="OutputDirectory"/> — the download size.</summary>
+        /// <summary>
+        /// Bytes on disk under <see cref="OutputDirectory"/>. This is <em>not</em> the download
+        /// size: Unity drops its IL2CPP symbol backup and Burst debug folders here too, and on
+        /// this project they outweigh the game about four to one. <see cref="PayloadBytes"/> is
+        /// the figure to budget a depot against.
+        /// </summary>
         public long SizeBytes { get; set; }
+
+        /// <summary>
+        /// Bytes the uploader would actually send: <see cref="SizeBytes"/> less the folders
+        /// Unity itself names <c>DoNotShip</c> / <c>ButDontShipItWithYourGame</c>. Zero when it
+        /// was not measured.
+        /// </summary>
+        public long PayloadBytes { get; set; }
+
+        /// <summary>True while <see cref="SteamAppId"/> is still Valve's Spacewar placeholder.</summary>
+        public bool SteamAppIdIsPlaceholder { get; set; }
+
+        /// <summary>
+        /// Paths, relative to the output, of <c>steam_appid.txt</c> copies found in the finished
+        /// build. Valve asks that a released depot not carry one, and it is the file most easily
+        /// left behind: three separate components may write it, each correct on its own.
+        /// <para>
+        /// Scanned rather than asserted. A note saying the pipeline did not write the file is a
+        /// claim about the pipeline; this is a measurement of the artefact, and the two have
+        /// already disagreed once.
+        /// </para>
+        /// </summary>
+        public List<string> StrayAppIdFiles { get; } = new List<string>();
 
         /// <summary>Unity's own packed-size figure, kept because the two differ and both are useful.</summary>
         public ulong UnityReportedSizeBytes { get; set; }
@@ -104,12 +131,24 @@ namespace HorrorGame.EditorTools
         public string TimestampUtc { get; set; } = string.Empty;
 
         /// <summary>
-        /// The one flag a release process should gate on: a succeeded Release build on IL2CPP.
+        /// The one flag a release process should gate on: a succeeded Release build on IL2CPP,
+        /// stamped with a real App ID, carrying no <c>steam_appid.txt</c>.
         /// Everything else is a build you can play, not a build you can publish.
+        /// <para>
+        /// The last two clauses are here because the first three were once all true of a build
+        /// that shipped App ID 480 in two files — "yes" was answered without looking at either.
+        /// </para>
         /// </summary>
         public bool ShippableOnSteam
         {
-            get { return Succeeded && Configuration == BuildConfigurationId.Release && !MonoFallback; }
+            get
+            {
+                return Succeeded
+                    && Configuration == BuildConfigurationId.Release
+                    && !MonoFallback
+                    && !SteamAppIdIsPlaceholder
+                    && StrayAppIdFiles.Count == 0;
+            }
         }
 
         /// <summary>One line for the end-of-run summary table.</summary>
@@ -176,8 +215,16 @@ namespace HorrorGame.EditorTools
                     : string.Empty));
             // Measured before this report is written, so the number is the player's size and
             // does not drift by a few kilobytes every time the report grows.
-            Line(text, "size on disk", BuildPipelinePaths.ToMegabytes(SizeBytes).ToString("0.00", CultureInfo.InvariantCulture)
+            Line(text, "output folder", BuildPipelinePaths.ToMegabytes(SizeBytes).ToString("0.00", CultureInfo.InvariantCulture)
                 + " MB   (" + SizeBytes.ToString(CultureInfo.InvariantCulture) + " bytes, this report excluded)");
+            if (PayloadBytes > 0)
+            {
+                // The line to budget a depot against. The difference is Unity's symbol folders,
+                // which the uploader drops; reporting only the folder total overstated this
+                // build's download by about four times.
+                Line(text, "ships to Steam", BuildPipelinePaths.ToMegabytes(PayloadBytes)
+                    .ToString("0.00", CultureInfo.InvariantCulture) + " MB   (symbol folders excluded)");
+            }
             if (UnityReportedSizeBytes > 0)
             {
                 Line(text, "size (unity)", BuildPipelinePaths.ToMegabytes((long)UnityReportedSizeBytes)
@@ -192,7 +239,8 @@ namespace HorrorGame.EditorTools
             text.AppendLine();
             Line(text, "output", BuildPipelinePaths.Normalize(OutputDirectory));
             Line(text, "player", BuildPipelinePaths.Normalize(PlayerPath));
-            Line(text, "steam app id", SteamAppId + "   (" + SteamAppIdSource + ")");
+            Line(text, "steam app id", SteamAppId + "   (" + SteamAppIdSource + ")"
+                + (SteamAppIdIsPlaceholder ? "   — Valve's Spacewar sample, not this game" : string.Empty));
             text.AppendLine();
 
             text.AppendLine("scenes (" + Scenes.Length + ", in load order)");
@@ -257,6 +305,9 @@ namespace HorrorGame.EditorTools
             JsonLine(json, "result", Result, true);
             JsonBool(json, "succeeded", Succeeded, true);
             JsonBool(json, "shippableOnSteam", ShippableOnSteam, true);
+            JsonBool(json, "steamAppIdIsPlaceholder", SteamAppIdIsPlaceholder, true);
+            JsonArray(json, "strayAppIdFiles", StrayAppIdFiles.ToArray(), true);
+            JsonNumber(json, "payloadBytes", PayloadBytes, true);
             JsonLine(json, "platform", BuildPipelineTargets.DisplayName(Platform), true);
             JsonLine(json, "platformFolder", BuildPipelineTargets.FolderName(Platform), true);
             JsonLine(json, "macArchitecture", MacArchitecture, true);
@@ -322,7 +373,21 @@ namespace HorrorGame.EditorTools
                 return "this is a Development build (debug symbols and profiler are in it)";
             }
 
-            return "IL2CPP was unavailable on this host, so it is a Mono build";
+            if (MonoFallback)
+            {
+                return "IL2CPP was unavailable on this host, so it is a Mono build";
+            }
+
+            if (StrayAppIdFiles.Count > 0)
+            {
+                return "the build carries " + BuildPipelineOptions.SteamAppIdFileName + " ("
+                    + string.Join(", ", StrayAppIdFiles.ToArray())
+                    + "); Valve asks a released depot not to, because Steam tells the game its "
+                    + "own App ID and a stale file overrides it";
+            }
+
+            return "the App ID is still " + SteamAppId + ", Valve's Spacewar sample — the store "
+                + "page's own App ID has to be set with -buildSteamAppId before this can go up";
         }
 
         private static void Line(StringBuilder text, string key, string value)

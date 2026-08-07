@@ -19,12 +19,11 @@ namespace HorrorGame.Steam
     /// with <see cref="SteamAppConfig.AppId"/>.
     /// </para>
     /// <para>
-    /// Valve asks that the file <em>not</em> ship in a released build: with the real
-    /// App ID it is redundant (Steam launches the game and tells it), and a stale
-    /// copy is a support ticket that reads "the game says it is Spacewar". Both
-    /// entry points here therefore refuse to write once
-    /// <see cref="SteamAppConfig.IsDevelopmentAppId"/> is false, unless it is a
-    /// development build.
+    /// Valve asks that the file <em>not</em> ship in a released build: Steam launches
+    /// the game and tells it its own App ID, so the file is redundant at best, and a
+    /// stale copy is a support ticket that reads "the game says it is Spacewar".
+    /// Every entry point here therefore refuses to write into a release build — see
+    /// <see cref="ShouldWrite"/> for the rule and for the one it replaced.
     /// </para>
     /// <para>
     /// Nothing here throws. A read-only directory is a reason to log and carry on
@@ -35,10 +34,24 @@ namespace HorrorGame.Steam
     public static class SteamAppIdFile
     {
         /// <summary>
-        /// True when this build should have the file on disk beside it: while the
-        /// project is still on §13's 480, or in any development build.
+        /// True when this build should have the file on disk beside it: the editor and any
+        /// development player, never a release player.
+        /// <para>
+        /// The App ID deliberately does not enter into it. This rule once read
+        /// <c>IsDevelopmentAppId || isDebugBuild</c>, on the reasoning that a build still on
+        /// §13's 480 needs the file to start Steamworks at all — true, but it answers a
+        /// question about the App ID with a decision about the depot, and while the project
+        /// sits on 480 the first clause is simply always true. Release builds shipped the file
+        /// for as long as that rule stood. Whether a placeholder App ID may ship is a separate
+        /// question, and the build report gates on it separately.
+        /// </para>
+        /// <para>
+        /// Read this from the running player, where <c>isDebugBuild</c> is the player's own
+        /// configuration. In an editor build callback it is the editor answering — always
+        /// true — so the post-build path asks Unity's <c>BuildReport</c> instead.
+        /// </para>
         /// </summary>
-        public static bool ShouldWrite => SteamAppConfig.IsDevelopmentAppId || Debug.isDebugBuild;
+        public static bool ShouldWrite => Debug.isDebugBuild;
 
         /// <summary>
         /// Writes the file everywhere Steamworks might look, and returns true if at

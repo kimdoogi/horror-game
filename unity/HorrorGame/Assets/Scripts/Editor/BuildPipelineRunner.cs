@@ -333,6 +333,7 @@ namespace HorrorGame.EditorTools
                 GitDirty = version.Dirty,
                 SteamAppId = options.SteamAppId,
                 SteamAppIdSource = options.SteamAppIdSource,
+                SteamAppIdIsPlaceholder = options.SteamAppId == BuildPipelineOptions.DefaultSteamAppId,
                 Scenes = scenes,
                 OutputDirectory = outputDirectory,
                 PlayerPath = playerPath,
@@ -435,7 +436,14 @@ namespace HorrorGame.EditorTools
             }
 
             report.SizeBytes = BuildPipelinePaths.DirectorySizeBytes(outputDirectory);
+            report.PayloadBytes = BuildPipelinePaths.ShippablePayloadBytes(outputDirectory);
             report.OutputEntries.AddRange(BuildPipelinePaths.TopLevelEntries(outputDirectory));
+
+            // After the build, so this sees whatever every post-build callback left behind —
+            // which is the point. The pipeline's own decision not to write the file is recorded
+            // a few lines up; this is the finished build, and the two have disagreed before.
+            report.StrayAppIdFiles.AddRange(
+                FindAppIdFiles(outputDirectory, options.Configuration != BuildConfigurationId.Development));
 
             WriteFallbackMarker(report, outputDirectory);
 
@@ -520,6 +528,45 @@ namespace HorrorGame.EditorTools
             report.Notes.Add(BuildPipelineOptions.SteamAppIdFileName + " written with App ID "
                 + options.SteamAppId + " (" + options.SteamAppIdSource + ") so the player can start "
                 + "Steamworks outside the client.");
+        }
+
+        /// <summary>
+        /// Every <c>steam_appid.txt</c> in the finished build, as paths relative to
+        /// <paramref name="outputDirectory"/>. Run after the build so it sees what post-build
+        /// callbacks left behind as well as what this pipeline wrote.
+        /// <para>
+        /// On a development build the file is wanted and none of these are strays, so the list
+        /// comes back empty. On a release build every one of them is a defect: the note above
+        /// says the pipeline did not write the file, and for a while that note was true while
+        /// two copies sat in the output anyway, put there by a different component with its own
+        /// correct-looking rule.
+        /// </para>
+        /// </summary>
+        private static List<string> FindAppIdFiles(string outputDirectory, bool isRelease)
+        {
+            var found = new List<string>();
+            if (!isRelease || !Directory.Exists(outputDirectory))
+            {
+                return found;
+            }
+
+            try
+            {
+                foreach (var file in Directory.GetFiles(
+                    outputDirectory, BuildPipelineOptions.SteamAppIdFileName, SearchOption.AllDirectories))
+                {
+                    found.Add(BuildPipelinePaths.Normalize(
+                        file.Substring(outputDirectory.Length).TrimStart('/', '\\')));
+                }
+            }
+            catch (IOException exception)
+            {
+                // Unreadable output is worth a note, never a failed build at this stage.
+                Debug.LogWarning("[BuildPipeline] Could not scan the build for "
+                    + BuildPipelineOptions.SteamAppIdFileName + ": " + exception.Message);
+            }
+
+            return found;
         }
 
         /// <summary>

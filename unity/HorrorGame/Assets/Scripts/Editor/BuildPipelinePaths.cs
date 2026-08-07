@@ -108,6 +108,68 @@ namespace HorrorGame.EditorTools
         /// a macOS .app is a directory tree and the Windows player has a data folder beside
         /// the executable.
         /// </summary>
+        /// <summary>
+        /// Folder names Unity drops beside a player that must never reach a depot. Unity names
+        /// them itself, which is why matching on the name is sound rather than fragile — and
+        /// <c>tools/steam/lib/steampipe.py</c> excludes the same two, so a build that reports
+        /// this figure and an upload that sends it agree.
+        /// </summary>
+        private static readonly string[] SymbolFolderSuffixes =
+        {
+            "_BurstDebugInformation_DoNotShip",
+            "_BackUpThisFolder_ButDontShipItWithYourGame",
+        };
+
+        /// <summary>
+        /// Bytes the uploader would actually send from <paramref name="directory"/>: everything
+        /// less <see cref="SymbolFolderSuffixes"/>. On this project those folders run about four
+        /// times the game, so the difference is the difference between budgeting a 0.4 GB depot
+        /// and a 2.1 GB one.
+        /// </summary>
+        public static long ShippablePayloadBytes(string directory)
+        {
+            if (!Directory.Exists(directory))
+            {
+                return 0;
+            }
+
+            long total = 0;
+            foreach (var entry in Directory.GetFileSystemEntries(directory))
+            {
+                var name = Path.GetFileName(entry);
+                var isSymbolFolder = false;
+                foreach (var suffix in SymbolFolderSuffixes)
+                {
+                    if (name.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+                    {
+                        isSymbolFolder = true;
+                        break;
+                    }
+                }
+
+                if (isSymbolFolder)
+                {
+                    continue;
+                }
+
+                total += Directory.Exists(entry) ? DirectorySizeBytes(entry) : FileLengthOrZero(entry);
+            }
+
+            return total;
+        }
+
+        private static long FileLengthOrZero(string file)
+        {
+            try
+            {
+                return new FileInfo(file).Length;
+            }
+            catch (IOException)
+            {
+                return 0;
+            }
+        }
+
         public static long DirectorySizeBytes(string directory)
         {
             if (!Directory.Exists(directory))

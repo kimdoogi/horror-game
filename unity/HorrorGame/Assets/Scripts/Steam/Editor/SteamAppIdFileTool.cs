@@ -3,7 +3,8 @@
 using System;
 using System.IO;
 using UnityEditor;
-using UnityEditor.Callbacks;
+using UnityEditor.Build;
+using UnityEditor.Build.Reporting;
 using UnityEngine;
 
 namespace HorrorGame.Steam.EditorTools
@@ -19,15 +20,27 @@ namespace HorrorGame.Steam.EditorTools
     /// </para>
     /// <para>
     /// The editor case is handled on load; the player case in a post-build step, which is
-    /// the only moment the built output's path is known. Both defer the decision of
-    /// <em>whether</em> to write to <see cref="SteamAppIdFile.ShouldWrite"/>, so the day
-    /// <see cref="SteamAppConfig.AppId"/> becomes the real App ID, release builds stop
-    /// shipping the file — which is what Valve asks for, and one less thing to remember at
-    /// §14 step 7.
+    /// the only moment the built output's path is known.
+    /// </para>
+    /// <para>
+    /// The two cases cannot share one rule, and once did, to this project's cost.
+    /// <see cref="SteamAppIdFile.ShouldWrite"/> asks <c>Debug.isDebugBuild</c>, which at
+    /// runtime is the running player's own configuration — exactly right there. Inside a
+    /// post-build callback it is the <em>editor</em> that is answering, and the editor is
+    /// always a debug build, so the rule said "write" for every build ever made, including
+    /// the release ones Valve asks to be clean. The build being processed is the only thing
+    /// worth asking, and <see cref="BuildReport"/> carries it, so this takes a
+    /// <see cref="IPostprocessBuildWithReport"/> instead of the bare callback.
     /// </para>
     /// </summary>
-    public static class SteamAppIdFileTool
+    public class SteamAppIdFileTool : IPostprocessBuildWithReport
     {
+        /// <summary>
+        /// After Unity's own post-build work, before the build pipeline's report is written —
+        /// which then scans the output and would catch this class doing the wrong thing.
+        /// </summary>
+        public int callbackOrder => 1;
+
         [InitializeOnLoadMethod]
         private static void WriteForEditor()
         {
@@ -51,15 +64,21 @@ namespace HorrorGame.Steam.EditorTools
         /// reliably the one Steamworks reads, and both together cost 4 bytes.
         /// </para>
         /// </summary>
-        [PostProcessBuild(1)]
-        public static void OnPostprocessBuild(BuildTarget target, string pathToBuiltProject)
+        public void OnPostprocessBuild(BuildReport report)
         {
-            if (!SteamAppIdFile.ShouldWrite)
+            var summary = report.summary;
+            var isDevelopmentBuild = (summary.options & BuildOptions.Development) != 0;
+
+            if (!isDevelopmentBuild)
             {
-                Debug.Log("[Steam] Release App ID in use, so " + SteamAppConfig.AppIdFileName
-                    + " was deliberately not shipped with this build.");
+                Debug.Log("[Steam] Release build, so " + SteamAppConfig.AppIdFileName
+                    + " was deliberately not shipped with it: Steam tells a released game its own"
+                    + " App ID, and a file in the depot would override that with a stale one.");
                 return;
             }
+
+            var target = summary.platform;
+            var pathToBuiltProject = summary.outputPath;
 
             if (string.IsNullOrEmpty(pathToBuiltProject))
             {

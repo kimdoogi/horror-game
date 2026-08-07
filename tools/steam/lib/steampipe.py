@@ -96,6 +96,16 @@ EXCLUSIONS: Tuple[Tuple[str, str], ...] = (
      "Archive artefact from unzipping a build on macOS."),
     ("*.log",
      "Build logs. Nothing a player installs should include one."),
+    ("MONO-FALLBACK-DO-NOT-SHIP.txt",
+     "The build pipeline's own marker that IL2CPP was unavailable and this player must not "
+     "be published. Staging a folder that contains one would publish the warning instead of "
+     "heeding it — and one has been sitting in dist/windows-x64 since the audit that named it."),
+    ("steam_appid.txt",
+     "Valve asks that a released depot not carry this: Steam tells a launched game its own "
+     "App ID, and a file in the depot overrides it — a stale copy makes the game report "
+     "itself as whatever it was built against. The build pipeline already refuses to write "
+     "one into a release build and fails its shippable check if it finds one; this is the "
+     "second lock, because the first one was open for a while and nothing noticed."),
     (".git*",
      "Version control metadata. Would leak branch names and remote URLs."),
 )
