@@ -314,10 +314,18 @@ The cause is measured and is a single number:
 ```
 
 A concentric maze of 2.5 m cells is a corner every few metres by construction, and cover
-that dense means aggro can always be shed. **The creature is decoration.** Nothing in §1
-contradicts this: the audit proves it *can* reach you, and the runner test proves it
-never has to be dealt with. Tracked as [F-007](BALANCE-FINDINGS.md#f-007) and
-[B-007](BLOCKERS.md#b-007), which are the same defect.
+that dense means **aggro can always be shed**. Tracked as [F-007](BALANCE-FINDINGS.md#f-007)
+and [B-007](BLOCKERS.md#b-007), which are the same defect.
+
+This used to end "**the creature is decoration**", and §1.5 four sections above it now says
+the opposite of that in a log line from a running match. Both were written honestly and the
+older one aged: it dates from when seven of eight storeys had no creature at all, which
+[F-013](BALANCE-FINDINGS.md#f-013) identified as the real cause and which is fixed — eight
+`MonsterSpawn` objects in the scene, `§06 창조물 8마리` at match start, and a runtime that
+refuses to begin if those two ever disagree. **A shed chase is not a skipped one.** What
+this section measures is that meeting a creature costs a runner a median 7.2 s against
+F-013's 3.4~20 s band — cheap, at the low end, and worth raising. What it does not measure,
+and used to claim, is that meeting one costs nothing.
 
 ### 2.2 §12 passes 14 of 17, and the map ships under a waiver
 

@@ -1886,12 +1886,43 @@ is three links and only the first has been written:
 | link | file | state |
 |---|---|---|
 | author 8 spawns | `DescentMap.PlaceStarts` | **done** (working tree, another agent) |
-| keep 8 spawns | `MapSketch._monsterStart` — a field, not a list | **missing** — last write wins |
-| spawn 8 creatures | `MatchMap.MonsterSpawn` (singular) → `MatchDirector._monster`, `PrepareMonster`/`ResetMonster` read `_map.MonsterSpawn` | **missing** — one `_monster` exists at runtime |
+| keep 8 spawns | `MapSketch._monsterStart` — a field, not a list | ~~missing~~ → **done**, now `List<MapCell> _monsterStarts` |
+| spawn 8 creatures | `MatchMap.MonsterSpawn` (singular) → `MatchDirector._monster` | ~~missing~~ → **done**: `MatchMap.MonsterSpawns` is a list and `MatchDirector.PrepareCreatures` clones one agent per entry |
 
 `GameConstants.MonstersPerStorey` is what the second and third links should be written
 against; the loop in `DescentMap` currently expresses the count as `level < Storeys` with
 no constant behind it.
+
+> **All three links landed. §4's headline — 「the creature threatens nobody because it is
+> not there」 — is history as of 2026-08-08, and this is what closed it rather than what
+> was planned to.**
+>
+> The prose above, `GameConstants.MonstersPerStorey`'s doc comment, `MapSketch`'s
+> «until the runtime spawns one per marker the running game has ONE creature on eight
+> floors» and `DescentMap`'s «the change is inert if its other half does not land» were
+> each written while true, and each outlived its own defect. Three separate files went on
+> telling a reader the game ships one creature after it had stopped doing so — long enough
+> that this pass began by setting out to fix it again.
+>
+> Measured three ways rather than argued, because the numbers in §4 were read off a
+> generator log and the scene disagreed with it once already:
+>
+> | instrument | reads |
+> |---|---|
+> | the scene on disk, by name | **8** `MonsterSpawn` objects — B1 하역장, B2 기록보관소, B3 기계실, B4 저탄장, B5 저수조 (the bare primary), B6 병동, B7 수몰층, B8 굴착층 |
+> | the §06 audit | `monster reach 212/212 markers reachable from a MonsterSpawn on the SAME storey, over 8 of 8 storeys` |
+> | a running match, PlayMode | `[Match] §06 창조물 8마리 — 8개 층에 선언된 시작점 8개. §12-B③ 층마다 1마리.` |
+>
+> The third one is the only one that was ever in doubt, and it is now also a gate:
+> `MatchDirector.VerifyCreatureCount` refuses to start a match whose standing creature
+> count differs from the map's declared spawns, so the audit and the game cannot drift
+> apart again silently. §12-B③ is in the building.
+>
+> **What this does not settle** is §1 and §3 — 720/720 escapable and a median toll of
+> 7.2 s were both measured on the graph with all eight creatures already declared, so
+> those numbers stand as written. The creature is present on every floor *and* escapable
+> from everywhere; §3's argument that the race prices it in seconds rather than in deaths
+> is what carries the design, not the count.
 
 While reading it: the class ASCII in `DescentMap` used to mark **B4** as "괴물은 여기서
 시작한다" while `Storeys / 2 = 4` is index 4 = **B5 저수조** — which the audit confirms,

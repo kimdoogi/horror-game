@@ -908,8 +908,16 @@ race of twenty, so it is not a substitute measurement for this one.
 
 10/10 TooEasy, and **720 of 720 places escapable** against §12's 50–70 % band. Every
 sampled runner releases with *"3 s of unbroken cover"*. The rule and the grade are one
-defect measured twice, and it is the reason the creature is decoration
-([STATUS.md §2.1](STATUS.md), [F-007](BALANCE-FINDINGS.md#f-007)).
+defect measured twice ([STATUS.md §2.1](STATUS.md), [F-007](BALANCE-FINDINGS.md#f-007)).
+
+> **"…and it is the reason the creature is decoration" — struck 2026-08-08.** That clause
+> was written when seven of eight storeys had no creature on them at all, which
+> [F-013](BALANCE-FINDINGS.md#f-013) showed was the actual cause and which is now fixed:
+> the scene carries eight `MonsterSpawn` objects, a running match logs
+> `§06 창조물 8마리`, and `MatchDirector.VerifyCreatureCount` refuses to start if those two
+> ever disagree. The creature is on every floor. What B-007 still costs is the *price* of
+> meeting one — F-013 §3 measures it at a 7.2 s median against a 3.4~20 s band — so this
+> blocker is about how cheap a chase is, not about whether there is anything to flee.
 
 ### What it would take
 

@@ -35,6 +35,7 @@ run.
 | Exit code instead of results | a run that died early has zero errors in its log | Read the XML / the report, not `$?` |
 | A green suite over a broken build | Unity clean, 560 tests passing, `dotnet build` failing on 2 errors for four hours ([B-006](BLOCKERS.md#b-006), [B-013](BLOCKERS.md#b-013)) | §1 and §2 are different questions. Run both |
 | A test that calls the method under the key | §08's pick-up key broken in the build with 575 tests green | Drive the input, and assert the input arrived |
+| A `grep` that cannot match what it is counting | `m_Name: MonsterSpawn` found 1 spawn in a scene holding 8 — Unity escapes Korean as `\uXXXX` and then **double-quotes the whole value**, so every name but the pure-ASCII one was invisible | Count with a parser, not a prefix. `re.findall(r"m_Name:\s*(.+)")` and strip the quotes. A pattern that finds *some* of a thing looks exactly like a thing that is mostly absent |
 
 And one more, which is this project's own signature failure: **a gate that describes a
 different artefact than the one you are about to ship.** [B-009](BLOCKERS.md#b-009) was
@@ -562,6 +563,34 @@ document a project can have.
   exists in a match.
 - **Everything in [ART.md](ART.md) and `docs/store/`.** Every frame is of the five-storey
   co-operative building, and several contain the 차량 shop the pivot deleted.
+- **근접 음성, on any machine that is not listening to a live microphone.** Three
+  `VoiceSocketTests` — `AVoiceCrossesARealSocketAndArrivesAttenuatedByTheRule`,
+  `AWallBetweenThemCostsTheRulesOcclusionAndNotTheEnginesRolloff` and
+  `SpeakingIsReportedToTheCreatureEvenWithNobodyInRange` — drive a real socket with a real
+  `VoiceCapture`, so they need the microphone to be producing *sound*, not merely to open.
+  On 2026-08-08 the log says `[Voice] Microphone line at 16000 Hz` and all three fail with
+  "the relay forwarded nothing", which is what silence looks like from the far end. **This
+  is not a pass/fail signal about the voice code and must not be read as one in either
+  direction** — green means somebody was making noise near the machine.
+
+### PlayMode is 117/121 here, and 121/121 is on record. Both were measured
+
+Two consecutive runs on the same tree, docs-only changes, nothing touching voice or
+movement:
+
+| run | failed |
+|---|---|
+| 1 | the 3 voice tests **+** `PlayerStanceTests.The_hop_cannot_mount_a_ledge_a_walk_cannot` |
+| 2 | the 3 voice tests **+** `GunTests.Firing_hands_the_creature_a_sound_it_can_act_on` |
+
+The three voice tests fail identically both times — see above, and treat them as
+environment-gated rather than as a regression. **The fourth is a different test each run,
+which makes it the more interesting one:** something in the PlayMode fixture is
+order- or timing-dependent, and whichever test draws the short straw is the one that
+fails. A suite with one floating failure reports a different set every time and will,
+sooner or later, report an empty one — at which point the flake looks like a fix.
+Neither has been chased down. The 121/121 on record was a real measurement of a run where
+the straw fell elsewhere and the room was not silent.
 
 ---
 
