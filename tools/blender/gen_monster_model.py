@@ -2378,8 +2378,17 @@ def _slopes(normal_xyz: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
 
 def dress_sculpt_maps(diffuse: np.ndarray, normal: np.ndarray | None,
                       rough: np.ndarray | None, res: int,
-                      world_size: float) -> dict:
+                      world_size: float, fields: dict | None = None,
+                      landmarks: dict | None = None) -> dict:
     """Turns Rodin's turntable maps into dead flesh. Shape only — no albedo policy.
+
+    ``fields``/``landmarks`` (2026-08) make the dressing anatomical: with a per-texel
+    world position and arm/hand masks from ``rasterize_fields``, the craquelure keeps
+    going down the forearms instead of stopping at the biceps, split-skin lines run
+    over the tendons, grime builds toward the claws, the maw channel goes dark and
+    wet ONLY inside its own torn margins, and the crest blades get cartilage-rib
+    versus membrane shading. Without them (the hull monster path) everything below
+    still works exactly as before.
 
     The caller still runs its mean/ceiling grade afterwards, so everything here is
     *relative*: mottle, craquelure and staining move texels against each other and
@@ -2417,6 +2426,20 @@ def dress_sculpt_maps(diffuse: np.ndarray, normal: np.ndarray | None,
     cav = (cavity_from_normal(normal[..., :3], res) if normal is not None
            else np.zeros((res, res), dtype=np.float32))
 
+    # The anatomical fields, unpacked early because the craquelure gate below wants
+    # the arm mask. All zeros when the caller has none — every gate degrades to the
+    # pre-2026-08 behaviour.
+    armw = np.zeros((res, res), dtype=np.float32)
+    handw = np.zeros((res, res), dtype=np.float32)
+    wx = wy = wz = None
+    if fields is not None and landmarks is not None and "pos" in fields:
+        coverf = fields["cover"].astype(np.float32)
+        armw = (fields["arm"] * coverf).astype(np.float32)
+        handw = (fields["hand"] * coverf).astype(np.float32)
+        wx = fields["pos"][..., 0]
+        wy = fields["pos"][..., 1]
+        wz = fields["pos"][..., 2]
+
     mottle = _fbm(res, 7301, beta=2.0, low_cycles=5.0)
     blotch = _fbm(res, 7302, beta=2.3, low_cycles=2.4)
     tone = (0.76 + 0.48 * mottle) * (0.86 + 0.28 * blotch)
@@ -2433,9 +2456,15 @@ def dress_sculpt_maps(diffuse: np.ndarray, normal: np.ndarray | None,
     coarse_f1, coarse_f2, _ = _worley(res, 34, 7306, jitter=1.0)
     fine_edge = _warp(fine_f2 - fine_f1, warp_y, warp_x)
     coarse_edge = _warp(coarse_f2 - coarse_f1, warp_y, warp_x)
+    # The fine-crack gate takes whichever is stronger: concavity (drying skin splits
+    # in its folds) or arm-ness (2026-08 — the review's F: torso craquelure stopped
+    # at the biceps and the forearms photographed as moulded plastic beside it).
+    fine_gate = np.maximum(0.30 + 0.70 * _smoothstep(0.12, 0.55, cav),
+                           0.25 + 0.75 * _smoothstep(0.20, 0.75, armw))
+    coarse_gate = 0.45 + 0.30 * _smoothstep(0.30, 0.90, armw)
     crack = np.clip(
-        _smoothstep(0.014, 0.0, fine_edge) * (0.30 + 0.70 * _smoothstep(0.12, 0.55, cav))
-        + _smoothstep(0.010, 0.0, coarse_edge) * 0.45, 0.0, 1.0).astype(np.float32)
+        _smoothstep(0.014, 0.0, fine_edge) * fine_gate
+        + _smoothstep(0.010, 0.0, coarse_edge) * coarse_gate, 0.0, 1.0).astype(np.float32)
 
     lin = lin * (1.0 - crack[..., None] * 0.66)
 
@@ -2446,8 +2475,109 @@ def dress_sculpt_maps(diffuse: np.ndarray, normal: np.ndarray | None,
     wet = np.clip(cav * 1.15 + crack * 0.85, 0.0, 1.0)
     rough_out = np.clip(dry - wet * 0.55, 0.10, 1.0).astype(np.float32)
 
+    # ── 2026-08: the arms, the claws, the channel, the fins — 3D-gated paint ──
+    extra_relief = np.zeros((res, res), dtype=np.float32)
+    if wz is not None:
+        elbow, tipz = landmarks["elbow"], landmarks["fingertip"]
+        along = np.clip((elbow + 0.05 - wz) / max(elbow - tipz, 1e-4),
+                        0.0, 1.0).astype(np.float32)
+
+        # Split-skin lines over the tendons: thin dark stripes running down the
+        # forearm, meandering on a noise phase, gone before the claw tips (the
+        # tips get the grime instead).
+        meander = _fbm(res, 7411, beta=2.0, low_cycles=3.0)
+        stripe = (0.5 + 0.5 * np.sin(wx * 235.0 + (meander - 0.5) * 6.5
+                                     + wz * 9.0)).astype(np.float32)
+        tendon = (_smoothstep(0.86, 0.99, stripe) * armw
+                  * _smoothstep(0.06, 0.30, along)
+                  * (1.0 - _smoothstep(0.80, 1.0, along))).astype(np.float32)
+        lin = lin * (1.0 - tendon[..., None] * 0.50)
+        rough_out = np.clip(rough_out - tendon * 0.26, 0.10, 1.0)
+        extra_relief += tendon * 0.55
+
+        # Knuckle wear: pale dry abrasion where the hands are convex — it rakes
+        # walls, and the knuckles are what touch first.
+        if normal is not None:
+            nx2 = normal[..., 0] * 2.0 - 1.0
+            ny2 = normal[..., 1] * 2.0 - 1.0
+            div = ((np.roll(nx2, -1, axis=1) - np.roll(nx2, 1, axis=1)) * 0.5
+                   + (np.roll(ny2, -1, axis=0) - np.roll(ny2, 1, axis=0)) * 0.5)
+            convex = _blur(np.clip(div, 0.0, None), 2.5 * res / 1024.0)
+            c_lo, c_hi = np.percentile(convex, (2.0, 99.0))
+            convex = np.clip((convex - c_lo) / max(c_hi - c_lo, 1e-9),
+                             0.0, 1.0).astype(np.float32)
+            wear = (handw * _smoothstep(0.55, 0.90, convex)).astype(np.float32)
+            bone = np.array([0.305, 0.285, 0.252], dtype=np.float32).reshape(1, 1, 3)
+            lin = lin * (1.0 - wear[..., None] * 0.40) + bone * wear[..., None] * 0.40
+            rough_out = np.clip(rough_out - wear * 0.20, 0.10, 1.0)
+
+        # Grime gradient toward the claws.
+        dirt = (np.maximum(armw * _smoothstep(0.20, 0.95, along), handw * 0.9)
+                * (0.62 + 0.38 * mottle)).astype(np.float32)
+        grime = np.array([0.72, 0.66, 0.58], dtype=np.float32).reshape(1, 1, 3)
+        lin = lin * (1.0 - dirt[..., None] * 0.45) + lin * grime * dirt[..., None] * 0.45
+        rough_out = np.clip(rough_out + dirt * 0.08, 0.10, 1.0)
+        ao = np.clip(ao - dirt * 0.08, 0.25, 1.0)
+
+        # The maw channel: pooling dark and wet gloss ONLY inside the torn slot.
+        # The interior test is depth behind the local front shell, measured off the
+        # position map itself, so it follows tear_maw_channel's displaced geometry.
+        neck, shoulder, crotch = landmarks["neck"], landmarks["shoulder"], landmarks["crotch"]
+        topz = landmarks["top"]
+        ch_hi = neck + (topz - neck) * 0.10
+        ch_lo = shoulder - (shoulder - crotch) * 0.55
+        band = ((np.abs(wx) < 0.062) & (wz > ch_lo) & (wz < ch_hi)
+                & (wy < 0.05) & fields["cover"])
+        wideband = ((np.abs(wx) < 0.10) & (wz > ch_lo) & (wz < ch_hi)
+                    & (wy < 0.05) & fields["cover"])
+        if band.any() and wideband.any():
+            nb = 36
+            zb = np.clip(((wz - ch_lo) / max(ch_hi - ch_lo, 1e-6) * nb).astype(np.int32),
+                         0, nb - 1)
+            front_ref = np.full(nb, np.nan, dtype=np.float32)
+            for b in range(nb):
+                sel = wideband & (zb == b)
+                if sel.any():
+                    front_ref[b] = np.percentile(wy[sel], 3.0)
+            finite = front_ref[np.isfinite(front_ref)]
+            if finite.size:
+                fill = finite[0]
+                for b in range(nb):
+                    if np.isfinite(front_ref[b]):
+                        fill = front_ref[b]
+                    else:
+                        front_ref[b] = fill
+                depth = np.where(band, wy - front_ref[zb], 0.0).astype(np.float32)
+                # The lateral gate is load-bearing: depth alone also fires on the
+                # chest as it curves back beside the slot, and round 3 rendered
+                # that as a straight-edged glossy column to the right of the
+                # channel. Wet is only wet within the slot's own torn half-width.
+                lateral = _smoothstep(0.042, 0.022, np.abs(wx).astype(np.float32))
+                inside = (_smoothstep(0.006, 0.020, depth) * lateral
+                          * band.astype(np.float32)).astype(np.float32)
+                pool = (_smoothstep(0.015, 0.038, depth) * lateral
+                        * band.astype(np.float32)).astype(np.float32)
+                lin = lin * (1.0 - inside[..., None] * 0.48 - pool[..., None] * 0.22)
+                gloss = np.clip(0.30 - 0.10 * pool, 0.10, 1.0)
+                rough_out = np.where(inside > 0.3,
+                                     np.minimum(rough_out, gloss), rough_out)
+                ao = np.clip(ao - inside * 0.22, 0.22, 1.0)
+
+        # The crest blades: cartilage ribs against waxy membrane. Only geometry
+        # BEHIND the torso's own back can be a blade, which is exactly the fan.
+        finreg = ((wy > landmarks["back_y"] + 0.012)
+                  & fields["cover"]).astype(np.float32)
+        if finreg.any():
+            rib = (0.5 + 0.5 * np.sin(wz * 240.0 + wy * 60.0)).astype(np.float32)
+            rib = (_smoothstep(0.72, 0.98, rib) * finreg).astype(np.float32)
+            memb = finreg * (1.0 - rib)
+            lin = lin * (1.0 - rib[..., None] * 0.22)
+            rough_out = np.clip(rough_out - memb * 0.18 + rib * 0.06, 0.10, 1.0)
+            extra_relief += rib * 0.40
+
     if normal is not None:
-        crack_n = _height_to_normal(np.clip(0.5 - crack * 0.5 - cav * 0.10, 0.0, 1.0),
+        crack_n = _height_to_normal(np.clip(0.5 - crack * 0.5 - cav * 0.10
+                                            - extra_relief * 0.30, 0.0, 1.0),
                                     world_size, 0.010)
         sx, sy = _slopes(normal[..., :3] * 2.0 - 1.0)
         cx, cy = _slopes(crack_n)
@@ -2589,35 +2719,134 @@ def grow_pelvis_shroud(obj: bpy.types.Object, m: dict) -> list[tuple]:
         tx, ty = -math.sin(theta), math.cos(theta)
 
         r0 = radius_at(theta) - 0.006
-        length = 0.20 + 0.15 * _hash01(9101, i)
+        length = 0.16 + 0.22 * _hash01(9101, i)   # wider spread than the first pass:
+                                                  # equal-length strips read as a fringe
         if cy < -0.3:                    # front (-Y): longest, covers the pelvis panel
             length *= 1.15
         if abs(cx) > 0.72:               # the flanks: the thigh is well inboard of the
             length *= 0.80               # iliac shelf, so a long strip here floats
         tip_z = max(z_root - length, knee + 0.05)
-        width = 0.050 + 0.045 * _hash01(9102, i)
+        width = 0.038 + 0.062 * _hash01(9102, i)
         skew = (0.5 - _hash01(9105, i)) * width * 1.2
 
         start = len(bm.verts)
-        pts = []
-        for u in (-0.5, 0.5):
-            px, py = cx * r0 + tx * width * u, cy * r0 + ty * width * u
-            # root edge, buried deep into the body so the strip never floats
-            pts.append((px - cx * 0.035, py - cy * 0.035, z_root + 0.035))
-            pts.append((px + cx * 0.008, py + cy * 0.008, z_root - 0.025))
-        # The tip tucks INBOARD, not out. Round 2 flared the tips outward and the
-        # strips photographed as a ring of planks jutting off the hips — a hula
-        # skirt, not torn hide. Hide with weight hangs down the thigh it covers.
+        # The tip tucks INBOARD, not out — round 2's hula-skirt lesson still holds:
+        # hide with weight hangs down the thigh it covers. The round-7 adversarial
+        # pass refuted the 2026-08 ribbon rebuild at beam_head range: the strips
+        # still read as uniform planks (edge-line residuals under 5 px over 100
+        # rows) and the two flank strips rendered as paper-flat hip cards. What
+        # answers it, verbatim from the fix list:
+        #
+        # * **Per-strip hashed taper** on top of the widened width spread — no two
+        #   strips share a width profile any more.
+        # * **Two to three midpoint kinks**: the centreline dog-legs 10-26 mm
+        #   sideways at hashed interior stations, so a straight line fitted to
+        #   either edge misses by well over 5 px at beam_head range.
+        # * **A creased cross-section**: six verts per ring with a radially proud
+        #   ridge whose apex slides across the width — the strip folds along its
+        #   length and catches the beam on two planes, never one. The ridge is
+        #   also the Solidify pass: root thickness 14-22 mm tapering to 4 mm.
+        # * **A V-cut tip on every strip**: the two fray fingers are longer and
+        #   more unequal, and the notch vertex between them is pulled UP into the
+        #   strip, so every tip ends torn (the beam_3m V-cuts, applied to all).
         tip_r = r0 * (0.72 + 0.12 * _hash01(9103, i))
-        for du in (-0.12, 0.12):
-            pts.append((cx * tip_r + tx * (skew + width * du),
-                        cy * tip_r + ty * (skew + width * du), tip_z))
-        for p in pts:
-            bm.verts.new(Vector(p))
-        bm.verts.ensure_lookup_table()
-        new = bm.verts[start:]
-        if len(new) >= 4:
-            bmesh.ops.convex_hull(bm, input=new)
+        SEG = 7
+        curl = (_hash01(9106, i) - 0.5) * 0.11
+        twist = (_hash01(9107, i) - 0.5) * 1.4
+        taper = 0.30 + 0.28 * _hash01(9110, i)
+        crease = 0.8 + 1.4 * _hash01(9113, i)
+        apex_slide = (_hash01(9114, i) - 0.5) * 0.5
+        th_root = 0.014 + 0.008 * _hash01(9115, i)
+
+        # the kinks: 2-3 hashed dog-legs, each a lateral jump that HOLDS from its
+        # station down, so the centreline is piecewise, not smoothed back straight
+        kink_off = [0.0] * (SEG + 1)
+        n_kinks = 2 + (1 if _hash01(9111, i) > 0.45 else 0)
+        for j in range(n_kinks):
+            ks = 1 + int(_hash01(9112, i, j) * (SEG - 1))
+            mag = 0.010 + 0.016 * _hash01(9116, i, j)
+            sign = 1.0 if _hash01(9117, i, j) > 0.5 else -1.0
+            for s in range(ks, SEG + 1):
+                kink_off[s] += sign * mag
+
+        radial = Vector((cx, cy, 0.0))
+        rings = []
+        for s in range(SEG + 1):
+            t = s / SEG
+            if s == 0:
+                # the root ring, buried deep into the body so the strip never floats
+                centre = Vector((cx * (r0 - 0.032), cy * (r0 - 0.032), z_root + 0.032))
+                ww, th = width, th_root
+                cd = Vector((tx, ty, 0.0))
+            else:
+                rr = _lerp(r0 + 0.004, tip_r, t) - math.sin(math.pi * t) * curl
+                zz = z_root - (z_root - tip_z) * (0.06 + 0.94 * t)
+                ww = max(width * (1.0 - taper * t - 0.22 * t * t), 0.016)
+                th = max(th_root * (1.0 - 0.68 * t), 0.004)
+                ang = twist * t
+                ca, sa = math.cos(ang), math.sin(ang)
+                cd = Vector((tx * ca, ty * ca, sa))
+                lat = skew * t + kink_off[s]
+                centre = Vector((cx * rr + tx * lat, cy * rr + ty * lat, zz))
+            rings.append((centre, cd, ww, th))
+
+        strip_faces = []
+        ring_verts = []
+        for si, (centre, cd, ww, th) in enumerate(rings):
+            half = cd * (ww * 0.5)
+            off = radial * (th * 0.5)
+            # the crease apex wanders per station, so the fold line itself is bent
+            wander = (_hash01(9118, i, si) - 0.5) * 0.3
+            apex = cd * (ww * (apex_slide + wander) * 0.5)
+            ridge = radial * (th * crease)
+            ring_verts.append((
+                bm.verts.new(centre - half + off),
+                bm.verts.new(centre + apex + off + ridge),
+                bm.verts.new(centre + half + off),
+                bm.verts.new(centre + half - off),
+                bm.verts.new(centre + apex - off + ridge * 0.35),
+                bm.verts.new(centre - half - off),
+            ))
+        for a, b_ in zip(ring_verts, ring_verts[1:]):
+            for k in range(6):
+                k2 = (k + 1) % 6
+                try:
+                    strip_faces.append(bm.faces.new((a[k], a[k2], b_[k2], b_[k])))
+                except ValueError:
+                    pass
+        try:
+            strip_faces.append(bm.faces.new(tuple(reversed(ring_verts[0]))))
+        except ValueError:
+            pass
+
+        # the V-cut: two fingers of unequal hashed length past the last ring, and
+        # the notch vertex between them pulled UP into the strip so the tip is torn
+        centre, cd, ww, th = rings[-1]
+        half = cd * (ww * 0.5)
+        lv = ring_verts[-1]
+        notch = 0.012 + 0.018 * _hash01(9119, i)
+        m_out = bm.verts.new(centre + radial * (th * 0.5) + Vector((0, 0, notch)))
+        m_in = bm.verts.new(centre - radial * (th * 0.5) + Vector((0, 0, notch)))
+        fa = 0.035 + 0.055 * _hash01(9108, i)
+        fb = 0.025 + 0.050 * _hash01(9109, i)
+        tip_a = bm.verts.new(centre - half * 0.55 + Vector((0.0, 0.0, -fa)))
+        tip_b = bm.verts.new(centre + half * 0.60 + Vector((0.0, 0.0, -fb)))
+        for quad, tipv in (((lv[0], m_out, m_in, lv[5]), tip_a),
+                           ((m_out, lv[2], lv[3], m_in), tip_b)):
+            for k in range(4):
+                k2 = (k + 1) % 4
+                try:
+                    strip_faces.append(bm.faces.new((quad[k], quad[k2], tipv)))
+                except ValueError:
+                    pass
+        for f in strip_faces:
+            f.smooth = True
+        # Every wall quad, the root cap and all eight fray faces, or the strip is
+        # a partial shell — round 7's "hip cards" were exactly that read.
+        expect = SEG * 6 + 1 + 8
+        if len(strip_faces) != expect:
+            blendkit.fail(f"skirt strip {i}: built {len(strip_faces)} of {expect} "
+                          f"faces — a partial shell ships floating cards")
         bm.verts.ensure_lookup_table()
         ranges.append((start, len(bm.verts), "Hips"))
 
@@ -2627,6 +2856,250 @@ def grow_pelvis_shroud(obj: bpy.types.Object, m: dict) -> list[tuple]:
     me.update()
     print(f"SHROUD {obj.name} {len(ranges)} strip(s) rooted at z={z_root:.3f}")
     return ranges
+
+
+def tear_maw_channel(obj: bpy.types.Object, m: dict) -> list[tuple]:
+    """Breaks the chin-to-chest channel out of its machined straightness.
+
+    The sculpt carves the maw as a groove running from the chin down the sternum,
+    and it arrives exactly as a tool would leave it: straight, even-width, hard
+    parallel margins. The 2026-08 review called it a slot, not a wound. Three
+    treatments, all seeded and deterministic:
+
+    * **The margin faces are subdivided once** (the sculpt's ~2 cm sampling cannot
+      hold a torn edge) and then **displaced**: the slot's width breathes along its
+      length (±40%, low-frequency), every channel vertex gets a small hashed
+      jitter, and the floor of the slot is pushed deeper in irregular pools. The
+      dark pooling and the wet-only-inside roughness ride the same geometry through
+      ``dress_sculpt_maps``' position fields, so the maps follow the torn shape by
+      construction.
+    * **Gristle teeth** grow in the channel's upper third — short pinched spurs off
+      the two walls, alternating sides, none of them symmetric. They are returned as
+      ``(start, end, "Jaw")`` ranges: the caller weights them rigidly to the Jaw,
+      which both makes them gape with the mandible and routes their faces onto
+      ``Monster_Maw`` (``maw_polygons`` counts Jaw-majority faces), so §06's
+      acquisition flare lights them from inside the throat.
+
+    Displacements move X and Y only — never Z — so every landmark height measured
+    before this holds, and the 2.336 m pin cannot move.
+    """
+    me = obj.data
+    neck, top, shoulder, crotch = m["neck"], m["top"], m["shoulder"], m["crotch"]
+    z_hi = neck + (top - neck) * 0.10        # the chin
+    z_lo = shoulder - (shoulder - crotch) * 0.55   # mid-sternum
+
+    def n1(z):     # slot width, low frequency
+        return math.sin(z * 23.1 + 1.7) * 0.6 + math.sin(z * 47.3 + 4.0) * 0.4
+
+    def n2(z):     # pool depth
+        return 0.5 + 0.5 * math.sin(z * 31.7 + 2.9) * math.sin(z * 12.3 + 0.6)
+
+    # The front reference per height: the frontmost surface beside the slot. The
+    # slot's own floor sits BEHIND it (larger y — the sculpt faces -Y).
+    bins = 36
+    front = [None] * bins
+
+    def bin_of(z):
+        return min(bins - 1, max(0, int((z - z_lo) / max(z_hi - z_lo, 1e-6) * bins)))
+
+    for v in me.vertices:
+        c = v.co
+        if z_lo < c.z < z_hi and abs(c.x) < 0.10 and c.y < 0.05:
+            b = bin_of(c.z)
+            if front[b] is None or c.y < front[b]:
+                front[b] = c.y
+    if all(f is None for f in front):
+        print(f"MAWTEAR {obj.name} found no front surface in the channel band")
+        return []
+    last = next(f for f in front if f is not None)
+    for b in range(bins):
+        if front[b] is None:
+            front[b] = last
+        last = front[b]
+
+    def in_channel(c):
+        return (z_lo < c.z < z_hi and abs(c.x) < 0.055 and c.y < 0.05
+                and c.y < front[bin_of(c.z)] + 0.045)
+
+    # ── subdivide the channel faces so the tear has resolution to exist on ──
+    # Below the neck only: gen_monster_ai.refine_head has already quadrupled
+    # everything above it, and subdividing that band twice put 16x density into
+    # exactly the Jaw's proximity capture — measured 8.4% of all faces on the maw,
+    # through the 6% lantern ceiling.
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bm.verts.ensure_lookup_table()
+    sub_top = neck - 0.005
+    channel_edges = [e for e in bm.edges
+                     if in_channel(e.verts[0].co) and in_channel(e.verts[1].co)
+                     and e.verts[0].co.z < sub_top and e.verts[1].co.z < sub_top]
+    if channel_edges:
+        bmesh.ops.subdivide_edges(bm, edges=channel_edges, cuts=1,
+                                  use_grid_fill=True, smooth=0.0)
+    bm.to_mesh(me)
+    bm.free()
+    me.update()
+
+    # ── displace: breathing width, hashed jitter, pooled floor ──
+    moved = 0
+    for v in me.vertices:
+        c = v.co
+        if not in_channel(c):
+            continue
+        b = bin_of(c.z)
+        depth = c.y - front[b]
+        # the whole front band moves a little; the slot's own walls move most
+        wall = max(0.0, 1.0 - abs(depth) / 0.045)
+        widen = 1.0 + 0.40 * n1(c.z) * wall
+        jx = (_hash01(9401, v.index) - 0.5) * 0.006
+        jy = (_hash01(9402, v.index) - 0.5) * 0.005
+        v.co.x = c.x * widen + jx * wall
+        v.co.y = c.y + jy * wall
+        if depth > 0.010:                       # the floor: pool it deeper
+            v.co.y += 0.011 * n2(c.z) * min(1.0, (depth - 0.010) / 0.02)
+        moved += 1
+    me.update()
+
+    # ── gristle teeth in the upper third ──
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bm.verts.ensure_lookup_table()
+    ranges = []
+    teeth_hi = z_hi - 0.015
+    teeth_lo = z_hi - (z_hi - z_lo) * 0.33
+    count = 6
+    for i in range(count):
+        t = (i + 0.5) / count
+        z = teeth_hi + (teeth_lo - teeth_hi) * t
+        side = 1.0 if i % 2 == 0 else -1.0
+        b = bin_of(z)
+        wall_x = side * (0.012 + 0.014 * _hash01(9403, i))
+        base_y = front[b] + 0.016 + 0.012 * _hash01(9404, i)
+        length = 0.018 + 0.017 * _hash01(9405, i)
+        radius = 0.0045 + 0.0035 * _hash01(9406, i)
+        # tip leans toward the centreline and downward — a snag, not a peg
+        tip = Vector((wall_x - side * length * 0.7,
+                      base_y + length * 0.25,
+                      z - length * 0.55))
+        start = len(bm.verts)
+        base = []
+        for k in range(4):
+            ang = k * math.pi / 2.0 + _hash01(9407, i, k) * 0.6
+            base.append(bm.verts.new(Vector((
+                wall_x + math.cos(ang) * radius * 0.6,
+                base_y + math.sin(ang) * radius,
+                z + math.cos(ang + 1.1) * radius))))
+        tv = bm.verts.new(tip)
+        for k in range(4):
+            try:
+                bm.faces.new((base[k], base[(k + 1) % 4], tv))
+            except ValueError:
+                pass
+        try:
+            bm.faces.new(tuple(reversed(base)))
+        except ValueError:
+            pass
+        bm.verts.ensure_lookup_table()
+        ranges.append((start, len(bm.verts), "Jaw"))
+
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+    bm.to_mesh(me)
+    bm.free()
+    me.update()
+    print(f"MAWTEAR {obj.name} displaced {moved} vert(s) "
+          f"z[{z_lo:.3f},{z_hi:.3f}], grew {len(ranges)} tooth/teeth")
+    return ranges
+
+
+def rasterize_fields(obj: bpy.types.Object, res: int) -> dict:
+    """World position and limb masks per texel, rasterised from the skinned mesh.
+
+    This is what turns the UV-space dressing anatomical: ``dress_sculpt_maps`` gets,
+    for every texel the mesh actually covers, WHERE that texel sits on the body
+    (object space, which is world space here — the transform is identity) and how
+    arm-like / hand-like it is. The masks come from the deformation weights, not
+    from a guessed bounding box, so "the forearms" means exactly the vertices the
+    LowerArm/ForearmExtra/Hand bones own and nothing else — a claw that curls
+    inboard of the thigh stays a claw.
+
+    Triangles whose UVs straddle a wrap seam (span > 0.5 after centring) are
+    skipped; on this atlas that is a handful of slivers. Overlaps — the planar-
+    projected crest, skirt and teeth share UV space with body islands — resolve
+    last-writer-wins in polygon order, i.e. the added geometry wins its own texels,
+    which is the useful direction: the fin ribs land on fins. The residue is that a
+    few body texels shared with added-geometry UVs take the added geometry's paint;
+    at 2048² that is noise-level and reads as speckle.
+    """
+    me = obj.data
+    me.calc_loop_triangles()
+    uv_layer = me.uv_layers.active
+    if uv_layer is None:
+        return {"cover": np.zeros((res, res), bool)}
+    uvdata = uv_layer.data
+
+    gi = {g.name: g.index for g in obj.vertex_groups}
+    arm_groups = {idx for name, idx in gi.items()
+                  if ("LowerArm" in name or "ForearmExtra" in name
+                      or name.endswith("Hand"))}
+    hand_groups = {idx for name, idx in gi.items() if name.endswith("Hand")}
+
+    n = len(me.vertices)
+    vpos = np.zeros((n, 3), np.float32)
+    varm = np.zeros(n, np.float32)
+    vhand = np.zeros(n, np.float32)
+    for v in me.vertices:
+        vpos[v.index] = v.co[:]
+        a = h = 0.0
+        for g in v.groups:
+            if g.group in arm_groups:
+                a += g.weight
+            if g.group in hand_groups:
+                h += g.weight
+        varm[v.index] = min(a, 1.0)
+        vhand[v.index] = min(h, 1.0)
+
+    pos = np.zeros((res, res, 3), np.float32)
+    arm = np.zeros((res, res), np.float32)
+    hand = np.zeros((res, res), np.float32)
+    cover = np.zeros((res, res), bool)
+
+    for tri in me.loop_triangles:
+        li = tri.loops
+        uv = np.array([uvdata[li[0]].uv, uvdata[li[1]].uv, uvdata[li[2]].uv],
+                      dtype=np.float64)
+        uv -= np.floor(uv.mean(axis=0))
+        span = uv.max(axis=0) - uv.min(axis=0)
+        if span[0] > 0.5 or span[1] > 0.5:
+            continue
+        t = uv * res - 0.5
+        x0, x1 = int(math.floor(t[:, 0].min())), int(math.ceil(t[:, 0].max()))
+        y0, y1 = int(math.floor(t[:, 1].min())), int(math.ceil(t[:, 1].max()))
+        gy, gx = np.mgrid[y0:y1 + 1, x0:x1 + 1]
+        d = ((t[1, 1] - t[2, 1]) * (t[0, 0] - t[2, 0])
+             + (t[2, 0] - t[1, 0]) * (t[0, 1] - t[2, 1]))
+        if abs(d) < 1e-12:
+            continue
+        w0 = ((t[1, 1] - t[2, 1]) * (gx - t[2, 0])
+              + (t[2, 0] - t[1, 0]) * (gy - t[2, 1])) / d
+        w1 = ((t[2, 1] - t[0, 1]) * (gx - t[2, 0])
+              + (t[0, 0] - t[2, 0]) * (gy - t[2, 1])) / d
+        w2 = 1.0 - w0 - w1
+        inside = (w0 >= -1e-3) & (w1 >= -1e-3) & (w2 >= -1e-3)
+        if not inside.any():
+            continue
+        py = gy[inside] % res
+        px = gx[inside] % res
+        vi = tri.vertices
+        wa, wb, wc = w0[inside], w1[inside], w2[inside]
+        pos[py, px] = (np.outer(wa, vpos[vi[0]]) + np.outer(wb, vpos[vi[1]])
+                       + np.outer(wc, vpos[vi[2]])).astype(np.float32)
+        arm[py, px] = (wa * varm[vi[0]] + wb * varm[vi[1]] + wc * varm[vi[2]])
+        hand[py, px] = (wa * vhand[vi[0]] + wb * vhand[vi[1]] + wc * vhand[vi[2]])
+        cover[py, px] = True
+
+    print(f"FIELDS {obj.name} cover={float(cover.mean()):.3f} "
+          f"arm={float((arm > 0.5).mean()):.4f} hand={float((hand > 0.5).mean()):.4f}")
+    return {"pos": pos, "arm": arm, "hand": hand, "cover": cover}
 
 
 # ── Measurement ─────────────────────────────────────────────────────────────

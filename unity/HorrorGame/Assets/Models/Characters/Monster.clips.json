@@ -9,12 +9,12 @@
       "seconds": 1.9,
       "loops": true,
       "locomotion": true,
-      "ground_speed_mps": 1.196,
+      "ground_speed_mps": 1.1984,
       "residual_slide_mps": 0.0,
-      "ground_lift_m": 0.0416,
+      "ground_lift_m": 0.0419,
       "foot_sink_m": -0.0,
       "foot_float_m": 0.0,
-      "hip_bob_m": 0.08126
+      "hip_bob_m": 0.08147
     },
     {
       "name": "Chase",
@@ -22,12 +22,12 @@
       "seconds": 0.7667,
       "loops": true,
       "locomotion": true,
-      "ground_speed_mps": 4.6729,
+      "ground_speed_mps": 4.6822,
       "residual_slide_mps": 0.0,
-      "ground_lift_m": 0.1317,
+      "ground_lift_m": 0.1322,
       "foot_sink_m": -0.0,
       "foot_float_m": 0.0,
-      "hip_bob_m": 0.16692
+      "hip_bob_m": 0.16737
     },
     {
       "name": "Alert",
@@ -37,7 +37,7 @@
       "locomotion": false,
       "ground_speed_mps": 0.0,
       "residual_slide_mps": 0.0,
-      "ground_lift_m": 0.0317,
+      "ground_lift_m": 0.0316,
       "foot_sink_m": -0.0,
       "foot_float_m": 0.0,
       "hip_bob_m": 0.0
@@ -48,12 +48,12 @@
       "seconds": 3.0333,
       "loops": true,
       "locomotion": false,
-      "ground_speed_mps": 0.2631,
-      "residual_slide_mps": 0.2811,
+      "ground_speed_mps": 0.2639,
+      "residual_slide_mps": 0.2819,
       "ground_lift_m": 0.0167,
       "foot_sink_m": -0.0,
       "foot_float_m": 0.0,
-      "hip_bob_m": 0.01287
+      "hip_bob_m": 0.01293
     },
     {
       "name": "Standstill",
@@ -64,7 +64,7 @@
       "ground_speed_mps": 0.0,
       "residual_slide_mps": 0.0,
       "ground_lift_m": 0.0151,
-      "foot_sink_m": -0.0,
+      "foot_sink_m": 0.0,
       "foot_float_m": 0.0,
       "hip_bob_m": 0.0
     },
@@ -74,12 +74,12 @@
       "seconds": 2.5333,
       "loops": false,
       "locomotion": false,
-      "ground_speed_mps": 0.2499,
-      "residual_slide_mps": 2.9647,
-      "ground_lift_m": 0.0242,
+      "ground_speed_mps": 0.2505,
+      "residual_slide_mps": 2.969,
+      "ground_lift_m": 0.0243,
       "foot_sink_m": -0.0,
       "foot_float_m": 0.0,
-      "hip_bob_m": 0.01532
+      "hip_bob_m": 0.01541
     },
     {
       "name": "Grab",
@@ -87,12 +87,12 @@
       "seconds": 1.3667,
       "loops": false,
       "locomotion": false,
-      "ground_speed_mps": 0.6612,
-      "residual_slide_mps": 1.7696,
+      "ground_speed_mps": 0.663,
+      "residual_slide_mps": 1.7746,
       "ground_lift_m": 0.0219,
       "foot_sink_m": -0.0,
       "foot_float_m": 0.0,
-      "hip_bob_m": 0.01704
+      "hip_bob_m": 0.01707
     }
   ]
 }
