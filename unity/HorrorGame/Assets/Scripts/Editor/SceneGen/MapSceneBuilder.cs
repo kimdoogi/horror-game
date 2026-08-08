@@ -883,7 +883,16 @@ namespace HorrorGame.EditorTools.SceneGen
             }
 
             go.name = GunNamePrefix + (storey + 1);
-            go.transform.rotation = Quaternion.identity;
+
+            // Composed, not identity. Overriding a model-prefab instance root's rotation
+            // replaces the FBX import's −90°X conversion in this project (measured three
+            // times: KitOrientation.Probe, PresenceRig.StandUp, the StartleShot dump),
+            // and identity here shipped every alcove gun standing on its muzzle edge —
+            // photographed by GunShot with world bounds (0.360, 0.295, 0.067): the
+            // pickup's 0.295 m WIDTH vertical instead of its 0.067 m cloth-flat
+            // thickness. The startle placements hit the identical defect on the same
+            // day; both now compose the same probed stand-up.
+            go.transform.rotation = ProbeStartleStandUp();
             go.transform.position = ToUnity(alcove.Position);
             AlignFloorBottom(go, ToUnity(alcove.Position));
 
