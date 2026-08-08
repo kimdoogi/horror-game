@@ -10,6 +10,22 @@
       "summary": "GameConstants.ListenerClarityGravel (0.70) ranks gravel as giving the monster away more than concrete (0.50). Measured through a wall, gravel is ~32 dB quieter, because gravel's identity is a 6.2 kHz noise band and a wall removes it. Dry, the two agree; §04 makes hearing through walls the entire point of the role, so the constants are being applied in the one situation they were not authored for.",
       "not_an_audio_bug": "The clips are physically right — §12's 자갈 부스럭 is broadband rustle and §12's 콘크리트 둔탁 is a low thud. Retuning the generator to pass this check would make the footsteps wrong. The disagreement is between two design sections, which is why it is a finding and not a defect ticket.",
       "resolves_when": "F-002's option 1 lands (clarity becomes a function of occlusion) or option 2 lands (constants re-derived at the occlusion the role works through). Either way this entry gets deleted in the same commit that updates docs/BALANCE-FINDINGS.md."
+    },
+    {
+      "check": "consistency",
+      "target": "gravel vs earth",
+      "finding": "F-002",
+      "summary": "The same mechanism as gravel-vs-concrete on a surface pair that only began to exist when the building grew to eight storeys: B8 굴착층 introduced earth (clarity 0.40). GameConstants ranks gravel (0.70) as more audible; through a wall gravel measures 28.5 dB quieter, because gravel's identity is the same 6.2 kHz band a wall removes. Dry, the constants and the measurement agree.",
+      "not_an_audio_bug": "Same argument as the first entry — the clips are physically right; the contradiction is between §12's surface identities and §04's through-wall hearing, one designer decision covering all pairs.",
+      "resolves_when": "The same F-002 decision that resolves gravel-vs-concrete resolves this pair; all F-002 entries here get deleted in that one commit."
+    },
+    {
+      "check": "consistency",
+      "target": "gravel vs carpet",
+      "finding": "F-002",
+      "summary": "The same mechanism on the second new pair: B6 병동 introduced carpet (clarity 0.22). GameConstants ranks gravel (0.70) far more audible; through a wall gravel measures 12.2 dB quieter at low-pass 600 Hz. The smallest gap of the three because carpet is genuinely quiet everywhere, which is exactly why it is the pair a designer retune has to look at hardest.",
+      "not_an_audio_bug": "Same argument as the first entry.",
+      "resolves_when": "The same F-002 decision; all F-002 entries here get deleted in that one commit."
     }
   ]
 }

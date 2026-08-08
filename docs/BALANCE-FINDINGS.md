@@ -141,10 +141,23 @@ exists and is already measured per emitter, every 0.1 s, as a 0–1 fraction —
 (see F-003's update). Making clarity a function of occlusion is therefore a plumbing
 change plus the signature, not new physics.
 
+### Update 2026-08-08 — the eight-storey building grew the finding two new legs
+
+When the surface alphabet gained carpet (B6 병동) and earth (B8 굴착층), the same
+inversion appeared on both new pairs, measured by the same instrument: through a wall,
+gravel (clarity 0.70) is 28.5 dB quieter than earth (0.40) and 12.2 dB quieter than
+carpet (0.22). Dry, all constants agree with the ear. Nothing regressed — the
+contradiction §04 × §12 always had simply covers more pairs now that more pairs
+exist. Both are baselined in `tools/ci/audio_baseline.json` under this finding, per
+that file's rule, and all three entries resolve together with the one decision this
+finding has been waiting on: clarity as a function of occlusion (option 1) or
+constants re-derived at the occlusion the role works through (option 2).
+
 ### Pinned by
 
 `tools/audio/verify_audio.py` section 6 — reports every inversion between the clarity
-the code claims and measured audibility. Currently one blocking inversion.
+the code claims and measured audibility. Currently three blocking inversions, all one
+mechanism: gravel vs concrete, gravel vs earth, gravel vs carpet.
 
 `AudioTests.OccludedAudibility_InvertsTheClarityTable_AsF002Reports` fails if anyone
 "fixes" the finding by quietly changing the mix instead of the rule.
