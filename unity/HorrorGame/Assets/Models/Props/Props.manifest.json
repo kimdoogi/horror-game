@@ -69,6 +69,39 @@
       "emission": 0.0
     },
     {
+      "name": "Prop_BoreDark",
+      "color": [
+        0.014,
+        0.013,
+        0.012
+      ],
+      "roughness": 0.9,
+      "metallic": 0.0,
+      "emission": 0.0
+    },
+    {
+      "name": "Prop_CavityDark",
+      "color": [
+        0.028,
+        0.027,
+        0.025
+      ],
+      "roughness": 0.97,
+      "metallic": 0.0,
+      "emission": 0.0
+    },
+    {
+      "name": "Prop_FurDark",
+      "color": [
+        0.032,
+        0.028,
+        0.024
+      ],
+      "roughness": 0.95,
+      "metallic": 0.0,
+      "emission": 0.0
+    },
+    {
       "name": "Prop_Iron",
       "color": [
         0.112,
@@ -110,6 +143,28 @@
       ],
       "roughness": 0.95,
       "metallic": 0.1,
+      "emission": 0.0
+    },
+    {
+      "name": "Prop_SteelChip",
+      "color": [
+        0.452,
+        0.462,
+        0.478
+      ],
+      "roughness": 0.38,
+      "metallic": 1.0,
+      "emission": 0.0
+    },
+    {
+      "name": "Prop_SteelPainted",
+      "color": [
+        0.212,
+        0.232,
+        0.208
+      ],
+      "roughness": 0.55,
+      "metallic": 0.0,
       "emission": 0.0
     },
     {
@@ -167,6 +222,34 @@
       "category": "Dressing",
       "mount": "FLOOR",
       "note": ""
+    },
+    {
+      "name": "Startle_CabinetShell",
+      "file": "Startle_CabinetShell.fbx",
+      "category": "Startle",
+      "mount": "WALL",
+      "note": "깜짝 wall cabinet carcass. Opening 0.500x0.660 m; hinge empty at the -X jamb (see PROP_FACT). Leaf is Startle_CabinetLeaf.fbx."
+    },
+    {
+      "name": "Startle_CabinetLeaf",
+      "file": "Startle_CabinetLeaf.fbx",
+      "category": "Startle",
+      "mount": "HINGE",
+      "note": "깜짝 cabinet leaf. Origin ON the hinge edge (Door_Panel_Lockable contract): parent to a hinge empty, negative Z rotation slams it open toward the corridor."
+    },
+    {
+      "name": "Startle_Skitterer",
+      "file": "Startle_Skitterer.fbx",
+      "category": "Startle",
+      "mount": "FLOOR",
+      "note": "깜짝 floor darter. No rig; runtime slides + bobs the transform along -Y forward. Near-black matte on purpose."
+    },
+    {
+      "name": "Startle_PipeStub",
+      "file": "Startle_PipeStub.fbx",
+      "category": "Startle",
+      "mount": "WALL",
+      "note": "깜짝 broken wall pipe. Mouth on -Y (single mesh, no child empty); runtime vents the burst along the prop's forward."
     }
   ]
 }

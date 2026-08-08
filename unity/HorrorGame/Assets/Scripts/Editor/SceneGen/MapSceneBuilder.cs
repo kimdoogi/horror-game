@@ -394,6 +394,12 @@ namespace HorrorGame.EditorTools.SceneGen
             // re-deriving where anything is.
             BuildGuns(root, map);
 
+            // After the guns for the same reason the guns come after the markers: every
+            // volume a 깜짝 must keep away from — including the guns themselves — is now
+            // an object in this scene, so the placement below reads the artefact rather
+            // than re-deriving it.
+            BuildStartles(root, map);
+
             // Last of the geometry, and after everything that owns a renderer, because
             // the shells check themselves against it: nothing the generator wrote may
             // lie outside the box its storey is sealed in.
@@ -989,6 +995,578 @@ namespace HorrorGame.EditorTools.SceneGen
             go.name = HeldTemplateName;
             go.transform.position = where;
             go.transform.rotation = Quaternion.identity;
+
+            var colliders = go.GetComponentsInChildren<Collider>(includeInactive: true);
+            for (var i = 0; i < colliders.Length; i++)
+            {
+                colliders[i].enabled = false;
+            }
+
+            KeepOutOfNavMeshBake(go);
+            go.SetActive(false);
+        }
+
+        // ====================================================================
+        // 깜짝 — the Startle markers. §16's scripted frights, seeded per map.
+        // ====================================================================
+
+        /// <summary>
+        /// Child of <see cref="MarkerRootName"/> holding the 깜짝 markers. ASCII for the
+        /// reason <see cref="GunRootName"/> gives: the scene file must be countable by
+        /// grep. Mirrors <c>StartleDirector.GroupName</c>.
+        /// </summary>
+        public const string StartleRootName = "Startles";
+
+        /// <summary>
+        /// Name of the disabled figure left in the scene for the glimpse to clone.
+        /// Mirrors <c>StartleDirector.FigureTemplateName</c>, and exists for
+        /// <see cref="HeldTemplateName"/>'s stated reason: an asset the runtime needs
+        /// must reach it as a scene object, so a map with no glimpse marker carries no
+        /// figure and the dependency is one Unity can see and strip.
+        /// </summary>
+        public const string StartleFigureTemplateName = "Startle_Figure_Template";
+
+        /// <summary>
+        /// The four ambient marker kinds, in the fixed rotation
+        /// <see cref="BuildStartles"/> deals them. The names are the runtime contract —
+        /// <c>StartleDirector</c> parses kind from prefix.
+        /// </summary>
+        private static readonly string[] StartleKindPrefixes =
+        {
+            "Startle_Cabinet", "Startle_Skitterer", "Startle_PipeStub", "Startle_BulbDeath",
+        };
+
+        /// <summary>Prefix of the once-per-match figure marker, placed only on deep storeys.</summary>
+        private const string StartleGlimpsePrefix = "Startle_Glimpse";
+
+        /// <summary>The figure the glimpse clones. §09's presence model — no new asset.</summary>
+        private const string StartleFigureAssetPath = "Assets/Models/Presence/Presence_Figure.fbx";
+
+        /// <summary>
+        /// The 깜짝 set pieces, authored by tools/blender/gen_props.py for exactly this
+        /// pass. All four ship with the placement conventions <c>pivot_shift</c>
+        /// documents: WALL props' origin is on the wall plane at the floor line with
+        /// height preserved, FLOOR props' origin is on the floor under the footprint
+        /// centre, and the leaf's origin IS its hinge axis (the Door_Panel_Lockable
+        /// contract, enforced at export).
+        /// </summary>
+        private const string StartleCabinetShellPath = "Assets/Models/Props/Startle_CabinetShell.fbx";
+
+        /// <summary>The cabinet's swinging door. Origin on the hinge edge — see <see cref="StartleCabinetShellPath"/>.</summary>
+        private const string StartleCabinetLeafPath = "Assets/Models/Props/Startle_CabinetLeaf.fbx";
+
+        /// <summary>The broken wall pipe. WALL mount, mouth facing off the wall.</summary>
+        private const string StartlePipeStubPath = "Assets/Models/Props/Startle_PipeStub.fbx";
+
+        /// <summary>The rat-sized darter the runtime clones and slides. FLOOR mount.</summary>
+        private const string StartleSkittererPath = "Assets/Models/Props/Startle_Skitterer.fbx";
+
+        /// <summary>
+        /// Name of the disabled skitterer left in the scene for the runtime to clone.
+        /// Mirrors <c>StartleDirector.SkittererTemplateName</c>; exists for
+        /// <see cref="HeldTemplateName"/>'s stated reason.
+        /// </summary>
+        public const string StartleSkittererTemplateName = "Startle_Skitterer_Template";
+
+        /// <summary>
+        /// The shell's hinge empty, in the imported shell's local metres.
+        /// <para>
+        /// gen_props.py's PROP_FACT for Startle_CabinetShell says
+        /// <c>hinge_empty_at=(-0.250, -0.212, 1.080)</c> in Blender axes — the -X jamb,
+        /// the face-frame plane, the opening's bottom. Converted by the importer's own
+        /// measured mapping, quoted from <see cref="BuildDoor"/>'s B-010 remark ("the
+        /// importer negates X while the stand-up rotation sends Blender +Y to Unity
+        /// −Z"): Unity (x, y, z) = (−bx, bz, −by) = (0.250, 1.080, 0.212). Restated
+        /// here rather than probed because a single mesh has nothing left to probe —
+        /// the knuckle cylinders the beam sees are welded into the shell.
+        /// </para>
+        /// </summary>
+        private static readonly Vector3 StartleCabinetHingeLocal = new Vector3(0.250f, 1.080f, 0.212f);
+
+        /// <summary>
+        /// The pipe's axis height, metres above the floor — gen_props.py's
+        /// <c>PIPESTUB_AXIS_Z</c> 1.250 restated (between waist and chest, so the burst
+        /// crosses the frame's lower half). Mirrors <c>StartleDirector.PipeAxisMetres</c>.
+        /// </summary>
+        private const float StartlePipeAxisMetres = 1.25f;
+
+        /// <summary>
+        /// How far the torn mouth stands off the wall plane, metres — the authored stub
+        /// run (escutcheon 0.018 + collar + 0.130 barrel puts the rim at ~0.170 off the
+        /// wall; gen_props.py's report states <c>mouth=minus_Y</c>, which imports as
+        /// the prop's forward).
+        /// </summary>
+        private const float StartlePipeMouthStandoffMetres = 0.17f;
+
+        /// <summary>
+        /// 깜짝 markers per storey.
+        /// <para>
+        /// Two, and the pacing derives it: <c>StartlePacing.CooldownSeconds</c> is 90 s
+        /// — §01's fast-end storey time — so a player can consume about one startle per
+        /// storey however many are placed. One marker would make that one a coin flip
+        /// (a trigger claims 1.55 m of corridor and a storey is hundreds of metres of
+        /// it); two doubles the odds of one encounter without raising the dose, because
+        /// every trigger fires once and the cooldown gates the rest. More would only be
+        /// scenery.
+        /// </para>
+        /// </summary>
+        private const int StartlesPerStorey = 2;
+
+        /// <summary>
+        /// Metres a 깜짝 marker keeps from every 착지, 투하구, 출발점, 창조물 spawn, 문
+        /// and gun.
+        /// <para>
+        /// <b>The guarantee is anchored on the MARKER, and the runtime bounds itself
+        /// inside it</b> — <c>StartleDirector.StageReachMetres</c> is derived by
+        /// subtraction from this number (8.1 − 1.55 − 0.5 = 6.05), not the other way
+        /// round. Because every staged point is clamped to the MARKER, the rig's
+        /// offset does not stack: the true worst case is two terms — a staged point at
+        /// <c>StageReachMetres</c> 6.05 m of the marker plus a mesh hanging at most
+        /// <c>StartleDirector.StageMarginMetres</c> 0.5 m (one stylised skitterer
+        /// body, which over-bounds every staged mesh) past it = 6.55 m. The remaining
+        /// 1.55 m up to this constant is <c>StartleDirector.TriggerMetres</c>, held as
+        /// deliberately reserved headroom rather than spent — the subtraction that
+        /// derives StageReachMetres removes it so that even a future regression that
+        /// re-anchored the clamp on the rig could not cross the guarantee. Nothing a
+        /// startle stages, and no body a startle draws, reaches a spawn, a drop, a
+        /// door swing, a chute's clearance or a gun alcove, where a body is parked for
+        /// reasons the startle cannot see.
+        /// </para>
+        /// <para>
+        /// <b>The value itself.</b> The expression below is the first version's
+        /// arithmetic (the old 7 m far crossing plus half a corridor) and is kept byte
+        /// for byte because every generated map already embodies it in its marker
+        /// placement — same seed, same building, the <see cref="BuildGuns"/> promise —
+        /// and because 8.1 clears the brief's 8 m floor. When the runtime's reach was
+        /// found to overrun it (the rig-relative staging measured up to 8.73 m for the
+        /// skitterer and 13.55 m for the glimpse), the fix shrank the runtime reach
+        /// inside this promise rather than inflating the promise: growing it would
+        /// move every marker in every map to cure a defect that was the runtime's.
+        /// </para>
+        /// </summary>
+        private static readonly float StartleClearanceMetres =
+            (4.5f + MapKitCatalogue.GridMetres) + (MapKitCatalogue.CorridorClearWidth * 0.5f);
+
+        /// <summary>
+        /// Lays the 깜짝 markers down: two per storey on corridor cells, seeded, clear
+        /// of everything a body is parked at, plus one glimpse marker per deep storey.
+        /// <para>
+        /// <b>Kinds rotate, cells are seeded.</b> The cell each marker lands on comes
+        /// from <see cref="Mix"/> over the map seed — same seed, same building, byte
+        /// for byte, the <see cref="BuildGuns"/> promise. The KIND at each slot is a
+        /// fixed rotation (storey + slot mod 4) rather than seeded, deliberately: a
+        /// seeded kind can deal a map with no cabinet at all, and then the PlayMode
+        /// test that swings a real leaf in a real map has nothing to hold — every kind
+        /// appears in every map or the guarantee is a coin flip.
+        /// </para>
+        /// <para>
+        /// <b>One glimpse chance per deep storey.</b> B5 down —
+        /// <c>RaceState.Storeys</c> ÷ 2, the first storey past the midpoint — each get
+        /// one glimpse marker in their second slot. Four markers for a thing that fires
+        /// once per player per match is not four glimpses: it is four chances for a
+        /// player's own descent line to pass one, and <c>StartlePacing</c>'s
+        /// once-per-match gate makes the extras inert. A single seeded marker instead
+        /// would put the crown jewel on a storey half the field crosses at full sprint.
+        /// </para>
+        /// </summary>
+        private static void BuildStartles(GameObject root, MapSketchResult map)
+        {
+            var markerRoot = root.transform.Find(MarkerRootName);
+            if (markerRoot == null)
+            {
+                Debug.LogError("[SceneGen] 깜짝: no '" + MarkerRootName + "' group, so the keep-out "
+                    + "volumes could not be read. No startle was placed.");
+                return;
+            }
+
+            // The same five marker groups the guns keep away from, read the same way —
+            // plus the guns themselves, which did not exist when ReadKeepOutPoints was
+            // written and are exactly the kind of place a runner parks and stares.
+            var keepOut = ReadKeepOutPoints(markerRoot);
+            var guns = markerRoot.Find(GunRootName);
+            if (guns != null)
+            {
+                foreach (Transform gun in guns)
+                {
+                    if (gun.name.StartsWith(GunNamePrefix, System.StringComparison.Ordinal))
+                    {
+                        keepOut.Add(new KeepOutPoint("총", gun.name, gun.position, StartleClearanceMetres));
+                    }
+                }
+            }
+
+            var group = Child(markerRoot.gameObject, StartleRootName);
+            var storeys = StoreyCount(map);
+            var placed = 0;
+            var glimpses = 0;
+            Vector3? firstGlimpseAt = null;
+            Vector3? firstSkittererAt = null;
+
+            for (var storey = 0; storey < storeys; storey++)
+            {
+                var candidates = StartleCells(map, storey, keepOut);
+                if (candidates.Count == 0)
+                {
+                    Debug.LogError("[SceneGen] 깜짝: B" + (storey + 1) + " has no corridor cell "
+                        + F(StartleClearanceMetres) + " m clear of every 착지, 투하구, 출발점, 문 and "
+                        + "총. No startle on this floor.");
+                    continue;
+                }
+
+                var taken = new List<Vector3>();
+                for (var slot = 0; slot < StartlesPerStorey; slot++)
+                {
+                    var open = new List<(Vector3 Centre, float Yaw)>();
+                    for (var i = 0; i < candidates.Count; i++)
+                    {
+                        var clearOfTaken = true;
+                        for (var t = 0; t < taken.Count; t++)
+                        {
+                            var dx = candidates[i].Centre.x - taken[t].x;
+                            var dz = candidates[i].Centre.z - taken[t].z;
+                            if (Mathf.Sqrt((dx * dx) + (dz * dz)) < StartleClearanceMetres)
+                            {
+                                clearOfTaken = false;
+                                break;
+                            }
+                        }
+
+                        if (clearOfTaken)
+                        {
+                            open.Add(candidates[i]);
+                        }
+                    }
+
+                    if (open.Count == 0)
+                    {
+                        break;
+                    }
+
+                    // Seeded like the gun's alcove, salted so the startle stream never
+                    // correlates with the gun stream on the same storey.
+                    var pick = open[(int)(Mix((uint)map.Seed,
+                        0x515u + (uint)((storey * StartlesPerStorey) + slot)) % (uint)open.Count)];
+                    taken.Add(pick.Centre);
+
+                    var deep = storey >= RaceState.Storeys / 2;
+                    var kind = slot == 1 && deep
+                        ? StartleGlimpsePrefix
+                        : StartleKindPrefixes[(storey + slot) % StartleKindPrefixes.Length];
+
+                    var cellX = Mathf.FloorToInt(pick.Centre.x / MapKitCatalogue.GridMetres);
+                    var cellZ = Mathf.FloorToInt(pick.Centre.z / MapKitCatalogue.GridMetres);
+                    var go = Child(group, kind + "_B" + (storey + 1) + "_" + cellX + "_" + cellZ);
+                    go.transform.position = pick.Centre;
+                    go.transform.rotation = Quaternion.Euler(0f, pick.Yaw, 0f);
+
+                    var side = (Mix((uint)map.Seed, 0xA13u + (uint)((storey * StartlesPerStorey) + slot)) & 1u) == 0u
+                        ? 1f
+                        : -1f;
+
+                    if (kind == StartleKindPrefixes[0])
+                    {
+                        BuildStartleCabinet(go, side);
+                    }
+                    else if (kind == StartleKindPrefixes[1] && firstSkittererAt == null)
+                    {
+                        firstSkittererAt = pick.Centre;
+                    }
+                    else if (kind == StartleKindPrefixes[2])
+                    {
+                        BuildStartlePipe(go, side);
+                    }
+                    else if (kind == StartleGlimpsePrefix)
+                    {
+                        glimpses++;
+                        if (firstGlimpseAt == null)
+                        {
+                            firstGlimpseAt = pick.Centre;
+                        }
+                    }
+
+                    // Skitterer, bulb-death and glimpse markers are empties: their
+                    // stages are built at runtime from the player's own position.
+                    KeepOutOfNavMeshBake(go);
+                    placed++;
+                }
+            }
+
+            if (firstGlimpseAt != null)
+            {
+                BuildStartleFigureTemplate(group, firstGlimpseAt.Value);
+            }
+
+            if (firstSkittererAt != null)
+            {
+                BuildStartleSkittererTemplate(group, firstSkittererAt.Value);
+            }
+
+            Debug.Log("[SceneGen] 깜짝 " + placed + " markers placed ("
+                + glimpses + " glimpse, on B" + ((RaceState.Storeys / 2) + 1) + "+), "
+                + StartlesPerStorey + " per storey on corridor cells, every one "
+                + F(StartleClearanceMetres) + " m clear of each 착지, 투하구, 출발점, 창조물, 문 and 총.");
+        }
+
+        /// <summary>
+        /// The corridor cells of one storey a 깜짝 may stand on: straight pieces only —
+        /// a crossing needs a corridor to cross and a leaf needs a wall to hang on,
+        /// neither of which a junction promises — and every cell
+        /// <see cref="StartleClearanceMetres"/> clear of the keep-out set. Sorted by
+        /// cell address so the seeded index lands on the same cell whatever order the
+        /// sketch enumerated its tiles in.
+        /// </summary>
+        private static List<(Vector3 Centre, float Yaw)> StartleCells(
+            MapSketchResult map, int storey, List<KeepOutPoint> keepOut)
+        {
+            var found = new List<(MapCell Cell, float Yaw)>();
+            foreach (var tile in map.Tiles)
+            {
+                if (tile.Origin.Level != storey
+                    || (tile.Piece != MapKitPiece.CorridorStraight2m5
+                        && tile.Piece != MapKitPiece.CorridorStraight5m
+                        && tile.Piece != MapKitPiece.CorridorStraight10m))
+                {
+                    continue;
+                }
+
+                found.Add((tile.Origin, tile.YawDegrees));
+            }
+
+            found.Sort((a, b) =>
+            {
+                var byX = a.Cell.X.CompareTo(b.Cell.X);
+                return byX != 0 ? byX : a.Cell.Z.CompareTo(b.Cell.Z);
+            });
+
+            var kept = new List<(Vector3 Centre, float Yaw)>();
+            for (var i = 0; i < found.Count; i++)
+            {
+                var centre = ToUnity(found[i].Cell.Centre);
+                var clear = true;
+                for (var k = 0; k < keepOut.Count; k++)
+                {
+                    var dx = keepOut[k].At.x - centre.x;
+                    var dz = keepOut[k].At.z - centre.z;
+                    var required = Mathf.Max(keepOut[k].ClearanceMetres, StartleClearanceMetres);
+                    if (Mathf.Sqrt((dx * dx) + (dz * dz)) < required)
+                    {
+                        clear = false;
+                        break;
+                    }
+                }
+
+                if (clear)
+                {
+                    kept.Add((centre, found[i].Yaw));
+                }
+            }
+
+            return kept;
+        }
+
+        /// <summary>
+        /// The sprung cabinet: gen_props.py's two-file set — Startle_CabinetShell (the
+        /// carcass and its dark cavity, hung on the wall) and Startle_CabinetLeaf (the
+        /// door, origin ON its hinge axis) — assembled the way <see cref="BuildDoor"/>
+        /// assembles Door_Panel_Lockable: a Hinge empty, the leaf parented under it,
+        /// and the runtime rotates the empty.
+        /// <para>
+        /// None of the door's physics: no blocker, no obstacle, no trigger, every
+        /// imported collider off. A 깜짝 may never block anything (a fright that can
+        /// push a runner is a wall with a jump scare), and the reach audit's capsule
+        /// must sweep past it as if it were not there — <see cref="PlaceGun"/>'s
+        /// collider lesson. The whole assembly is out of the bake; the
+        /// door-leaf-severs-the-corridor defect at the end of <see cref="BuildDoor"/>
+        /// is the one that line refuses to reintroduce.
+        /// </para>
+        /// <para>
+        /// <b>Placement leans on the prop's own convention, not on bounds.</b> A WALL
+        /// prop's origin is on the wall plane at the floor line with the authored
+        /// heights preserved (gen_props.py's <c>pivot_shift</c>), so the shell is
+        /// dropped at the wall point with its forward facing the corridor's centreline
+        /// and the carcass hangs itself at its authored 1.05~1.77 m. The hinge empty
+        /// is parented to the MARKER, not the shell — a clean world-aligned frame, so
+        /// the FBX root's import-time scale and rotation can never leak into the
+        /// swing axis — and the leaf sits under it at identity, which the leaf's
+        /// origin-on-hinge contract makes the closed pose. Which wall is seeded; in a
+        /// straight corridor both sides are walls, so a flipped yaw convention costs
+        /// looks, not function.
+        /// </para>
+        /// </summary>
+        private static void BuildStartleCabinet(GameObject marker, float side)
+        {
+            var shellAsset = AssetDatabase.LoadAssetAtPath<GameObject>(StartleCabinetShellPath);
+            var leafAsset = AssetDatabase.LoadAssetAtPath<GameObject>(StartleCabinetLeafPath);
+            if (shellAsset == null || leafAsset == null)
+            {
+                Debug.LogError("[SceneGen] 깜짝: " + (shellAsset == null ? StartleCabinetShellPath : StartleCabinetLeafPath)
+                    + " is missing, so " + marker.name + " is a bare marker with nothing to spring. "
+                    + "Both halves are built by tools/blender/gen_props.py's startle set.");
+                return;
+            }
+
+            var wallward = marker.transform.rotation * (Vector3.right * side);
+            var facing = Quaternion.LookRotation(-wallward, Vector3.up);
+            var wallPoint = marker.transform.position
+                + (wallward * (MapKitCatalogue.CorridorClearWidth * 0.5f));
+
+            var shell = PrefabUtility.InstantiatePrefab(shellAsset, marker.transform) as GameObject;
+            if (shell == null)
+            {
+                return;
+            }
+
+            shell.name = "Shell";
+            shell.transform.SetPositionAndRotation(wallPoint, facing);
+
+            var hinge = Child(marker, "Hinge");
+            hinge.transform.SetPositionAndRotation(
+                wallPoint
+                + (facing * Vector3.right * StartleCabinetHingeLocal.x)
+                + (Vector3.up * StartleCabinetHingeLocal.y)
+                + (facing * Vector3.forward * StartleCabinetHingeLocal.z),
+                facing);
+
+            var leaf = PrefabUtility.InstantiatePrefab(leafAsset, hinge.transform) as GameObject;
+            if (leaf != null)
+            {
+                leaf.name = "Leaf";
+                leaf.transform.localPosition = Vector3.zero;
+                leaf.transform.localRotation = Quaternion.identity;
+            }
+
+            foreach (var collider in marker.GetComponentsInChildren<Collider>(includeInactive: true))
+            {
+                collider.enabled = false;
+            }
+
+            KeepOutOfNavMeshBake(marker);
+        }
+
+        /// <summary>
+        /// The vent stub: gen_props.py's Startle_PipeStub, a broken wall pipe whose
+        /// torn mouth faces off the wall. A WALL prop, so the drop is the convention:
+        /// origin at the wall point on the floor line, forward toward the corridor's
+        /// centreline, and the authored 1.25 m axis height arrives with the mesh.
+        /// <para>
+        /// The stub is a single mesh — gen_props' own report says a nozzle child empty
+        /// was not possible in the export — so the <c>Vent</c> empty is created here
+        /// instead, at the mouth's restated offsets, ORIENTED with its forward off the
+        /// wall: the runtime reads both the burst's position and its direction from
+        /// that one transform. Colliders off and out of the bake, per
+        /// <see cref="PlaceGun"/>'s standing rule. Missing asset degrades to a bare
+        /// marker — the runtime vents from the marker and the log says why the
+        /// corridor has an invisible hiss.
+        /// </para>
+        /// </summary>
+        private static void BuildStartlePipe(GameObject marker, float side)
+        {
+            var wallward = marker.transform.rotation * (Vector3.right * side);
+            var facing = Quaternion.LookRotation(-wallward, Vector3.up);
+            var wallPoint = marker.transform.position
+                + (wallward * (MapKitCatalogue.CorridorClearWidth * 0.5f));
+
+            var vent = Child(marker, "Vent");
+            vent.transform.SetPositionAndRotation(
+                wallPoint
+                + (Vector3.up * StartlePipeAxisMetres)
+                - (wallward * StartlePipeMouthStandoffMetres),
+                facing);
+
+            var asset = AssetDatabase.LoadAssetAtPath<GameObject>(StartlePipeStubPath);
+            if (asset == null)
+            {
+                Debug.LogError("[SceneGen] 깜짝: " + StartlePipeStubPath + " is missing, so "
+                    + marker.name + " is a bare marker and its vent will hiss from empty air. It is "
+                    + "built by tools/blender/gen_props.py's startle set.");
+                KeepOutOfNavMeshBake(marker);
+                return;
+            }
+
+            var go = PrefabUtility.InstantiatePrefab(asset, marker.transform) as GameObject;
+            if (go != null)
+            {
+                go.name = "Stub";
+                go.transform.SetPositionAndRotation(wallPoint, facing);
+
+                var colliders = go.GetComponentsInChildren<Collider>(includeInactive: true);
+                for (var i = 0; i < colliders.Length; i++)
+                {
+                    colliders[i].enabled = false;
+                }
+            }
+
+            KeepOutOfNavMeshBake(marker);
+        }
+
+        /// <summary>
+        /// Leaves one disabled skitterer in the scene for the runtime to clone and
+        /// dart across corridors — <see cref="BuildHeldTemplate"/>'s pattern, standing
+        /// on a skitterer marker's own cell so <see cref="BuildStoreyShells"/>' escape
+        /// check finds it inside its storey's box. A FLOOR prop: origin on the floor
+        /// under the footprint, so the runtime places it by origin alone.
+        /// </summary>
+        private static void BuildStartleSkittererTemplate(GameObject group, Vector3 at)
+        {
+            var asset = AssetDatabase.LoadAssetAtPath<GameObject>(StartleSkittererPath);
+            if (asset == null)
+            {
+                Debug.LogError("[SceneGen] 깜짝: " + StartleSkittererPath + " is missing, so the "
+                    + "skitterer will cross as a bare dark box instead of the authored shape. It is "
+                    + "built by tools/blender/gen_props.py's startle set.");
+                return;
+            }
+
+            var go = PrefabUtility.InstantiatePrefab(asset, group.transform) as GameObject;
+            if (go == null)
+            {
+                return;
+            }
+
+            go.name = StartleSkittererTemplateName;
+            go.transform.rotation = Quaternion.identity;
+            go.transform.position = at;
+
+            var colliders = go.GetComponentsInChildren<Collider>(includeInactive: true);
+            for (var i = 0; i < colliders.Length; i++)
+            {
+                colliders[i].enabled = false;
+            }
+
+            KeepOutOfNavMeshBake(go);
+            go.SetActive(false);
+        }
+
+        /// <summary>
+        /// Leaves one disabled Presence figure in the scene for the glimpse to clone —
+        /// <see cref="BuildHeldTemplate"/>'s pattern, including where it stands: on a
+        /// glimpse marker's own cell, because <c>FootprintOf</c> collects inactive
+        /// renderers and <see cref="BuildStoreyShells"/> rightly refuses anything
+        /// outside its storey's box. Colliders off so the clone needs no runtime strip
+        /// (<c>PresenceView.Strip</c> exists because the import policy gives new model
+        /// folders colliders; disabling them here is the same fix a pass earlier).
+        /// </summary>
+        private static void BuildStartleFigureTemplate(GameObject group, Vector3 at)
+        {
+            var asset = AssetDatabase.LoadAssetAtPath<GameObject>(StartleFigureAssetPath);
+            if (asset == null)
+            {
+                Debug.LogError("[SceneGen] 깜짝: " + StartleFigureAssetPath + " is missing, so the "
+                    + "glimpse has nothing to show and will simply never fire. It is built by "
+                    + "tools/blender/gen_presence.py.");
+                return;
+            }
+
+            var go = PrefabUtility.InstantiatePrefab(asset, group.transform) as GameObject;
+            if (go == null)
+            {
+                return;
+            }
+
+            go.name = StartleFigureTemplateName;
+            go.transform.rotation = Quaternion.identity;
+            go.transform.position = at;
+            AlignFloorBottom(go, at);
 
             var colliders = go.GetComponentsInChildren<Collider>(includeInactive: true);
             for (var i = 0; i < colliders.Length; i++)

@@ -123,6 +123,21 @@ namespace HorrorGame.Audio
             (AudioCueId.VoiceActivity, "UI", new[] { "voice_activity_blip" }),
             (AudioCueId.VoiceOutOfRange, "UI", new[] { "voice_out_of_range" }),
 
+            // §16's 깜짝 — local-only frights, placed in the room where the fitting is
+            // (AssetImportPolicy maps the Startle folder positional, and
+            // AudioCues.BusOf routes these to the world emitter). The stems and their
+            // variant counts are tools/audio/gen_scares.py's shipped set, verbatim: a
+            // map deals several cabinets and skitterers to one player's descent line,
+            // so those two get a second take, while the pipe and the once-per-match
+            // glimpse fire at most once a match each and a variant pool would be
+            // variety for nobody — the same one-take argument the Caught row above
+            // makes. Bulb-death has no row because it has no sound: §06's 침묵이
+            // 가장 무서운 소리다, applied.
+            (AudioCueId.StartleCabinet, "Startle", new[] { "stl_cabinet_slam_01", "stl_cabinet_slam_02" }),
+            (AudioCueId.StartleSkitter, "Startle", new[] { "stl_skitter_01", "stl_skitter_02" }),
+            (AudioCueId.StartlePipeVent, "Startle", new[] { "stl_pipe_vent_01" }),
+            (AudioCueId.StartleGlimpse, "Startle", new[] { "stl_glimpse_01" }),
+
             // DELETED — 32 rows for systems that no longer exist. Battery ×3 (§08's
             // cell), Barricade ×2 / NoiseTrap ×2 / BreakerThrow / ChalkMark /
             // RopeDeploy / MufflerEquip / DetectorPing (§04 직업), Loot ×5 and Safe ×2

@@ -107,6 +107,29 @@ namespace HorrorGame.Audio
 
         /// <summary>voice_out_of_range — §13 stops transmitting at VoiceCutoffDistance.</summary>
         VoiceOutOfRange = 43,
+
+        // ----------------------------------------------------------------
+        // §16 — 깜짝. Local-only frights: rendered per player on that player's
+        // own client, zero network traffic, and never reported to the creature —
+        // <c>AudioCues.NoiseOf</c> returns 0 for all of them, and no caller may
+        // ever call MonsterAgent.ReportSound for one. §12 makes sound the map, so a
+        // placed noise the creature could hear would be a forged footstep — the
+        // exact reason §09's two cue rows above were deleted. New ids at the end,
+        // per this enum's own numbering rule; bulb-death has no cue because it is
+        // deliberately silent (§06: 침묵이 가장 무서운 소리다).
+        // ----------------------------------------------------------------
+
+        /// <summary>stl_cabinet_slam — the sprung cabinet leaf, at the hinge.</summary>
+        StartleCabinet = 44,
+
+        /// <summary>stl_skitter — something small crossing the corridor ahead.</summary>
+        StartleSkitter = 45,
+
+        /// <summary>stl_pipe_vent — one 0.9 s burst off a wall stub.</summary>
+        StartlePipeVent = 46,
+
+        /// <summary>stl_glimpse — the once-per-match figure, at the figure.</summary>
+        StartleGlimpse = 47,
     }
 
     /// <summary>
@@ -122,7 +145,7 @@ namespace HorrorGame.Audio
         /// each live cue wants <see cref="All"/> instead; a loop over
         /// <c>1 .. Count</c> reports every hole as a missing sound.
         /// </summary>
-        public const int Count = (int)AudioCueId.VoiceOutOfRange + 1;
+        public const int Count = (int)AudioCueId.StartleGlimpse + 1;
 
         /// <summary>
         /// Every cue that exists, in id order and without the holes.
@@ -149,6 +172,10 @@ namespace HorrorGame.Audio
             AudioCueId.Caught,
             AudioCueId.VoiceActivity,
             AudioCueId.VoiceOutOfRange,
+            AudioCueId.StartleCabinet,
+            AudioCueId.StartleSkitter,
+            AudioCueId.StartlePipeVent,
+            AudioCueId.StartleGlimpse,
         };
 
         /// <summary>

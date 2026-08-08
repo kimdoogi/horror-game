@@ -38,6 +38,14 @@ co-op mechanism and because a generator with no output cannot check its own
 scale, materials or export path. See the SET DRESSING banner for the condition
 under which they should go too.
 
+One set has been ADDED since the pivot: the four 깜짝 (Startle) set pieces —
+see the STARTLE banner above their builders. They are not a return of the
+interactable kit: a startle is render-side theatre on the triggering player's
+own client, seeded per map, with no network traffic and no channel to the
+creature (GameConstants.cs §09 records why a placed noise is a forged
+footstep). This file supplies geometry only; triggering, pacing and the Unity
+hinge empty live with the integrator.
+
 
 WHAT THE DESIGN STILL DICTATES ABOUT THEIR SHAPE
 ================================================
@@ -67,7 +75,11 @@ CONVENTIONS THIS FILE GUARANTEES
 * **Pivot.** Floor props: origin at floor level (min Z = 0), centred on the
   footprint. Wall props: origin at the wall plane (max Y = 0), centred in X, with
   the real mounting height left in Z — so dropping one at the foot of a wall puts
-  it at the correct height with no offset to remember.
+  it at the correct height with no offset to remember. Hinge props (the 깜짝
+  cabinet leaf): origin ON the hinge edge — min X = 0 is the hinge axis, max
+  Y = 0 is the closed-leaf back plane, min Z = 0 is the leaf's own bottom — the
+  same contract as the map kit's ``Door_Panel_Lockable``, so the Unity editor
+  pass parents the leaf to a hinge empty and a plain rotation swings it.
 * **Facing.** Props face **-Y** in Blender, matching the monster generator, which
   `export_fbx`'s ``axis_forward='-Z'`` turns into +Z forward in Unity. No
   compensating rotation is applied anywhere in this file.
@@ -156,6 +168,13 @@ RUST_DARK = "Prop_RustDark"
 WOOD_WORN = "Prop_WoodWorn"
 MORTAR = "Prop_Mortar"
 
+# ── 깜짝 (Startle) set-piece surfaces ───────────────────────────────────────
+STEEL_PAINTED = "Prop_SteelPainted"
+STEEL_CHIP = "Prop_SteelChip"
+CAVITY_DARK = "Prop_CavityDark"
+FUR_DARK = "Prop_FurDark"
+BORE_DARK = "Prop_BoreDark"
+
 MATERIALS: dict[str, MaterialSpec] = {
     WOOD: MaterialSpec(WOOD, (0.196, 0.126, 0.072), roughness=0.85),
     IRON: MaterialSpec(IRON, (0.112, 0.116, 0.122), roughness=0.55, metallic=0.90),
@@ -191,6 +210,30 @@ MATERIALS: dict[str, MaterialSpec] = {
     "Gun_Grip": MaterialSpec("Gun_Grip", (0.055, 0.034, 0.022), roughness=0.55),
     "Gun_GripWrap": MaterialSpec("Gun_GripWrap", (0.020, 0.016, 0.014), roughness=0.88),
     "Gun_Cloth": MaterialSpec("Gun_Cloth", (0.295, 0.272, 0.228), roughness=0.95),
+    # ── 깜짝 set-piece surfaces ─────────────────────────────────────────────
+    # STEEL_PAINTED is the ART.md §7.12 lesson applied in advance: the cabinet's
+    # big flat faces are a dielectric with a real albedo (luminance 0.226, a hair
+    # over the 0.21 darkest corridor wall), never forged iron — a slammed-open
+    # door the beam cannot find is a startle that never happened. Drab industrial
+    # enamel, greener than gen_dressing's Dress_SteelPainted so the two kits do
+    # not read as one delivery.
+    STEEL_PAINTED: MaterialSpec(STEEL_PAINTED, (0.212, 0.232, 0.208), roughness=0.55),
+    # Bare metal where the paint has chipped: knuckles, handle, striker, chips.
+    # Metallic and bright — always trim-sized, so §7.12's panel gate never sees it.
+    STEEL_CHIP: MaterialSpec(STEEL_CHIP, (0.452, 0.462, 0.478), roughness=0.38, metallic=1.0),
+    # The cabinet's interior. Near-black dielectric: the cavity behind the leaf
+    # must read as DEPTH the beam does not reach, which is the half of the scare
+    # geometry can deliver (the other half is the runtime's slam).
+    CAVITY_DARK: MaterialSpec(CAVITY_DARK, (0.028, 0.027, 0.025), roughness=0.97),
+    # The skitterer's whole body. Same reasoning as gen_ghost's 0.02-0.04 skin:
+    # a thing that does not answer the beam reads as a moving absence, and at
+    # 0.35 m crossing a corridor that absence IS the startle. Matte so the one
+    # highlight a curved near-black could return is killed too.
+    FUR_DARK: MaterialSpec(FUR_DARK, (0.032, 0.028, 0.024), roughness=0.95),
+    # The broken pipe's mouth interior, recessed behind the torn rim — the same
+    # job Gun_Bore does for the revolver: a hole that stays a hole under a
+    # coaxial torch.
+    BORE_DARK: MaterialSpec(BORE_DARK, (0.014, 0.013, 0.012), roughness=0.90),
 }
 
 
@@ -945,6 +988,345 @@ def build_debris() -> PropBuild:
     return b
 
 
+# ══════════════════════════════════════════════════════════════════════════
+#  STARTLE — the 깜짝 set pieces. Geometry ONLY.
+#
+#  What a startle is here: a fitting the triggering player's OWN client animates
+#  once — a cabinet leaf slammed open, a low shape darting the corridor, a wall
+#  pipe venting a burst. Seeded deterministic placement per map, rendered
+#  per-player, zero network traffic, and NO channel to the creature: §12 makes
+#  sound the map, so a placed noise is a forged footstep — the exact reason the
+#  pivot deleted the last system that put noises in the world (the §09 block in
+#  GameConstants.cs records it). Triggering, per-player pacing and the Unity
+#  hinge empty are the integrator's; this file ships shapes and their contracts.
+#
+#  The cabinet mirrors the map kit's proven two-file door: Doorway_Frame.fbx +
+#  Door_Panel_Lockable.fbx, where the leaf's origin IS the hinge axis and the
+#  editor pass (MapSceneBuilder.BuildDoor is the template) creates the hinge
+#  empty and parents the leaf. Same split here: Startle_CabinetShell supplies a
+#  leaf-sized opening, Startle_CabinetLeaf is a separate FBX whose origin sits
+#  on its hinge edge (mount="HINGE" below enforces it at build time).
+# ══════════════════════════════════════════════════════════════════════════
+
+# Working figures the startle set is sized against. The first is the module's
+# own §05 note (largest_visible_panel: "§05 puts the eye at 1.63 m"); the rest
+# derive from it and from the render protocol's trigger distances.
+STARTLE_EYE_HEIGHT = 1.63
+"""Eye height the set pieces are framed for, metres. Same figure the §7.12
+panel check reasons with; NOT a design-doc number, flagged like the others."""
+
+CABINET_W, CABINET_D, CABINET_H = 0.560, 0.200, 0.720
+"""Cabinet carcass, metres. Width: hung on a §12 corridor wall
+(CORRIDOR_WIDTH_ASSUMED = 1.60 m), 0.560 + face frame stays narrower than the
+0.60 one-hand span so it reads as a wall fitting, not furniture. Depth: 0.200
+leaves 1.40 m of corridor clear — 2.8× PLAYER_SHOULDER_ASSUMED, so the piece
+can never turn a startle into a §05 collision (backward movement is 65% speed;
+geometry must not add a death to a scare). Height: 0.720 so the whole leaf
+sweep fits a 1.5 m-distance view cone (±0.40 m about the eye line covers
+roughly ±15°, the comfortable vertical read at trigger range)."""
+
+CABINET_MOUNT_Z = 1.050
+"""Carcass underside, metres above the floor. Puts the cavity centre at
+1.410 m — 0.22 m under the 1.63 m eye so the leaf slams across the
+lower-centre of the frame at the 1.5 m trigger distance, where the §03 beam
+(aimed with the eye) actually is, instead of at the ceiling shadow above it."""
+
+CABINET_LIP = 0.030
+"""Face-frame lip, metres. The opening is the carcass minus this lip all
+round; 0.030 is the smallest lip that still throws a legible frame-shadow line
+around the dark cavity under a 1.5 m beam (thinner read as a seam, not a
+frame, in the beam test)."""
+
+CABINET_LEAF_GAP = 0.003
+"""Clearance per edge between leaf and opening, metres. 3 mm: visible as a
+shadow gap at 1.5 m, invisible at 4 m, and generous enough that the runtime's
+slam rotation never intersects the jamb."""
+
+LEAF_T = 0.024
+"""Leaf slab thickness. Sheet-steel door language — the dressing kit's locker
+doors are 0.028 and this one is a cabinet, not a locker."""
+
+SKITTERER_BODY_LENGTH = 0.335
+"""Nose-to-rump target, metres — the "~0.35 m rat-sized body" the set was
+asked for; the tail runs the bbox out to ~0.46 m. At this size crossing a
+1.60 m corridor the dart lasts under half a second at animal speed — long
+enough to be seen, too short to be inspected, which is the whole trick of a
+shape with no limbs."""
+
+PIPESTUB_AXIS_Z = 1.250
+"""Broken pipe's axis height, metres. Between waist and chest: the vent burst
+crosses the frame's lower half at both trigger distances, and the band does
+not collide with the cabinet's 1.05-1.77 m so the two set pieces can share a
+corridor wall without reading as one object."""
+
+
+def build_startle_cabinet_shell() -> PropBuild:
+    """Wall cabinet carcass with a leaf-sized opening. The leaf is its own FBX.
+
+    Industrial language borrowed from the dressing kit's locker bank (chipped
+    painted steel, bare-metal fittings, rust weep below) but built here so the
+    startle set rides gen_props' own material manifest. The cavity is DARK on
+    purpose — one shelf and a near-black liner: what the beam finds when the
+    leaf slams open is depth, not contents. Nothing lives inside; a 선착순 race
+    has nothing to put there, and an empty dark box is the scarier one anyway.
+    """
+    b = PropBuild("Startle_CabinetShell")
+    W, D, H = CABINET_W, CABINET_D, CABINET_H
+    z0 = CABINET_MOUNT_Z
+    zc = z0 + H / 2
+    f = CABINET_LIP
+    t = 0.020
+
+    # Carcass: back, sides, top, bottom. Painted steel, beveled.
+    back = b.box((W, 0.016, H), (0.0, -0.008, zc), mat=STEEL_PAINTED, role="back")
+    b.pivot_part = back
+    for sx in (-1.0, 1.0):
+        b.box((t, D, H), (sx * (W / 2 - t / 2), -D / 2, zc), mat=STEEL_PAINTED)
+    b.box((W - 2 * t, D, t), (0.0, -D / 2, z0 + H - t / 2), mat=STEEL_PAINTED)
+    b.box((W - 2 * t, D, t), (0.0, -D / 2, z0 + t / 2), mat=STEEL_PAINTED)
+
+    # One interior shelf at cavity mid-height.
+    b.box((W - 2 * t - 0.004, D - 0.024, 0.012), (0.0, -D / 2 + 0.004, zc),
+          mat=STEEL_PAINTED)
+
+    # Near-black cavity liners: the back and both flanks. This is what makes the
+    # opened cabinet read as a hole with a frame instead of a grey box — the
+    # beam's answer from inside must be (almost) nothing.
+    b.box((W - 2 * t - 0.008, 0.004, H - 2 * t - 0.008),
+          (0.0, -0.018, zc), mat=CAVITY_DARK, nobevel=True)
+    for sx in (-1.0, 1.0):
+        b.box((0.004, D - 0.030, H - 2 * t - 0.008),
+              (sx * (W / 2 - t - 0.004), -D / 2 + 0.002, zc), mat=CAVITY_DARK,
+              nobevel=True)
+
+    # Face frame, 12 mm proud of the carcass: the opening it leaves is the
+    # contract the leaf is cut to. Opening: (W - 2f) x (H - 2f), centred.
+    fy = -D - 0.006
+    b.box((W, 0.012, f), (0.0, fy, z0 + H - f / 2), mat=STEEL_PAINTED)
+    b.box((W, 0.012, f), (0.0, fy, z0 + f / 2), mat=STEEL_PAINTED)
+    for sx in (-1.0, 1.0):
+        b.box((f, 0.012, H - 2 * f), (sx * (W / 2 - f / 2), fy, zc),
+              mat=STEEL_PAINTED)
+
+    # Hinge knuckles on the -X jamb, bare metal — the visual anchor the Unity
+    # hinge empty lands on. -X is the player's screen-left when facing the
+    # cabinet (props face -Y; a viewer looking +Y has +X as screen-right).
+    hinge_x = -(W / 2 - f)
+    for dz in (0.165, 0.495):
+        b.cyl(0.008, 0.048, (hinge_x, -D - 0.013, z0 + f + dz), verts=6,
+              mat=STEEL_CHIP, nobevel=True)
+    # Latch striker on the +X jamb.
+    b.box((0.012, 0.010, 0.040), (W / 2 - f + 0.002, -D - 0.014, zc),
+          mat=STEEL_CHIP, nobevel=True)
+
+    # Mounting tabs and their bolts, on the wall above the carcass.
+    for sx in (-1.0, 1.0):
+        b.box((0.060, 0.014, 0.040), (sx * 0.180, -0.007, z0 + H + 0.020),
+              mat=IRON, nobevel=True)
+        b.cyl(0.006, 0.012, (sx * 0.180, -0.016, z0 + H + 0.020),
+              rot=(90.0, 0.0, 0.0), verts=6, mat=RUST, nobevel=True)
+
+    # Chipped paint: three bare-metal flecks where hands and the slamming leaf
+    # have worn the enamel — front frame corners and the striker edge.
+    b.quad(0.020, 0.028, (hinge_x + 0.006, fy - 0.0065, z0 + H - f - 0.020),
+           rot=(90.0, 8.0, 0.0), mat=STEEL_CHIP)
+    b.quad(0.016, 0.022, (W / 2 - f - 0.010, fy - 0.0065, zc + 0.060),
+           rot=(90.0, -12.0, 0.0), mat=STEEL_CHIP)
+    b.quad(0.024, 0.014, (0.060, fy - 0.0065, z0 + f + 0.010),
+           rot=(90.0, 3.0, 0.0), mat=STEEL_CHIP)
+
+    # Rust weeping down the wall from the carcass underside — the same
+    # carried-decal trick Pipes uses, so the fitting arrives installed.
+    b.box((0.040, 0.005, 0.300), (-0.140, -0.0035, z0 - 0.155), mat=RUST_DARK,
+          nobevel=True)
+    b.box((0.024, 0.005, 0.180), (0.095, -0.0035, z0 - 0.095), mat=RUST_DARK,
+          nobevel=True)
+
+    b.meta["opening"] = (W - 2 * f, H - 2 * f)
+    b.meta["report_facts"] = [
+        f"opening={W - 2 * f:.3f}x{H - 2 * f:.3f}m",
+        f"hinge_jamb=minus_x hinge_empty_at=({hinge_x:.3f},{fy - 0.006:.3f},{z0 + f:.3f})",
+        "leaf_file=Startle_CabinetLeaf.fbx",
+    ]
+    return b
+
+
+def build_startle_cabinet_leaf() -> PropBuild:
+    """The cabinet's door, exported alone. ORIGIN ON ITS HINGE EDGE.
+
+    Contract (mount="HINGE", enforced in emit): min X = 0 is the hinge axis and
+    the leaf extends +X; max Y = 0 is the closed-leaf back plane, thickness and
+    handle toward -Y; min Z = 0 is the leaf's own bottom. Parent it to a hinge
+    empty at the shell's -X jamb (coordinates in the shell's PROP_DETAIL) and a
+    negative Z rotation swings it open toward the corridor — exactly how
+    MapSceneBuilder.BuildDoor drives Door_Panel_Lockable.
+    """
+    b = PropBuild("Startle_CabinetLeaf")
+    lw = CABINET_W - 2 * CABINET_LIP - 2 * CABINET_LEAF_GAP
+    lh = CABINET_H - 2 * CABINET_LIP - 2 * CABINET_LEAF_GAP
+
+    slab = b.box((lw, LEAF_T, lh), (lw / 2, -LEAF_T / 2, lh / 2),
+                 mat=STEEL_PAINTED, role="slab")
+    b.pivot_part = slab
+
+    # Three louvre slats, tilted 40°, with the dark slot behind each — the
+    # locker-bank vent language, and the one detail that says "cabinet with an
+    # inside" while the leaf is still shut.
+    for i in range(3):
+        z = lh * 0.66 + (i - 1) * 0.048
+        b.quad(0.180, 0.014, (lw / 2, -LEAF_T - 0.0005, z), rot=(90.0, 0.0, 0.0),
+               mat=CAVITY_DARK)
+        b.box((0.180, 0.010, 0.016), (lw / 2, -LEAF_T - 0.004, z - 0.004),
+              rot=(40.0, 0.0, 0.0), mat=STEEL_PAINTED, nobevel=True)
+
+    # Handle on the free (+X) edge: two stubs and a vertical grip, bare metal.
+    hx = lw - 0.045
+    for dz in (-0.045, 0.045):
+        b.box((0.014, 0.026, 0.012), (hx, -LEAF_T - 0.013, lh / 2 + dz),
+              mat=STEEL_CHIP, nobevel=True)
+    b.box((0.016, 0.012, 0.110), (hx, -LEAF_T - 0.032, lh / 2), mat=STEEL_CHIP)
+
+    # Hinge knuckles riding the hinge edge, proud of the front face. The real
+    # hinge is the Unity empty; these are what the beam sees of it.
+    for z in (0.165, 0.495):
+        b.cyl(0.009, 0.048, (0.012, -LEAF_T - 0.004, z), verts=6,
+              mat=STEEL_CHIP, nobevel=True)
+
+    # Wear: two paint chips at the handle corner and hinge edge, and a rust
+    # streak bleeding up from the bottom rail.
+    b.quad(0.018, 0.024, (hx - 0.030, -LEAF_T - 0.0005, lh / 2 + 0.080),
+           rot=(90.0, 15.0, 0.0), mat=STEEL_CHIP)
+    b.quad(0.014, 0.020, (0.035, -LEAF_T - 0.0005, 0.090),
+           rot=(90.0, -6.0, 0.0), mat=STEEL_CHIP)
+    b.quad(0.028, 0.110, (lw * 0.22, -LEAF_T - 0.0005, 0.075),
+           rot=(90.0, 2.0, 0.0), mat=RUST_DARK)
+
+    b.meta["slab"] = (lw, lh)
+    b.meta["report_facts"] = [
+        "origin=hinge_edge (min X = hinge axis, leaf extends +X; max Y = closed "
+        "back plane; min Z = leaf bottom)",
+        "swing=negative_Z_rotation_opens_toward_corridor",
+        f"slab={lw:.3f}x{lh:.3f}m fits shell opening minus {CABINET_LEAF_GAP * 1000:.0f}mm/edge",
+    ]
+    return b
+
+
+def build_startle_skitterer() -> PropBuild:
+    """A rat-sized dart-across-the-corridor shape. No rig: the runtime slides
+    and bobs the transform, and at 0.35 m in a dark corridor implied legs ARE
+    legs. Whole body near-black matte (FUR_DARK, albedo ~0.03): the read is a
+    piece of the dark detaching and crossing the beam, silhouetted against the
+    floor pool — measured in the beam test, not assumed. Faces -Y like every
+    prop, so the runtime darts it along its own forward.
+    """
+    b = PropBuild("Startle_Skitterer")
+    body = b.sph(0.110, (0.0, 0.010, 0.060), scale=(0.60, 1.25, 0.55),
+                 segs=10, rings=5, mat=FUR_DARK, nobevel=True, role="body")
+    b.pivot_part = body
+    # Head: lower and narrower than the body — the dip between the two is what
+    # makes the profile an animal instead of a slug. Nose lands at -0.188, so
+    # nose-to-rump is 0.335 = SKITTERER_BODY_LENGTH.
+    b.sph(0.052, (0.0, -0.128, 0.050), scale=(0.78, 1.15, 0.75),
+          segs=8, rings=4, mat=FUR_DARK, nobevel=True)
+    # Ears: two clipped flakes, raked back. Round 1 sized them 16 mm and put
+    # them at ±0.024: under the steep 1.5 m down-view the FAR ear cleared the
+    # skull line and read as a square tab on the neck. Smaller, inboard, swept.
+    for sx in (-1.0, 1.0):
+        b.box((0.011, 0.005, 0.014), (sx * 0.019, -0.134, 0.088),
+              rot=(-24.0, sx * 16.0, sx * 8.0), mat=FUR_DARK, nobevel=True)
+    # Tail: one tapering cone laid along +Y, tip a whisker up.
+    b.cone(0.0085, 0.0015, 0.130, (0.0, 0.205, 0.055), rot=(-82.0, 0.0, 4.0),
+           verts=6, mat=FUR_DARK, nobevel=True)
+    # Leg fringe: eight slivers under the flanks. Silhouette only — under the
+    # body they are unreadable as shapes but the outline they give the floor
+    # line is "many small legs", which is the entire job. Round 1 splayed them
+    # 16-23° at x ±0.052; at the 1.5 m trigger view (§05 eye, ~47° down) the
+    # far-side pair cleared the flank contour and rode the animal's BACK as
+    # square tabs. Now inboard of the flank at every station (body half-width
+    # at the rear pair's y is 0.049) with 8° splay: tucked in plan view, still
+    # feet in profile.
+    for i, y in enumerate((-0.088, -0.026, 0.042, 0.100)):
+        for sx in (-1.0, 1.0):
+            b.box((0.010, 0.024, 0.046),
+                  (sx * 0.044, y, 0.023),
+                  rot=(0.0, sx * 8.0, sx * (6.0 - i * 3.0)),
+                  mat=FUR_DARK, nobevel=True)
+    b.meta["report_facts"] = [
+        "no_rig=runtime_slides_and_bobs_transform",
+        "forward=minus_Y",
+        f"albedo_luminance={albedo_luminance(FUR_DARK):.3f} (does not answer the beam; "
+        "read is silhouette against the floor pool)",
+    ]
+    return b
+
+
+def build_startle_pipestub() -> PropBuild:
+    """A broken wall pipe that vents a burst when triggered. Single mesh, so a
+    nozzle-direction child empty is NOT possible in this export — the mesh is
+    oriented with its MOUTH ON -Y (the wall-prop facing convention) and the
+    runtime vents along the prop's own forward. Stated in the report.
+
+    Rust language matches Pipes.fbx above: RUST for the painted-oxide body,
+    RUST_DARK for wet stain and the wall weep, IRON for machined fittings.
+    """
+    b = PropBuild("Startle_PipeStub")
+    z = PIPESTUB_AXIS_Z
+    # Wall escutcheon plate, then a stained collar, then the stub itself.
+    plate = b.cyl(0.075, 0.018, (0.0, -0.009, z), rot=(90.0, 0.0, 0.0),
+                  verts=12, mat=IRON, nobevel=True, role="plate")
+    b.pivot_part = plate
+    b.cyl(0.055, 0.035, (0.0, -0.036, z), rot=(90.0, 0.0, 0.0), verts=12,
+          mat=RUST_DARK, nobevel=True)
+    b.cyl(0.045, 0.130, (0.0, -0.105, z), rot=(90.0, 0.0, 0.0), verts=12,
+          mat=RUST, nobevel=True)
+    # Mouth interior: a near-black core recessed 5 mm behind the rim. Under the
+    # coaxial torch the mouth must stay a hole (the Gun_Bore trick) — the burst
+    # the runtime spawns has to come FROM darkness, not from a grey disc.
+    b.cyl(0.038, 0.140, (0.0, -0.095, z), rot=(90.0, 0.0, 0.0), verts=10,
+          mat=BORE_DARK, nobevel=True)
+    # The tear: eight ragged petals around the rim — deterministic table, no
+    # RNG, same policy as Debris. Round 1 made them 30-44 mm and near-axial and
+    # they closed over the mouth: the stub read as a solid brown knob with two
+    # twigs, and the dark bore never showed. Now 18-28 mm, bent 45-70° outward,
+    # centred ON the rim circle — a ragged crown around a visible hole. Three
+    # petals are bare metal: freshly torn steel shows bright at the tear, and
+    # that curved highlight is what anchors the piece at the 4 m read where
+    # oxide tones sink into the wall.
+    petals = (
+        (0, 52.0, 0.022, RUST), (47, 64.0, 0.026, STEEL_CHIP),
+        (98, 48.0, 0.018, RUST), (141, 70.0, 0.024, RUST_DARK),
+        (187, 55.0, 0.028, STEEL_CHIP), (232, 62.0, 0.020, RUST),
+        (275, 45.0, 0.026, RUST_DARK), (318, 58.0, 0.022, STEEL_CHIP),
+    )
+    for ang, bend, length, mtl in petals:
+        a = math.radians(ang)
+        px, pz = 0.047 * math.cos(a), 0.047 * math.sin(a)
+        b.box((0.012, length, 0.006),
+              (px, -0.170 - length * 0.22, z + pz),
+              rot=(bend * math.sin(a), -bend * math.cos(a), ang * 0.20),
+              mat=mtl, nobevel=True)
+    # Flange bolts on the plate — three left; a torn pipe lost the fourth.
+    for ang in (30.0, 150.0, 270.0):
+        a = math.radians(ang)
+        b.cyl(0.0065, 0.014, (0.060 * math.cos(a), -0.021, z + 0.060 * math.sin(a)),
+              rot=(90.0, 0.0, 0.0), verts=6, mat=IRON if ang != 270.0 else RUST,
+              nobevel=True)
+    # Wall weep below the plate. Round 1 hung a 50 mm ribbon 15 mm clear of the
+    # plate and it read as a plank leaning on the wall; a weep starts AT the
+    # fitting that feeds it and narrows as it falls. Two staggered strips, both
+    # tops tucked behind the plate's bottom edge, the long one under the mouth.
+    b.box((0.026, 0.005, 0.260), (0.004, -0.0035, z - 0.195), mat=RUST_DARK,
+          nobevel=True)
+    b.box((0.012, 0.005, 0.150), (-0.030, -0.0035, z - 0.140), mat=RUST_DARK,
+          nobevel=True)
+    b.meta["report_facts"] = [
+        "mouth=minus_Y (single-mesh export: no child empty possible; runtime "
+        "vents along the prop's forward)",
+        "mouth_interior=Prop_BoreDark recessed 5mm behind torn rim",
+    ]
+    return b
+
+
 # ── Prop table ──────────────────────────────────────────────────────────────
 
 
@@ -974,6 +1356,26 @@ SPECS: list[Spec] = [
     Spec("Pipes", build_pipes, "Dressing", (2.400, 0.231, 0.515), mount="WALL", bevel=0.004),
     Spec("Shelving", build_shelving, "Dressing", (1.840, 0.460, 1.940), bevel=0.005),
     Spec("Debris", build_debris, "Dressing", (1.237, 1.046, 0.299), bevel=0.004),
+    # ── 깜짝 set pieces ────────────────────────────────────────────────────
+    # Budgets are the integration brief's, not §05's default: these are seen at
+    # 1.5 m, once, mid-slam — silhouette pieces, not hero props.
+    Spec("Startle_CabinetShell", build_startle_cabinet_shell, "Startle",
+         (0.560, 0.221, 1.065), mount="WALL", bevel=0.004, max_tris=900,
+         note="깜짝 wall cabinet carcass. Opening 0.500x0.660 m; hinge empty at "
+              "the -X jamb (see PROP_FACT). Leaf is Startle_CabinetLeaf.fbx."),
+    Spec("Startle_CabinetLeaf", build_startle_cabinet_leaf, "Startle",
+         (0.494, 0.062, 0.654), mount="HINGE", bevel=0.004, max_tris=300,
+         note="깜짝 cabinet leaf. Origin ON the hinge edge (Door_Panel_Lockable "
+              "contract): parent to a hinge empty, negative Z rotation slams it "
+              "open toward the corridor."),
+    Spec("Startle_Skitterer", build_startle_skitterer, "Startle",
+         (0.119, 0.457, 0.121), bevel=0.0, max_tris=350,
+         note="깜짝 floor darter. No rig; runtime slides + bobs the transform "
+              "along -Y forward. Near-black matte on purpose."),
+    Spec("Startle_PipeStub", build_startle_pipestub, "Startle",
+         (0.150, 0.190, 0.400), mount="WALL", bevel=0.003, max_tris=400,
+         note="깜짝 broken wall pipe. Mouth on -Y (single mesh, no child empty); "
+              "runtime vents the burst along the prop's forward."),
 ]
 
 
@@ -988,7 +1390,11 @@ def pivot_shift(b: PropBuild, mount: str) -> Vector:
 
     FLOOR: origin on the floor under the footprint centre. WALL: origin on the
     wall plane under the fitting, height preserved. Both mean a level designer
-    drops the prop at a point on a surface and it is correct.
+    drops the prop at a point on a surface and it is correct. HINGE (the 깜짝
+    cabinet leaf): origin on the hinge edge — the pivot part's min X becomes 0
+    (the hinge axis), max Y becomes 0 (closed-leaf back plane), min Z becomes 0
+    (the leaf's own bottom) — so the Unity editor pass parents the FBX to a
+    hinge empty and rotates it directly, the Door_Panel_Lockable contract.
     """
     ref = [b.pivot_part] if b.pivot_part is not None else b.parts
     rlo, rhi = world_bbox(ref)
@@ -996,6 +1402,8 @@ def pivot_shift(b: PropBuild, mount: str) -> Vector:
     cx = (rlo.x + rhi.x) / 2
     if mount == "WALL":
         return Vector((-cx, -ahi.y, 0.0))
+    if mount == "HINGE":
+        return Vector((-rlo.x, -ahi.y, -alo.z))
     cy = (rlo.y + rhi.y) / 2
     return Vector((-cx, -cy, -alo.z))
 
@@ -1090,6 +1498,19 @@ def emit(spec: Spec) -> None:
                           "must be 0 so it drops onto a wall plane")
         if lo[2] < -0.003:
             blendkit.fail(f"{spec.name}: wall prop dips below the floor (min z={lo[2]:.4f})")
+    elif spec.mount == "HINGE":
+        # The whole point of the two-file cabinet: the leaf's origin IS its
+        # hinge. If any of these drift, the Unity editor pass parents the leaf
+        # to a hinge empty and the slam orbits the wrong axis.
+        if abs(lo[0]) > 0.006:
+            blendkit.fail(f"{spec.name}: hinge prop's hinge edge is at x={lo[0]:.4f}, "
+                          "must be 0 — the origin is the hinge axis")
+        if abs(hi[1]) > 0.003:
+            blendkit.fail(f"{spec.name}: hinge prop's closed back plane is at "
+                          f"y={hi[1]:.4f}, must be 0")
+        if abs(lo[2]) > 0.003:
+            blendkit.fail(f"{spec.name}: hinge prop's bottom is at z={lo[2]:.4f}, "
+                          "must be 0 (leaf-local, not floor)")
     else:
         if abs(lo[2]) > 0.003:
             blendkit.fail(f"{spec.name}: floor prop's base is at z={lo[2]:.4f}, must be 0")
@@ -1113,6 +1534,10 @@ def emit(spec: Spec) -> None:
     if sym is not None:
         extra.append(f"symmetry_error_mm={sym * 1000:.3f}")
     print("PROP_DETAIL " + " ".join(extra))
+    # Per-prop contract lines (the 깜짝 pieces state their hinge/forward
+    # contracts here so the integrator never has to open Blender to learn them).
+    for fact in b.meta.get("report_facts", ()):
+        print(f"PROP_FACT {spec.name} {fact}")
 
 
 # ── Cross-prop checks ───────────────────────────────────────────────────────
@@ -1214,6 +1639,31 @@ def check_metal_is_not_a_panel(names: list[str]) -> list[str]:
     return lines
 
 
+def check_startle_leaf_fits_shell(names: list[str]) -> list[str]:
+    """The two-file cabinet's one integration risk: a leaf that no longer fits
+    the shell's opening. Measured off the exported leaf (bbox X and Z are the
+    slab — nothing on the leaf reaches past it) against the shell's authored
+    opening, and gated to the 2-12 mm band: under 2 mm the slam scrapes the
+    jamb, over 12 mm the shut cabinet shows a black picture-frame gap at 1.5 m.
+    Mirrors the Doorway_Frame + Door_Panel_Lockable pairing, where the same
+    contract is held by MapKitCatalogue instead.
+    """
+    if "Startle_CabinetShell" not in names or "Startle_CabinetLeaf" not in names:
+        return []
+    ow, oh = META["Startle_CabinetShell"]["opening"]
+    leaf = row("Startle_CabinetLeaf")
+    gw = ow - leaf["size"][0]
+    gh = oh - leaf["size"][2]
+    for label, gap in (("width", gw), ("height", gh)):
+        if not 0.002 <= gap <= 0.012:
+            blendkit.fail(
+                f"Startle_CabinetLeaf: {label} clearance to the shell opening is "
+                f"{gap * 1000:.1f} mm total — outside 2-12 mm. Under 2 the slam "
+                "scrapes the jamb; over 12 the shut cabinet wears a black frame.")
+    return [f"cabinet leaf fits the shell opening: {gw * 1000:.1f} mm width / "
+            f"{gh * 1000:.1f} mm height total clearance (2-12 mm band)  OK"]
+
+
 def write_manifest() -> str:
     """Writes ``Assets/Models/Props/Props.manifest.json`` — the Unity-side contract.
 
@@ -1295,6 +1745,7 @@ def main() -> None:
     names = [s.name for s in todo]
     lines: list[str] = []
     lines += check_metal_is_not_a_panel(names)
+    lines += check_startle_leaf_fits_shell(names)
 
     # DELETED with the props they guarded, each of which was a system's model:
     #   * 금고 속 문서 fits the safe cavity            — §08 금고, no safe

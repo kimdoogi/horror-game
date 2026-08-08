@@ -682,6 +682,18 @@ namespace HorrorGame.EditorTools
                 return AudioRole.InterfaceCue;
             }
 
+            // §16's 깜짝 one-shots. Positional, and that is the mechanic rather than a
+            // mix preference: a startle is a thing that happened in the room — a leaf at
+            // a hinge, a hiss at a wall stub, a figure behind you — and a fright the
+            // Listener cannot place is a fright the player turns the WRONG way from,
+            // which reads as a bug in a game whose §12 makes direction the information.
+            // Without this entry the folder falls through to the 2D fallback below and
+            // every stl_*.wav plays inside the player's head.
+            if (folder.Equals("Startle", StringComparison.Ordinal))
+            {
+                return AudioRole.PositionalOneShot;
+            }
+
             // An unrecognised folder under Assets/Audio is treated as non-diegetic, which
             // is the setting that cannot break a role by being wrong. The validator reports
             // it so the omission gets a policy entry instead of a default.

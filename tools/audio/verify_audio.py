@@ -172,6 +172,12 @@ FAMILIES: tuple[Family, ...] = (
     Family("Items", "Items", (r"^(flashlight|battery|door|barricade|noisetrap|safe|breaker|zone|flare|"
                               r"chalk|rope|loot|shop|detector|muffler)_.*\.wav$",), "gen_items.py"),
     Family("Monster", "Monster", (r"^monster_.*\.wav$",), "gen_monster_audio.py"),
+    # 깜짝 startle stingers. stl_<stem>_<take>.wav where the stem may be two
+    # words (cabinet_slam), same shape as the Footsteps row above. The family
+    # is LOCAL-ONLY by design decision: rendered per-player at seeded fittings,
+    # zero network traffic, and never reported to the creature — §12 makes
+    # sound the map, and a placed noise would be a forged footstep.
+    Family("Startle", "Startle", (r"^stl_[a-z_]+_\d\d\.wav$",), "gen_scares.py"),
     # `caught_` is the only stem in this folder that gen_ui.py does not write —
     # it comes from gen_caught.py, which is a separate script because §06's catch
     # is measured against descend_basement rather than against the other UI cues.
@@ -199,6 +205,12 @@ POSITIONAL = (
     # the noise trap that catches the Runner, the flare burning where it landed.
     r"^(flashlight|battery|door|barricade|noisetrap|safe|breaker|zone_hum|flare|chalk|rope|"
     r"loot_pickup|detector|muffler)",
+    # 깜짝 startle stingers: seeded fittings at world positions (a locker, an
+    # overhead line, a scurry crossing the corridor). Local-only and never
+    # reported to the creature — but the *render* is 3D on the player's own
+    # client, so a stereo file here would play unattenuated from everywhere:
+    # a jump scare with no source direction to turn toward. Mono is enforced.
+    r"^stl_",
 )
 
 #: NON-DIEGETIC — plays in the player's head or as a fixed 2D layer. Stereo on
