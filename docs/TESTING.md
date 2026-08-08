@@ -592,6 +592,20 @@ sooner or later, report an empty one — at which point the flake looks like a f
 Neither has been chased down. The 121/121 on record was a real measurement of a run where
 the straw fell elsewhere and the room was not silent.
 
+**Update, same day, the flake showed its face.** Two later runs both failed
+`GunTests.Firing_hands_the_creature_a_sound_it_can_act_on` with a message the earlier
+sightings never captured:
+
+> moving the rig beside the creature changed which creature is local to it.
+> Expected: Monster @ MonsterSpawn_B1 하역장_45. But was: Monster @ MonsterSpawn_B2 기록보관소_135.
+
+So the floating failure is not in any test's own subject — it is the harness's
+"which creature is local to this rig" storey resolution flipping to the storey below,
+sensitive to whatever position or scene state the previous test left behind (B1's floor
+sits directly on B2's ceiling at a 3.75 m pitch; a rig or sample point landing in the
+seam bin resolves down). Whoever chases it: reproduce by running the suite in order, not
+the test alone — alone it passes, which is the signature of the whole class.
+
 ---
 
 ## Regenerating assets

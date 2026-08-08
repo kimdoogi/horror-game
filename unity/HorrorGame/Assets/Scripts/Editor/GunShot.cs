@@ -68,6 +68,7 @@ namespace HorrorGame.EditorTools
                 var shots = 0;
                 shots += ShootPickup(camera, outDir, tag);
                 shots += ShootHeldTemplate(camera, outDir, tag);
+                shots += ShootHeldInHand(camera, outDir, tag);
 
                 Debug.Log("[GunShot] " + shots + " frame(s) written to " + outDir + ".");
                 if (Application.isBatchMode) EditorApplication.Exit(shots > 0 ? 0 : 1);
@@ -143,6 +144,120 @@ namespace HorrorGame.EditorTools
             {
                 template.gameObject.SetActive(wasActive);
             }
+        }
+
+        /// <summary>
+        /// The held gun as another runner sees it: a real rig posed with GunIdle, the
+        /// held clone mounted by RunnerGun's OWN arithmetic — identity local rotation
+        /// under RightUpperArm, offset <c>head.localPosition.magnitude ×
+        /// GunMountArmsPerSpine</c> along the bone's +Y (RunnerGun.MountOffset,
+        /// reproduced not referenced: the runtime method is private, and reproducing it
+        /// here means a drift between the two is a photograph, not a mystery).
+        /// This is the frame that has never been taken: the mount POINT is measured to
+        /// 1e-7, but the clone's ORIENTATION under the bone has shipped sight unseen.
+        /// </summary>
+        private static int ShootHeldInHand(Camera camera, string outDir, string tag)
+        {
+            var rig = HorrorGame.Gameplay.PlayerEditor.PlayerFeelHarnessMenu.BuildRig();
+            if (rig == null)
+            {
+                Debug.LogWarning("[GunShot] BuildRig failed — no held-in-hand frame.");
+                return 0;
+            }
+
+            try
+            {
+                var view = rig.GetComponent<HorrorGame.Gameplay.Player.PlayerFirstPersonView>();
+                if (view != null)
+                {
+                    view.IsOwner = false;
+                    view.Apply();
+                }
+
+                var root = rig.transform;
+                var arm = FindDeep(root, t => t.name == HorrorGame.Gameplay.Race.RunnerGun.ArmBone);
+                var head = FindDeep(root, t => t.name == HorrorGame.Gameplay.Race.RunnerGun.HeadBone);
+                if (arm == null || head == null)
+                {
+                    Debug.LogWarning("[GunShot] rig lacks " + HorrorGame.Gameplay.Race.RunnerGun.ArmBone
+                        + "/" + HorrorGame.Gameplay.Race.RunnerGun.HeadBone + ".");
+                    return 0;
+                }
+
+                // The SCENE template, exactly as RunnerGun.FindTemplate takes it — not
+                // the raw asset. First cut instantiated the FBX asset and photographed a
+                // 30-metre gun: the import's scale normalization lives on the scene
+                // instance, and a harness that diverges from the runtime's path
+                // photographs its own bug instead of the game's.
+                var heldTemplate = UnityEngine.Object
+                    .FindObjectsByType<Transform>(FindObjectsInactive.Include, FindObjectsSortMode.None)
+                    .FirstOrDefault(t => t.name == HorrorGame.EditorTools.SceneGen.MapSceneBuilder.HeldTemplateName)
+                    ?.gameObject;
+                if (heldTemplate == null)
+                {
+                    Debug.LogWarning("[GunShot] no held template in the open scene.");
+                    return 0;
+                }
+
+                // Pose first, then mount: the clip moves the bone the clone hangs from.
+                var clips = AssetDatabase.LoadAllAssetsAtPath("Assets/Models/Player/Runner.fbx")
+                    .OfType<AnimationClip>().ToArray();
+                var gunIdle = clips.FirstOrDefault(c => c.name == "GunIdle");
+                var animator = rig.GetComponentInChildren<Animator>();
+                var poseTarget = animator != null ? animator.gameObject : rig;
+                if (gunIdle != null)
+                {
+                    gunIdle.SampleAnimation(poseTarget, gunIdle.length * 0.25f);
+                }
+
+                var held = UnityEngine.Object.Instantiate(heldTemplate, arm, false);
+                held.SetActive(true);
+                held.transform.localRotation = Quaternion.identity;
+                held.transform.localPosition = new Vector3(0f,
+                    head.localPosition.magnitude * HorrorGame.Gameplay.Race.RunnerGun.GunMountArmsPerSpine, 0f);
+
+                // Mirror of RunnerGun.Arm's bone-scale normalization — keep in sync by
+                // hand; a drift between the two shows up as a photograph, which is the
+                // whole reason this harness reproduces rather than references.
+                var boneScale = arm.lossyScale;
+                var wantScale = heldTemplate.transform.lossyScale;
+                held.transform.localScale = new Vector3(
+                    boneScale.x != 0f ? wantScale.x / boneScale.x : 1f,
+                    boneScale.y != 0f ? wantScale.y / boneScale.y : 1f,
+                    boneScale.z != 0f ? wantScale.z / boneScale.z : 1f);
+                LogBounds("held in hand (GunIdle)", held.transform);
+
+                rig.transform.position = Vector3.up * 200f; // clear of the map, same trick as the stages
+                var count = 0;
+                foreach (var (name, offset) in new (string, Vector3)[]
+                {
+                    ("front", new Vector3(0f, 1.35f, 2.0f)),
+                    ("side", new Vector3(2.0f, 1.35f, 0.3f)),
+                    ("close", new Vector3(0.9f, 1.15f, 0.9f)),
+                })
+                {
+                    var eye = rig.transform.position + offset;
+                    camera.transform.SetPositionAndRotation(eye,
+                        Quaternion.LookRotation((rig.transform.position + Vector3.up * 1.1f - eye).normalized, Vector3.up));
+                    count += Capture(camera, outDir, tag + "_inhand_" + name + ".png");
+                }
+
+                return count;
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(rig);
+            }
+        }
+
+        private static Transform FindDeep(Transform root, Func<Transform, bool> match)
+        {
+            foreach (var t in root.GetComponentsInChildren<Transform>(true))
+            {
+                if (t != root && match(t)) return t;
+            }
+
+            return null;
         }
 
         private static void LogBounds(string label, Transform subject)

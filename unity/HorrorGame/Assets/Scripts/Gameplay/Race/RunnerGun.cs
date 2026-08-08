@@ -576,6 +576,21 @@ namespace HorrorGame.Gameplay.Race
             _held.transform.localRotation = Quaternion.identity;
             _held.transform.localPosition = MountOffset(root);
 
+            // Undo the bone's scale, or the gun ships at bone scale. The rig's bones
+            // carry the FBX's x100 node scaling (the rig root's 0.01 cancels it for the
+            // BODY, but a clone parented to a bone inherits the bone's lossy scale
+            // alone), and a localScale-1 clone under RightUpperArm photographed as a
+            // 27-metre revolver — GunShot measured bounds (8.0, 26.96, 29.44) on the
+            // real BuildRig rig, the frame nobody had ever taken because every gun test
+            // asserts firing, not appearance. Match the TEMPLATE's world size instead:
+            // its lossy scale is the import-correct one the pickup path renders at.
+            var boneScale = arm.lossyScale;
+            var wantScale = template.transform.lossyScale;
+            _held.transform.localScale = new Vector3(
+                boneScale.x != 0f ? wantScale.x / boneScale.x : 1f,
+                boneScale.y != 0f ? wantScale.y / boneScale.y : 1f,
+                boneScale.z != 0f ? wantScale.z / boneScale.z : 1f);
+
             // The POSE, not just the prop. Without this the runner holds a gun with the
             // empty-handed Idle/Walk arms and the right hand swings through it — the
             // §12 문 reading ("the runner ahead of you took this floor's gun") is exactly
