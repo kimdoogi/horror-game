@@ -1,10 +1,22 @@
 # ASSETS — what exists, what it is for, and how to rebuild it
 
 Everything in `Assets/Audio` and `Assets/Models` is **procedurally generated** from the
-scripts in `tools/`. Nothing is sampled, downloaded or licensed from a third party —
-§13 ships this on Steam and an asset of unclear provenance is a legal problem rather
-than a mixing problem. Every file is deterministic from a seed, so a clean rebuild is
-byte-identical and a diff after regeneration means something actually changed.
+scripts in `tools/`, with **one licensed exception, added 2026-08-09**: the runner's
+eight animation clips are Adobe Mixamo mocap, retargeted onto the procedurally-built
+13-bone rig. The geometry, materials and rig are still 100 % generated; only the pose
+curves are third-party. §13 ships this on Steam and an asset of unclear provenance is a
+legal problem rather than a mixing problem — so the provenance is recorded in full
+below, and Mixamo's licence (free for commercial use in a game, no attribution
+required) covers it.
+
+| Third-party source | Files | Licence | Used for |
+|---|---|---|---|
+| Adobe Mixamo (mocap) | `tools/blender/source/mixamo/{Running, Walking, Crouch Walking, Breathing Idle, Crouching Idle, Death, Pistol Idle, Pistol Walk}.fbx` | Mixamo General Terms — royalty-free, commercial games, no attribution | the runner's Run/Walk/CrouchWalk/Idle/Crouch/Death/GunWalk/GunIdle clips, retargeted by `gen_runner.py` |
+
+Everything else is deterministic from a seed, so a clean rebuild is byte-identical and a
+diff after regeneration means something actually changed. The Mixamo sources are
+committed (the retarget cannot run without them) and the retarget itself is
+deterministic, so `Runner.fbx` still rebuilds identically.
 
 Verified on disk 2026-07-30 by `tools/audio/verify_audio.py` and by loading every
 model in headless Blender.
