@@ -81,8 +81,8 @@ event off the phase of whatever clip is playing — was handed a mesh with no cl
 and twenty racers glided through the maze like furniture. It now carries a 13-bone rig and
 the eight clips ``CLIP_NAMES`` lists. The count is argued where the bones are
 defined; the short version is that a bone earns its place only if the surface it moves has
-somewhere to bend, and after a voxel remesh and eight smoothing passes this body has no
-crease anywhere on it.
+somewhere to bend, and this body's only creases are ``sculpt_folds``' garment folds —
+static compression wrinkles, not joints.
 
 The gait is not re-derived. ``gen_player_model`` already solved it — a two-bone IK that
 places the stance keys by POSITION so the planted foot travels at a constant speed, and a
@@ -232,10 +232,12 @@ MAT_VOID = MaterialSpec("Runner_Void", (0.012, 0.012, 0.014), roughness=0.95)
 finds a hollow — the anonymity read, done with albedo instead of geometry."""
 
 MAT_ACCENT = MaterialSpec("Runner_Accent", (0.50, 0.33, 0.09), roughness=0.65)
-"""THE TINTABLE SLOT. Armband on the left sleeve plus the strap band around the hood.
-A future per-runner tint colours THIS material and nothing else — twenty identical
-strangers stay tellable-apart by one accent, which is the production pattern (an
-armband / helmet stripe). Default is safety amber."""
+"""THE TINTABLE SLOT. Armband on the left sleeve, plus the REAR arc only of the hood
+strap — the strap's front arc is painted gear since the owl-eye fix (see the paint
+rules): two warm points at eye height under a 3 m beam read as a glowing face, and
+the face must stay a void. A future per-runner tint colours THIS material and nothing
+else — twenty identical strangers stay tellable-apart by one accent, which is the
+production pattern (an armband / helmet stripe). Default is safety amber."""
 
 MATERIAL_SPECS = (MAT_JACKET, MAT_TROUSERS, MAT_GEAR, MAT_VOID, MAT_ACCENT)
 """Slot order in the mesh. Index 0 is the default (jacket); ``assign_materials``
@@ -259,11 +261,13 @@ garment features the table now spends its placements on. Three passes kills the 
 staircase and leaves the collar, hem, cuffs and brim standing; eight passes returns the
 Michelin man. Topology-preserving, so it cannot break the single shell."""
 
-DECIMATE_RATIO = 0.13
-"""Keep 13%. The 9 mm remesh spends ~84k triangles uniformly; after three smoothing
-passes most describe curves their neighbours already describe. Collapse mode aims the
-~11k that survive at the silhouette and the garment creases — the budget for a clothed
-body drawn twenty times is 8–12k, and ``assert_asset`` holds the ceiling at 12.5k."""
+DECIMATE_RATIO = 0.14
+"""Keep 14%, up from 13. The 9 mm remesh spends ~84k triangles uniformly; after three
+smoothing passes most describe curves their neighbours already describe. Collapse mode
+aims the ~11–12k that survive at the silhouette and the garment creases — and since
+``sculpt_folds`` runs before this, the creases are real curvature and the collapse
+metric spends its keeps on them by itself. The extra point of ratio is the fold
+budget; ``assert_asset`` still holds the ceiling at 12.5k."""
 
 SAMPLE_CHORD = VOXEL_SIZE * 0.5
 """Target edge length on the input primitives: half a voxel. Any coarser and the remesh
@@ -319,10 +323,22 @@ TRUNK_RINGS = (
     (0.980, 0.176, 0.126, 0.000),
     (1.120, 0.178, 0.128, 0.000),   # waist
     (1.260, 0.188, 0.138, 0.005),   # chest, carried slightly back
-    (1.360, 0.184, 0.132, 0.008),
-    (1.425, 0.150, 0.108, 0.008),   # shoulder slope
-    (1.465, 0.092, 0.078, 0.005),   # into the collar
+    (1.350, 0.186, 0.132, 0.008),
+    (1.418, 0.208, 0.120, 0.006),   # deltoid yoke crest — the shoulder's WIDTH lives
+                                    # here now, not in the ball (see SHOULDER_Z)
+    (1.450, 0.148, 0.098, 0.005),   # trapezius slope
+    (1.480, 0.080, 0.072, 0.004),   # neck root, up into the collar
 )
+# THE TRAPEZIUS LINE IS THE VESSEL SCULPT'S, RESTATED IN RINGS. #82's letter says pull
+# the head/shoulder/neck line toward the human sculpt, and the sculpt was measured
+# rather than eyeballed (monster_vessel_base.glb, normalised by its own height): neck
+# root high, a ~20 deg drop to a deltoid plateau, tip at 0.151 of height. Before this,
+# ring 1.425 held rx 0.150 and the 87 mm shoulder balls at z 1.395 crested ABOVE it —
+# the silhouette showed two ball lobes higher than the neck line, the exact
+# "ball-joints" read the letter names. Now the LOFT carries the shoulder: the yoke ring
+# at 1.418 is the widest line of the upper body and the outline descends monotonically
+# neck → trap → deltoid crest → sleeve, while the shoulder ball drops to where its
+# crown continues that slope instead of breaking it.
 
 HEM_BOTTOM_Z = TRUNK_RINGS[0][0]
 """Where the jacket ends and the trousers show. The material paint and the crotch
@@ -347,24 +363,35 @@ BRIM_C, BRIM_R = (0.0, -0.078, 1.630), (0.090, 0.070, 0.020)
 shadows the void under a high beam hit and is the one crisp horizontal in the head's
 silhouette — round one authored it 26 mm thick and it vanished into the hood."""
 
-LAMP_C, LAMP_HALF = (0.0, -0.108, 1.606), (0.037, 0.030, 0.027)
-"""Headlamp housing, a 74×60×54 mm box under the brim, welded 17 mm into the brow.
-UNLIT geometry — the real light is the game's flashlight component; this is the shape
-that says the beam comes from somewhere. Wears ``Runner_Gear``."""
+LAMP_C, LAMP_HALF = (0.030, -0.078, 1.654), (0.026, 0.030, 0.020)
+"""Headlamp housing: a 52×60×40 mm box ABOVE the brim line now, welded ~16 mm into the
+hood's brow, and OFF-CENTRE (+30 mm, the figure's left brow). Both moves are the
+owl-eye fix (prodship_03m.png): the old housing sat centred UNDER the brim at face
+height, so the beam found warm accent band either side of a dark box and the runner
+read as two glowing eyes at 3 m. A single asymmetric lens above the brim reads as
+equipment; two symmetric bright points at eye height read as a face, and this figure
+must not have one. UNLIT geometry — the real light is the game's flashlight component.
+Wears ``Runner_Gear``."""
 
 # Shoulders and arms. Short by design — the monster's hands reach its knees, so this
 # figure's stop at the hip and the two outlines can never be confused (module docstring,
 # THE MONSTER TEST). The arm hangs ~24 mm clear of the chest: the armpit slot is over
 # two voxels, wide enough that the remesh cannot re-close it
 # (``verify_limbs_hang_free``) and far too fine to resolve at ten metres of corridor.
-SHOULDER_X, SHOULDER_Z, SHOULDER_R = 0.230, 1.395, 0.087
+#
+# The ball sits LOW now — crown at 1.428, on the trapezius line the yoke ring draws —
+# because a ball whose crown rises above the loft's shoulder slope is a pauldron, and
+# the silhouette read that way (see the note under TRUNK_RINGS). The ball's job is the
+# arm-to-yoke weld and the arm's pivot; the shoulder's SHAPE belongs to the loft.
+SHOULDER_X, SHOULDER_Z, SHOULDER_R = 0.224, 1.348, 0.080
 ARM_X, ARM_Y = 0.276, -0.020
-ARM_Z_BOTTOM = 0.86
+ARM_Z_BOTTOM = 0.80
 ARM_R_TOP, ARM_R_BOTTOM = 0.066, 0.057
 
-CUFF_C, CUFF_R = (0.274, -0.045, 0.83), (0.056, 0.068, 0.052)
+CUFF_C, CUFF_R = (0.274, -0.048, 0.775), (0.058, 0.070, 0.054)
 """Sleeve cuff: a ring bump where the glove meets the sleeve, and the weld that carries
-the wrist — it contains the arm shaft's bottom ball and reaches deep into the glove."""
+the wrist — it contains the arm shaft's bottom ball and reaches deep into the glove.
+Rides at the wrist the gun-mount solve now puts at ~0.716 (HAND_Z's note)."""
 
 GUN_MOUNT_RATIO = 0.9904
 """``RunnerGun.GunMountArmsPerSpine``, restated. The C# is the consumer and
@@ -385,11 +412,12 @@ HAND_X, HAND_Y = 0.272, -0.060
 HAND_Z = SHOULDER_Z - math.sqrt(
     (GUN_MOUNT_RATIO * (NECK_BASE_Z - SPINE_JOIN_Z)) ** 2 - (HAND_X - SHOULDER_X) ** 2)
 """SOLVED, not authored: the z that makes arm/spine measure exactly
-``GUN_MOUNT_RATIO``. Lands at ~0.787 — the glove hangs at the hip, fingertip-height on a
-person, which is also the short-armed contrast the monster test wants. The hand sits
-60 mm FORWARD (−Y) of the thigh rather than beside it: a natural stance, and the 3D
-clearance to the thigh and the hem stays over two voxels where a side-by-side placement
-welded the mitten to the hip."""
+``GUN_MOUNT_RATIO``. Lands at ~0.716 with the lowered shoulder — fingertip-height on a
+person (0.42 of height, which is the human sculpt's own proportion), still far above
+the monster's knee-hanging hands. The hand sits 60 mm FORWARD (−Y) of the thigh rather
+than beside it: a natural stance, and the 3D clearance to the thigh (~30 mm) and the
+hem (~38 mm) stays over two voxels where a side-by-side placement welded the mitten to
+the hip."""
 
 HAND_C, HAND_R = (HAND_X, HAND_Y, HAND_Z), (0.054, 0.066, 0.082)
 
@@ -427,6 +455,180 @@ FOOT_C, FOOT_R = (0.110, -0.050, 0.072), (0.072, 0.125, 0.056)
 """Toe forward (−Y — see the axis note above), longer than wide, chunky like a work
 boot. Inner faces sit 76 mm apart — eight voxels — so the remesh cannot weld the pads
 into the heel-to-toe sail the mannequin once grew (``verify_limbs_hang_free``)."""
+
+
+# ── The folds ───────────────────────────────────────────────────────────────
+#
+# WHY THE FOLDS ARE A DISPLACEMENT PASS AND NOT PLACEMENTS. The loft cured the quilted
+# read by having no intersections, and it overcured: a crease-free surface photographs
+# as a plush toy under the beam (runner-rebuild round 5). Folds cannot go back into
+# the placement table — a 10 mm crease authored as primitives is exactly the two-voxel
+# noise VOXEL_SIZE's note warns about, and the smoothing that kills the remesh
+# staircase would kill it too. So the creases are written onto the WELDED, SMOOTHED
+# mesh, after the staircase is gone and before the decimation spends the budget: every
+# vertex moves along its own normal by a hand-authored field below. The decimator then
+# keeps its triangles where the curvature is — which is now the folds — and the
+# autosmooth angle in ``weld`` turns each surviving ridge into a hard shading line the
+# beam can find at 3 m.
+#
+# The field is authored per garment, in the placement table's coordinates, and every
+# irregularity comes off ``_fold_hash`` — a pure function, so the figure is the same
+# figure every run. Depths are 5–14 mm: Lethal-Company-grade compression folds, not
+# cloth sim. Nothing below the boot cuff, nothing on the head, nothing on the soles —
+# the height fit, the sole measurement and the cadence contract never see this pass.
+
+FOLD_SEED = 82.0
+"""The task number, and nothing else. Changing it re-deals every jitter at once."""
+
+FOLD_CLAMP = (-0.016, 0.010)
+"""Metres. No valley deeper than 16 mm, no ridge prouder than 10 mm — a field bug
+becomes a dented jacket, never a spike through the armpit slot or the thigh gap."""
+
+SLEEVE_FOLD_AXIS = -2.5
+"""Radians, in the sleeve's own polar frame (0 = outboard, ±π = inboard, negative =
+forward): the inner-front of the elbow, where a hanging arm's sleeve compresses. The
+crease fan is deepest there and shallows around the ring."""
+
+
+def _fold_hash(k: float) -> float:
+    """Deterministic noise in [0, 1). sin-hash, seeded by FOLD_SEED only — the classic
+    shader one-liner, chosen because it needs no RNG state and cannot drift between
+    runs of the same source."""
+    return (math.sin(k * 12.9898 + FOLD_SEED * 78.233) * 43758.5453) % 1.0
+
+
+def _crease(z: float, centre: float, width: float, depth: float) -> float:
+    """One fold valley: a gaussian dent of ``depth`` metres, ``width`` metres half-wide.
+    Valleys only — the ridge between two valleys is the untouched surface, which is how
+    real compression folds work (fabric has nowhere to go but in)."""
+    return -depth * math.exp(-(((z - centre) / width) ** 2))
+
+
+def clothing_displacement(x: float, y: float, z: float,
+                          profile) -> float:
+    """Metres along the outward normal at one point of the welded body.
+
+    ``profile`` is the trunk loft's ``_profile`` — the same rings the geometry was
+    built from, so the trunk features cannot drift off the trunk. Region gates are
+    deliberately coarse (half-spaces and radii): a fold field that needed the same
+    precision as the placement table would be a second placement table.
+    """
+    d = 0.0
+
+    # ── sleeves: elbow crease fans, both arms, phases dealt per side ────────
+    for s, key in ((1.0, 0.0), (-1.0, 7.0)):
+        if x * s <= 0.14:
+            continue
+        dxa, dya = x - s * ARM_X, y - ARM_Y
+        r = math.hypot(dxa, dya)
+        if r < 0.115 and 0.92 < z < 1.31:
+            a = math.atan2(dya, dxa * s)
+            w = 0.30 + 0.70 * max(0.0, math.cos(a - SLEEVE_FOLD_AXIS)) ** 1.3
+            env = min(1.0, (1.31 - z) / 0.06, (z - 0.92) / 0.06)
+            # The armband is a clean accent ring by contract; creases crossing it
+            # would shred the one thing a per-runner tint colours. Damped, not
+            # skipped — a band on a creased sleeve still sits on fabric.
+            amp = 0.25 if (s > 0 and 1.085 < z < 1.180) else 1.0
+            for i in range(5):
+                zc = 0.985 + 0.068 * i + 0.024 * (_fold_hash(key + i) - 0.5)
+                zc += 0.020 * (1.0 - math.cos(a - SLEEVE_FOLD_AXIS))   # the fan
+                depth = ((0.0105 + 0.0050 * _fold_hash(key + i + 40.0))
+                         * w * env * amp)
+                d += _crease(z, zc, 0.016, depth)
+
+    # ── trunk features, gated onto the loft's own surface ───────────────────
+    if abs(x) < 0.212 and HEM_BOTTOM_Z - 0.012 < z < 1.455:
+        rx, ry, yc = profile(z)
+        frac = (x / rx) ** 2 + ((y - yc) / ry) ** 2
+        if 0.55 < frac < 1.45:
+            theta = math.atan2(y - yc, x)
+
+            # Waist compression band, where the hem cinch gathers the fabric.
+            g = math.exp(-(((z - 0.868) / 0.030) ** 2))
+            if g > 1e-3:
+                n = (0.5 + 0.35 * math.sin(3.0 * theta + 6.28 * _fold_hash(1.0))
+                     + 0.25 * math.sin(5.0 * theta + 6.28 * _fold_hash(2.0)))
+                d += -0.0110 * g * min(1.0, max(0.0, n))
+
+            # Hem ripple, ± — the one feature allowed to push OUT, because a hem
+            # swings around its own line. Deepened irregularly per the brief.
+            g = math.exp(-(((z - 0.765) / 0.028) ** 2))
+            if g > 1e-3:
+                n = (math.sin(6.0 * theta + 6.28 * _fold_hash(3.0))
+                     + 0.55 * math.sin(11.0 * theta + 6.28 * _fold_hash(4.0)))
+                d += 0.0050 * g * n
+
+            # Back yoke: two wandering horizontal wrinkles across the shoulder
+            # blades — the fold a jacket takes from its own hanging weight.
+            if (y - yc) > 0.35 * ry and 1.27 < z < 1.41:
+                for i, zc in enumerate((1.315, 1.362)):
+                    wav = 0.008 * math.sin(3.0 * theta + 6.28 * _fold_hash(10.0 + i))
+                    d += _crease(z, zc + wav, 0.015, 0.0065)
+
+            # Chest rumple: low-frequency unevenness over the front panel. Not a
+            # crease — the broad ~5 mm swell that stops flat fabric reading as
+            # injection-moulded plastic in a head-on beam. 0.0035 was invisible in
+            # round 2's frontal shot; a head-on light only sees a fold via the
+            # shadow its own depth casts, so the front needs more depth than the
+            # profile-lit sides do.
+            if (y - yc) < 0.0 and 0.90 < z < 1.34:
+                d += (0.0050 * math.sin(14.0 * z + 6.28 * _fold_hash(5.0))
+                      * math.sin(2.3 * theta + 6.28 * _fold_hash(6.0)))
+
+            # Armpit tension webs: rays converging on the armpit, front and back —
+            # reach widened after round 2 so the drag folds actually cross the
+            # chest panel instead of hiding under the sleeve head.
+            for s in (1.0, -1.0):
+                rr = math.hypot(x - s * 0.206, z - 1.338)
+                if rr < 0.17:
+                    phi = math.atan2(z - 1.338, x * s - 0.206)
+                    web = (max(0.0, math.sin(2.7 * phi + 6.28 * _fold_hash(8.0)))
+                           ** 1.5)
+                    d += -0.0072 * web * math.exp(-((rr / 0.095) ** 2))
+
+    # ── trousers: knee creases and boot-top bunching, subtler than the jacket ──
+    for s in (1.0, -1.0):
+        dxl = x - s * LEG_X
+        r = math.hypot(dxl, y)
+        if x * s > 0.02 and r < 0.115 and 0.395 < z < 0.60:
+            al = math.atan2(y, dxl * s)
+            env = min(1.0, (0.60 - z) / 0.04, (z - 0.395) / 0.03)
+            # Knee: three creases, front-weighted — trousers bag over the knee cap.
+            nf = max(0.0, -y / max(r, 1e-6))
+            w = 0.35 + 0.65 * nf
+            for i, zc in enumerate((0.435, 0.478, 0.520)):
+                zj = zc + 0.016 * (_fold_hash(20.0 + i + s) - 0.5)
+                depth = (0.0050 + 0.0018 * _fold_hash(30.0 + i + s)) * w * env
+                d += _crease(z, zj, 0.014, depth)
+            # Bunching: two rings just above the boot cuff, wavering in z.
+            for i, zc in enumerate((0.408, 0.443)):
+                wav = 0.006 * math.sin(2.0 * al + 6.28 * _fold_hash(50.0 + i + s))
+                d += _crease(z, zc + wav, 0.013, 0.0055 * env)
+
+    return min(FOLD_CLAMP[1], max(FOLD_CLAMP[0], d))
+
+
+def sculpt_folds(body: bpy.types.Object) -> None:
+    """Applies ``clothing_displacement`` to every vertex, along its own normal.
+
+    Runs between the smoothing and the decimation (see ``weld`` for why that slot and
+    no other), on the full ~40k-vertex surface, so a 14 mm fold is drawn by dozens of
+    vertices before the decimator chooses which ones earn their keep.
+    """
+    probe = Loft("_TrunkProbe", TRUNK_RINGS)
+    mesh = body.data
+    moved = 0
+    peak = 0.0
+    for v in mesh.vertices:
+        f = clothing_displacement(v.co.x, v.co.y, v.co.z, probe._profile)
+        if abs(f) > 1e-5:
+            v.co += v.normal * f
+            moved += 1
+            peak = max(peak, abs(f))
+    mesh.update()
+    print(f"FOLD_PASS verts_moved={moved}/{len(mesh.vertices)} "
+          f"peak={peak * 1000.0:.1f}mm clamp=({FOLD_CLAMP[0] * 1000.0:.0f},"
+          f"{FOLD_CLAMP[1] * 1000.0:+.0f})mm seed={FOLD_SEED:.0f}")
 
 
 @dataclass(frozen=True)
@@ -725,7 +927,7 @@ Part = Ellipsoid | Shaft | Box | Loft
 
 
 def build_parts() -> list[Part]:
-    """The worker's placement table — 28 parts.
+    """The worker's placement table — 27 parts.
 
     The torso is a STACK (hem, skirt, belly, chest, yoke) rather than two blobs
     because a jacket is a stack: wider at the chest and the hem than at the waist,
@@ -746,6 +948,21 @@ def build_parts() -> list[Part]:
         # the one asymmetry that lets a spectating runner tell front-left from
         # front-right on an otherwise symmetric stranger.
         Ellipsoid("Armband", ARMBAND_C, ARMBAND_R),
+        # RIGHT sleeve only: a rolled cuff — a flattened ring ~15 mm proud of the
+        # sleeve just above the glove. The second deliberate asymmetry (armband left,
+        # roll right): a worker's clothes are not a uniform, and a mirror-perfect
+        # figure is half the plush-toy read. Painted back to Runner_Jacket by an
+        # explicit region in assign_materials, or the glove paint would swallow it.
+        # SIZED BY ITS GAPS, not by taste: the first cut (rx 0.074 at z 0.815) sat
+        # 6 mm off the hem's widest flare — inside the voxel — and the remesh drew a
+        # sleeve-to-hem bridge that failed verify_limbs_hang_free's right-arm walk.
+        # At (−0.282, −0.040, 0.788) with (0.066, 0.072, 0.026) the ring clears the
+        # trunk by ~18 mm and the hip ball by ~19 mm, both over two voxels.
+        Ellipsoid("CuffRoll", (-0.282, -0.040, 0.788), (0.066, 0.072, 0.026)),
+        # LEFT chest only: a patch-pocket flap, a flat box the remesh rounds into a
+        # raised rectangle ~18 mm proud. The one crisp rectangle on the jacket front,
+        # and the front's only feature that catches a head-on beam at 3 m.
+        Box("Pocket", (0.092, -0.118, 1.175), (0.040, 0.020, 0.030)),
     ]
 
     # Mirrored, not modelled twice. s = -1 is the figure's right.
@@ -896,6 +1113,14 @@ def weld(objects: list[bpy.types.Object]) -> bpy.types.Object:
     _apply_modifier(body, smooth)
     _stage(f"smooth_{SMOOTH_FACTOR}x{SMOOTH_ITERATIONS}", body)
 
+    # The folds go HERE and nowhere else. Before the remesh they are placement-table
+    # noise the voxel grid can't record; before the smoothing they'd be eroded with
+    # the staircase; after the decimation there are ~25 mm edges left and a 15 mm
+    # crease drawn at that pitch is jagged. Between smooth and decimate the surface
+    # is clean AND dense, and the collapse metric then preserves what this pass adds.
+    sculpt_folds(body)
+    _stage("folds", body)
+
     decimate = body.modifiers.new("Budget", "DECIMATE")
     decimate.decimate_type = "COLLAPSE"
     decimate.ratio = DECIMATE_RATIO
@@ -903,10 +1128,13 @@ def weld(objects: list[bpy.types.Object]) -> bpy.types.Object:
     _apply_modifier(body, decimate)
     _stage(f"decimate_{DECIMATE_RATIO}", body)
 
-    # 180° so nothing is split. The figure has no hard edge anywhere on it — after eight
-    # smoothing passes every crease is a curve, and an auto-smooth angle low enough to
-    # find one would be finding decimation noise.
-    blendkit.shade_smooth(body, angle_degrees=180.0)
+    # 42°, not the old 180: the figure HAS hard edges now — the fold ridges
+    # sculpt_folds just authored — and the whole point of cutting them into a matte
+    # 0.13-albedo jacket is the shading discontinuity, which smooth-everything normals
+    # would average away. 42° is above the ~7–15° a 25 mm decimated edge subtends on
+    # this body's smooth curvature (so no staircase faceting comes back) and below
+    # what a 10–14 mm crease ridge folds through.
+    blendkit.shade_smooth(body, angle_degrees=42.0)
     return body
 
 
@@ -1000,22 +1228,30 @@ def assign_materials(body: bpy.types.Object, fit: Fit) -> None:
 
     # Region thresholds, in final metres. Round one painted the void 1.50–1.635 and
     # ±75 mm wide, and the black spilled over the brow and cheek — a smashed face, not
-    # a hollow. The void now stops UNDER the lamp, inside the brim's shadow, and only
+    # a hollow. The void now stops at the brim's underside, inside its shadow, and only
     # claims FORWARD-FACING triangles (normal test below), so its ragged per-triangle
     # border cannot wrap around the head's side.
-    # lamp_y sits at the hood's own front surface (−0.098 at that height): only the
-    # box that PROTRUDES past the hood is painted, or the hood's front-left grew a
-    # black hole beside the strap band (round three). void_lo starts above the collar
-    # or the chin wears a black bib (same round).
-    lamp_x, lamp_y = fit.d(0.050), -fit.d(0.108)
-    lamp_lo, lamp_hi = fit.z(LAMP_C[2] - LAMP_HALF[2] - 0.004), fit.z(1.642)
-    void_lo, void_hi = fit.z(1.515), fit.z(1.592)
+    #
+    # THE OWL-EYE RULES (prodship_03m.png, the in-game truth this pass answers): the
+    # strap band used to be a full amber ring at brow height, so a 3 m beam lit its
+    # two front arcs either side of the dark lamp box and the runner had EYES. Now
+    # (a) the lamp region tracks the housing to its off-centre perch above the brim,
+    # (b) the band keeps Runner_Accent only where it faces clearly BACKWARD
+    #     (normal.y > 0.3) and is near-black gear for its front arc — strap ends
+    #     darkened, tint still readable from behind,
+    # (c) nothing warm or specular is painted anywhere inside the hood at eye height:
+    #     the void window rises to the brim's underside where the old lamp box sat.
+    lamp_lo, lamp_hi = fit.z(LAMP_C[2] - LAMP_HALF[2] - 0.006), fit.z(1.682)
+    lamp_x_lo, lamp_x_hi = -fit.d(0.004), fit.d(0.064)
+    lamp_y = -fit.d(0.068)
+    void_lo, void_hi = fit.z(1.515), fit.z(1.610)
     void_x, void_y = fit.d(0.056), -fit.d(0.082)
     band_lo, band_hi = fit.z(1.600), fit.z(1.634)
     armband_x = fit.d(0.198)
     armband_lo, armband_hi = fit.z(ARMBAND_C[2] - 0.035), fit.z(ARMBAND_C[2] + 0.042)
-    glove_c = (fit.d(0.290), -fit.d(0.050), fit.z(0.78))
-    glove_r = (fit.d(0.085), fit.d(0.115), fit.d(0.135))
+    glove_c = (fit.d(0.290), -fit.d(0.055), fit.z(0.715))
+    glove_r = (fit.d(0.085), fit.d(0.115), fit.d(0.150))
+    roll_x, roll_lo, roll_hi = -fit.d(0.200), fit.z(0.764), fit.z(0.816)
     boot_top = fit.z(0.385)
     trouser_top = fit.z(HEM_BOTTOM_Z - 0.005)
 
@@ -1027,15 +1263,23 @@ def assign_materials(body: bpy.types.Object, fit: Fit) -> None:
     for poly in body.data.polygons:
         p = body.matrix_world @ poly.center
         facing = poly.normal.y            # < 0 means the triangle faces forward
-        if lamp_lo < p.z < lamp_hi and abs(p.x) < lamp_x and p.y < lamp_y:
-            name = MAT_GEAR.name          # headlamp housing
+        if (lamp_lo < p.z < lamp_hi and lamp_x_lo < p.x < lamp_x_hi
+                and p.y < lamp_y):
+            name = MAT_GEAR.name          # headlamp housing, off-centre above the brim
         elif (void_lo < p.z < void_hi and abs(p.x) < void_x and p.y < void_y
               and facing < -0.45):
             name = MAT_VOID.name          # the face that is not there
         elif band_lo < p.z < band_hi:
-            name = MAT_ACCENT.name        # headlamp strap, a full ring round the hood
+            # Headlamp strap: tint accent ONLY on the clearly-rear arc; front and
+            # sides are near-black gear so the beam finds no warm point at eye
+            # height. 0.55, not 0.3 — at 0.3 a handful of side-wrapping triangles
+            # still glinted amber at brow height in the 3 m three-quarter beam
+            # (round 2), and one glint at that height is half an owl eye.
+            name = MAT_ACCENT.name if facing > 0.55 else MAT_GEAR.name
         elif armband_lo < p.z < armband_hi and p.x > armband_x:
             name = MAT_ACCENT.name        # left-sleeve armband
+        elif p.x < roll_x and roll_lo < p.z < roll_hi:
+            name = MAT_JACKET.name        # right sleeve's rolled cuff stays fabric
         elif in_glove(p):
             name = MAT_GEAR.name          # glove + cuff
         elif p.z < boot_top:
@@ -1405,10 +1649,11 @@ def report_breadth(obj: bpy.types.Object, size: tuple[float, float, float]) -> N
 # -----------------------------------------------------------------
 # ``Player.fbx`` carries 26. This carries 13, and the count is not a budget — it is a
 # reading of the mesh. A bone earns its place here only if the surface it moves has
-# somewhere to bend. The Runner is a voxel union smoothed eight times: after that pass
-# there is no crease anywhere on it, so a joint put where the geometry is a straight
-# taper does not articulate anything, it just gives the skinning solver a second
-# influence to smear across a region that has no reason to bend.
+# somewhere to bend. The Runner is a voxel union smoothed three times whose only
+# creases are static garment folds (``sculpt_folds``) — nothing on it articulates, so
+# a joint put where the geometry is a straight taper does not articulate anything, it
+# just gives the skinning solver a second influence to smear across a region that has
+# no reason to bend.
 #
 #   Hips, Spine                the torso and the belly are two ellipsoids fused into one
 #                              mass with a waist in the OUTLINE and no joint in the
