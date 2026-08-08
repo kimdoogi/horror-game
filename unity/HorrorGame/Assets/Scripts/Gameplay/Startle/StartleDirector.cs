@@ -405,6 +405,22 @@ namespace HorrorGame.Gameplay.Startle
         /// </summary>
         private const int GlimpseAttempts = 24;
 
+        /// <summary>
+        /// The height the staged figure must measure, metres.
+        /// <para>
+        /// Presence.manifest.json states <c>height_metres: 2.05</c> for
+        /// Presence_Figure.fbx, and <c>PresenceRig.FigureHeightMetres</c> pins the
+        /// same 2.05 at prefab-build time with a ±0.03 assertion and the reason (it
+        /// has to sit between the player's 1.750 and the monster's 2.336). Restated
+        /// here because this assembly can read neither the json nor the editor
+        /// constant, and verified against the clone's own measured renderer bounds in
+        /// <see cref="NormalizeFigure"/> rather than trusted — the shipped scene's
+        /// template measured 0.186 m, and that number was not a miniature's height
+        /// but a LYING figure's front-to-back depth.
+        /// </para>
+        /// </summary>
+        private const float GlimpseFigureHeightMetres = 2.05f;
+
         private sealed class Spot
         {
             public Spot(Transform at, StartleKind kind)
@@ -430,6 +446,15 @@ namespace HorrorGame.Gameplay.Startle
         private MatchAudioRig? _audioRig;
         private Transform? _figure;
         private float _figureAge;
+
+        /// <summary>Glimpse-only: the correction <see cref="NormalizeFigure"/> measured onto
+        /// the clone, composed into every staged LookRotation so a restage cannot undo it.</summary>
+        private Quaternion _figureUpright = Quaternion.identity;
+
+        /// <summary>Glimpse-only: whether the clone has been measured against
+        /// <see cref="GlimpseFigureHeightMetres"/> yet.</summary>
+        private bool _figureNormalized;
+
         private uint _rng = 0x9E3779B9u;
 
         private static Material? _skitterMaterial;
@@ -829,7 +854,16 @@ namespace HorrorGame.Gameplay.Startle
             var travel = to - from;
             if (travel.sqrMagnitude > 0.0001f)
             {
-                go.transform.rotation = Quaternion.LookRotation(travel.normalized, Vector3.up);
+                // Compose the template's own rotation instead of replacing it: the
+                // template carries the FBX import's stand-up (this project's placed
+                // model instances keep the −90°X on their root — replacing the
+                // rotation wholesale is exactly how the cabinet shell shipped lying
+                // on its back), and the stood-up darter's nose is its +Z, so
+                // LookRotation × templateRotation points the nose down the travel
+                // line without flattening the body. The primitive-cube fallback has
+                // no import rotation and takes the bare look rotation.
+                var upright = template != null ? template.rotation : Quaternion.identity;
+                go.transform.rotation = Quaternion.LookRotation(travel.normalized, Vector3.up) * upright;
             }
 
             // One bob per body length — a stride IS a body length for a darter — at a
@@ -1205,11 +1239,18 @@ namespace HorrorGame.Gameplay.Startle
             {
                 // Facing the player — PresenceView.PlaceFigureAt's rule, copied with its
                 // reason: the one thing this shape must do is read as a person shape
-                // before it reads as anything else.
-                figure.rotation = Quaternion.LookRotation(toEye.normalized, Vector3.up);
+                // before it reads as anything else. Composed with the measured upright
+                // correction, because setting the clone ROOT's rotation is an override
+                // that discards whatever pose it carried: against the raw-FBX template
+                // the shipped scenes park (its stand-up, when it has one, lives on that
+                // same root), a bare LookRotation is exactly how the figure lay back
+                // down. The PresenceRig-built prefab template keeps its correction on a
+                // CHILD, so for it the composition is an identity no-op.
+                figure.rotation = Quaternion.LookRotation(toEye.normalized, Vector3.up) * _figureUpright;
             }
 
             figure.gameObject.SetActive(true);
+            NormalizeFigure(figure, floorPoint);
             _figureAge = 0f;
             PlayCue(AudioCueId.StartleGlimpse, floorPoint);
             return true;
@@ -1324,6 +1365,80 @@ namespace HorrorGame.Gameplay.Startle
             instance.SetActive(false);
             _figure = instance.transform;
             return _figure;
+        }
+
+        /// <summary>
+        /// Makes the staged clone measure as the shipped figure — upright,
+        /// <see cref="GlimpseFigureHeightMetres"/> 2.05 m tall, feet on the staged
+        /// floor point — from its own renderer bounds. Measured once per clone (the
+        /// learned correction is kept in <see cref="_figureUpright"/> and composed
+        /// into every later staging); the feet re-seat is measured every time.
+        /// <para>
+        /// <b>Rotation before scale, and the order is the fix.</b> The defect this
+        /// answers measured 0.186 m of "height" in the shipped scene — the
+        /// front-to-back DEPTH of a figure lying on its back, not a miniature's
+        /// height. Normalising scale from that number without standing the figure up
+        /// first would mint an 11× giant, still lying down (2.05 ÷ 0.186 = 11.0).
+        /// So first PresenceRig.StandUp's own test on the clone (a standing figure
+        /// is taller than it is deep; long axis through Z means Blender's Z-up came
+        /// through raw), then the height check — which, upright, only acts when the
+        /// clone genuinely is not the 2.05 m the manifest ships.
+        /// </para>
+        /// </summary>
+        private void NormalizeFigure(Transform figure, Vector3 floorPoint)
+        {
+            if (!_figureNormalized)
+            {
+                var bounds = FigureBounds(figure);
+                if (bounds.size.sqrMagnitude < 0.000001f)
+                {
+                    // No renderers to measure — nothing to normalise against.
+                    return;
+                }
+
+                if (bounds.size.z > bounds.size.y * 1.5f)
+                {
+                    var correction = Quaternion.Euler(-90f, 0f, 0f);
+                    _figureUpright *= correction;
+                    figure.rotation *= correction;
+                    bounds = FigureBounds(figure);
+                }
+
+                var height = bounds.size.y;
+                if (height > 0.0001f
+                    && Mathf.Abs(height - GlimpseFigureHeightMetres) > 0.05f)
+                {
+                    figure.localScale *= GlimpseFigureHeightMetres / height;
+                }
+
+                _figureNormalized = true;
+            }
+
+            // Feet on the staged floor, measured rather than trusted: the raw
+            // template's pivot is its authored feet only once it is upright, and a
+            // rescaled clone moves its own minimum.
+            var seated = FigureBounds(figure);
+            if (seated.size.sqrMagnitude > 0.000001f)
+            {
+                figure.position += Vector3.up * (floorPoint.y - seated.min.y);
+            }
+        }
+
+        private static Bounds FigureBounds(Transform figure)
+        {
+            var renderers = figure.GetComponentsInChildren<Renderer>();
+            if (renderers.Length == 0)
+            {
+                return new Bounds(figure.position, Vector3.zero);
+            }
+
+            var bounds = renderers[0].bounds;
+            for (var i = 1; i < renderers.Length; i++)
+            {
+                bounds.Encapsulate(renderers[i].bounds);
+            }
+
+            return bounds;
         }
 
         // ------------------------------------------------------------------

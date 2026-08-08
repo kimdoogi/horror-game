@@ -1006,6 +1006,16 @@ def build_debris() -> PropBuild:
 #  empty and parents the leaf. Same split here: Startle_CabinetShell supplies a
 #  leaf-sized opening, Startle_CabinetLeaf is a separate FBX whose origin sits
 #  on its hinge edge (mount="HINGE" below enforces it at build time).
+#
+#  EXPORT PATH. The four pieces ship through the same emit() →
+#  blendkit.export_fbx() every other prop uses — no startle-specific export
+#  settings exist — so their FBX carry the repo convention exactly as
+#  Gun_Pickup.fbx does: Z-up metre vertices, and the Z-up→Y-up conversion
+#  parked on the root node as Lcl Rotation (−90, 0, 0) with Lcl Scaling 100
+#  (AssetImportModelPostprocessor keeps bakeAxisConversion off and cancels the
+#  100 with fileScale). A placement that overrides the imported root's
+#  rotation therefore discards that −90° X and must compose it back in —
+#  MapSceneBuilder's KitOrientation probe is the measured template.
 # ══════════════════════════════════════════════════════════════════════════
 
 # Working figures the startle set is sized against. The first is the module's
@@ -1143,9 +1153,19 @@ def build_startle_cabinet_shell() -> PropBuild:
           nobevel=True)
 
     b.meta["opening"] = (W - 2 * f, H - 2 * f)
+    # The hinge empty is NOT the opening's jamb corner: the leaf is authored
+    # CABINET_LEAF_GAP short of the opening on every side, with its origin ON
+    # its own hinge edge — so a hinge empty at the bare corner would seat the
+    # closed leaf flush at the jamb and sill (0 mm) with a doubled gap at the
+    # striker and head. The stated point is the corner inset by one gap in X
+    # and Z, which is what puts 3 mm of shadow line on all four edges.
     b.meta["report_facts"] = [
         f"opening={W - 2 * f:.3f}x{H - 2 * f:.3f}m",
-        f"hinge_jamb=minus_x hinge_empty_at=({hinge_x:.3f},{fy - 0.006:.3f},{z0 + f:.3f})",
+        f"hinge_jamb=minus_x opening_corner=({hinge_x:.3f},{fy - 0.006:.3f},{z0 + f:.3f}) "
+        f"hinge_empty_at=({hinge_x + CABINET_LEAF_GAP:.3f},{fy - 0.006:.3f},"
+        f"{z0 + f + CABINET_LEAF_GAP:.3f}) "
+        f"(corner inset {CABINET_LEAF_GAP * 1000:.0f}mm in X and Z: closed leaf then "
+        f"clears {CABINET_LEAF_GAP * 1000:.0f}mm per edge)",
         "leaf_file=Startle_CabinetLeaf.fbx",
     ]
     return b

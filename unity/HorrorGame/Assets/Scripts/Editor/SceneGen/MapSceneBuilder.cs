@@ -1039,7 +1039,24 @@ namespace HorrorGame.EditorTools.SceneGen
         /// <summary>Prefix of the once-per-match figure marker, placed only on deep storeys.</summary>
         private const string StartleGlimpsePrefix = "Startle_Glimpse";
 
-        /// <summary>The figure the glimpse clones. §09's presence model — no new asset.</summary>
+        /// <summary>
+        /// The figure the glimpse clones — the PresenceRig-BUILT prefab, not the raw
+        /// FBX. §09's presence model, no new asset, but through the scaled path
+        /// <c>PresenceView</c> itself uses (<c>PresenceRig.FigurePrefabPath</c>, path
+        /// restated because SceneGen's asmdef does not reference Presence's editor
+        /// assembly and <c>AssetDatabase</c> loads by path): a wrapper root at
+        /// identity whose child carries the import's −90° X and ×100, stood up,
+        /// feet on the pivot, asserted 2.05 m tall at build time
+        /// (<c>PresenceRig.StandUp</c>), with the Presence_Void/Grain URP materials
+        /// bound and colliders already stripped. The raw FBX template this replaced
+        /// measured 0.186 m tall in the shipped scene — not a miniature but a LYING
+        /// figure's front-to-back depth, the same missing stand-up as the cabinet —
+        /// and carried the importer's guessed materials besides.
+        /// </summary>
+        private const string StartleFigurePrefabPath = "Assets/Prefabs/Presence/Presence_Figure.prefab";
+
+        /// <summary>The raw model behind the prefab above — the degrade path when the
+        /// prefab has not been built (run PresenceRig first), stood up by the probe.</summary>
         private const string StartleFigureAssetPath = "Assets/Models/Presence/Presence_Figure.fbx";
 
         /// <summary>
@@ -1069,19 +1086,95 @@ namespace HorrorGame.EditorTools.SceneGen
         public const string StartleSkittererTemplateName = "Startle_Skitterer_Template";
 
         /// <summary>
-        /// The shell's hinge empty, in the imported shell's local metres.
+        /// The shell's hinge empty, in the placed shell's frame, metres: X along
+        /// <c>facing * right</c>, Y world-up, Z along <c>facing * forward</c> (off the
+        /// wall, toward the corridor's centreline).
         /// <para>
-        /// gen_props.py's PROP_FACT for Startle_CabinetShell says
-        /// <c>hinge_empty_at=(-0.250, -0.212, 1.080)</c> in Blender axes — the -X jamb,
-        /// the face-frame plane, the opening's bottom. Converted by the importer's own
-        /// measured mapping, quoted from <see cref="BuildDoor"/>'s B-010 remark ("the
-        /// importer negates X while the stand-up rotation sends Blender +Y to Unity
-        /// −Z"): Unity (x, y, z) = (−bx, bz, −by) = (0.250, 1.080, 0.212). Restated
-        /// here rather than probed because a single mesh has nothing left to probe —
-        /// the knuckle cylinders the beam sees are welded into the shell.
+        /// <b>Derivation, clause by clause.</b> gen_props.py's PROP_FACT for
+        /// Startle_CabinetShell puts the opening's hinge-jamb corner at authored
+        /// Blender (bx, by, bz) = (−0.250, −0.212, 1.080) — the −X jamb, the
+        /// face-frame front plane, the opening's bottom. The mapping into the placed
+        /// frame has two measured halves: the FBX importer negates X (the half
+        /// <see cref="BuildDoor"/>'s B-010 remark measured via ChamberDockProbe), and
+        /// the stand-up rotation — the −90° X correction
+        /// <see cref="ProbeStartleStandUp"/> measures, the same one
+        /// <c>KitOrientation.Rotation</c> composes for every kit piece — sends
+        /// Blender +Z to Unity +Y and Blender +Y to Unity −Z. Together:
+        /// Unity (x, y, z) = (−bx, bz, −by) = (0.250, 1.080, 0.212).
+        /// </para>
+        /// <para>
+        /// <b>That mapping is only true of a shell that has been stood up.</b>
+        /// <see cref="BuildStartleCabinet"/> composes the probed correction into the
+        /// shell's rotation; applied against a raw yaw-only placement the same
+        /// numbers describe nothing — which is what the StartleShot transform dump
+        /// photographed (the shell's 1.06 m height lying along a world horizontal,
+        /// bounds half under the floor, and the hinge point inside the wall).
+        /// </para>
+        /// <para>
+        /// <b>Then the leaf's own clearance.</b> The leaf slab is authored
+        /// 0.494 × 0.654 — the 0.500 × 0.660 opening minus CABINET_LEAF_GAP 0.003
+        /// per edge — with its origin ON its hinge axis at the slab's edge. A hinge
+        /// empty at the bare corner would seat the closed leaf flush at the jamb and
+        /// sill (0 mm) with 6 mm at the striker and head; the authored 3 mm-per-edge
+        /// pose needs the corner inset by one gap in both axes (the shell's
+        /// PROP_FACT states the same inset point):
+        /// (0.250 − 0.003, 1.080 + 0.003, 0.212) = (0.247, 1.083, 0.212).
         /// </para>
         /// </summary>
-        private static readonly Vector3 StartleCabinetHingeLocal = new Vector3(0.250f, 1.080f, 0.212f);
+        private static readonly Vector3 StartleCabinetHingeLocal = new Vector3(0.247f, 1.083f, 0.212f);
+
+        /// <summary>
+        /// The rotation that stands a placed 깜짝 FBX upright, measured — identity when
+        /// the import needs none. Probed once per <see cref="BuildStartles"/> run.
+        /// </summary>
+        private static Quaternion _startleStandUp = Quaternion.identity;
+
+        /// <summary>
+        /// Which way the 깜짝 props import, and the rotation that fixes it —
+        /// <c>KitOrientation.Probe</c>'s method applied to the startle delivery, for
+        /// its stated reason: both import states are possible and a wrong guess
+        /// validates everything while lying on its back. Setting a prefab instance's
+        /// root rotation REPLACES the −90° X the importer parked there
+        /// (KitOrientation measured it on the kit; the StartleShot transform dump
+        /// re-measured it on this very shell), so any placement that chooses a world
+        /// rotation must compose the correction back in — or compose nothing, if a
+        /// future import bakes the conversion, which is why this is probed and not
+        /// assumed.
+        /// <para>
+        /// One probe answers for the whole set: all four pieces ship through the one
+        /// emit()/export_fbx path in gen_props.py — the same reasoning that lets
+        /// KitOrientation probe one corridor for seventeen kit pieces. The shell is
+        /// the yardstick because its axes cannot be confused: authored
+        /// 0.560 × 0.221 × 1.065, so whichever axis measures ~1.065 is its height.
+        /// </para>
+        /// </summary>
+        private static Quaternion ProbeStartleStandUp()
+        {
+            var asset = AssetDatabase.LoadAssetAtPath<GameObject>(StartleCabinetShellPath);
+            if (asset == null)
+            {
+                // Each builder already logs the missing asset when it degrades to a
+                // bare marker; a bare marker needs no correction.
+                return Quaternion.identity;
+            }
+
+            var instance = UnityEngine.Object.Instantiate(asset);
+            instance.transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
+            var zUp = false;
+            if (TryBounds(instance, out var bounds))
+            {
+                zUp = bounds.size.z > bounds.size.y;
+            }
+
+            UnityEngine.Object.DestroyImmediate(instance);
+
+            Debug.Log("[SceneGen] 깜짝 orientation: " + (zUp
+                ? "Blender Z-up at an overridden root (set pieces stood upright by the "
+                  + "generator, the KitOrientation path)."
+                : "Unity Y-up, no correction composed."));
+
+            return zUp ? Quaternion.Euler(-90f, 0f, 0f) : Quaternion.identity;
+        }
 
         /// <summary>
         /// The pipe's axis height, metres above the floor — gen_props.py's
@@ -1196,6 +1289,7 @@ namespace HorrorGame.EditorTools.SceneGen
             }
 
             var group = Child(markerRoot.gameObject, StartleRootName);
+            _startleStandUp = ProbeStartleStandUp();
             var storeys = StoreyCount(map);
             var placed = 0;
             var glimpses = 0;
@@ -1384,13 +1478,16 @@ namespace HorrorGame.EditorTools.SceneGen
         /// prop's origin is on the wall plane at the floor line with the authored
         /// heights preserved (gen_props.py's <c>pivot_shift</c>), so the shell is
         /// dropped at the wall point with its forward facing the corridor's centreline
-        /// and the carcass hangs itself at its authored 1.05~1.77 m. The hinge empty
-        /// is parented to the MARKER, not the shell — a clean world-aligned frame, so
-        /// the FBX root's import-time scale and rotation can never leak into the
-        /// swing axis — and the leaf sits under it at identity, which the leaf's
-        /// origin-on-hinge contract makes the closed pose. Which wall is seeded; in a
-        /// straight corridor both sides are walls, so a flipped yaw convention costs
-        /// looks, not function.
+        /// — composed with the probed stand-up, because overriding the instance
+        /// root's rotation is what discards the import's own −90° X (see
+        /// <see cref="ProbeStartleStandUp"/>) — and the carcass hangs itself at its
+        /// authored 1.05~1.77 m. The hinge empty is parented to the MARKER, not the
+        /// shell — a clean world-aligned yaw frame, so the FBX root's import-time
+        /// scale can never leak into the swing axis and its local Y stays the world
+        /// vertical StartleDirector swings — and the leaf sits under it wearing the
+        /// same stand-up as its shell, which the leaf's origin-on-hinge contract
+        /// makes the closed pose. Which wall is seeded; in a straight corridor both
+        /// sides are walls, so a flipped yaw convention costs looks, not function.
         /// </para>
         /// </summary>
         private static void BuildStartleCabinet(GameObject marker, float side)
@@ -1417,8 +1514,17 @@ namespace HorrorGame.EditorTools.SceneGen
             }
 
             shell.name = "Shell";
-            shell.transform.SetPositionAndRotation(wallPoint, facing);
 
+            // Overriding the instance root's rotation replaces the −90° X the
+            // importer parked there, so the probed stand-up is composed back in —
+            // the same worldRotation = yaw * Euler(−90,0,0) every kit and dressing
+            // placement already stores in the scene. `facing` alone is what shipped
+            // the shell lying flat with its height along the corridor axis.
+            shell.transform.SetPositionAndRotation(wallPoint, facing * _startleStandUp);
+
+            // The hinge empty itself stays a clean world-aligned yaw frame (its
+            // local Y IS the swing axis, and StartleDirector swings local Y): only
+            // the LEAF under it wears the mesh correction.
             var hinge = Child(marker, "Hinge");
             hinge.transform.SetPositionAndRotation(
                 wallPoint
@@ -1432,7 +1538,12 @@ namespace HorrorGame.EditorTools.SceneGen
             {
                 leaf.name = "Leaf";
                 leaf.transform.localPosition = Vector3.zero;
-                leaf.transform.localRotation = Quaternion.identity;
+
+                // The closed pose. Identity is only closed when the import needed no
+                // standing; the leaf must wear the same measured correction as its
+                // shell — BuildDoor's leaf gets the identical treatment from Place()
+                // under its own yaw-only Hinge pivot.
+                leaf.transform.localRotation = _startleStandUp;
             }
 
             foreach (var collider in marker.GetComponentsInChildren<Collider>(includeInactive: true))
@@ -1487,7 +1598,11 @@ namespace HorrorGame.EditorTools.SceneGen
             if (go != null)
             {
                 go.name = "Stub";
-                go.transform.SetPositionAndRotation(wallPoint, facing);
+
+                // Same composition as the shell: the root override discards the
+                // import's −90° X, so the probed stand-up rides along — the authored
+                // mouth (−Y in Blender) then faces off the wall as the report says.
+                go.transform.SetPositionAndRotation(wallPoint, facing * _startleStandUp);
 
                 var colliders = go.GetComponentsInChildren<Collider>(includeInactive: true);
                 for (var i = 0; i < colliders.Length; i++)
@@ -1524,7 +1639,11 @@ namespace HorrorGame.EditorTools.SceneGen
             }
 
             go.name = StartleSkittererTemplateName;
-            go.transform.rotation = Quaternion.identity;
+
+            // Identity here is an override too, and it shipped the darter parked
+            // nose-down with its 0.46 m body vertical. Stood up, the authored −Y
+            // nose comes out of +Z — the forward the runtime darts it along.
+            go.transform.rotation = _startleStandUp;
             go.transform.position = at;
 
             var colliders = go.GetComponentsInChildren<Collider>(includeInactive: true);
@@ -1542,19 +1661,42 @@ namespace HorrorGame.EditorTools.SceneGen
         /// <see cref="BuildHeldTemplate"/>'s pattern, including where it stands: on a
         /// glimpse marker's own cell, because <c>FootprintOf</c> collects inactive
         /// renderers and <see cref="BuildStoreyShells"/> rightly refuses anything
-        /// outside its storey's box. Colliders off so the clone needs no runtime strip
-        /// (<c>PresenceView.Strip</c> exists because the import policy gives new model
-        /// folders colliders; disabling them here is the same fix a pass earlier).
+        /// outside its storey's box.
+        /// <para>
+        /// <b>The template is the PresenceRig-built prefab, not the raw FBX</b> — see
+        /// <see cref="StartleFigurePrefabPath"/> for what that buys (stood up, feet on
+        /// pivot, asserted 2.05 m, materials bound, colliders stripped at build time)
+        /// and for what the raw template shipped (a 0.186 m-"tall" figure that was in
+        /// fact lying down). The prefab's wrapper root is at identity with the import
+        /// correction on its CHILD, so the runtime's yaw-only
+        /// <c>Quaternion.LookRotation</c> on a clone's root can never knock it over.
+        /// The raw FBX remains as the degrade path, stood up by the probe.
+        /// </para>
         /// </summary>
         private static void BuildStartleFigureTemplate(GameObject group, Vector3 at)
         {
-            var asset = AssetDatabase.LoadAssetAtPath<GameObject>(StartleFigureAssetPath);
+            var asset = AssetDatabase.LoadAssetAtPath<GameObject>(StartleFigurePrefabPath);
+            var prefab = asset != null;
+            if (!prefab)
+            {
+                asset = AssetDatabase.LoadAssetAtPath<GameObject>(StartleFigureAssetPath);
+            }
+
             if (asset == null)
             {
-                Debug.LogError("[SceneGen] 깜짝: " + StartleFigureAssetPath + " is missing, so the "
-                    + "glimpse has nothing to show and will simply never fire. It is built by "
-                    + "tools/blender/gen_presence.py.");
+                Debug.LogError("[SceneGen] 깜짝: neither " + StartleFigurePrefabPath + " (run "
+                    + "PresenceRig.Build) nor " + StartleFigureAssetPath + " (built by "
+                    + "tools/blender/gen_presence.py) exists, so the glimpse has nothing to "
+                    + "show and will simply never fire.");
                 return;
+            }
+
+            if (!prefab)
+            {
+                Debug.LogError("[SceneGen] 깜짝: " + StartleFigurePrefabPath + " is missing — run "
+                    + "PresenceRig.Build. Falling back to the raw " + StartleFigureAssetPath
+                    + ": the glimpse figure will stand, but with the importer's guessed "
+                    + "materials instead of Presence_Void/Grain.");
             }
 
             var go = PrefabUtility.InstantiatePrefab(asset, group.transform) as GameObject;
@@ -1564,7 +1706,7 @@ namespace HorrorGame.EditorTools.SceneGen
             }
 
             go.name = StartleFigureTemplateName;
-            go.transform.rotation = Quaternion.identity;
+            go.transform.rotation = prefab ? Quaternion.identity : _startleStandUp;
             go.transform.position = at;
             AlignFloorBottom(go, at);
 
