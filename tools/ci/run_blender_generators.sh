@@ -156,18 +156,31 @@ echo "── result ────────────────────
 printf '%s' "${SUMMARY}" | sed 's/^/  /'
 
 # Reported, never gated: the mesh data is deterministic but the containers are not.
-# Measured on Blender 5.2.0 — regenerating Crate.fbx produced a file of identical
-# length differing in 53 bytes, all of them inside the FBX header's CreationTime
-# (Hour / Minute / Second / Millisecond). Gating on `git diff` would therefore fail
-# on every single run for a reason that has nothing to do with the game, while the
-# real signal — a changed vertex count, triangle count or bounding box — is already
-# in the ASSET_REPORT lines above, where a reviewer can diff it by eye.
+# Measured on Blender 5.2.0 (2026-08-08) — regenerating Debris.fbx ten times gave
+# four different file lengths (76556…76636, moving in steps of 16) while the
+# ASSET_REPORT geometry numbers (verts, tris, bounding box) stayed identical every
+# run. Node-level diffs of those FBX files show it is not just the header's
+# CreationTime: the vertex array is byte-identical, but around it
+#   * every FBX object ID is Python's salted hash() of a name (io_scene_fbx), and
+#     Blender ignores PYTHONHASHSEED unless run with --python-use-system-env;
+#   * triangulation picks different quad diagonals (PolygonVertexIndex wobbles);
+#   * the exporter's normal dedup table reorders, with occasional 1e-8 noise from
+#     threaded normal accumulation;
+#   * uv_smart_project packs UV islands at different positions on some runs.
+# The index/float arrays are zlib-compressed, so their size shifts with content,
+# and the FBX footer pads to a 16-byte boundary — hence lengths that move in steps
+# of 16. Pinning the hash seed was measured and does NOT stabilize the file, so
+# gating on `git diff` would fail on every single run for a reason that has
+# nothing to do with the game, while the real signal — a changed vertex count,
+# triangle count or bounding box — is already in the ASSET_REPORT lines above,
+# where a reviewer can diff it by eye.
 if command -v git >/dev/null 2>&1 && git -C "${REPO}" rev-parse --git-dir >/dev/null 2>&1; then
     changed="$(git -C "${REPO}" status --porcelain -- unity/HorrorGame/Assets/Models \
         | wc -l | tr -d ' ')"
     echo "  ${changed} file(s) under Assets/Models differ from the checkout — expected:"
-    echo "  FBX and glTF embed a creation timestamp, so bytes move even when the"
-    echo "  geometry does not. Informational, not a gate."
+    echo "  FBX and glTF embed a creation timestamp, per-run object IDs and other"
+    echo "  run-varying bytes, so files move even when the geometry does not."
+    echo "  Informational, not a gate."
 fi
 
 if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
