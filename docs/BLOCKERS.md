@@ -44,6 +44,54 @@ measurement and the log it came from are quoted.
 | [B-018](#b-018) | 🟢 closed | Every match is the same building — 3 in the roster, a second match loads another |
 | [B-019](#b-019) | 🔴 **open** | §12-D's centre-path: every storey is 7.5–42.5 m short of the band |
 | [B-020](#b-020) | 🟢 closed | `PlayerReach` counted its own measuring body as a wall and refused eight roster slots |
+| [B-021](#b-021) | 🔴 **open** | B8 굴착층 is the brightest room in the building, and nothing had ever photographed it |
+
+---
+
+## B-021 · The deepest floor is the brightest room, and for ten days nothing had ever taken its picture
+
+**Status:** 🔴 **open** · opened 2026-08-10 · measured, cause not found
+
+`SceneShot.BuildViews` photographed `Zone_*` transforms `.Take(6)`. That cap was written
+on 2026-07-31 for a three-storey building; 하강 has stacked **eight** storeys since
+2026-08-05. So **B7 수몰층 and B8 굴착층 had never been photographed at all** — silently,
+with no warning — while every luminance table in ART.md was presented as the building's
+numbers. The cap is removed (every zone, not a count), and the first pictures of the
+bottom two floors are also the first measurement of them:
+
+```
+shot                          mean    p50    p90    p99  black%  legible%  blown%
+eight_Zone_B7_B7_Water.png    15.1    6.3   27.5  227.5    32.6      42.3    0.17
+eight_Zone_B8_B8_Earth.png    32.0   28.9   60.5  102.6     4.5      87.8    0.00
+```
+
+B7 is in all four bands. **B8 breaks three at once** — crushed 4.5 % against a 10–40 %
+band, legible 87.8 % against 30–75 %, median 28.9 against 3–16. ART.md's own wording for
+the bottom of that first band is the point: *"below 10 %, the dark is not dark."*
+
+**Why it matters more than a band number.** §07 promises the night deepens as the race
+descends, and `ScatterSession.LightStratifiedBulbs` implements it — the working-bulb count
+falls with depth, so B8 has the fewest lit fittings in the building. It is nonetheless the
+brightest room in it. The deepest floor of a game whose central mechanic is darkness, the
+one §02 puts the finish on, is lit like a corridor at head office.
+
+**What has been ruled out.** The obvious suspect was `MapSceneBuilder.BuildFinishLight`:
+an 18 m point light with `shadows = None`, which lights through walls, standing exactly
+where the zone camera stands. Shadows were turned on and the scene regenerated: **B8
+measured 4.5 / 87.8 / 28.9 — identical to the decimal.** The finish light is not the
+cause. The shadow change was kept anyway, on its own merits, and its comment says plainly
+that it fixed nothing.
+
+**Where to look next**, in the order I would try: the `ZoneIdentity` row for `Earth`
+(tint 1.12/1.06/0.96, smoothness 0.80, occlusion 0.95 — its own note calls it "the
+smallest lift in the table", which the measurement contradicts); whether B8's floor
+material resolves to something far brighter than intended, since `Floor_Gravel` is the
+brightest set in the kit at 0.44 linear and the manifest has no `Floor_Earth` entry at
+all; and the atmosphere pass's per-storey ambient. Measure each against B7, which sits in
+band on the same pass and is one storey away.
+
+**Do not fix this by widening the band.** ART.md's history already records a round where
+a band was fitted to a measurement, and the entry that undid it.
 
 ---
 

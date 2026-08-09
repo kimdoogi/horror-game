@@ -1931,7 +1931,21 @@ namespace HorrorGame.EditorTools.SceneGen
             var light = go.AddComponent<Light>();
             light.type = LightType.Point;
             light.range = GameConstants.ZoneLightRadius;
-            light.shadows = LightShadows.None;
+
+            // Shadows ON, on its own merits and NOT as a fix for anything. With them off
+            // an 18 m point light does not illuminate the finish, it illuminates the
+            // storey straight through the walls, and a light that ignores geometry is
+            // wrong in a game whose central mechanic is not being able to see. There are
+            // two of these in the entire scene, so the usual objection to shadowed point
+            // lights does not apply.
+            //
+            // Recorded because it would otherwise look like a fix: this was changed while
+            // chasing B8 굴착층's luminance (4.5 % crushed / 87.8 % legible / median 28.9
+            // against ART.md's 10–40 / 30–75 / 3–16), and it **did not move those numbers
+            // by a decimal**. The finish light is not what makes the deepest floor the
+            // brightest room in the building. That cause is still unfound — see
+            // docs/BLOCKERS.md B-021.
+            light.shadows = LightShadows.Soft;
             light.intensity = 1.2f;
             light.color = new Color(1.0f, 0.94f, 0.82f);
             light.enabled = true;

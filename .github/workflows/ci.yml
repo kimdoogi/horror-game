@@ -171,60 +171,55 @@ jobs:
       # the step says so and asks for the waiver to be deleted. Every other non-zero
       # exit — a crash, 4, 5 — is the simulator being dead, which is the whole reason
       # the step exists, and fails hard.
-      - name: Run the simulator (not just build it)
+      # WHAT HAPPENED TO THIS STEP. It used to run `dotnet run --project
+      # core/HorrorGame.Sim -- validate`, and the balance simulator was deleted with the
+      # co-op game at e8c67ae — 0 tracked files, gone from the .sln. So the REQUIRED job
+      # was failing on every push for six days and 37 commits, on a command that can
+      # never succeed again. That is worse than the defect the step was written to catch:
+      # a red X nobody can fix teaches people to stop reading it, which is exactly the
+      # argument docs/CI.md §2.2 makes against gating on exit 6.
+      #
+      # The step's real subject — "run §12's validator, do not merely build it, and fail
+      # on a rule OUTSIDE the waiver" — survived the deletion, because MapValidator did.
+      # It is now enforced by name in the core suite, so this step runs those tests and
+      # nothing else: Descent_EveryOtherSection12Rule_StillPasses walks the passing rules
+      # by name, Descent_MeetsSection12sSightBreakSpacing pins B-007's closure at 12.5 m,
+      # Descent_CentrePath_... pins B-019's exact remaining miss (21 of 22 entry points,
+      # one 2.5 m short) so that a slide back is a failure rather than a smaller green,
+      # and Descent_IsDeterministic_... holds B-018.
+      #
+      # The filter must match something. A `--filter` that selects zero tests exits 0 in
+      # older SDKs and reports "No test matches", which would make this step green by
+      # describing nothing — the same vacuum the deleted project left. The count is
+      # asserted below for that reason.
+      - name: Run §12's map validator (not just build it)
         run: |
-          # §12 rules this repository knowingly ships red. Each entry must name the
-          # blocker or finding that owns it, exactly as audio_baseline.json requires;
-          # an unexplained id here would make this a mute button.
-          #   sight-break-spacing — B-007 / F-007, open
-          waived="sight-break-spacing"
-
           mkdir -p artifacts
-          log=artifacts/sim-validate.log
+          log=artifacts/map-validate.log
           set +e
-          dotnet run --project core/HorrorGame.Sim -c Release -- validate 2>&1 | tee "${log}"
+          dotnet test core/HorrorGame.Core.Tests/HorrorGame.Core.Tests.csproj \
+            -c Release --no-build \
+            --filter "FullyQualifiedName~MapTests.Descent_" 2>&1 | tee "${log}"
           status=${PIPESTATUS[0]}
           set -e
 
-          if [ "${status}" -eq 0 ]; then
-            if [ -n "${waived}" ]; then
-              echo "::warning title=§12 waiver is stale::MapValidator now passes every rule, so the waiver in .github/workflows/ci.yml (\`${waived}\`) no longer describes anything. Delete it in the same commit that closes docs/BLOCKERS.md B-007."
-            fi
-            echo "horrorsim validate: OK."
-            exit 0
+          ran=$(sed -n 's/.*전체: *\([0-9][0-9]*\).*/\1/p;s/.*Total: *\([0-9][0-9]*\).*/\1/p' "${log}" | tail -1)
+          if [ -z "${ran}" ] || [ "${ran}" -lt 4 ]; then
+            echo "::error title=§12 gate selected nothing::The map filter matched ${ran:-0} test(s), fewer than the four that own §12's rules. A filter that selects nothing passes while checking nothing — which is how the deleted simulator went unnoticed for 37 commits. Fix the filter or the test names."
+            exit 1
           fi
 
-          if [ "${status}" -ne 6 ]; then
-            echo "::error::horrorsim validate exited ${status}. The balance simulator does not run. Building it is not evidence — that is the defect this step was added for; see docs/CI.md §0."
+          if [ "${status}" -ne 0 ]; then
+            echo "::error::§12's map validator rejects the shipped map on a rule these tests hold. Read ${log}: Descent_CentrePath_ failing means B-019 moved (it pins 21 of 22 entry points and the last 2.5 m), Descent_MeetsSection12sSightBreakSpacing failing means B-007 reopened, and Descent_EveryOtherSection12Rule_StillPasses names the rule that broke."
             exit "${status}"
           fi
 
-          # Exit 6. Which rules?
-          failed=$(sed -n 's/.*map validation: failed \[\(.*\)\].*/\1/p' "${log}" | head -1)
-          if [ -z "${failed}" ]; then
-            echo "::error::validate exited 6 but printed no rule list, so the failure cannot be matched against the waiver. Not calling an unreadable result known."
-            exit 6
-          fi
-
-          unwaived=""
-          for rule in $(printf '%s' "${failed}" | tr ',' ' '); do
-            case " ${waived} " in
-              *" ${rule} "*) echo "  KNOWN     §12 ${rule} → B-007 / F-007, still reproducing" ;;
-              *) unwaived="${unwaived} ${rule}" ;;
-            esac
-          done
-
-          if [ -n "${unwaived}" ]; then
-            echo "::error::§12 rejects the shipped map on${unwaived}, which is not waived. This is a map regression, not B-007. Fix the map, or add the rule here with the finding id that owns it."
-            exit 6
-          fi
-
-          echo "horrorsim validate: §12 fails only on waived rules. RESULT: PASS."
+          echo "§12 map validator: ${ran} test(s), all passing. B-007 closed, B-019 pinned at its measured miss."
 
       # Under always() because the run that most needs reading is the failed one, and
-      # the console tail of a 512-test failure is not enough to work from. The
-      # simulator's own transcript rides along: `validate` prints the §12 rule ids and
-      # the 후보 지점 census that say *which* map was judged.
+      # the console tail of a 357-test failure is not enough to work from. The
+      # §12 map gate's transcript rides along: the map tests print the rule ids and the
+      # measured spans that say *which* building was judged.
       - name: Upload the test results
         if: always()
         uses: actions/upload-artifact@v4
@@ -232,7 +227,7 @@ jobs:
           name: core-test-results
           path: |
             artifacts/test-results
-            artifacts/sim-validate.log
+            artifacts/map-validate.log
           if-no-files-found: warn
 
   # ───────────────────────────────────────────────────────────────────────────────

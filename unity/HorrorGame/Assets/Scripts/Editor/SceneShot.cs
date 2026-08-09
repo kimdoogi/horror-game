@@ -163,7 +163,14 @@ namespace HorrorGame.EditorTools
             // five 바닥 재질 apart in pictures that barely contained one; and a fixed
             // 35° yaw put three of the five cameras a metre from a wall, which is a
             // photograph of a brick, not of a place.
-            foreach (var zone in all.Where(t => t.name.StartsWith("Zone_", StringComparison.OrdinalIgnoreCase)).Take(6))
+            // Every zone, not a fixed count. This read `.Take(6)`, written on 2026-07-31
+            // for a three-storey building and never revisited: 하강 has stacked eight
+            // storeys since, so B7 수몰층 and B8 굴착층 have NEVER been photographed —
+            // silently, with no warning, while every luminance table in ART.md was
+            // presented as "all six zone views". A cap that quietly drops the deepest
+            // floors is the same class of defect as measuring a building the game does
+            // not ship: the number looks complete and describes two thirds of a tower.
+            foreach (var zone in all.Where(t => t.name.StartsWith("Zone_", StringComparison.OrdinalIgnoreCase)))
             {
                 var zb = ComputeBounds(zone.gameObject);
                 var eye = ClearStandingSpot(new Vector3(zb.center.x, zb.min.y + 1.63f, zb.center.z));
