@@ -2748,28 +2748,24 @@ def dress_sculpt_maps(diffuse: np.ndarray, normal: np.ndarray | None,
         # height scale the crack normal already uses.
         #
         # The mask is two things unioned. Height above the neck catches the skull and
-        # the crown. The second half catches the rest, and is found rather than typed:
-        # every plate this pipeline *invents* — the crest fan, the scapular spur, the
-        # shoulder shelves, the teeth — is welded on as flat polygons and then planar-
-        # unwrapped, so its baked normal is locally CONSTANT, where a scanned surface
-        # is never quite constant anywhere. Thresholding the local variance of the
-        # sculpt's own normal map therefore separates "geometry a script added" from
-        # "geometry Rodin scanned", with no coordinates in this file to go stale the
-        # next time `add_crest` moves a blade.
-        plate = (_smoothstep(neck + 0.02, neck + 0.11, wz)
-                 * fields["cover"]).astype(np.float32)
-        if normal is not None:
-            n3 = normal[..., :3].astype(np.float32) * 2.0 - 1.0
-            sig = 3.0 * res / 1024.0
-            var = np.zeros((res, res), dtype=np.float32)
-            for c in range(3):
-                var += _blur(n3[..., c] ** 2, sig) - _blur(n3[..., c], sig) ** 2
-            flatpanel = (_smoothstep(2.0e-4, 1.0e-5, np.clip(var, 0.0, None))
-                         * fields["cover"]).astype(np.float32)
-            plate = np.maximum(plate, flatpanel)
-            plate_found = float((flatpanel > 0.5).mean())
-        else:
-            plate_found = 0.0
+        # the crown, which are sculpt geometry. `fields["plate"]` catches the crest fan
+        # and the teeth, which are not — they are welded on by `add_crest` and
+        # `tear_maw_channel`, and `rasterize_fields` hands back exactly the texels
+        # their vertices own.
+        #
+        # An earlier pass tried to find the invented plates by thresholding the local
+        # variance of the baked normal, on the theory that planar-unwrapped geometry
+        # has a locally constant normal. It found 3.3 % of the atlas and none of it was
+        # crest, because invented geometry has **no texels of its own in the source
+        # maps** — it is projected onto body UVs, so the normal sampled there is the
+        # torso scan underneath. That is why the round-4 renders still showed the
+        # crown blades and the chest-height slab as bare cardboard in a frame that was
+        # otherwise all hide. The heuristic is gone; the ranges are exact.
+        plate = np.maximum(
+            _smoothstep(neck + 0.02, neck + 0.11, wz) * fields["cover"],
+            fields.get("plate", np.zeros((res, res), dtype=np.float32))
+        ).astype(np.float32)
+        plate_found = float((fields.get("plate", np.zeros(1)) > 0.5).mean())
         if plate.any():
             # Growth bands: concentric, slightly wandering, hard-edged. Keyed to
             # height above the neck so they ring the skull rather than stripe it.
@@ -2786,15 +2782,21 @@ def dress_sculpt_maps(diffuse: np.ndarray, normal: np.ndarray | None,
             pit = ((1.0 - _smoothstep(0.0, 0.62 / pcells, pf1))
                    * (_per_cell(pown, pcells, 7413, 0.0, 1.0) > 0.62)).astype(np.float32)
 
-            relief = (band * 0.55 + pit * 0.85) * plate
+            # Amplitudes are ~2.4x what the first pass used. They have to be: this
+            # relief is carried through `extra_relief * 0.30` at a 10 mm height scale,
+            # so the gentle version resolved to well under a millimetre and the round-6
+            # renders showed the crest banding only under a raking beam — under the
+            # frontal beam, which is how a player meets it, the slab was still a card.
+            # A plate is armour; it is allowed to be an order coarser than the hide.
+            relief = (band * 1.30 + pit * 1.90) * plate
             extra_relief += relief
-            lin = lin * (1.0 - (pit * plate)[..., None] * 0.30
-                         - (band * plate)[..., None] * 0.10)
+            lin = lin * (1.0 - (pit * plate)[..., None] * 0.42
+                         - (band * plate)[..., None] * 0.20)
             # Keratin is smoother than hide and drier than the crevices, and the
             # pits hold what little damp there is.
-            rough_out = np.clip(rough_out - plate * 0.10 + pit * plate * 0.14,
+            rough_out = np.clip(rough_out - plate * 0.12 + pit * plate * 0.20,
                                 0.10, 1.0)
-            ao = np.clip(ao - (pit * plate) * 0.30 - (band * plate) * 0.08, 0.20, 1.0)
+            ao = np.clip(ao - (pit * plate) * 0.40 - (band * plate) * 0.16, 0.20, 1.0)
             fin_mask = np.maximum(fin_mask, plate)
 
     # ── The grain octave, last, so every mask above can gate it ──────────────
@@ -2841,7 +2843,7 @@ def dress_sculpt_maps(diffuse: np.ndarray, normal: np.ndarray | None,
     }
     stats.update(micro["stats"])
     stats["plate_cover"] = round(float((fin_mask > 0.5).mean()), 4)
-    stats["plate_found_by_planarity"] = round(plate_found, 4)
+    stats["plate_invented_cover"] = round(plate_found, 4)
     if tilt is not None:
         # The two numbers that caught the 2026-08-09 regression, kept in the manifest
         # so the next person can see at a glance whether the hide still has a surface.
@@ -3265,8 +3267,32 @@ def tear_maw_channel(obj: bpy.types.Object, m: dict) -> list[tuple]:
     return ranges
 
 
-def rasterize_fields(obj: bpy.types.Object, res: int) -> dict:
+def rasterize_fields(obj: bpy.types.Object, res: int,
+                     plate_ranges: list[tuple] | None = None) -> dict:
     """World position and limb masks per texel, rasterised from the skinned mesh.
+
+    ``plate_ranges`` (2026-08-09) are ``(start, end, bone)`` vertex ranges for the
+    keratin geometry this pipeline *invents* — the crest fan and the maw's teeth. It
+    returns them as a per-texel ``plate`` mask, and that mask is the only exact way to
+    reach them. Two earlier attempts both failed, for the same underlying reason:
+
+    * **By world position.** The dorsal-fan rule (`wy > back_y + 0.012`) catches the
+      blades behind the ribcage and misses the ones near the skull, because `back_y`
+      is the deepest point of the whole body and the back tapers between the shoulders
+      and the head. The Crest1 blades hang off UpperChest and read as a flat slab at
+      chest height in front of the shoulder — nowhere near the torso's back plane.
+    * **By normal planarity.** Invented faces are planar-unwrapped, so it is tempting
+      to find them by thresholding the local variance of the baked normal. It finds
+      3.3 % of the atlas and none of it is crest: the invented geometry has **no
+      texels of its own in the source maps**. It is projected onto body UVs, so the
+      normal sampled there is Rodin's scan of the torso underneath, which is never
+      constant.
+
+    Rasterising the ranges sidesteps both. The vertices are known exactly, they are
+    the ones `add_crest` and `tear_maw_channel` returned, and the mask follows any
+    future re-shaping of the fan with nothing in this file to go stale. The pelvis
+    shroud is deliberately NOT passed by the caller — §06's skirt is hide, and
+    banding it like a plate would make the tatters read as armour.
 
     This is what turns the UV-space dressing anatomical: ``dress_sculpt_maps`` gets,
     for every texel the mesh actually covers, WHERE that texel sits on the body
@@ -3301,6 +3327,9 @@ def rasterize_fields(obj: bpy.types.Object, res: int) -> dict:
     vpos = np.zeros((n, 3), np.float32)
     varm = np.zeros(n, np.float32)
     vhand = np.zeros(n, np.float32)
+    vplate = np.zeros(n, np.float32)
+    for start, end, _bone in (plate_ranges or []):
+        vplate[max(0, start):min(n, end)] = 1.0
     for v in me.vertices:
         vpos[v.index] = v.co[:]
         a = h = 0.0
@@ -3315,6 +3344,7 @@ def rasterize_fields(obj: bpy.types.Object, res: int) -> dict:
     pos = np.zeros((res, res, 3), np.float32)
     arm = np.zeros((res, res), np.float32)
     hand = np.zeros((res, res), np.float32)
+    plate = np.zeros((res, res), np.float32)
     cover = np.zeros((res, res), bool)
 
     for tri in me.loop_triangles:
@@ -3349,11 +3379,13 @@ def rasterize_fields(obj: bpy.types.Object, res: int) -> dict:
                        + np.outer(wc, vpos[vi[2]])).astype(np.float32)
         arm[py, px] = (wa * varm[vi[0]] + wb * varm[vi[1]] + wc * varm[vi[2]])
         hand[py, px] = (wa * vhand[vi[0]] + wb * vhand[vi[1]] + wc * vhand[vi[2]])
+        plate[py, px] = (wa * vplate[vi[0]] + wb * vplate[vi[1]] + wc * vplate[vi[2]])
         cover[py, px] = True
 
     print(f"FIELDS {obj.name} cover={float(cover.mean()):.3f} "
-          f"arm={float((arm > 0.5).mean()):.4f} hand={float((hand > 0.5).mean()):.4f}")
-    return {"pos": pos, "arm": arm, "hand": hand, "cover": cover}
+          f"arm={float((arm > 0.5).mean()):.4f} hand={float((hand > 0.5).mean()):.4f} "
+          f"plate={float((plate > 0.5).mean()):.4f}")
+    return {"pos": pos, "arm": arm, "hand": hand, "plate": plate, "cover": cover}
 
 
 # ── Measurement ─────────────────────────────────────────────────────────────

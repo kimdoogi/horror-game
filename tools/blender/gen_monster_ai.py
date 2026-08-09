@@ -1418,6 +1418,44 @@ def skin_by_proximity(obj: bpy.types.Object, arm_obj: bpy.types.Object,
       limb bones, or a thigh picks up the opposite leg and the walk tears the pelvis;
     * the crest bones are excluded here and assigned explicitly afterwards, because
       their blades sit right beside the neck and would otherwise be captured by it.
+
+    KNOWN DEFECT, AND WHY WEIGHT SMOOTHING IS NOT THE FIX
+    -----------------------------------------------------
+    A per-clip triangle-area census against the rest pose (every frame, every clip,
+    sliver floor 0.1 mm²) finds the mesh collapsing at the joints on all seven clips,
+    worst on the one that fills the screen at the kill:
+
+        Grab   1.014 % of triangles under a quarter of rest area, shoulders 0.003
+        Chase  0.540 %, shoulders 0.165 · Patrol 0.513 %, shoulders 0.147
+
+    A 300x area collapse at a twisting shoulder is textbook linear-blend candy-wrap.
+    The obvious fix — build the full vertex x bone field, soften the exponent from 4
+    to 3, Laplacian-smooth it along the mesh edges, prune to `influences` afterwards —
+    was implemented and **reverted on 2026-08-09**. It improved the census on every
+    clip (Grab 1.014 → 0.633 %, stretch 72.4 → 28.6) and it looked worse:
+
+    * **Renders at 0.65 m showed torn angular shards along both shoulders and around
+      the arm/torso junction on the grab frame.** The census cannot see this —
+      interpenetrating shells have perfectly healthy triangle areas — so the metric
+      that motivated the change certified the regression.
+    * **Cause.** This sculpt is a patchwork of overlapping shells that are not
+      coincident-welded; the `jaw_z_cut` lock below exists for the cranial case of
+      exactly that. Proximity weighting reads only *position*, so coincident vertices
+      on two stacked shells get identical weights by construction and the shells move
+      as one. Edge-based smoothing runs independently on each shell — they share no
+      edges — which destroys that invariant and lets them interpenetrate.
+    * **The repair that seemed to follow made it much worse.** Bucketing vertices at
+      1 mm and averaging each cluster's weights restores the invariant in principle,
+      but **14,482 of 25,027 vertices (58 %) fall into coincident clusters** on this
+      mesh, so it also fuses parts that merely touch — a claw against a thigh. Stretch
+      went from ~30 to 1037 and Grab's collapse rose past the unsmoothed figure.
+
+    Anything that weights this mesh per vertex from topology will hit the same wall.
+    The fix that would actually work is one that does not depend on the weight field
+    being continuous across the surface: dual-quaternion skinning for the twist, or a
+    real shoulder helper bone driven by the UpperArm rotation. Both are larger than a
+    weighting tweak, and neither should be attempted without rendering the grab frame
+    at arm's length as the acceptance test — the census alone will pass a broken mesh.
     """
     by_name = {s.name: s for s in specs}
     limb_side = {}
@@ -1715,7 +1753,7 @@ def hide_roughness() -> float:
 
 
 def build_textures(obj: bpy.types.Object, material: str, tex_root: str,
-                   m: dict) -> dict:
+                   m: dict, plate_ranges: list[tuple] | None = None) -> dict:
     """Grades and re-emits the sculpt's maps in the layout Unity already expects."""
     import gen_monster_model as gmm  # noqa: PLC0415
 
@@ -1742,7 +1780,7 @@ def build_textures(obj: bpy.types.Object, material: str, tex_root: str,
     # that is wet only INSIDE. Runs after build_rig on purpose: the arm masks come
     # from the actual skin weights, not from a guessed bounding box.
     world_size = 1.0 / max(gmm.uv_units_per_metre(obj), 1e-6)
-    fields = gmm.rasterize_fields(obj, TEX_RES)
+    fields = gmm.rasterize_fields(obj, TEX_RES, plate_ranges=plate_ranges)
     dressed = gmm.dress_sculpt_maps(diffuse, normal,
                                     orm[..., 1] if orm is not None else None,
                                     TEX_RES, world_size,
@@ -2154,7 +2192,13 @@ def build(variant: dict) -> dict:
     # Follows the variant, so a variant that does not ship cannot leave its hide in
     # Assets/Textures for someone to find later and wonder which creature wears it.
     tex_root = variant["manifest_dir"]
-    stats = build_textures(obj, names["hide"], tex_root, m)
+    # Only the keratin the pipeline invented. The pelvis shroud rides in
+    # `crest_ranges` too and is deliberately excluded: §06's skirt is hide, and
+    # banding it like a plate would turn the tatters into armour.
+    plate_ranges = [r for r in crest_ranges
+                    if r[2].startswith("Crest") or r[2] == "Jaw"]
+    stats = build_textures(obj, names["hide"], tex_root, m,
+                           plate_ranges=plate_ranges)
     eye_stats = build_eye_textures()
 
     maw_faces = maw_polygons(obj)
