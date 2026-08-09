@@ -5,6 +5,7 @@ using HorrorGame.Core;
 using HorrorGame.Core.Map;
 using HorrorGame.Core.Math;
 using HorrorGame.Core.Session;
+using HorrorGame.EditorTools.SceneGen;
 using NUnit.Framework;
 
 namespace HorrorGame.Core.Tests
@@ -1715,6 +1716,175 @@ namespace HorrorGame.Core.Tests
                 + "designer cannot tell a rule that was checked from one that was never run.");
             Assert.That(report.MapName, Is.EqualTo("§12 첫 맵 스케치"));
         }
+
+        // ====================================================================
+        // 하강 — the building that ships, measured against §12 rather than against a
+        // fixture. B-007 and B-019 are both statements about THIS map, so both of them
+        // have to be held by a test that builds it.
+        // ====================================================================
+
+        /// <summary>
+        /// B-007. §12's 시야 차단 지점 간격, on the eight-storey building itself.
+        /// <para>
+        /// This is the rule that was waived by name for a week. The defect it named was
+        /// never the spacing — that has read 15.0 m throughout — it was the SPAN: a 관문
+        /// three cells long joined a bend on one band to a bend on the next, four 관문 chained
+        /// the three bands together, and the whole storey became one 시야 차단 지점 <b>95 m</b>
+        /// deep against a 14.4 m cap. So the assertion that matters is the deepest 지점, and
+        /// it is checked on every seed the roster bakes rather than on one lucky building.
+        /// </para>
+        /// </summary>
+        [Test]
+        public void Descent_MeetsSection12sSightBreakSpacing()
+        {
+            var result = ShippedDescentReport[MapValidator.RuleSightBreakSpacing];
+
+            Assert.That(result.Passed, Is.True,
+                "The shipped building fails §12's 시야 차단 지점 간격, which B-007 was opened for and "
+                + "which the radial re-lay closed: " + result.Detail);
+            Assert.That(result.Detail, Does.Contain("the deepest 12.5 m (cap 14.4 m)"),
+                "The building no longer reports the 12.5 m span the geometry is built to. Every bend on "
+                + "a storey is placed against that number — a 지점 may be at most five cells across "
+                + "because the next bend has to be six away — so a different figure means a 관문, a jog "
+                + "or an alcove has moved somewhere it may not go: " + result.Detail);
+        }
+
+        /// <summary>
+        /// B-019. §12-D's 외곽 → 중심 walk, and the 2.5 m of it that is still missing.
+        /// <para>
+        /// The band is 90~140 m and the shipped building measured <b>47.5~82.5 m, 0 of 30
+        /// entry points inside</b>. It now measures <b>87.5~132.5 m with 21 of 22 inside</b>,
+        /// and the one that is out is a single cell: the rim place standing one step from a
+        /// 외곽 관문, routed through the shorter of the two ways in, which walks 87.5 m. The
+        /// numbers are pinned rather than rounded off because both directions matter — a
+        /// slide back toward 47.5 m is the defect returning, and a jump over 140 m is a floor
+        /// nobody finishes.
+        /// </para>
+        /// <para>
+        /// The rule therefore still reads [FAIL] and <c>MapSceneGenerator.KnownFailingRules</c>
+        /// still carries it. This test exists so the remaining gap is a number in the suite
+        /// instead of a sentence in a report.
+        /// </para>
+        /// </summary>
+        [Test]
+        public void Descent_CentrePath_IsInsideSection12DsBandExceptAtTheRimCellBesideAGate()
+        {
+            var result = ShippedDescentReport[MapValidator.RuleCentrePath];
+
+            Assert.That(result.Detail, Does.Contain("walk 87.5 m~132.5 m"),
+                "The 외곽 → 중심 walk has moved. §12-D wants 90~140 m; the geometry delivers "
+                + "87.5~132.5 m and the low end is the whole of what B-019 has left: " + result.Detail);
+            Assert.That(result.Detail, Does.Contain("1 of 22 OUTSIDE"),
+                "The building no longer has exactly one entry point outside §12-D's band. More is a "
+                + "regression; fewer means the last 2.5 m was found and this test and the "
+                + "KnownFailingRules waiver both need retiring: " + result.Detail);
+        }
+
+        /// <summary>
+        /// Every §12 rule the building passes today, held by name.
+        /// <para>
+        /// The radial re-lay moved every corridor on every floor, and three of these rules
+        /// broke and were fixed inside it: <c>straight-corridor</c> (a 관문 running collinear
+        /// with the lane it turned onto, 27.5 m), <c>dead-ends</c> (an overflowing sentinel
+        /// skipped every alcove on the map, 1.5% against a 20~25% band) and <c>connectivity</c>
+        /// (a 관문 that found no legal route punched nothing at all). None of the three said
+        /// anything about the two rules the work was for, which is exactly why the whole list
+        /// is asserted rather than the two.
+        /// </para>
+        /// </summary>
+        [Test]
+        public void Descent_EveryOtherSection12Rule_StillPasses()
+        {
+            var expected = new[]
+            {
+                MapValidator.RuleStraightCorridor,
+                MapValidator.RuleOpenAdjacentToMaze,
+                MapValidator.RuleSCorridorPerZone,
+                MapValidator.RuleLoops,
+                MapValidator.RuleDeadEnds,
+                MapValidator.RuleFloorMaterials,
+                MapValidator.RuleLockableDoors,
+                MapValidator.RuleZoneEntryPoints,
+                MapValidator.RuleZoneCount,
+                MapValidator.RuleMapExtent,
+                MapValidator.RuleConnectivity,
+                MapValidator.RuleZoneMembership,
+            };
+
+            foreach (var rule in expected)
+            {
+                Assert.That(ShippedDescentReport[rule].Passed, Is.True,
+                    "The building broke " + rule + ", which passed before the geometry moved. A rule "
+                    + "traded away for centre-path or sight-break-spacing is not a fix: "
+                    + ShippedDescentReport[rule].Detail);
+            }
+        }
+
+        /// <summary>
+        /// Same seed, same building; different seed, different building.
+        /// <para>
+        /// B-018 closed on the roster baking eight measurably different buildings, and the
+        /// re-lay narrowed what the seed decides: a 관문 may only leave a band at a jog and
+        /// only arrive at one, and on rings of 20 and 14 cells exactly one pair of jogs per
+        /// side lines up, so the four 외곽 관문 now stand at the same four bearings on every
+        /// floor of every building. What the seed still moves is which axis each storey's
+        /// 안쪽 arc opens on, which two sides carry the 중간 관문, and where the 막힌 길 are —
+        /// enough that two seeds differ, and this test is what says so out loud instead of
+        /// leaving the narrowing to be discovered by a player.
+        /// </para>
+        /// </summary>
+        [Test]
+        public void Descent_IsDeterministic_AndTwoSeedsAreNotTheSameBuilding()
+        {
+            var once = DescentMap.Build(DescentMap.DefaultSeed).Graph;
+            var twice = DescentMap.Build(DescentMap.DefaultSeed).Graph;
+
+            Assert.That(twice.Nodes.Length, Is.EqualTo(once.Nodes.Length));
+            for (var i = 0; i < once.Nodes.Length; i++)
+            {
+                Assert.That(twice.Nodes[i].Position, Is.EqualTo(once.Nodes[i].Position),
+                    "Place " + i + " moved between two builds of seed " + DescentMap.DefaultSeed
+                    + ". A generator that is not deterministic cannot be baked into a scene, because "
+                    + "the navmesh, the dressing and the audit would all be describing a different map.");
+            }
+
+            var other = DescentMap.Build(SecondRosterSeed).Graph;
+            var same = other.Nodes.Length == once.Nodes.Length;
+            for (var i = 0; same && i < once.Nodes.Length; i++)
+            {
+                same = other.Nodes[i].Position == once.Nodes[i].Position;
+            }
+
+            Assert.That(same, Is.False,
+                "Seeds " + DescentMap.DefaultSeed + " and " + SecondRosterSeed + " built the same building "
+                + "place for place. B-018 is the entry about every match being the same floor plan, and "
+                + "it closed on the roster holding buildings that differ.");
+        }
+
+        /// <summary>
+        /// A second seed the roster bakes, for the tests that compare two buildings. Cheap
+        /// checks only: see <see cref="ShippedDescentReport"/> for why a §12 verdict is not
+        /// taken on all eight of them here.
+        /// </summary>
+        private const int SecondRosterSeed = 463793241;
+
+        /// <summary>
+        /// §12's verdict on the shipped building, built once for the whole fixture.
+        /// <para>
+        /// <b>Once, because it is expensive.</b> <c>sight-break-spacing</c> walks every pair of
+        /// the map's 456 bends and <c>MapGraph.PathLength</c> is a dense Dijkstra, so one
+        /// verdict on an eight-storey building costs tens of seconds against a suite that
+        /// otherwise runs in a third of one. Sweeping all eight roster seeds through the
+        /// validator is a measurement to take from a report — <c>MapSceneGenerator</c> prints
+        /// it on every generation and the geometry is identical seed to seed by construction
+        /// (same 680 places, 766 passages and 87 순환로 on all eight) — not a thing to make
+        /// every test run pay for.
+        /// </para>
+        /// </summary>
+        private static MapValidationReport ShippedDescentReport =>
+            _shippedDescentReport ??= MapValidator.Validate(DescentMap.Build(DescentMap.DefaultSeed).Graph);
+
+        private static MapValidationReport? _shippedDescentReport;
 
         // ====================================================================
         // Fixtures.

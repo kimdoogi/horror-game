@@ -692,28 +692,35 @@ namespace HorrorGame.EditorTools.SceneGen
         /// measures 17 m and the rule is green.
         /// </para>
         /// <list type="bullet">
-        /// <item><description><c>sight-break-spacing</c> (B-007) — <b>measured 95 m,
-        /// allowed 14.4 m: 6.6× over.</b> The 간격 half of the rule is delivered exactly
-        /// (every 시야 차단 지점 has another 15 m away, none over 25 m, so 「질주 60m에 3~4번의
-        /// 기회」 holds). What fails is the width of one 지점: single-linkage grouping at 15 m
-        /// runs one continuous piece of cover 95 m through the maze. The cap was 4.4 m while
-        /// it subtracted §04's 주자 head start; with the deleted term stripped out it is
-        /// <c>SingleCornerMinDistance</c> = 14.4 m, and the map is still six times over the
-        /// weaker number. <b>To fix the map:</b> break the concentric bands with straight
-        /// stretches at least 15 m long, so that a runner rounding one corner cannot chain
-        /// into the next without re-entering sight — i.e. fewer, longer legs in
-        /// <c>RadialStorey</c>, which trades against the 20 m straight-corridor cap and is
-        /// the reason it is not a five-minute change.</description></item>
-        /// <item><description><c>centre-path</c> (B-019) — <b>measured 47.5~82.5 m, required
-        /// 90~140 m: all 30 storey entry points are outside, 7.5~42.5 m short.</b> Per storey:
-        /// B1 47.5~82.5 m over its 16 rail cells, B2–B6 and B8 70~75 m, B7 60~65 m. §12-D says
-        /// MapValidator checks this per storey and MapValidator never did; it was printed here
-        /// instead and has never once been inside the band. <b>To fix the map:</b> a longer
-        /// rim-to-middle route in <c>RadialStorey</c> — more bands, or gates set so the way in
-        /// spirals rather than cuts across. §12-D says what the short version costs:
-        /// 「60~90 m로 줄이면 아는 사람이 2분 만에 끝내고, 그러면 맵을 아는 것이 실력이라는 전제가
-        /// 보상 없이 사라진다」.</description></item>
+        /// <item><description><c>centre-path</c> (B-019) — <b>measured 87.5~132.5 m, required
+        /// 90~140 m: 1 of 22 storey entry points is outside, and it is 2.5 m short.</b> It was
+        /// 47.5~82.5 m with all 30 outside; the radial re-lay — a broken 안쪽 고리, a 20 m lane
+        /// the 중간 관문 walks round before it turns in, and 투하구 that land at the far end of
+        /// the rim rather than wherever Z was largest — put 21 of the 22 inside on all eight
+        /// roster seeds. The one that is not is a single place: the rim cell standing one step
+        /// from a 외곽 관문, taking the shorter of the two ways in. <b>To fix the map:</b> 2.5 m
+        /// of length on every route, which the radii no longer have. Each of the three 관문 is
+        /// already at the longest §12 allows it to be — a 관문 must be two or three steps, or
+        /// six and over, because between those it welds the bends at its two ends into one
+        /// over-cap 시야 차단 지점 — and the one that takes the d5 lane is at the only run
+        /// length the ring geometry admits (see <c>RadialStorey.LaneRun</c>). The next 2.5 m
+        /// costs a radius, and the storey has none spare inside <c>DescentMap.Radius</c>.
+        /// §12-D says what the short version costs: 「60~90 m로 줄이면 아는 사람이 2분 만에
+        /// 끝내고, 그러면 맵을 아는 것이 실력이라는 전제가 보상 없이 사라진다」 — at 87.5 m one
+        /// place on one floor of the eight buys 2.5 m of that, and the other 21 do not.
+        /// </description></item>
         /// </list>
+        /// <para>
+        /// <b><c>sight-break-spacing</c> (B-007) was retired from this list</b> when the same
+        /// re-lay closed it. It measured one 시야 차단 지점 <b>95 m</b> deep against a 14.4 m
+        /// cap — 6.6× over, 16 of 48 지점 outside — because a 관문 three cells long joined a
+        /// bend on one band to a bend on the next and four 관문 chained all three bands into
+        /// one piece of cover. The building now reports <b>160 지점, every one of them 15.0 m
+        /// from its nearest neighbour and the deepest 12.5 m against the 14.4 m cap</b>, on
+        /// the shipped seed and on all seven other roster seeds. It stays retired: like
+        /// <c>straight-corridor</c> before it, an entry that outlives its defect is worse than
+        /// no entry, because it teaches a reader to stop believing the list.
+        /// </para>
         /// <para>
         /// <b>What does not belong here.</b> A rule the race does not want should be deleted
         /// with its reasoning at the rule's own tombstone, not parked here — that is what
@@ -725,7 +732,6 @@ namespace HorrorGame.EditorTools.SceneGen
         /// </summary>
         private static readonly string[] KnownFailingRules =
         {
-            MapValidator.RuleSightBreakSpacing,
             MapValidator.RuleCentrePath,
         };
 

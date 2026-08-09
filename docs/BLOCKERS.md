@@ -29,7 +29,7 @@ measurement and the log it came from are quoted.
 | [B-004](#b-004) | 🔴 **open — blocks release** | The networking library is a stranger's repack |
 | [B-005](#b-005) | 🟢 closed | Regenerating the map unregistered the scene 시작 loads |
 | [B-006](#b-006) | 🟢 closed | The core solution did not build |
-| [B-007](#b-007) | 🔴 **open** | §12's sight-break-spacing: 95 m of cover against 14.4 m, waived by name |
+| [B-007](#b-007) | 🟢 closed 2026-08-10 | §12's sight-break-spacing: 95 m of cover against 14.4 m, waived by name |
 | [B-008](#b-008) | 🟢 closed | A 계단 only the creature could use |
 | [B-009](#b-009) | 🟢 closed | The NavMesh audited was not the one just built |
 | [B-009b](#b-009b) | 🟢 closed | …and the chamber sealed the middle its own way |
@@ -93,7 +93,40 @@ is why the two audits are always taken over a named, stamped surface.
 
 ## B-019 · Every storey is too short from the rim to the middle, and for two rounds nothing said so
 
-**Status:** 🔴 **open** · opened 2026-08-05 · a gate now, failing, waived by name
+**Status:** 🔴 **open** · opened 2026-08-05 · **21 of 22 entry points inside the band as of
+2026-08-10**; one is 2.5 m short and the waiver stays until it is closed
+
+> **Nearly closed, 2026-08-10, by the same re-lay that closed [B-007](#b-007).** The
+> 중간 관문 now walks 20 m round the new d5 lane before turning in — length added to every
+> route without widening the gap between the shortest and the longest, which is why one
+> edit moved both blockers. `DescentMap.Pick` also changed: a 투하구 landing **is** a
+> centre-path entry point on B2–B8, and choosing it "furthest along Z" put one beside a
+> way in on some floors and half a ring away on others. It is now the cell furthest round
+> the outermost ring from that storey's 외곽 관문.
+>
+> | storey | before | after |
+> |---|---|---|
+> | B1 하역장 | 47.5–82.5 m, **0/16** | 87.5–132.5 m, **7/8** |
+> | B2–B8 (each) | 60–75 m, **0/2** | 102.5–132.5 m, **2/2** |
+> | **total** | **0 / 30** | **21 / 22** |
+>
+> **The one that is still out is 2.5 m short — one cell.** It is the rim cell standing one
+> step from a 외곽 관문, taking the shorter of the two ways in. The cell could not be
+> found: each of the three 관문 is already the longest §12 permits, and the storey has no
+> spare radius. That is a measured miss, not a rounding, and it is why the waiver stays.
+> `MapTests.Descent_CentrePath_IsInsideSection12DsBandExceptAtTheRimCellBesideAGate` pins
+> `87.5 m~132.5 m` and `1 of 22 OUTSIDE` — asserting a *failing* rule's exact measurement
+> on purpose, so a slide back toward 47.5 m is the defect returning, and when the last
+> 2.5 m is found that test and the waiver retire in the same commit.
+>
+> ⚠️ **What it cost, and it is a real regression: seed variation narrowed.** The four
+> 외곽 관문 now stand at the same four bearings on every floor of every building, because
+> band alignment admits exactly one jog pair per side. Buildings still differ (the arc's
+> axis, which sides carry the 중간 관문, where the 막힌 길 sit) and
+> `Descent_IsDeterministic_AndTwoSeedsAreNotTheSameBuilding` holds that — but **a player
+> who learns where the rim's ways in are learns it once**, which is against the spirit of
+> [B-018](#b-018). Also: `straight-corridor` now measures 20.0 m against a 20 m cap, with
+> no slack, so anything that adds a cell in line with a band leg trips it.
 
 §12-D writes the rule and says who checks it:
 
@@ -851,8 +884,43 @@ descent map's chutes are gated rather than assumed.
 
 ## B-007 · §12's sight-break-spacing rejects the map that ships, and the map ships anyway
 
-**Status:** 🔴 **open** · opened 2026-08-01 · the cap was re-derived on 2026-08-05 and the
-map is still six times over it
+**Status:** 🟢 **closed 2026-08-10** · opened 2026-08-01 · the waiver is deleted and the
+rule passes on all eight roster seeds
+
+> **How it closed.** `RadialStorey` was re-laid so the bands jog **outward** instead of
+> inward. The old 중간 band sat on d6/d7 pressed against d5, so nothing could be built
+> there; on d7/d8 it leaves d4–d6 clear and **d5 becomes a lane with empty neighbours on
+> both sides** — the only radius in the storey where a corridor can run without welding
+> itself to a band. Every bend on the floor is then placed against one number, **12.5 m**,
+> because that is the widest a 시야 차단 지점 may be on a 2.5 m grid, and 관문 are 2, 3 or
+> ≥6 steps and never 4 or 5: a short 관문 welds the bend it leaves to the bend it arrives
+> at, and the welded span is 15 m or 17.5 m at four or five steps. That single rule is
+> what killed the 95 m group — the old 관문 was three cells joining two *multi-bend*
+> clusters, and four of them chained all three bands.
+>
+> | | before | after |
+> |---|--:|--:|
+> | 시야 차단 지점 | 48 | **160** |
+> | 지점 inside 15–25 m | 48 / 48 | **160 / 160** |
+> | deepest continuous cover run | **95.0 m** | **12.5 m** (cap 14.4) |
+> | 지점 over the cap | **16 / 48** | **0 / 160** |
+>
+> Identical on the shipped seed and all seven other roster seeds. Confirmed in Unity, not
+> just in `dotnet`: `MapPipeline.RegenerateFromCommandLine` prints
+> `[ok] sight-break-spacing — 시야 차단 지점 간격 15~25m`, and the generator's warning now
+> reads **1** waived rule instead of 2. `MapSceneGenerator.KnownFailingRules` holds only
+> `RuleCentrePath`.
+>
+> **A correction to this entry's own numbers, worth carrying forward.** The measurement
+> below — *"496 corners, nearest-neighbour 2.5 m~7.5 m, mean 3.5 m, 0 inside the band"* —
+> is the **raw bend** figure. The rule groups bends into 지점 first, and the 지점-level
+> spacing was already 15.0 m and already 48/48 inside the band before any of this work.
+> **The only thing that ever failed was the span**, and the span is what closed. An entry
+> that quotes the wrong one of two available statistics sends the next person to fix
+> something that was never broken.
+>
+> Cost, recorded rather than buried: see B-019 for the seed-variation regression this
+> shares with it.
 
 `66ce930` implemented 시야 차단 지점 간격 as `MapValidator`'s 17th rule. The rule is right
 and the map has never satisfied it. For a day the generator therefore refused to write the

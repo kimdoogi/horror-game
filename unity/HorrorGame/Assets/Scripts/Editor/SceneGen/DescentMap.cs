@@ -256,8 +256,8 @@ namespace HorrorGame.EditorTools.SceneGen
                 // at a given radius are empty, and a chute that dropped a player into rock
                 // would be a floor nobody could finish.
                 var rim = below.Bands[below.Bands.Count - 1];
-                var north = Pick(rim, +1);
-                var south = Pick(rim, -1);
+                var north = Pick(below, rim, +1);
+                var south = Pick(below, rim, -1);
 
                 sketch.Chute(Centre, Centre - 1, level, north.X, north.Z, "투하구 " + (level + 1) + "북");
                 sketch.Chute(Centre, Centre + 1, level, south.X, south.Z, "투하구 " + (level + 1) + "남");
@@ -315,14 +315,69 @@ namespace HorrorGame.EditorTools.SceneGen
                 && System.Math.Abs(mouth.X - gate.Value.X) + System.Math.Abs(mouth.Z - gate.Value.Z) == 1;
         }
 
-        /// <summary>The rim cell furthest along Z in the given direction.</summary>
-        private static MapCell Pick(System.Collections.Generic.List<MapCell> rim, int sign)
+        /// <summary>
+        /// Where a 투하구 puts a runner down: a cell on the outermost ring, in the given Z
+        /// hemisphere, as far round that ring from the storey's 외곽 관문 as it goes.
+        /// <para>
+        /// <b>It used to be "furthest along Z" and that was a coin toss §12-D had to live
+        /// with.</b> A landing is a storey ENTRY POINT — <c>MapValidator.RuleCentrePath</c>
+        /// measures the 외곽 → 중심 walk from it — so on B2…B8 the two chutes ARE the
+        /// measurement, and picking by Z alone put one of them next to a 관문 on some storeys
+        /// and half a ring away on others. Measured, seed 20260802: B3 landed 87.5 m from its
+        /// middle against §12-D's 90 m floor while B4 landed 92.5 m, on identical geometry,
+        /// because the extreme-Z cell happened to sit beside a way in.
+        /// </para>
+        /// <para>
+        /// Picking the far end of the ring instead is also what §01 asks for out loud — 「떨어지면
+        /// 언제나 다음 층 외곽」 — a fall costs you the walk, it does not buy you a short cut. The
+        /// two chutes still differ, because the two hemispheres meet the storey's 관문 at
+        /// different bearings, so which hole you jump into still matters and still has to be
+        /// learned.
+        /// </para>
+        /// </summary>
+        /// <param name="floor">The storey being landed on, for its 외곽 관문.</param>
+        /// <param name="rim">Cells of that storey's outer band.</param>
+        /// <param name="sign">+1 for the northern hemisphere, −1 for the southern.</param>
+        private static MapCell Pick(
+            RadialStoreyResult floor, System.Collections.Generic.List<MapCell> rim, int sign)
         {
+            var gates = floor.Gates.Count > 0 ? floor.Gates[floor.Gates.Count - 1] : null;
+
             var best = rim[0];
+            var bestScore = int.MinValue;
+            var outermost = 0;
             foreach (var cell in rim)
             {
-                if (cell.Z * sign > best.Z * sign)
+                var radius = RingOf(floor, cell);
+                outermost = radius > outermost ? radius : outermost;
+            }
+
+            foreach (var cell in rim)
+            {
+                // Only the outermost ring. §01 stands a runner on the rim and MapValidator
+                // measures from the outermost ring the storey has, so a landing anywhere else
+                // is a landing the rule does not see.
+                if (RingOf(floor, cell) != outermost || (cell.Z - Centre) * sign < 0)
                 {
+                    continue;
+                }
+
+                var nearest = int.MaxValue;
+                if (gates != null)
+                {
+                    foreach (var gate in gates)
+                    {
+                        var d = System.Math.Abs(cell.X - gate.X) + System.Math.Abs(cell.Z - gate.Z);
+                        nearest = d < nearest ? d : nearest;
+                    }
+                }
+
+                // Ties broken on Z so the choice stays deterministic and the two chutes stay
+                // in opposite halves of the floor.
+                var score = (nearest * 100) + ((cell.Z - Centre) * sign);
+                if (score > bestScore)
+                {
+                    bestScore = score;
                     best = cell;
                 }
             }
