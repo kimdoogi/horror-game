@@ -2376,6 +2376,159 @@ def _slopes(normal_xyz: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return normal_xyz[..., 0] / z, normal_xyz[..., 1] / z
 
 
+# ── Micro-surface ───────────────────────────────────────────────────────────
+
+# Amplitudes for the grain octave, tuned against measured map statistics rather than
+# by eye — see `micro_surface`. Height is metres of relief across the full 0-1 field;
+# the rest are fractions of the channel they modulate.
+#
+# They are this large for one measured reason: **the maps ship as 8-bit PNGs, and
+# 8-bit quantisation is what flattens a normal map.** Writing the identical float
+# array and reading the file back:
+#
+#     in memory (float32)          flat<2°  0.1345   tilt_mean  4.76°
+#     after PNG round trip         flat<2°  0.5962   tilt_mean  3.17°
+#     8-bit quantised in memory    flat<2°  0.5961   tilt_mean  3.17°
+#
+# — the file and the bare quantisation agree to four decimal places, so the loss is
+# entirely the byte buffer. One code of 255 is 0.45° of tilt, and a micro-relief
+# gentle enough to look right as floats lands under half a code and is stored as
+# exactly flat. Anything that tunes this by looking at the array instead of the PNG
+# will under-shoot by ~5x; an earlier pass here reported 0.058 flat while the file on
+# disk held 0.297. Raising `write_png` to 16-bit would let these come down, and that
+# is `gen_monster_ai.py`'s call, not this file's.
+MICRO_HEIGHT_M = 0.0045
+MICRO_ALBEDO = 0.20
+MICRO_ROUGH = 0.16
+MICRO_AO = 0.12
+
+
+def micro_surface(res: int, world_size: float, cav: np.ndarray,
+                  armw: np.ndarray | None = None, handw: np.ndarray | None = None,
+                  finreg: np.ndarray | None = None) -> dict:
+    """The grain octave the hide was missing: skin at texel scale, not sculpt scale.
+
+    **Why this exists (2026-08-09).** Every other surface in the frame had just been
+    rebuilt on CC0 photo scans, and the creature had not, so the maps were measured
+    side by side with the same band analysis. The hide was the outlier on every axis:
+
+    ======================  ==========  ================  ==========  =============
+    map set                 mm/texel    normal flat <2°   tilt mean   albedo 1px sd
+    ======================  ==========  ================  ==========  =============
+    Wall_Plaster_Stained          0.98            0.241       9.48°         0.01899
+    Wall_Concrete_Bare            1.22            0.190      11.45°         0.01750
+    Player_Skin                   0.27            0.077      14.61°         0.00461
+    **Monster_Hide**              1.74        **0.485**    **6.42°**    **0.00524**
+    ======================  ==========  ================  ==========  =============
+
+    Read that as: **half the creature's normal map was dead flat**, twice the flat
+    fraction of the worst wall it stands against, at the lowest mean tilt of anything
+    in the frame, and spread over the coarsest texels. Everything on it was relief the
+    *sculpt* carries — ribs, tendons, the pelvic pleats — which is why it photographs
+    well at 12 m and under a raking beam at 3 m, and photographs as a wax cast at
+    arm's length, where §06's grab happens. There was no octave between "1.7 mm texel"
+    and "a rib".
+
+    (The albedo column is the standard deviation of the finest spatial band, a 1-texel
+    Gaussian difference. It is quoted rather than a fine/coarse ratio because the ratio
+    flatters a map whose coarse band is weak; the walls carry 3.3-3.6x this hide's
+    finest-band energy outright. The runner's skin reads low here only because its
+    atlas is 0.27 mm/texel, so its finest band is a quarter the physical size.)
+
+    It is also spread thinner than anything else: one 2048 atlas over 3.56 m of body,
+    1.74 mm per texel against the walls' ~1 mm and the runner's 0.27 mm. Raising
+    `TEX_RES` is the other half of the fix and is not this file's to make, so the
+    amplitudes below are chosen to put as much energy as possible into the 2-4 texel
+    band — the finest this atlas can carry without aliasing under a mip.
+
+    What it paints:
+
+    * **Papillary grain.** Worley cells about three texels across, edges *and* cell
+      interiors, so the surface reads pebbled rather than veined. This is the octave
+      a beam at 0.6 m actually resolves.
+    * **Pores**, sparser and deeper, gated away from the cavity mask — pores read on
+      the stretched convex skin, and the creases already have craquelure doing that
+      job. Without the gate the crevices double-darken and go to mud.
+    * **Stretch.** On the arms the grain is drawn out along the limb (`stretch=3.2`),
+      because skin under tension grains along the tension and isotropic pebbling on a
+      1.78 m arm reads as gravel.
+    * **Carapace scratch** on the crest fan: a much finer, harder, directional field
+      instead of pebbling, so the blades read as keratin beside flesh rather than as
+      the same material bent into a different shape.
+
+    Everything returned is zero-mean-ish and *relative*; the caller's grade still owns
+    the mean, the corridor ceiling and the roughness target, so this cannot move the
+    creature outside §03's albedo band no matter how it is tuned.
+    """
+    zero = np.zeros((res, res), dtype=np.float32)
+    armw = zero if armw is None else armw
+    handw = zero if handw is None else handw
+    finreg = zero if finreg is None else finreg
+
+    # ~3 texels per cell at any resolution, so the grain is the same physical size
+    # whatever TEX_RES becomes.
+    cells = max(24, int(round(res / 3.0)))
+    f1, f2, owner = _worley(cells=cells, res=res, seed=7501, jitter=0.85)
+    interior = _smoothstep(0.0, 1.4 / cells, f2 - f1)          # 0 on the cell seam
+    dome = 1.0 - _smoothstep(0.0, 0.85 / cells, f1)            # a bump per cell
+    tint = _per_cell(owner, cells, 7502, 0.42, 1.0)
+    pebble = (0.55 * interior + 0.45 * dome * tint).astype(np.float32)
+
+    # An isotropic fine field mixed in stops the Worley lattice reading as a lattice.
+    speck = _fbm(res, 7503, beta=1.35, low_cycles=res / 6.0)
+    grain = (0.70 * pebble + 0.30 * speck).astype(np.float32)
+
+    # Along-limb stretch, blended in only where the arm mask says so.
+    if float(armw.max()) > 0.0:
+        drawn = _fbm(res, 7504, beta=1.4, low_cycles=res / 7.0, stretch=3.2)
+        w = _smoothstep(0.25, 0.85, armw)[..., None][..., 0]
+        grain = (grain * (1.0 - w) + (0.45 * grain + 0.55 * drawn) * w).astype(np.float32)
+
+    # Pores: sparse, deep, off the creases. Only a fraction of the cells get one, so
+    # they scatter instead of tiling — a regular pore lattice is worse than none.
+    pcells = max(12, int(round(res / 9.0)))
+    pf1, _pf2, powner = _worley(cells=pcells, res=res, seed=7505, jitter=1.0)
+    keep = _per_cell(powner, pcells, 7506, 0.0, 1.0) > 0.55
+    pore = ((1.0 - _smoothstep(0.0, 0.38 / pcells, pf1))
+            * keep.astype(np.float32)
+            * (1.0 - _smoothstep(0.25, 0.70, cav))).astype(np.float32)
+
+    # Hands work: the grain coarsens and hardens where it grips.
+    grain = np.clip(grain + _smoothstep(0.30, 0.90, handw) * (pebble - 0.5) * 0.55,
+                    0.0, 1.0).astype(np.float32)
+
+    # Amplitude varies on a slow field, ~20-40 cm across. Without it the grain is the
+    # same everywhere and reads as a stucco overlay rather than as a body: real hide
+    # is coarse over the shoulders and stretched fine over the ribs, and a constant
+    # amplitude is the tell that a procedural layer was dropped on top of a scan.
+    swell = 0.55 + 0.90 * _fbm(res, 7508, beta=2.2, low_cycles=world_size / 0.30)
+    height = ((grain - float(grain.mean())) * swell - pore * 0.55).astype(np.float32)
+
+    # The crest is keratin, not hide: swap pebbling for a fine hard scratch.
+    if float(finreg.max()) > 0.0:
+        scratch = _fbm(res, 7507, beta=1.25, low_cycles=res / 4.5, stretch=5.0)
+        w = _smoothstep(0.20, 0.80, finreg)
+        height = (height * (1.0 - w) + (scratch - float(scratch.mean())) * 0.75 * w
+                  ).astype(np.float32)
+        grain = (grain * (1.0 - w) + scratch * w).astype(np.float32)
+
+    centred = (grain - float(grain.mean())).astype(np.float32)
+    return {
+        "height": height,
+        "normal": _height_to_normal(height * 0.5 + 0.5, world_size, MICRO_HEIGHT_M),
+        "albedo": np.clip(1.0 + centred * MICRO_ALBEDO - pore * 0.22, 0.0, 2.0
+                          ).astype(np.float32),
+        "rough": (centred * MICRO_ROUGH + pore * 0.06).astype(np.float32),
+        "ao": np.clip(1.0 - np.clip(-centred, 0.0, None) * MICRO_AO - pore * 0.14,
+                      0.0, 1.0).astype(np.float32),
+        "stats": {
+            "micro_cells_per_texel": round(3.0, 3),
+            "micro_height_mm": round(MICRO_HEIGHT_M * 1000.0, 3),
+            "micro_pore_cover": round(float((pore > 0.35).mean()), 4),
+        },
+    }
+
+
 def dress_sculpt_maps(diffuse: np.ndarray, normal: np.ndarray | None,
                       rough: np.ndarray | None, res: int,
                       world_size: float, fields: dict | None = None,
@@ -2477,6 +2630,8 @@ def dress_sculpt_maps(diffuse: np.ndarray, normal: np.ndarray | None,
 
     # ── 2026-08: the arms, the claws, the channel, the fins — 3D-gated paint ──
     extra_relief = np.zeros((res, res), dtype=np.float32)
+    fin_mask = np.zeros((res, res), dtype=np.float32)
+    plate_found = 0.0
     if wz is not None:
         elbow, tipz = landmarks["elbow"], landmarks["fingertip"]
         along = np.clip((elbow + 0.05 - wz) / max(elbow - tipz, 1e-4),
@@ -2567,6 +2722,7 @@ def dress_sculpt_maps(diffuse: np.ndarray, normal: np.ndarray | None,
         # BEHIND the torso's own back can be a blade, which is exactly the fan.
         finreg = ((wy > landmarks["back_y"] + 0.012)
                   & fields["cover"]).astype(np.float32)
+        fin_mask = finreg
         if finreg.any():
             rib = (0.5 + 0.5 * np.sin(wz * 240.0 + wy * 60.0)).astype(np.float32)
             rib = (_smoothstep(0.72, 0.98, rib) * finreg).astype(np.float32)
@@ -2575,32 +2731,130 @@ def dress_sculpt_maps(diffuse: np.ndarray, normal: np.ndarray | None,
             rough_out = np.clip(rough_out - memb * 0.18 + rib * 0.06, 0.10, 1.0)
             extra_relief += rib * 0.40
 
+        # ── The skull and crown, as keratin plate ────────────────────────────
+        # §06's head is "two eyeless blade halves separated by a vertical slot" under
+        # "a crown that is one mass" — it is carapace, not skin, and it was the one
+        # region carrying no surface at all. Renders at 0.65 m photographed the crest
+        # and the crown as flat grey cardboard with visible polygon edges beside a
+        # torso that had just gained a hide, which made the head look like a separate,
+        # cheaper asset welded on.
+        #
+        # Polygons cannot fix it here: the head already took +4158 faces from
+        # `refine_head` and the mesh sits at 30,306 of a 32,000 budget. What a flat
+        # plate needs is relief an order coarser than skin grain — a 5 mm pebble on a
+        # plane facing the beam shades almost identically to no pebble at all, which
+        # is exactly what the round-2 A/B showed. So this paints growth banding and
+        # pitting at 10-30 mm into `extra_relief`, which is carried at the 10 mm
+        # height scale the crack normal already uses.
+        #
+        # The mask is two things unioned. Height above the neck catches the skull and
+        # the crown. The second half catches the rest, and is found rather than typed:
+        # every plate this pipeline *invents* — the crest fan, the scapular spur, the
+        # shoulder shelves, the teeth — is welded on as flat polygons and then planar-
+        # unwrapped, so its baked normal is locally CONSTANT, where a scanned surface
+        # is never quite constant anywhere. Thresholding the local variance of the
+        # sculpt's own normal map therefore separates "geometry a script added" from
+        # "geometry Rodin scanned", with no coordinates in this file to go stale the
+        # next time `add_crest` moves a blade.
+        plate = (_smoothstep(neck + 0.02, neck + 0.11, wz)
+                 * fields["cover"]).astype(np.float32)
+        if normal is not None:
+            n3 = normal[..., :3].astype(np.float32) * 2.0 - 1.0
+            sig = 3.0 * res / 1024.0
+            var = np.zeros((res, res), dtype=np.float32)
+            for c in range(3):
+                var += _blur(n3[..., c] ** 2, sig) - _blur(n3[..., c], sig) ** 2
+            flatpanel = (_smoothstep(2.0e-4, 1.0e-5, np.clip(var, 0.0, None))
+                         * fields["cover"]).astype(np.float32)
+            plate = np.maximum(plate, flatpanel)
+            plate_found = float((flatpanel > 0.5).mean())
+        else:
+            plate_found = 0.0
+        if plate.any():
+            # Growth bands: concentric, slightly wandering, hard-edged. Keyed to
+            # height above the neck so they ring the skull rather than stripe it.
+            phase = (wz - neck) * 46.0 + (_fbm(res, 7411, beta=2.4, low_cycles=2.0)
+                                          - 0.5) * 2.2
+            band = 1.0 - np.abs(2.0 * (phase - np.floor(phase)) - 1.0)
+            band = _smoothstep(0.30, 0.92, band.astype(np.float32))
+
+            # Pitting: shallow craters, sparse, the wear a plate takes rather than
+            # the splitting skin takes. Deliberately not the craquelure — a plate
+            # that cracks like drying flesh stops reading as a different material.
+            pcells = max(16, int(round(res / 26.0)))
+            pf1, _pf2, pown = _worley(cells=pcells, res=res, seed=7412, jitter=1.0)
+            pit = ((1.0 - _smoothstep(0.0, 0.62 / pcells, pf1))
+                   * (_per_cell(pown, pcells, 7413, 0.0, 1.0) > 0.62)).astype(np.float32)
+
+            relief = (band * 0.55 + pit * 0.85) * plate
+            extra_relief += relief
+            lin = lin * (1.0 - (pit * plate)[..., None] * 0.30
+                         - (band * plate)[..., None] * 0.10)
+            # Keratin is smoother than hide and drier than the crevices, and the
+            # pits hold what little damp there is.
+            rough_out = np.clip(rough_out - plate * 0.10 + pit * plate * 0.14,
+                                0.10, 1.0)
+            ao = np.clip(ao - (pit * plate) * 0.30 - (band * plate) * 0.08, 0.20, 1.0)
+            fin_mask = np.maximum(fin_mask, plate)
+
+    # ── The grain octave, last, so every mask above can gate it ──────────────
+    # Applied to albedo/roughness/AO here and folded into the normal below. It is the
+    # only thing on this surface finer than the sculpt, and without it the creature
+    # renders as a wax cast at the one distance §06 cares most about — see
+    # `micro_surface` for the measurement that says so.
+    micro = micro_surface(res, world_size, cav, armw=armw, handw=handw,
+                          finreg=fin_mask)
+    lin = lin * micro["albedo"][..., None]
+    rough_out = np.clip(rough_out + micro["rough"], 0.10, 1.0).astype(np.float32)
+    ao = np.clip(ao * micro["ao"], 0.20, 1.0).astype(np.float32)
+
     if normal is not None:
         crack_n = _height_to_normal(np.clip(0.5 - crack * 0.5 - cav * 0.10
                                             - extra_relief * 0.30, 0.0, 1.0),
                                     world_size, 0.010)
         sx, sy = _slopes(normal[..., :3] * 2.0 - 1.0)
         cx, cy = _slopes(crack_n)
-        merged = np.stack([sx + cx, sy + cy, np.ones_like(sx)], axis=-1)
+        mx, my = _slopes(micro["normal"])
+        merged = np.stack([sx + cx + mx, sy + cy + my, np.ones_like(sx)], axis=-1)
         merged /= np.linalg.norm(merged, axis=-1, keepdims=True)
         normal_out = np.ones((res, res, 4), dtype=np.float32)
         normal_out[..., :3] = merged * 0.5 + 0.5
+        # Measured on the BYTE buffer write_png will store, not on the float array:
+        # the two differ by 5x and only one of them is the file Unity samples. Z is
+        # read straight out of the quantised byte rather than rebuilt from X/Y, which
+        # is the same convention the reference numbers in the note below were taken
+        # with — the comparison is only worth anything if both sides are measured the
+        # same way.
+        stored = np.rint(np.clip(normal_out[..., :3], 0.0, 1.0) * 255.0) / 255.0 * 2.0 - 1.0
+        tilt = np.degrees(np.arccos(np.clip(stored[..., 2], -1.0, 1.0)))
     else:
         normal_out = None
+        tilt = None
 
     albedo_out = np.ones((res, res, 4), dtype=np.float32)
     albedo_out[..., :3] = _linear_to_srgb(np.clip(lin, 0.0, 1.0))
 
+    stats = {
+        "cavity_mean": round(float(cav.mean()), 4),
+        "crack_cover": round(float((crack > 0.25).mean()), 4),
+        "dressed": True,
+    }
+    stats.update(micro["stats"])
+    stats["plate_cover"] = round(float((fin_mask > 0.5).mean()), 4)
+    stats["plate_found_by_planarity"] = round(plate_found, 4)
+    if tilt is not None:
+        # The two numbers that caught the 2026-08-09 regression, kept in the manifest
+        # so the next person can see at a glance whether the hide still has a surface.
+        # Reference points measured the same way: CC0 plaster wall 0.241 / 9.48°, the
+        # runner's skin 0.077 / 14.61°, this hide before the grain octave 0.485 / 6.42°.
+        stats["normal_flat_frac_under_2deg"] = round(float((tilt < 2.0).mean()), 4)
+        stats["normal_tilt_mean_deg"] = round(float(tilt.mean()), 3)
     return {
         "albedo": albedo_out,
         "rough": rough_out,
         "normal": normal_out,
         "ao": ao,
-        "stats": {
-            "cavity_mean": round(float(cav.mean()), 4),
-            "crack_cover": round(float((crack > 0.25).mean()), 4),
-            "dressed": True,
-        },
+        "stats": stats,
     }
 
 
