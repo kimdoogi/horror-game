@@ -50,6 +50,45 @@ cd unity/HorrorGame/Shots && python3 ../../../tools/render/frame_stats.py 'final
 | median luminance | 3–16 | The unlit room. Not zero. |
 | pixels above 250 ("blown") | < 0.5% | A clipped hotspot throws away the texture detail in the exact part of the frame the player is looking at. |
 
+> 🟢 **Current, 2026-08-09, tag `realtex3` — six zone wall/floor materials got a CC0
+> photo-scan base layer (PolyHaven brick + concrete, ambientCG plaster + tile +
+> diamond-plate; procedural grime/wet/grain kept layered on top). It caught, and
+> survived, exactly the trap this section is about.** The raw swap looked better on a
+> flat plane but measured **+6–8 pts more crushed in every one of the six zones** on a
+> clean same-map A/B (procedural fallback vs CC0, identical scene + seed — so the deltas
+> are the textures, not map drift), at an *unchanged* mean luminance. That is the §3.13
+> signature of a real regression: a shadow-floor/contrast problem, not a brightness one —
+> photo scans carry deep mortar/grout valleys and deeper baked AO than the old procedural
+> surfaces, and under the dim flashlight those valleys fall below 2/255. It tipped B3 and
+> B6 out of band. Recovered **in the texture generator, not the lighting**: a per-material
+> `PhotoSpec.ao_floor` (lifts the baked-AO floor toward 1.0) + `shadow_lift` (lifts only
+> the darkest albedo texels, below a `shadow_knee`, after grain and before the mean is
+> re-landed — so no midtone moves and the relief in the normal/height maps is untouched);
+> plus `Floor_Metal` rust 0.32 → 0.48 to give the metal zone diffuse midtone (§12 asks the
+> stair for rust streaks). Final, all six zones on the identical map:
+>
+> ```
+> shot                                     mean    p50    p90    p99  black%  legible%  blown%    sat
+> realtex3_Zone_B1_B1_Concrete.png          7.7    3.9   18.7   47.2    34.3      30.4    0.00    7.2
+> realtex3_Zone_B2_B2_Wood.png              7.5    4.0   18.2   47.6    35.2      30.2    0.00    5.4
+> realtex3_Zone_B3_B3_Metal.png            7.6    3.9   19.2   42.5    34.3      29.8    0.00    8.9
+> realtex3_Zone_B4_B4_Gravel.png            8.9    4.6   21.7   61.4    32.2      34.6    0.00    7.8
+> realtex3_Zone_B5_B5_Tile.png              9.7    6.0   22.7   55.9    26.9      40.4    0.00    9.4
+> realtex3_Zone_B6_B6_Carpet.png            7.2    3.9   19.9   37.5    38.9      32.8    0.00    5.2
+> ```
+>
+> **Crushed is back in band on all six** (26.9–38.9; B6 recovered from 43.1 → 38.9),
+> median and blown pass everywhere, and legible passes on five. **B3 금속 sits at 29.8,
+> 0.2 under the floor** — the same perennially-marginal metal view this section's history
+> shows riding that line (`land_main` 52.3 at one framing, `prodship` 30.2, here 29.8): the
+> shared CC0 walls cost ~3 legible pts uniformly and B1/B2/B3 all landed within 0.6 of the
+> floor, B3 the one that tipped under. There is no per-zone lever for it that does not
+> touch the other five (the walls are shared; more wall-lift starts flattening the mortar
+> detail the swap exists to add), so it is accepted, measured and named, as the cost of
+> photoreal walls — not silently shipped. Detail preservation was verified against the
+> pre-recovery renders (the shadow lift is sub-2/255 only; the bricks, mortar, plaster
+> peel and rust bleed are all intact). Provenance in [ASSETS.md](ASSETS.md).
+
 > 🔴 **This section's headline was "All five zone views are inside all four bands, for
 > the first time." It is no longer true, and the regression is recorded here rather
 > than deleted.** Re-measured 2026-08-01 with the identical command and viewpoints on

@@ -12,6 +12,7 @@
         "Floor_Wood"
       ],
       "note": "§12 구역 A 나무 — staggered boards, deep gaps, soft traffic lane.",
+      "cc0_base": null,
       "world_size_metres": 1.0,
       "authored_metres_per_tile": 2.0,
       "kit_uv_units_per_metre": 0.5,
@@ -39,13 +40,14 @@
       "slots": [
         "Floor_Tile"
       ],
-      "note": "§12 구역 B 타일 — 8×8 grid, dark grout, glossiest floor so the beam streaks.",
+      "note": "§12 구역 B 타일 — dirty white mosaic, dark grout, glossiest floor so the beam streaks. CC0 base: ambientCG Tiles133B.",
+      "cc0_base": "ambientCG Tiles133B (CC0)",
       "world_size_metres": 1.0,
       "authored_metres_per_tile": 2.0,
       "kit_uv_units_per_metre": 0.5,
       "albedo_mean_linear": 0.32,
-      "roughness_mean": 0.2548,
-      "relief_mm": 9.25,
+      "roughness_mean": 0.2354,
+      "relief_mm": 10.2,
       "texel_px_per_metre": 512.0,
       "detail": {
         "name": "Detail_Ceramic",
@@ -68,6 +70,7 @@
         "Floor_Gravel"
       ],
       "note": "§12 구역 C 자갈 — three stone scales, 45 mm relief, standing water in the voids.",
+      "cc0_base": null,
       "world_size_metres": 0.75,
       "authored_metres_per_tile": 1.5,
       "kit_uv_units_per_metre": 0.5,
@@ -95,13 +98,14 @@
       "slots": [
         "Floor_Concrete"
       ],
-      "note": "§12 구역 D 콘크리트 — stains, exposed aggregate, cracks that hold water.",
+      "note": "§12 구역 D 콘크리트 — stains, exposed aggregate, cracks that hold water. CC0 base: PolyHaven concrete_wall_007 (floor variant).",
+      "cc0_base": "PolyHaven concrete_wall_007 (CC0, floor variant)",
       "world_size_metres": 1.25,
       "authored_metres_per_tile": 2.5,
       "kit_uv_units_per_metre": 0.5,
       "albedo_mean_linear": 0.23,
-      "roughness_mean": 0.647,
-      "relief_mm": 8.83,
+      "roughness_mean": 0.4761,
+      "relief_mm": 16.45,
       "texel_px_per_metre": 409.6,
       "detail": {
         "name": "Detail_Aggregate",
@@ -123,13 +127,14 @@
       "slots": [
         "Floor_Metal"
       ],
-      "note": "§12 계단 금속 — diamond tread, rivets, rust streaks, lowest roughness.",
+      "note": "§12 계단 금속 — diamond tread, lowest roughness, brightest specular. CC0 base: ambientCG DiamondPlate008A. Metalness stays partial (§ambient).",
+      "cc0_base": "ambientCG DiamondPlate008A (CC0)",
       "world_size_metres": 1.0,
       "authored_metres_per_tile": 2.0,
       "kit_uv_units_per_metre": 0.5,
       "albedo_mean_linear": 0.26,
-      "roughness_mean": 0.3556,
-      "relief_mm": 10.24,
+      "roughness_mean": 0.2642,
+      "relief_mm": 12.25,
       "texel_px_per_metre": 512.0,
       "detail": {
         "name": "Detail_Brushed",
@@ -151,13 +156,14 @@
       "slots": [
         "Wall_Structure"
       ],
-      "note": "Painted brick, stretcher bond. Bound to the kit's single wall slot.",
+      "note": "Painted brick, stretcher bond. Bound to the kit's single wall slot. CC0 base: PolyHaven brick_wall_10.",
+      "cc0_base": "PolyHaven brick_wall_10 (CC0)",
       "world_size_metres": 0.9,
       "authored_metres_per_tile": 1.8,
       "kit_uv_units_per_metre": 0.5,
-      "albedo_mean_linear": 0.22,
-      "roughness_mean": 0.5831,
-      "relief_mm": 24.7,
+      "albedo_mean_linear": 0.2192,
+      "roughness_mean": 0.7773,
+      "relief_mm": 25.0,
       "texel_px_per_metre": 568.9,
       "detail": {
         "name": "Detail_Sand",
@@ -177,13 +183,14 @@
     {
       "name": "Wall_Concrete_Bare",
       "slots": [],
-      "note": "Board-formed concrete with snap-tie holes. Generated, awaiting a per-zone wall slot.",
+      "note": "Board-formed concrete with snap-tie holes. Generated, awaiting a per-zone wall slot. CC0 base: PolyHaven concrete_wall_007.",
+      "cc0_base": "PolyHaven concrete_wall_007 (CC0)",
       "world_size_metres": 1.25,
       "authored_metres_per_tile": 2.5,
       "kit_uv_units_per_metre": 0.5,
       "albedo_mean_linear": 0.27,
-      "roughness_mean": 0.6337,
-      "relief_mm": 19.57,
+      "roughness_mean": 0.7607,
+      "relief_mm": 30.37,
       "texel_px_per_metre": 409.6,
       "detail": {
         "name": "Detail_Sand",
@@ -205,13 +212,14 @@
       "slots": [
         "Wall_Dado"
       ],
-      "note": "Water-stained plaster on the 0.20–1.02 m tanking band. Rising damp, its tide line, salt bloom and the junction dirt are all keyed to the floor, so this tiles along the wall only.",
+      "note": "Water-stained plaster on the 0.20–1.02 m tanking band. Rising damp, its tide line, salt bloom and the junction dirt are all keyed to the floor, so this tiles along the wall only. CC0 base: ambientCG PaintedPlaster016.",
+      "cc0_base": "ambientCG PaintedPlaster016 (CC0)",
       "world_size_metres": 1.0,
       "authored_metres_per_tile": 2.0,
       "kit_uv_units_per_metre": 0.5,
       "albedo_mean_linear": 0.3,
-      "roughness_mean": 0.7093,
-      "relief_mm": 14.32,
+      "roughness_mean": 0.5859,
+      "relief_mm": 15.45,
       "texel_px_per_metre": 512.0,
       "detail": {
         "name": "Detail_Sand",
@@ -234,6 +242,7 @@
         "Ceiling_Structure"
       ],
       "note": "Board-marked soffit — directional grain for corridors seen at grazing angles.",
+      "cc0_base": null,
       "world_size_metres": 1.25,
       "authored_metres_per_tile": 2.5,
       "kit_uv_units_per_metre": 0.5,
@@ -256,6 +265,7 @@
         "Trim_Steel"
       ],
       "note": "Rusted ribbed steel. Sits inside the beam more often than the wall behind it.",
+      "cc0_base": null,
       "world_size_metres": 0.5,
       "authored_metres_per_tile": 1.0,
       "kit_uv_units_per_metre": 0.5,
@@ -284,6 +294,7 @@
         "Door_Leaf"
       ],
       "note": "Painted door leaf — palest surface, so a beam finds §04's 정비공 chokepoints first.",
+      "cc0_base": null,
       "world_size_metres": 0.6,
       "authored_metres_per_tile": 1.2,
       "kit_uv_units_per_metre": 0.5,
@@ -312,6 +323,7 @@
         "Trim_Painted"
       ],
       "note": "Painted skirting, a cross-section profile: tiles along its length only.",
+      "cc0_base": null,
       "world_size_metres": 0.11,
       "authored_metres_per_tile": 0.22,
       "kit_uv_units_per_metre": 0.5,

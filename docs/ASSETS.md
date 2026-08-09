@@ -1,17 +1,34 @@
 # ASSETS — what exists, what it is for, and how to rebuild it
 
 Everything in `Assets/Audio` and `Assets/Models` is **procedurally generated** from the
-scripts in `tools/`, with **one licensed exception, added 2026-08-09**: the runner's
-eight animation clips are Adobe Mixamo mocap, retargeted onto the procedurally-built
-13-bone rig. The geometry, materials and rig are still 100 % generated; only the pose
-curves are third-party. §13 ships this on Steam and an asset of unclear provenance is a
-legal problem rather than a mixing problem — so the provenance is recorded in full
-below, and Mixamo's licence (free for commercial use in a game, no attribution
-required) covers it.
+scripts in `tools/`, with **two third-party families, both added 2026-08-09**: (1) the
+runner's eight animation clips are Adobe Mixamo mocap, retargeted onto the
+procedurally-built 13-bone rig; (2) six zone wall/floor materials in `Assets/Textures`
+now carry a **CC0 photo-scan base layer** under `gen_textures.py`'s own procedural grime,
+§3.8c wet and §3.9 grain. In both cases the geometry, rig and every procedural pass are
+still 100 % generated; only the pose curves (Mixamo) and the base albedo/normal/rough
+(CC0 scans) are third-party. §13 ships this on Steam and an asset of unclear provenance is
+a legal problem rather than a mixing problem — so the provenance is recorded in full
+below. Mixamo's licence (free for commercial use in a game, no attribution required) and
+CC0 1.0 (public-domain-equivalent, commercial use, no attribution required) both cover it.
 
 | Third-party source | Files | Licence | Used for |
 |---|---|---|---|
 | Adobe Mixamo (mocap) | `tools/blender/source/mixamo/{Running, Walking, Crouch Walking, Breathing Idle, Crouching Idle, Death, Pistol Idle, Pistol Walk}.fbx` | Mixamo General Terms — royalty-free, commercial games, no attribution | the runner's Run/Walk/CrouchWalk/Idle/Crouch/Death/GunWalk/GunIdle clips, retargeted by `gen_runner.py` |
+| PolyHaven `brick_wall_10` | `tools/textures/cc0/polyhaven/brick_wall_10/{albedo.jpg, normal.png, rough.jpg, ao.jpg}` | CC0 1.0 (PolyHaven) | base albedo/normal/rough of `Wall_Brick_Painted`; procedural grime/grain layered on top by `gen_textures.py` |
+| PolyHaven `concrete_wall_007` | `tools/textures/cc0/polyhaven/concrete_wall_007/{albedo, normal, rough, ao}` | CC0 1.0 (PolyHaven) | base of `Wall_Concrete_Bare` **and** `Floor_Concrete` (floor variant: offset, cooled, traffic + wet overlays) |
+| ambientCG `PaintedPlaster016` | `tools/textures/cc0/ambientcg/PaintedPlaster016/{albedo, normal, rough, ao}` | CC0 1.0 (ambientCG) | base of `Wall_Plaster_Stained`; rising-damp band re-applied procedurally, keyed to the floor line |
+| ambientCG `Tiles133B` | `tools/textures/cc0/ambientcg/Tiles133B/{albedo, normal, rough, ao}` | CC0 1.0 (ambientCG) | base of `Floor_Tile` (dirty white mosaic, dark grout) |
+| ambientCG `DiamondPlate008A` | `tools/textures/cc0/ambientcg/DiamondPlate008A/{albedo, normal, rough, ao, metal}` | CC0 1.0 (ambientCG) | base of `Floor_Metal`; metalness scaled to a partial ceiling, light procedural rust |
+
+The CC0 scans are **vendored** under `tools/textures/cc0/` (curated 1024², ~12 MB) so the
+generator rebuilds self-contained without a download; override the path with
+`$HORROR_TEXTURE_CC0`. Each mapped material carries a `cc0_base` field in
+`Textures.manifest.json` (null for the six still-procedural surfaces — `Floor_Wood`,
+`Floor_Gravel`, `Ceiling_Concrete_Formed`, and the three trims, which had no honest CC0
+match). `gen_textures.py` imports Pillow only lazily inside the photo path and falls back
+to fully-procedural (with a printed `[cc0 … missing → procedural]` note) if a scan is
+absent, so a checkout without the vendored scans still builds and passes.
 
 Everything else is deterministic from a seed, so a clean rebuild is byte-identical and a
 diff after regeneration means something actually changed. The Mixamo sources are
