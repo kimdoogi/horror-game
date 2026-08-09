@@ -27,7 +27,7 @@ cd /Users/doogi/horror-game
 | Does everything compile, including the simulator? | `dotnet build core/HorrorGame.sln -c Release` | 5 s |
 | Does Unity compile? | `$U -batchmode -quit -nographics -silent-crashes -projectPath $P -logFile /tmp/u.log` then `grep -cE '^Assets/.*error CS' /tmp/u.log` | ~1 min |
 | **Can the monster reach a player at all?** | PlayMode `-testFilter "MonsterChaseTests"` | ~1 min |
-| Does the whole solo match loop run? | `-executeMethod HorrorGame.EditorTools.SoloPlaytest.VerifyBatch` | ~1 min |
+| Does the solo scene build, with the runner's animator wired? | `-executeMethod HorrorGame.EditorTools.SoloPlaytest.BuildBatch` (`VerifyBatch` was deleted with its systems; the batch entry that survives builds the scene and reads the §05 animation wiring back) | ~1 min |
 | Is the navigation surface connected? | `-executeMethod HorrorGame.EditorTools.NavMeshAudit.AuditBatch -auditScene …` | ~1 min |
 | Is the map legal under §12, and how does it grade? | `-executeMethod …SceneGen.MapSceneGenerator.ReportQualityMenu` | ~1 min |
 | Will a stereo import have killed the 청음사? | `-executeMethod …AssetImportValidator.ValidateAllBatch` | ~1 min |
@@ -61,7 +61,7 @@ grep -cE '^Assets/.*error CS' /tmp/u.log                                  # 0
 $U -batchmode -projectPath $P -runTests -testPlatform PlayMode \
    -testFilter "MonsterChaseTests" -testResults /tmp/chase.xml -logFile /tmp/chase.log
 $U -batchmode -quit -nographics -silent-crashes -projectPath $P \
-   -executeMethod HorrorGame.EditorTools.SoloPlaytest.VerifyBatch -logFile /tmp/solo.log
+   -executeMethod HorrorGame.EditorTools.SoloPlaytest.BuildBatch -logFile /tmp/solo.log
 $U -batchmode -quit -nographics -silent-crashes -projectPath $P \
    -executeMethod HorrorGame.EditorTools.NavMeshAudit.AuditBatch \
    -auditScene Assets/Scenes/Map_FirstSketch.unity -logFile /tmp/nav.log

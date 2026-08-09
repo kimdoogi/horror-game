@@ -73,6 +73,25 @@ deliberately overlaps the torso by 44 mm and fuses; the upper arm is 228 mm out 
 not, because nothing in a level-set union propagates by proximity. That is the whole
 argument, and it is why the geometry table below is metres rather than field strengths.
 
+THE FOURTH BODY — a harvested human under the same jacket
+---------------------------------------------------------
+The primitive body solved the weld and never solved the person: blob head, mitten
+hands, cone legs — a plush toy in every close render, and task #81's "better hands"
+had nothing to build on. The ANATOMY is now the CC0 Blender Foundation human base
+mesh (``HUMAN_SOURCE``, vendored like the Mixamo clips, measured by the vendor
+script), and the primitive machinery above keeps the job it was actually good at:
+CLOTHING. The trunk loft is the jacket around the measured torso, the shafts are
+sleeves and boots around the measured limbs, and the voxel union swallows the body
+wherever cloth covers it, so the weld argument is unchanged — placements, overlaps,
+one level set. What the body adds is what placements never could: a real neck and
+skull under the hood, real knees and calves under the trousers, and real gloved
+HANDS — harvested at the wrist, kept at their own quad topology outside the remesh
+(a 9 mm voxel would weld the fingers straight back into a mitten), and tucked into
+the cuffs as separate rigid shells. Under the flashlight the figure still reads as
+the same hooded worker; it just stops reading as a toy the moment it moves or the
+camera gets close. ``verify_body_covered`` holds the two halves together: the
+garment must dress the body, measured, every run.
+
 A SKELETON, AND WHAT RIGGING A STATIC PROP COST THE STATIC PROP
 ---------------------------------------------------------------
 This figure shipped for a while as geometry with **bones=0 actions=0**, so
@@ -114,14 +133,17 @@ that produced it.
 
 THE THINGS THIS SCRIPT ASSERTS, AND WHAT EACH ONE COST
 -------------------------------------------------------
-**1. One shell.** ``verify_one_shell`` walks the welded mesh with bmesh and counts
-connected components. Parts must **overlap**, not touch. The failure this is written
-against was a 6 cm gap between the top of the torso and the bottom of the neck: both
-primitives were correct, both were where the table said, and the weld had nothing to
-weld — the head and neck came out of the remesh as a separate closed shell floating
-above the shoulders, which in Unity is a head that does not move with the body. Nothing
-in a mesh export complains about that. A component count does, and
-``verify_parts_interpenetrate`` catches it 20 s earlier and names the offending part.
+**1. The shell census.** ``verify_shells`` walks the mesh with bmesh and counts
+connected components: exactly THREE — the welded suit and the two harvested hands,
+each watertight — and ``verify_hand_shells`` measures that the hands are tucked,
+clear and never coplanar with the suit. Welded parts must **overlap**, not touch. The
+failure the census is written against was a 6 cm gap between the top of the torso and
+the bottom of the neck: both primitives were correct, both were where the table said,
+and the weld had nothing to weld — the head and neck came out of the remesh as a
+separate closed shell floating above the shoulders, which in Unity is a head that does
+not move with the body. Nothing in a mesh export complains about that. A component
+count does, and ``verify_parts_interpenetrate`` catches it 20 s earlier and names the
+offending part; ``verify_body_covered`` does the same for skin escaping the garment.
 
 **2. 1.75 m.** ``AssetImportPolicy.PlayerHeightMetres`` is 1.750, the CharacterController
 capsule is 1.75 m (``ViewMotionTuning.RigHeightMetres``), and §12's corridor section is
@@ -171,6 +193,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bmesh  # noqa: E402
 import bpy  # noqa: E402
 from mathutils import Euler, Matrix, Vector  # noqa: E402
+from mathutils.bvhtree import BVHTree  # noqa: E402
 
 import blendkit  # noqa: E402
 import gen_player_model as gpm  # noqa: E402
@@ -261,13 +284,15 @@ garment features the table now spends its placements on. Three passes kills the 
 staircase and leaves the collar, hem, cuffs and brim standing; eight passes returns the
 Michelin man. Topology-preserving, so it cannot break the single shell."""
 
-DECIMATE_RATIO = 0.14
-"""Keep 14%, up from 13. The 9 mm remesh spends ~84k triangles uniformly; after three
-smoothing passes most describe curves their neighbours already describe. Collapse mode
-aims the ~11–12k that survive at the silhouette and the garment creases — and since
-``sculpt_folds`` runs before this, the creases are real curvature and the collapse
-metric spends its keeps on them by itself. The extra point of ratio is the fold
-budget; ``assert_asset`` still holds the ceiling at 12.5k."""
+DECIMATE_RATIO = 0.115
+"""Keep 11.5%, down from the mitten era's 14. The 9 mm remesh spends ~80k triangles
+uniformly; after three smoothing passes most describe curves their neighbours already
+describe. Collapse mode aims the ~9k that survive at the silhouette and the garment
+creases — and since ``sculpt_folds`` runs before this, the creases are real curvature
+and the collapse metric spends its keeps on them by itself. The ~2.5 points given up
+against the old ratio are the HANDS' budget: the two harvested shells join after this
+pass at their own ~2.8k cage triangles (fingers are exactly what a collapse eats
+first), and ``assert_asset`` still holds the whole figure's ceiling at 12.5k."""
 
 SAMPLE_CHORD = VOXEL_SIZE * 0.5
 """Target edge length on the input primitives: half a voxel. Any coarser and the remesh
@@ -290,80 +315,88 @@ mechanic. If the kit ever narrows and this stops printing 2, the figure is the p
 # ── The figure, in metres ───────────────────────────────────────────────────
 #
 # Z-up, +X to the figure's left, **−Y forward**, origin under the feet after the drop.
-# Every number below is a placement, not a proportion — see the module docstring on
-# metaballs for why placements are the thing this file is allowed to have.
 #
 # −Y is not a preference, it is the toolchain's one axis convention, stated in the same
 # words in ``gen_props``, ``gen_dressing``, ``gen_monster_model`` and ``gen_player_model``:
 # *export_fbx's axis_forward='-Z' turns into +Z forward in Unity*.
 #
+# THE BODY IS HARVESTED NOW, NOT LOFTED — the fourth body under this jacket, and the
+# first with anatomy. The synthetic union (ellipsoid head, blob mittens, cone legs)
+# photographed as a plush toy in the close renders and could never give task #81 its
+# hands. The body is the CC0 Blender Foundation human base mesh (``HUMAN_SOURCE``,
+# vendored like the Mixamo clips), measured, re-posed and welded INTO the same
+# pipeline: the trunk loft below is no longer the torso — it is the JACKET, a garment
+# whose rings are authored as the measured human profile plus a cloth clearance, and
+# the voxel union swallows the body wherever cloth covers it. What the beam sees is
+# still the garment; what moves under it is a person. Every number below is still a
+# placement in the canonical 1.700 m body frame (the vendored mesh's own frame); the
+# fit rescales the assembled figure to exactly 1.750 afterwards, as it always did.
+#
 # The placements are named rather than inlined because ``bone_specs`` is derived from
 # them. A rig table that repeats the mesh table by hand is two tables that drift, and a
 # hip bone 3 cm off the hip is a thigh that swings the belly with it.
-#
-# THE WORKER, top to bottom. The table is authored at ~1.71 m pre-fit; the fit scales
-# whatever the smoothing leaves to exactly 1.750.
 
-# THE TRUNK IS A LOFT, NOT A STACK — the third shape this jacket has worn, and the
-# first that is not a Michelin man. Round one stacked three big ellipsoids and got
-# three balls; round two stacked five close ones and got a QUILTED PUFFER — a union of
-# spheres keeps a concave crease at every intersection, and the smoothing is now
-# deliberately too light to erase creases (it must keep the hem and the brim). A loft
-# has no intersections: one surface through cosine-interpolated elliptical rings, so
-# the profile below is drawn ONCE, crease-free, and the garment cues are authored as
-# profile moves — flare to 0.200 at the hem, a pull-in ledge above the hip, a slight
-# waist, a fuller chest carried a touch backward, and a real shoulder slope where
-# round two had a pauldron shelf.
+# THE TRUNK LOFT IS THE JACKET. Ring recipe: take the measured torso profile
+# (tools/blender/source/human/ measurements, printed by the vendor script) and add
+# cloth: ~20-30 mm at the chest and hem, ~15 mm at the pull-in ledge, and a straight
+# back line that bridges the lumbar hollow the way hanging fabric actually does
+# (torso back: seat +0.109 → lumbar +0.070 → chest +0.112; the jacket back runs
+# +0.118..+0.138 and never follows the dip). ``verify_body_covered`` proves the
+# body stays inside this garment rather than trusting the arithmetic.
 TRUNK_RINGS = (
     #  z      rx     ry     y-centre
-    (0.740, 0.178, 0.128, 0.000),   # hem's bottom edge
-    (0.780, 0.198, 0.142, 0.000),   # hem flare — the jacket's widest line
-    (0.815, 0.200, 0.144, 0.000),
-    (0.850, 0.183, 0.131, 0.000),   # pull-in: the ledge that says "jacket ends here"
-    (0.980, 0.176, 0.126, 0.000),
-    (1.120, 0.178, 0.128, 0.000),   # waist
-    (1.260, 0.188, 0.138, 0.005),   # chest, carried slightly back
-    (1.350, 0.186, 0.132, 0.008),
-    (1.418, 0.208, 0.120, 0.006),   # deltoid yoke crest — the shoulder's WIDTH lives
+    (0.740, 0.206, 0.136, -0.008),  # hem's bottom edge, over the thigh tops — the
+                                    # jacket's widest line lives HERE, below the cuff
+    (0.780, 0.206, 0.144, -0.002),  # hem (kept off the cuff: at 0.214 the flare sat
+                                    # 2.5 mm from the cuff's inner face and welded)
+    (0.815, 0.196, 0.146, +0.000),  # (glute corners at x 0.13 ride inside +0.115)
+    (0.850, 0.196, 0.152, +0.002),  # pull-in: the ledge that says "jacket ends here"
+    (0.980, 0.176, 0.134, -0.020),  # waist (torso front −0.137 inside −0.154)
+    (1.120, 0.180, 0.136, -0.018),
+    (1.260, 0.187, 0.150, -0.012),  # chest (torso rx 0.165 / front −0.145 / back +0.112)
+    (1.350, 0.190, 0.135, +0.000),  # an ellipse pinches at its sides, so the blade
+                                    # CORNERS are carried by the BackYoke part, not here
+    (1.415, 0.208, 0.120, +0.002),  # deltoid yoke crest — the shoulder's WIDTH lives
                                     # here now, not in the ball (see SHOULDER_Z)
-    (1.450, 0.148, 0.098, 0.005),   # trapezius slope
-    (1.480, 0.080, 0.072, 0.004),   # neck root, up into the collar
+    (1.446, 0.150, 0.096, +0.002),  # trapezius slope
+    (1.480, 0.084, 0.090, -0.012),  # neck root, up into the collar (throat −0.099 covered)
 )
-# THE TRAPEZIUS LINE IS THE VESSEL SCULPT'S, RESTATED IN RINGS. #82's letter says pull
-# the head/shoulder/neck line toward the human sculpt, and the sculpt was measured
-# rather than eyeballed (monster_vessel_base.glb, normalised by its own height): neck
-# root high, a ~20 deg drop to a deltoid plateau, tip at 0.151 of height. Before this,
-# ring 1.425 held rx 0.150 and the 87 mm shoulder balls at z 1.395 crested ABOVE it —
-# the silhouette showed two ball lobes higher than the neck line, the exact
-# "ball-joints" read the letter names. Now the LOFT carries the shoulder: the yoke ring
-# at 1.418 is the widest line of the upper body and the outline descends monotonically
-# neck → trap → deltoid crest → sleeve, while the shoulder ball drops to where its
-# crown continues that slope instead of breaking it.
+# THE TRAPEZIUS LINE SURVIVES THE BODY SWAP UNCHANGED IN INTENT: the yoke ring at
+# 1.415 is the widest line of the upper body and the outline descends monotonically
+# neck → trap → deltoid crest → sleeve, while the shoulder ball sits where its crown
+# continues that slope instead of breaking it (ball crown 1.422 vs crest 1.415). The
+# human's own deltoids are cut with the arms (X_CUT 0.165) and the stubs ride inside
+# the yoke, so the shoulder line is the garment's — bulky by design, DESCENT-PIVOT §5.
 
 HEM_BOTTOM_Z = TRUNK_RINGS[0][0]
 """Where the jacket ends and the trousers show. The material paint and the crotch
-ceiling both key off it, so it is named once."""
+ceiling both key off it, so it is named once. 0.740 also settles the inner-thigh
+question the harvested body raised: the measured thigh gap is 15 mm — under the 18 mm
+weld threshold — only between z 0.72 and 0.78, and that whole band is inside the hem,
+where the union of hem and thighs is the pelvis and welding is the point. Below the
+hem the measured gap is ≥ 29 mm and the legs stay two legs (``verify_limbs_hang_free``
+still proves it on the welded mesh)."""
 
-COLLAR_C, COLLAR_R = (0.0, 0.005, 1.445), (0.120, 0.118, 0.045)
-"""Raised jacket collar: a flat disc proud of the trunk's top in depth (its 118 mm
-front-to-back against the trunk's ~98 there), so the head sits IN the jacket instead
-of on a bare stalk."""
+COLLAR_C, COLLAR_R = (0.0, 0.006, 1.448), (0.126, 0.124, 0.050)
+"""Raised jacket collar: a flat disc proud of the trunk's top in depth, wrapping the
+human neck and throat (throat front −0.099; collar front reaches −0.118), so the head
+sits IN the jacket instead of on a bare stalk."""
 
-NECK_C, NECK_R = (0.0, 0.0, 1.48), (0.058, 0.058, 0.055)
-HEAD_C, HEAD_R = (0.0, 0.005, 1.565), (0.096, 0.108, 0.108)
-HOOD_C, HOOD_R = (0.0, 0.030, 1.578), (0.118, 0.130, 0.115)
-HOODSKIRT_C, HOODSKIRT_R = (0.0, 0.040, 1.495), (0.112, 0.120, 0.070)
-"""Head inside hood, hood draped into the collar. The hood shell is shifted 30 mm BACK
-(+Y) so the crown bulges rearward, and the hood-skirt carries that bulge down onto the
-shoulders — without it round one's head read as a bald helmet. In front the head pokes
-past the hood: that recess is what ``Runner_Void`` darkens."""
+HOOD_C, HOOD_R = (0.0, -0.018, 1.600), (0.127, 0.140, 0.125)
+HOODSKIRT_C, HOODSKIRT_R = (0.0, 0.048, 1.468), (0.122, 0.130, 0.077)
+"""The hood, sized around the HARVESTED head (crown 1.700, half-width 0.092, nose
+−0.165 at z 1.554). The shell reaches 25 mm above the crown and 28 mm past the skull
+sides; its front wall at nose height sits at −0.147, so of the whole face only the
+nose/mouth/chin centre emerges 8–19 mm through the opening while the brow and cheeks
+stay inside — a face-shaped sliver in a hole, which ``Runner_Void`` then paints to
+nothing. The skirt carries the crown bulge down onto the shoulders and collar."""
 
-BRIM_C, BRIM_R = (0.0, -0.078, 1.630), (0.090, 0.070, 0.020)
-"""Cap brim / hood peak: a thin ledge reaching 70 mm forward over the face recess. It
-shadows the void under a high beam hit and is the one crisp horizontal in the head's
-silhouette — round one authored it 26 mm thick and it vanished into the hood."""
+BRIM_C, BRIM_R = (0.0, -0.100, 1.638), (0.092, 0.076, 0.020)
+"""Cap brim / hood peak: a thin ledge reaching −0.176 — 11 mm past the nose tip — so
+the void window sits in its shadow under a high beam hit. The one crisp horizontal in
+the head's silhouette."""
 
-LAMP_C, LAMP_HALF = (0.030, -0.078, 1.654), (0.026, 0.030, 0.020)
+LAMP_C, LAMP_HALF = (0.030, -0.128, 1.664), (0.026, 0.030, 0.020)
 """Headlamp housing: a 52×60×40 mm box ABOVE the brim line now, welded ~16 mm into the
 hood's brow, and OFF-CENTRE (+30 mm, the figure's left brow). Both moves are the
 owl-eye fix (prodship_03m.png): the old housing sat centred UNDER the brim at face
@@ -373,25 +406,31 @@ equipment; two symmetric bright points at eye height read as a face, and this fi
 must not have one. UNLIT geometry — the real light is the game's flashlight component.
 Wears ``Runner_Gear``."""
 
-# Shoulders and arms. Short by design — the monster's hands reach its knees, so this
-# figure's stop at the hip and the two outlines can never be confused (module docstring,
-# THE MONSTER TEST). The arm hangs ~24 mm clear of the chest: the armpit slot is over
-# two voxels, wide enough that the remesh cannot re-close it
-# (``verify_limbs_hang_free``) and far too fine to resolve at ten metres of corridor.
+# Shoulders and sleeves. The visible arm is still the GARMENT — a jacket sleeve
+# hanging from the yoke — because the human arm hangs too close to its own ribs for a
+# 9 mm voxel to keep the armpit open, and because a padded sleeve at ARM_X 0.276 is
+# the bulk that makes THE MONSTER TEST work (module docstring). The harvested arms are
+# cut at X_CUT and only their HANDS are kept, as separate native-topology shells that
+# tuck into the cuffs (``harvest_hands``): the sleeve is cloth, the hand is anatomy,
+# and the seam between them is the glove cuff, exactly like the real garment.
 #
-# The ball sits LOW now — crown at 1.428, on the trapezius line the yoke ring draws —
-# because a ball whose crown rises above the loft's shoulder slope is a pauldron, and
-# the silhouette read that way (see the note under TRUNK_RINGS). The ball's job is the
-# arm-to-yoke weld and the arm's pivot; the shoulder's SHAPE belongs to the loft.
-SHOULDER_X, SHOULDER_Z, SHOULDER_R = 0.224, 1.348, 0.080
-ARM_X, ARM_Y = 0.276, -0.020
-ARM_Z_BOTTOM = 0.80
-ARM_R_TOP, ARM_R_BOTTOM = 0.066, 0.057
+# The ball's crown (1.340 + 0.082 = 1.422) rides the trapezius slope the yoke ring
+# draws — a ball cresting above that line is a pauldron (see TRUNK_RINGS note). The
+# ball's job is the sleeve-to-yoke weld and the arm's pivot; it also swallows the
+# human's capped deltoid stub so the cut never surfaces.
+SHOULDER_X, SHOULDER_Z, SHOULDER_R = 0.212, 1.340, 0.082
+ARM_X, ARM_Y = 0.276, -0.022
+ARM_Z_BOTTOM = 0.835
+ARM_R_TOP, ARM_R_BOTTOM = 0.066, 0.055
 
-CUFF_C, CUFF_R = (0.274, -0.048, 0.775), (0.058, 0.070, 0.054)
-"""Sleeve cuff: a ring bump where the glove meets the sleeve, and the weld that carries
-the wrist — it contains the arm shaft's bottom ball and reaches deep into the glove.
-Rides at the wrist the gun-mount solve now puts at ~0.716 (HAND_Z's note)."""
+CUFF_C, CUFF_R = (0.280, -0.046, 0.812), (0.062, 0.072, 0.058)
+"""Sleeve cuff: a ring bump where the glove meets the sleeve — it contains the arm
+shaft's bottom ball and is the pocket the harvested hand's capped wrist stub tucks
+into (the tuck is measured by ``verify_hand_shells``, not assumed). Rides at the
+wrist the gun-mount solve now puts at ~0.82 (HAND_Z's note), and 20 mm further OUT
+than the sleeve line: its inner face is what the hem flare welded to in round one's
+first build (LIMB_BRIDGE traced the route), so the cuff owns a measured 30+ mm slot
+against the hem now."""
 
 GUN_MOUNT_RATIO = 0.9904
 """``RunnerGun.GunMountArmsPerSpine``, restated. The C# is the consumer and
@@ -404,25 +443,30 @@ SPINE_JOIN_Z = 0.80
 pointing UP — the pose solver aims bones at absolute world directions, and a pelvis bone
 resting downward would flip the body the first time ``torso()`` aimed it."""
 
-NECK_BASE_Z = 1.44
-"""Where Spine ends and Head begins — the top of the collar. ``Head.localPosition`` in
-Unity IS the spine length ``RunnerGun`` multiplies by the mount ratio."""
+NECK_BASE_Z = 1.414
+"""Where Spine ends and Head begins — the base of the harvested neck (C7 sits at
+~1.42 on the canonical body), just under the collar. ``Head.localPosition`` in Unity
+IS the spine length ``RunnerGun`` multiplies by the mount ratio, and this landmark is
+the one that closes the anatomy loop: spine 0.614 × 0.9904 = an arm of 0.608, which
+lands the bone tail — and therefore the gun — in the palm of a human-proportioned
+hanging hand instead of at a mitten blob."""
 
-HAND_X, HAND_Y = 0.272, -0.060
+HAND_X, HAND_Y = 0.272, -0.050
 HAND_Z = SHOULDER_Z - math.sqrt(
     (GUN_MOUNT_RATIO * (NECK_BASE_Z - SPINE_JOIN_Z)) ** 2 - (HAND_X - SHOULDER_X) ** 2)
 """SOLVED, not authored: the z that makes arm/spine measure exactly
-``GUN_MOUNT_RATIO``. Lands at ~0.716 with the lowered shoulder — fingertip-height on a
-person (0.42 of height, which is the human sculpt's own proportion), still far above
-the monster's knee-hanging hands. The hand sits 60 mm FORWARD (−Y) of the thigh rather
-than beside it: a natural stance, and the 3D clearance to the thigh (~30 mm) and the
-hem (~38 mm) stays over two voxels where a side-by-side placement welded the mitten to
-the hip."""
+``GUN_MOUNT_RATIO``. Lands at ~0.735 — the palm centre of a relaxed hanging arm on the
+harvested body (wrist ~0.815, fingertips ~0.64, which is the anthropometric 0.38 of
+height), still far above the monster's knee-hanging hands. ``harvest_hands`` places
+the real hand's palm anchor AT this point, so the mount contract and the visible palm
+are the same location by construction."""
 
-HAND_C, HAND_R = (HAND_X, HAND_Y, HAND_Z), (0.054, 0.066, 0.082)
+HAND_C = (HAND_X, HAND_Y, HAND_Z)
+"""Where the harvested hand's palm anchor goes — no longer a mitten ellipsoid's centre,
+but the same solved point it always was."""
 
-ARMBAND_C, ARMBAND_R = (0.279, -0.020, 1.13), (0.074, 0.074, 0.045)
-"""LEFT sleeve only (not mirrored): a ring 13 mm proud of the sleeve. Carries
+ARMBAND_C, ARMBAND_R = (0.279, -0.022, 1.100), (0.077, 0.077, 0.045)
+"""LEFT sleeve only (not mirrored): a ring ~16 mm proud of the sleeve. Carries
 ``Runner_Accent`` — the tint band that tells twenty runners apart."""
 
 LEG_PART_FRACTION = 0.33
@@ -430,31 +474,50 @@ LEG_PART_FRACTION = 0.33
 
 A third, which is to say the pelvis. Below that a leg has to be a leg: a crotch weld is
 what a scissoring stride tears into a fringe. Measured off the mesh by
-``verify_limbs_hang_free``, not assumed. On this figure the thighs never weld at all —
-the pelvis mass is the skirt/hem, which OVERHANGS the legs instead of joining them."""
+``verify_limbs_hang_free``, not assumed. On the harvested body the measured inner-thigh
+gap is ≥ 29 mm everywhere below the hem and only closes inside it (HEM_BOTTOM_Z note),
+so the profile still comes back open where it must."""
 
-LEG_X = 0.110
-LEG_Z_TOP, LEG_R_TOP = 0.78, 0.092
-TROUSER_Z_BOTTOM, TROUSER_R_BOTTOM = 0.31, 0.058
-ANKLE_Z = 0.15
-"""The leg: trouser shaft from hip to boot, ankle joint at 0.15. **The leg length is a
-contract, not a taste** — Runner.fbx.meta pins Walk at 16 frames and CrouchWalk at 20,
-and the cadence search only reproduces those winners while the final leg is inside
-roughly 0.47–0.67 m (pendulum maths in ``pendulum_frames``). hip−ankle = 0.63 pre-fit
-≈ 0.65 m final: human enough to stop the Michelin read, short enough that the meta's
-frame ranges stay true. ``EXPECTED_CYCLE_FRAMES`` is the guard."""
+HIP_X, HIP_Y = 0.092, -0.005
+"""The femoral head, off the measured pelvis (seat rx 0.191 → joints at ~±0.09). The
+old figure's leg was a vertical column; the harvested leg splays naturally from hip
+0.092 to ankle 0.172, and the bones now follow the bone line instead of a plumb line."""
 
-BOOT_TOP_C, BOOT_TOP_R = (0.110, 0.0, 0.35), (0.079, 0.084, 0.034)
-BOOT_Z_TOP, BOOT_Z_BOTTOM = 0.345, 0.13
-BOOT_R_TOP, BOOT_R_BOTTOM = 0.072, 0.066
-"""The boot: a shaft WIDER than the trouser bottom it swallows (72 vs 58 mm), topped
-with a flat cuff ring — the tucked-in read is a ridge where trouser meets boot, kept by
-the light smoothing. ``Runner_Gear`` colours everything below the cuff."""
+KNEE_X, KNEE_Y = 0.142, +0.002
+"""The measured knee centre (LEGYY x-centre 0.137–0.141 at z 0.46–0.52). Its y sits
+~22 mm FORWARD of the hip–ankle line, which is the anatomical bend bias — the old
+KNEE_BIAS_Y −0.006 nudge is retired because the body now carries a real one."""
 
-FOOT_C, FOOT_R = (0.110, -0.050, 0.072), (0.072, 0.125, 0.056)
+LEG_X = 0.172
+LEG_Z_TOP = 0.780
+ANKLE_Z, ANKLE_Y = 0.115, 0.056
+"""Hip joint at the measured groin-crease level (0.78 — this base mesh is deliberately
+short-legged: crotch 0.697), ankle at the measured malleolus (0.115, and 56 mm BEHIND
+the body line, which is where a real ankle is — the foot reaches forward from it).
+hip−ankle = 0.665 pre-fit: still inside the 0.47–0.67 pendulum band, so the cadence
+winners the meta pins survive even on the ``--procedural`` fallback. The trouser
+SHAFTS are gone — the trouser is the harvested leg itself, inflated ~5 mm by
+``_prep_suit_body`` so it reads as cloth over a leg rather than the leg."""
+
+BOOT_TOP_C, BOOT_TOP_R = (0.172, 0.040, 0.372), (0.086, 0.094, 0.032)
+BOOT_Z_TOP, BOOT_Z_BOTTOM = 0.360, 0.125
+BOOT_R_TOP, BOOT_R_BOTTOM = 0.078, 0.068
+"""The boot: a shaft around the harvested shin/calf (calf back +0.111, covered to
++0.120), topped with a flat cuff ring — the tucked-in read is a ridge where trouser
+meets boot, kept by the light smoothing. ``Runner_Gear`` colours everything below the
+cuff. The human foot welds INSIDE this boot: the boot is what stands on the floor."""
+
+FOOT_C, FOOT_R = (0.180, -0.024, 0.054), (0.080, 0.158, 0.082)
 """Toe forward (−Y — see the axis note above), longer than wide, chunky like a work
-boot. Inner faces sit 76 mm apart — eight voxels — so the remesh cannot weld the pads
-into the heel-to-toe sail the mannequin once grew (``verify_limbs_hang_free``)."""
+boot, and 8 mm DEEPER than the harvested foot's sole so the boot's rubber — never the
+skin — is the lowest surface (``verify_body_covered`` proves the containment). Inner
+faces sit ~200 mm apart, so the remesh cannot weld the pads into the heel-to-toe sail
+the mannequin once grew (``verify_limbs_hang_free``)."""
+
+X_CUT = 0.165
+"""Where the harvested arms are severed from the torso (a topology walk from each
+fingertip, bounded at |x| = 0.165, then the shoulder holes are capped). Everything
+distal feeds ``harvest_hands``; the capped stub stays inside the shoulder ball."""
 
 
 # ── The folds ───────────────────────────────────────────────────────────────
@@ -489,9 +552,9 @@ SLEEVE_FOLD_AXIS = -2.5
 forward): the inner-front of the elbow, where a hanging arm's sleeve compresses. The
 crease fan is deepest there and shallows around the ring."""
 
-ELBOW_Z = 1.030
+ELBOW_Z = 1.054
 """Metres, placement-table frame: the elbow crease line of the hanging arm — ~55 % of
-the shoulder (1.348) → wrist (0.775) drop, matching the human sculpt's upper-arm to
+the shoulder (1.340) → wrist (0.815) drop, matching the harvested body's upper-arm to
 forearm ratio. The rig has no elbow bone (the arm never articulates), but the SLEEVE
 must still know where the arm WOULD bend: it is where compression folds bunch."""
 
@@ -560,14 +623,14 @@ def clothing_displacement(x: float, y: float, z: float,
             continue
         dxa, dya = x - s * ARM_X, y - ARM_Y
         r = math.hypot(dxa, dya)
-        if r < 0.115 and 0.92 < z < 1.31:
+        if r < 0.115 and 0.88 < z < 1.30:
             a = math.atan2(dya, dxa * s)
             w = 0.30 + 0.70 * max(0.0, math.cos(a - SLEEVE_FOLD_AXIS)) ** 1.3
-            env = min(1.0, (1.31 - z) / 0.06, (z - 0.92) / 0.06)
+            env = min(1.0, (1.30 - z) / 0.06, (z - 0.88) / 0.06)
             # The armband is a clean accent ring by contract; creases crossing it
             # would shred the one thing a per-runner tint colours. Damped, not
             # skipped — a band on a creased sleeve still sits on fabric.
-            amp = 0.25 if (s > 0 and 1.085 < z < 1.180) else 1.0
+            amp = 0.25 if (s > 0 and 1.055 < z < 1.150) else 1.0
             elbow = ELBOW_Z + 0.012 * (_fold_hash(key + 90.0) - 0.5)
             for i, off in enumerate(SLEEVE_RING_OFFSETS):
                 g = math.exp(-((off / SLEEVE_CLUSTER_SIGMA) ** 2))
@@ -584,7 +647,7 @@ def clothing_displacement(x: float, y: float, z: float,
                 d += _crease(z, zc, 0.0145 + 0.008 * (1.0 - g), depth)
 
     # ── trunk features, gated onto the loft's own surface ───────────────────
-    if abs(x) < 0.212 and HEM_BOTTOM_Z - 0.012 < z < 1.455:
+    if abs(x) < 0.218 and HEM_BOTTOM_Z - 0.012 < z < 1.462:
         rx, ry, yc = profile(z)
         frac = (x / rx) ** 2 + ((y - yc) / ry) ** 2
         if 0.55 < frac < 1.45:
@@ -682,21 +745,23 @@ def clothing_displacement(x: float, y: float, z: float,
                     d += -0.0072 * web * math.exp(-((rr / 0.095) ** 2))
 
     # ── trousers: knee creases and boot-top bunching, subtler than the jacket ──
+    # The column follows the harvested shank/knee line (knee centre x 0.142,
+    # y ~+0.002), not the boot's LEG_X — the creases live on the knee, not the ankle.
     for s in (1.0, -1.0):
-        dxl = x - s * LEG_X
-        r = math.hypot(dxl, y)
-        if x * s > 0.02 and r < 0.115 and 0.395 < z < 0.60:
-            al = math.atan2(y, dxl * s)
-            env = min(1.0, (0.60 - z) / 0.04, (z - 0.395) / 0.03)
+        dxl = x - s * 0.146
+        r = math.hypot(dxl, y - 0.012)
+        if x * s > 0.02 and r < 0.115 and 0.400 < z < 0.60:
+            al = math.atan2(y - 0.012, dxl * s)
+            env = min(1.0, (0.60 - z) / 0.04, (z - 0.400) / 0.03)
             # Knee: three creases, front-weighted — trousers bag over the knee cap.
-            nf = max(0.0, -y / max(r, 1e-6))
+            nf = max(0.0, -(y - 0.012) / max(r, 1e-6))
             w = 0.35 + 0.65 * nf
-            for i, zc in enumerate((0.435, 0.478, 0.520)):
+            for i, zc in enumerate((0.438, 0.480, 0.522)):
                 zj = zc + 0.016 * (_fold_hash(20.0 + i + s) - 0.5)
                 depth = (0.0050 + 0.0018 * _fold_hash(30.0 + i + s)) * w * env
                 d += _crease(z, zj, 0.014, depth)
             # Bunching: two rings just above the boot cuff, wavering in z.
-            for i, zc in enumerate((0.408, 0.443)):
+            for i, zc in enumerate((0.415, 0.450)):
                 wav = 0.006 * math.sin(2.0 * al + 6.28 * _fold_hash(50.0 + i + s))
                 d += _crease(z, zc + wav, 0.013, 0.0055 * env)
 
@@ -1018,27 +1083,395 @@ class Loft:
         return [obj]
 
 
-Part = Ellipsoid | Shaft | Box | Loft
+# ── The harvested body ──────────────────────────────────────────────────────
+#
+# CC0, Blender Foundation "Human Base Meshes" bundle v1.4.1, object
+# GEO-body_male_realistic — vendored into the repo the same way the Mixamo clips are,
+# so the generator rebuilds from a clean checkout with no downloads. The vendored
+# file is the base CAGE alone (10,590 quads, multires data stripped, eyeball objects
+# dropped — the hood void hides the face), canonicalized to exactly 1.700 m with feet
+# on z = 0 and x centred; every landmark constant above is measured in that frame.
+
+HUMAN_SOURCE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "source", "human", "body_male_realistic.blend")
+"""The vendored body. Absent → this generator fails loudly: unlike the mocap (which
+has a procedural fallback), there is no second body to fall back to."""
+
+HUMAN_OBJECT = "HumanBase"
+
+HUMAN_SUBSURF = 2
+"""Catmull-Clark levels applied to the suit copy before the weld. The cage's ~26 mm
+edges would be digitised as faceting by a 9 mm voxel (SAMPLE_CHORD's argument); two
+subdivisions put the surface below the grid the same way the primitives' tessellation
+is. The HANDS stay at cage level — they keep their quads instead of being remeshed."""
+
+LEG_INFLATE = 0.005
+"""Metres of outward displacement on the trouser band (z 0.32 → hem) so the exposed
+leg reads as cloth over a leg rather than the leg: the identity brief's failure case
+is 'athletic nude human', and a skin-tight anatomical calf is half of that read.
+Inward-facing inner-thigh verts are skipped so the slot the remesh needs stays open,
+and the band stops above the boots so the measured boot containment is untouched."""
+
+FOOT_SPLAY_DEG = 11.1
+"""The vendored stance's toe-out angle, measured per foot. The feet are rotated
+straight (about each ankle) because the toes are what tell a distant viewer which way
+a racer faces, and because ``measure_sole``'s bands and the gait solver both assume a
+foot that runs along −Y."""
+
+HAND_CUT_FROM_TIP = 0.178
+"""Where the harvested hand is severed, in metres from the middle fingertip along the
+measured arm axis — through the wrist's narrowest ring (measured 0.170–0.185, and it
+must stay INSIDE that window: a first cut at 0.170 landed on the palm side of it and
+the cut ring picked up the thumb-base flare, which no wearable cuff can swallow).
+The cut is capped so each hand is its own watertight shell, and the ring's world
+positions are recorded (``_HAND_CAP_POINTS``) so ``verify_hand_shells`` can demand
+that THE CUT — and exactly the cut, not the glove's visible flare — hides inside
+the cuff."""
+
+_HAND_CAP_POINTS: dict[str, list[Vector]] = {}
+"""side ("left"/"right") → the cut ring's vertex positions, canonical frame, filled
+by ``harvest_hands`` and consumed by ``verify_hand_shells`` through the fit."""
+
+HAND_PALM_FROM_WRIST = 0.085
+"""The palm anchor: this far distal of the wrist-ring centre, on the hand's axis. It
+is the point ``harvest_hands`` lands on ``HAND_C`` — which is the gun-mount solve —
+so the bone tail, the mount, and the visible palm coincide by construction."""
+
+_HUMAN_MESH: bpy.types.Mesh | None = None
+
+
+def _human_pristine() -> bpy.types.Mesh:
+    """Loads the vendored cage once per run; returns the untouched datablock."""
+    global _HUMAN_MESH
+    if _HUMAN_MESH is not None:
+        return _HUMAN_MESH
+    if not os.path.exists(HUMAN_SOURCE):
+        blendkit.fail(
+            f"the vendored body is missing: {HUMAN_SOURCE}. It is committed beside "
+            "the Mixamo sources (docs/ASSETS.md, CC0 provenance); this generator "
+            "cannot build a runner without it.")
+    with bpy.data.libraries.load(HUMAN_SOURCE) as (src, dst):
+        if HUMAN_OBJECT not in src.objects:
+            blendkit.fail(f"{HUMAN_SOURCE} does not contain object '{HUMAN_OBJECT}' "
+                          f"(has: {src.objects}). The vendored file is not the one "
+                          "the vendor script writes.")
+        dst.objects = [HUMAN_OBJECT]
+    loaded = dst.objects[0]
+    mesh = loaded.data
+    mesh.use_fake_user = True   # survives with zero object users
+    bpy.data.objects.remove(loaded, do_unlink=True)
+    lo = Vector((math.inf,) * 3)
+    hi = Vector((-math.inf,) * 3)
+    for v in mesh.vertices:
+        for i in range(3):
+            lo[i] = min(lo[i], v.co[i])
+            hi[i] = max(hi[i], v.co[i])
+    print(f"HUMAN_SOURCE verts={len(mesh.vertices)} polys={len(mesh.polygons)} "
+          f"height={hi.z - lo.z:.4f}m floor={lo.z:+.5f} span={hi.x - lo.x:.4f}m "
+          f"file={os.path.basename(HUMAN_SOURCE)}")
+    if abs((hi.z - lo.z) - 1.700) > 0.002 or abs(lo.z) > 0.002:
+        blendkit.fail(
+            f"the vendored body measures {hi.z - lo.z:.4f} m with its floor at "
+            f"{lo.z:+.4f} — not the canonical 1.700 m on z = 0 every landmark "
+            "constant in this file was measured against. Re-vendor it.")
+    _HUMAN_MESH = mesh
+    return mesh
+
+
+def _bm_walk(seed: bmesh.types.BMVert, allowed) -> set:
+    """Connected BMVerts reachable from ``seed`` while ``allowed`` holds."""
+    seen = {seed}
+    stack = [seed]
+    while stack:
+        v = stack.pop()
+        for e in v.link_edges:
+            w = e.other_vert(v)
+            if w not in seen and allowed(w):
+                seen.add(w)
+                stack.append(w)
+    return seen
+
+
+def _severed_arms(bm: bmesh.types.BMesh) -> tuple[set, set]:
+    """The two arm vert sets of the A-posed cage, one topology walk per side."""
+    out = []
+    for s in (1.0, -1.0):
+        tip = max(bm.verts, key=lambda v: v.co.x * s)
+        out.append(_bm_walk(tip, lambda w: w.co.x * s > X_CUT))
+    return out[0], out[1]
+
+
+def _prep_suit_body() -> bpy.types.Object:
+    """The body copy that feeds the WELD: arms severed and capped, feet straightened,
+    trouser band inflated, then subdivided below the voxel grid.
+
+    The arms go because a hanging human arm sits closer to its own ribs than a 9 mm
+    voxel can keep open — the sleeve is the arm here, as the placement table says.
+    The feet stay: they weld into the boots, which is what connects leg to sole.
+    """
+    mesh = _human_pristine().copy()
+    mesh.name = "HumanSuit"
+    bm = bmesh.new()
+    bm.from_mesh(mesh)
+    bm.verts.ensure_lookup_table()
+
+    arm_l, arm_r = _severed_arms(bm)
+    doomed = arm_l | arm_r
+    faces = [f for f in bm.faces if any(v in doomed for v in f.verts)]
+    bmesh.ops.delete(bm, geom=faces, context="FACES")
+    loose = [v for v in bm.verts if not v.link_faces]
+    if loose:
+        bmesh.ops.delete(bm, geom=loose, context="VERTS")
+    bound = [e for e in bm.edges if len(e.link_faces) == 1]
+    bmesh.ops.holes_fill(bm, edges=bound, sides=0)
+    left_open = sum(1 for e in bm.edges if len(e.link_faces) == 1)
+    if left_open:
+        bm.free()
+        blendkit.fail(
+            f"severing the arms left {left_open} boundary edges the cap fill could "
+            "not close — an open shoulder leaks the voxel level set and the remesh "
+            "returns garbage. X_CUT no longer lands on a clean ring of this mesh.")
+
+    # Straighten the feet about each ankle (see FOOT_SPLAY_DEG), and SHRINK them 18 %
+    # toward it in plan: a foot is box-cornered and a boot pad is an ellipsoid, so a
+    # full-size foot pokes its toe corners through any pad that still reads as a
+    # boot. The foot is invisible inside the boot — its only job is welding the leg
+    # to the sole — and a smaller foot does that job with margin instead of luck.
+    # Blended in over 30 mm so the shin never creases.
+    for v in bm.verts:
+        if v.co.z < 0.13:
+            s = 1.0 if v.co.x > 0.0 else -1.0
+            f = min(1.0, (0.13 - v.co.z) / 0.03)
+            th = -s * math.radians(FOOT_SPLAY_DEG) * f
+            px, py = s * LEG_X, ANKLE_Y
+            dx, dy = v.co.x - px, v.co.y - py
+            c, sn = math.cos(th), math.sin(th)
+            shrink = 1.0 - 0.18 * f
+            v.co.x = px + (dx * c - dy * sn) * shrink
+            v.co.y = py + (dx * sn + dy * c) * shrink
+
+    # Trouser standoff (see LEG_INFLATE). Horizontal component of the normal only —
+    # inflating along z would move the crotch and the height.
+    bm.normal_update()
+    inflated = 0
+    for v in bm.verts:
+        z = v.co.z
+        if 0.32 < z < HEM_BOTTOM_Z - 0.010:
+            s = 1.0 if v.co.x >= 0.0 else -1.0
+            if v.normal.x * s < -0.25:
+                continue    # inner thigh: the slot stays open
+            ramp = min(1.0, (z - 0.32) / 0.06, (HEM_BOTTOM_Z - 0.010 - z) / 0.05)
+            n = Vector((v.normal.x, v.normal.y, 0.0))
+            if n.length_squared > 1e-12:
+                v.co += n.normalized() * (LEG_INFLATE * ramp)
+                inflated += 1
+
+    bm.to_mesh(mesh)
+    bm.free()
+    mesh.update()
+
+    obj = bpy.data.objects.new("HumanSuit", mesh)
+    bpy.context.collection.objects.link(obj)
+    sub = obj.modifiers.new("Refine", "SUBSURF")
+    sub.levels = HUMAN_SUBSURF
+    sub.render_levels = HUMAN_SUBSURF
+    _apply_modifier(obj, sub)
+    print(f"HUMAN_PREP suit verts={len(obj.data.vertices)} "
+          f"polys={len(obj.data.polygons)} arms_cut={len(arm_l)}+{len(arm_r)}v "
+          f"feet_straightened={FOOT_SPLAY_DEG:.1f}deg trouser_inflated={inflated}v "
+          f"subsurf={HUMAN_SUBSURF}")
+    return obj
+
+
+class MeshPart:
+    """The harvested body, speaking the placement table's Part protocol.
+
+    ``contains``/``depth`` are answered by a BVH over the prepped mesh: a point is
+    inside when the nearest surface's normal faces away from it — exact on a closed
+    manifold, which ``_prep_suit_body`` guarantees. The preflight overlap graph and
+    the coverage check both run through this, so the body is a first-class citizen
+    of the same weld argument the primitives make, not a special case beside it.
+    """
+
+    def __init__(self, name: str, obj: bpy.types.Object):
+        self.name = name
+        self.obj = obj
+        mesh = obj.data
+        self._verts = [v.co.copy() for v in mesh.vertices]
+        self._bvh = BVHTree.FromPolygons(
+            [tuple(v.co) for v in mesh.vertices],
+            [tuple(p.vertices) for p in mesh.polygons])
+        lo = Vector((math.inf,) * 3)
+        hi = Vector((-math.inf,) * 3)
+        for co in self._verts:
+            for i in range(3):
+                lo[i] = min(lo[i], co[i])
+                hi[i] = max(hi[i], co[i])
+        self._lo, self._hi = lo, hi
+
+    def contains(self, p: Vector) -> bool:
+        hit = self._bvh.find_nearest(p)
+        return hit[0] is not None and hit[1].dot(p - hit[0]) < 0.0
+
+    def depth(self, p: Vector) -> float:
+        co, normal, _idx, dist = self._bvh.find_nearest(p)
+        if co is None or normal.dot(p - co) >= 0.0:
+            return 0.0
+        return dist
+
+    def aabb(self) -> tuple[Vector, Vector]:
+        return self._lo.copy(), self._hi.copy()
+
+    def samples(self) -> list[Vector]:
+        step = max(1, len(self._verts) // (PREFLIGHT_SAMPLES * 4))
+        return [co.copy() for co in self._verts[::step]]
+
+    def surface(self) -> list[Vector]:
+        """Every vertex — the coverage check wants the whole skin, not a subsample."""
+        return self._verts
+
+    def build(self) -> list[bpy.types.Object]:
+        return [self.obj]
+
+
+def harvest_hands() -> list[bpy.types.Object]:
+    """The two hands, cut from the pristine cage at the wrist, capped, and re-posed
+    from the A-pose hang onto the cuffs — palm anchor on ``HAND_C`` exactly.
+
+    They are DELIBERATELY not welded: a 9 mm voxel turns fingers back into the mitten
+    this task exists to delete (the gaps between fingers are 2–6 mm). Each hand stays
+    a separate watertight shell at the cage's own quad topology, joined into the body
+    object after the weld, skinned rigidly to its arm bone, and tucked into the cuff
+    so the seam reads as the glove's own cuff. Task #81's actual deliverable.
+    """
+    out: list[bpy.types.Object] = []
+    src = _human_pristine()
+    for s, side in ((1.0, "L"), (-1.0, "R")):
+        mesh = src.copy()
+        mesh.name = f"Hand_{side}"
+        bm = bmesh.new()
+        bm.from_mesh(mesh)
+        bm.verts.ensure_lookup_table()
+
+        tip = max(bm.verts, key=lambda v: v.co.x * s)
+        arm = _bm_walk(tip, lambda w: w.co.x * s > X_CUT)
+
+        # the arm's own axis, measured (power iteration on the second moment)
+        cos = [v.co.copy() for v in arm]
+        cen = sum(cos, Vector()) / len(cos)
+        axis = (tip.co - cen).normalized()
+        for _ in range(30):
+            acc = Vector()
+            for co in cos:
+                d = co - cen
+                acc += d * d.dot(axis)
+            axis = acc.normalized()
+        if axis.x * s < 0.0:
+            axis = -axis
+        tipd = max((co - cen).dot(axis) for co in cos)
+
+        def from_tip(v):
+            return tipd - (v.co - cen).dot(axis)
+
+        keep = {v for v in arm if from_tip(v) < HAND_CUT_FROM_TIP}
+        doomed = [f for f in bm.faces if any(v not in keep for v in f.verts)]
+        bmesh.ops.delete(bm, geom=doomed, context="FACES")
+        loose = [v for v in bm.verts if not v.link_faces]
+        if loose:
+            bmesh.ops.delete(bm, geom=loose, context="VERTS")
+        bound = [e for e in bm.edges if len(e.link_faces) == 1]
+        cap_ring = {v for e in bound for v in e.verts}
+        bmesh.ops.holes_fill(bm, edges=bound, sides=0)
+        if sum(1 for e in bm.edges if len(e.link_faces) == 1):
+            bm.free()
+            blendkit.fail(f"the {side} hand's wrist cap failed to close — the cut at "
+                          f"{HAND_CUT_FROM_TIP} m from the tip is not a clean ring.")
+
+        # measured local frame: a = distal (fingers), n = palm normal, w = a × n.
+        verts = [v.co.copy() for v in bm.verts]
+        hc = sum(verts, Vector()) / len(verts)
+        b = axis.cross(Vector((0.0, 0.0, 1.0))).normalized()
+        c2 = axis.cross(b).normalized()
+        fingers = [co - hc for co in verts
+                   if tipd - (co - cen).dot(axis) < 0.10]
+        best = None
+        for t in range(90):
+            th = math.pi * t / 90.0
+            d = b * math.cos(th) + c2 * math.sin(th)
+            spread = sum(abs(f.dot(d)) for f in fingers)
+            if best is None or spread < best[0]:
+                best = (spread, d)
+        n = best[1]
+        if n.x * s > 0.0:
+            n = -n              # palm faces the body (−x on the left side)
+        a_src = axis
+        w_src = a_src.cross(n).normalized()
+        n = w_src.cross(a_src).normalized()   # exact orthonormal triad
+
+        # target frame: fingers nearly straight down with a touch of forward drift,
+        # palm on the thigh, thumb forward — the relaxed hang of a gloved worker.
+        # (drift trimmed 0.10 → 0.08: at 0.10 the right thumb tip grazed the cuff's
+        # front within the z-fight tolerance)
+        a_tgt = Vector((0.0, -0.08, -0.997)).normalized()
+        n_tgt = Vector((-s, -0.18, 0.0)).normalized()
+        w_tgt = a_tgt.cross(n_tgt).normalized()
+        n_tgt = w_tgt.cross(a_tgt).normalized()
+
+        src_m = Matrix((a_src, n, w_src)).transposed()      # columns = source triad
+        tgt_m = Matrix((a_tgt, n_tgt, w_tgt)).transposed()  # columns = target triad
+        rot = tgt_m @ src_m.inverted()
+
+        # anchor: the wrist ring centre, then HAND_PALM_FROM_WRIST down the axis
+        ring = [co for co in cos if 0.170 <= tipd - (co - cen).dot(axis) < 0.185]
+        wrist = sum(ring, Vector()) / len(ring)
+        palm_src = wrist + a_src * HAND_PALM_FROM_WRIST
+        palm_tgt = Vector((s * HAND_X, HAND_Y, HAND_Z))
+
+        for v in bm.verts:
+            v.co = rot @ (v.co - palm_src) + palm_tgt
+        _HAND_CAP_POINTS["left" if s > 0 else "right"] = [
+            v.co.copy() for v in cap_ring if v.is_valid]
+
+        bm.to_mesh(mesh)
+        bm.free()
+        mesh.update()
+        obj = bpy.data.objects.new(f"Hand_{side}", mesh)
+        bpy.context.collection.objects.link(obj)
+        tris = sum(max(0, len(p.vertices) - 2) for p in mesh.polygons)
+        print(f"HAND_HARVEST {side} verts={len(mesh.vertices)} tris={tris} "
+              f"palm=({palm_tgt.x:+.3f},{palm_tgt.y:+.3f},{palm_tgt.z:+.3f}) "
+              f"wrist_src=({wrist.x:+.3f},{wrist.y:+.3f},{wrist.z:+.3f})")
+        out.append(obj)
+    return out
+
+
+Part = Ellipsoid | Shaft | Box | Loft | MeshPart
 
 
 def build_parts() -> list[Part]:
-    """The worker's placement table — 27 parts.
+    """The worker's placement table — the harvested body plus its GARMENT, 23 parts.
 
-    The torso is a STACK (hem, skirt, belly, chest, yoke) rather than two blobs
-    because a jacket is a stack: wider at the chest and the hem than at the waist,
-    squared at the shoulders, stepped where it ends. Every part overlaps at least one
-    other by design; ``verify_parts_interpenetrate`` proves that rather than trusting
-    it, and its spanning-tree bottleneck is the number that says the weld will hold.
+    The body part carries the anatomy (head, neck, torso, legs, feet); everything
+    else is clothing and kit lofted or placed AROUND it. The blob head, blob neck,
+    mitten hands and cone trouser legs of the primitive era are gone — the trunk
+    loft is a jacket now, not a torso. Every part overlaps at least one other by
+    design; ``verify_parts_interpenetrate`` proves that rather than trusting it, and
+    ``verify_body_covered`` proves the garment actually dresses the body.
     """
     parts: list[Part] = [
+        MeshPart("Body", _prep_suit_body()),
         Loft("Trunk", TRUNK_RINGS),
         Ellipsoid("Collar", COLLAR_C, COLLAR_R),
-        Ellipsoid("Neck", NECK_C, NECK_R),
-        Ellipsoid("Head", HEAD_C, HEAD_R),
         Ellipsoid("Hood", HOOD_C, HOOD_R),
         Ellipsoid("HoodSkirt", HOODSKIRT_C, HOODSKIRT_R),
         Ellipsoid("Brim", BRIM_C, BRIM_R),
         Box("Lamp", LAMP_C, LAMP_HALF),
+        # The upper back. An elliptical ring pinches exactly where the shoulder
+        # blades and rear deltoid corners are, so the loft alone either goes
+        # barrel-deep or lets the blades poke. This ellipsoid carries the corners
+        # and bulges ~5 mm proud of the loft's back — which is where a work
+        # jacket's own back yoke pleat sits, so the fix reads as tailoring.
+        Ellipsoid("BackYoke", (0.0, 0.072, 1.300), (0.180, 0.062, 0.150)),
         # Left sleeve only — the armband is what breaks the mirror, on purpose: it is
         # the one asymmetry that lets a spectating runner tell front-left from
         # front-right on an otherwise symmetric stranger.
@@ -1048,47 +1481,41 @@ def build_parts() -> list[Part]:
         # roll right): a worker's clothes are not a uniform, and a mirror-perfect
         # figure is half the plush-toy read. Painted back to Runner_Jacket by an
         # explicit region in assign_materials, or the glove paint would swallow it.
-        # SIZED BY ITS GAPS, not by taste: the first cut (rx 0.074 at z 0.815) sat
-        # 6 mm off the hem's widest flare — inside the voxel — and the remesh drew a
-        # sleeve-to-hem bridge that failed verify_limbs_hang_free's right-arm walk.
-        # At (−0.282, −0.040, 0.788) with (0.066, 0.072, 0.026) the ring clears the
-        # trunk by ~18 mm and the hip ball by ~19 mm, both over two voxels.
-        Ellipsoid("CuffRoll", (-0.282, -0.040, 0.788), (0.066, 0.072, 0.026)),
+        # Rides ABOVE the harvested hand's wrist stub (stub top ~0.825) so the ring
+        # never intersects the hand shell — 0.878 after one build measured a single
+        # roll face z-fighting the stub at 0.868.
+        Ellipsoid("CuffRoll", (-0.283, -0.055, 0.878), (0.063, 0.073, 0.026)),
         # LEFT chest only: a patch-pocket flap, a flat box the remesh rounds into a
-        # raised rectangle ~18 mm proud. The one crisp rectangle on the jacket front,
+        # raised rectangle ~17 mm proud. The one crisp rectangle on the jacket front,
         # and the front's only feature that catches a head-on beam at 3 m.
-        Box("Pocket", (0.092, -0.118, 1.175), (0.040, 0.020, 0.030)),
+        # y from the loft's own front at z 1.175 (−0.157): 17 mm proud, 26 mm buried
+        # — the burial is the Trunk/Pocket preflight bottleneck, kept over 1.5 voxels.
+        Box("Pocket", (0.092, -0.148, 1.175), (0.040, 0.026, 0.030)),
     ]
 
     # Mirrored, not modelled twice. s = -1 is the figure's right.
     for s in (-1.0, +1.0):
         tag = "L" if s > 0 else "R"
         parts += [
-            # The shoulder ball welds arm to yoke and sits AT the arm's pivot, so
-            # rotating about it barely stretches the skin (the carry-era lesson).
-            Ellipsoid(f"Shoulder_{tag}", (s * SHOULDER_X, 0.0, SHOULDER_Z),
-                      (SHOULDER_R,) * 3),
-            # The sleeve: hangs from the shoulder, leaning 20 mm forward, ending
-            # above the glove. A-pose — elbows stay inside §12's corridor two-abreast.
+            # The shoulder ball welds sleeve to yoke, swallows the capped deltoid
+            # stub, and sits AT the arm's pivot, so rotating about it barely
+            # stretches the skin (the carry-era lesson). Deeper than wide (ry
+            # 0.100): the stub's front/back corners are corners, not a sphere.
+            Ellipsoid(f"Shoulder_{tag}", (s * SHOULDER_X, 0.004, SHOULDER_Z),
+                      (SHOULDER_R, 0.100, SHOULDER_R)),
+            # The sleeve: hangs from the shoulder, leaning 22 mm forward, ending
+            # at the cuff the harvested hand tucks into.
             Shaft(f"Arm_{tag}", s * ARM_X, ARM_Y,
                   z_top=SHOULDER_Z, r_top=ARM_R_TOP,
                   z_bottom=ARM_Z_BOTTOM, r_bottom=ARM_R_BOTTOM),
             Ellipsoid(f"Cuff_{tag}", (s * CUFF_C[0], CUFF_C[1], CUFF_C[2]), CUFF_R),
-            # A gloved mitten. Fingers are ~15 mm features seen at ten metres in the
-            # dark; a work glove is a mitten anyway.
-            Ellipsoid(f"Hand_{tag}", (s * HAND_C[0], HAND_C[1], HAND_C[2]), HAND_R),
-            # Trouser leg, hip ball buried in the skirt (the pelvis join), tapering
-            # into the boot.
-            Shaft(f"Leg_{tag}", s * LEG_X, 0.0,
-                  z_top=LEG_Z_TOP, r_top=LEG_R_TOP,
-                  z_bottom=TROUSER_Z_BOTTOM, r_bottom=TROUSER_R_BOTTOM),
             Ellipsoid(f"BootTop_{tag}",
                       (s * BOOT_TOP_C[0], BOOT_TOP_C[1], BOOT_TOP_C[2]), BOOT_TOP_R),
-            Shaft(f"Boot_{tag}", s * LEG_X, 0.0,
+            Shaft(f"Boot_{tag}", s * LEG_X, 0.042,
                   z_top=BOOT_Z_TOP, r_top=BOOT_R_TOP,
                   z_bottom=BOOT_Z_BOTTOM, r_bottom=BOOT_R_BOTTOM),
             # Toe forward: the toes are what tell a viewer which way a distant racer
-            # is facing.
+            # is facing. The straightened human foot is INSIDE this pad.
             Ellipsoid(f"Foot_{tag}", (s * FOOT_C[0], FOOT_C[1], FOOT_C[2]), FOOT_R),
         ]
     return parts
@@ -1336,18 +1763,27 @@ def assign_materials(body: bpy.types.Object, fit: Fit) -> None:
     #     darkened, tint still readable from behind,
     # (c) nothing warm or specular is painted anywhere inside the hood at eye height:
     #     the void window rises to the brim's underside where the old lamp box sat.
-    lamp_lo, lamp_hi = fit.z(LAMP_C[2] - LAMP_HALF[2] - 0.006), fit.z(1.682)
+    lamp_lo, lamp_hi = fit.z(LAMP_C[2] - LAMP_HALF[2] - 0.006), fit.z(1.694)
     lamp_x_lo, lamp_x_hi = -fit.d(0.004), fit.d(0.064)
-    lamp_y = -fit.d(0.068)
-    void_lo, void_hi = fit.z(1.515), fit.z(1.610)
-    void_x, void_y = fit.d(0.056), -fit.d(0.082)
-    band_lo, band_hi = fit.z(1.600), fit.z(1.634)
+    lamp_y = -fit.d(0.120)
+    # The face window: the harvested nose/mouth/chin sliver that emerges through the
+    # hood opening (HOOD_C note), plus the hood's own front rim around it — all of it
+    # goes to black, which is what turns a real face into the no-face. Round 1's
+    # render showed the window as a torn bib with a pale chin under it: the z floor
+    # sat above the jaw and the facing gate (−0.40) let side-leaning nose/cheek
+    # polys keep the jacket colour inside the hole. Floor dropped to the collar top,
+    # gate relaxed to −0.18 — the hood's x-limit is what keeps the sides clean.
+    void_lo, void_hi = fit.z(1.440), fit.z(1.622)
+    void_x, void_y = fit.d(0.070), -fit.d(0.082)
+    band_lo, band_hi = fit.z(1.606), fit.z(1.642)
     armband_x = fit.d(0.198)
     armband_lo, armband_hi = fit.z(ARMBAND_C[2] - 0.035), fit.z(ARMBAND_C[2] + 0.042)
-    glove_c = (fit.d(0.290), -fit.d(0.055), fit.z(0.715))
-    glove_r = (fit.d(0.085), fit.d(0.115), fit.d(0.150))
-    roll_x, roll_lo, roll_hi = -fit.d(0.200), fit.z(0.764), fit.z(0.816)
-    boot_top = fit.z(0.385)
+    # The glove region swallows the whole harvested hand shell plus the cuff's mouth,
+    # so the hand IS the glove — near-black gear with fingers, task #81's read.
+    glove_c = (fit.d(0.272), -fit.d(0.045), fit.z(0.732))
+    glove_r = (fit.d(0.075), fit.d(0.115), fit.d(0.115))
+    roll_x, roll_lo, roll_hi = -fit.d(0.215), fit.z(0.850), fit.z(0.898)
+    boot_top = fit.z(0.400)
     trouser_top = fit.z(HEM_BOTTOM_Z - 0.005)
 
     def in_glove(p: Vector) -> bool:
@@ -1362,7 +1798,7 @@ def assign_materials(body: bpy.types.Object, fit: Fit) -> None:
                 and p.y < lamp_y):
             name = MAT_GEAR.name          # headlamp housing, off-centre above the brim
         elif (void_lo < p.z < void_hi and abs(p.x) < void_x and p.y < void_y
-              and facing < -0.45):
+              and facing < -0.18):
             name = MAT_VOID.name          # the face that is not there
         elif band_lo < p.z < band_hi:
             # Headlamp strap: tint accent ONLY on the clearly-rear arc; front and
@@ -1496,65 +1932,295 @@ def verify_parts_interpenetrate(parts: list[Part]) -> None:
             "shell is worse than a reliable one. Deepen the overlap or shrink the voxel.")
 
 
-def verify_one_shell(obj: bpy.types.Object) -> None:
-    """The welded mesh must be exactly one connected component.
+COVER_TOLERANCE = 0.006
+"""How far (metres) a body vertex may poke past its covering garment before the
+coverage check fails. Not slack — arithmetic: a poke under one 9 mm voxel cannot
+survive the remesh as a separate surface (the level set unions it into the garment
+and the smoothing rounds the bump), so a sub-voxel poke is a bulge in the cloth,
+while anything bigger is skin showing through the jacket."""
 
-    Walks the mesh with bmesh rather than trusting the pipeline, because every way this
-    goes wrong is silent: the export succeeds, the file opens, the model looks right in a
-    thumbnail, and in the game a head hangs in the air above a running body.
+
+def verify_body_covered(parts: list[Part]) -> None:
+    """The garment must actually DRESS the harvested body — preflight, on the table.
+
+    The primitive figure could not fail this way: its trunk loft WAS its torso. Now
+    the loft is a jacket around a measured body, and every ring is torso-profile plus
+    clearance — arithmetic this check refuses to take on faith, for the same reason
+    the overlap graph exists. Every vertex of the body's covered bands must be inside
+    the union of its covering parts (within COVER_TOLERANCE): the torso inside
+    jacket/collar/yoke/balls, the nape inside collar/skirt/hood, the skull inside the
+    hood, the feet inside the boots. The face window and the trouser band are the two
+    deliberate exposures and are excluded by construction. A failure here is the
+    'athletic nude human' identity failure, caught in one second instead of a render.
+    """
+    body = next((p for p in parts if isinstance(p, MeshPart)), None)
+    if body is None:
+        blendkit.fail("no MeshPart in the placement table — the harvested body is "
+                      "missing from build_parts().")
+    by_name = {p.name: p for p in parts}
+
+    def group(*names: str) -> list[Part]:
+        out = []
+        for p in parts:
+            if p.name in names or any(p.name.startswith(n + "_") for n in names):
+                out.append(p)
+        return out
+
+    torso_cover = group("Trunk", "Collar", "HoodSkirt", "Hood", "BackYoke",
+                        "Shoulder", "Arm")
+    nape_cover = group("Collar", "HoodSkirt", "Hood", "Trunk")
+    hood_cover = group("Hood", "Brim")
+    feet_cover = group("Boot", "Foot", "BootTop")
+
+    bands = (
+        ("torso", lambda co: HEM_BOTTOM_Z + 0.015 <= co.z <= 1.40, torso_cover),
+        ("nape", lambda co: 1.40 < co.z <= 1.52 and co.y > 0.005, nape_cover),
+        ("skull", lambda co: 1.52 < co.z < 1.63 and co.y > -0.020, hood_cover),
+        ("crown", lambda co: co.z >= 1.63, hood_cover),
+        ("feet", lambda co: co.z < ANKLE_Z - 0.005, feet_cover),
+    )
+
+    for label, predicate, cover in bands:
+        samples = [co for co in body.surface() if predicate(co)]
+        if not samples:
+            blendkit.fail(f"coverage band '{label}' selected no body vertices — the "
+                          "band predicate and the body have come apart.")
+        worst = 0.0
+        worst_at = None
+        escaped = 0
+        for co in samples:
+            if any(p.contains(co) for p in cover):
+                continue
+            poke = min(_poke_distance(p, co) for p in cover)
+            escaped += 1
+            if poke > worst:
+                worst, worst_at = poke, co
+        names = ",".join(p.name for p in cover)
+        print(f"BODY_COVER {label:5s} samples={len(samples)} escaped={escaped} "
+              f"worst_poke={worst * 1000.0:.1f}mm tol={COVER_TOLERANCE * 1000.0:.0f}mm "
+              f"under [{names}]")
+        if worst > COVER_TOLERANCE:
+            blendkit.fail(
+                f"the body escapes its garment in the '{label}' band: a vertex at "
+                f"({worst_at.x:+.3f},{worst_at.y:+.3f},{worst_at.z:+.3f}) pokes "
+                f"{worst * 1000.0:.1f} mm out of [{names}] against the "
+                f"{COVER_TOLERANCE * 1000.0:.0f} mm voxel-absorption tolerance. That "
+                "is skin through the jacket — the identity brief's failure case. "
+                "Widen the ring/part it should be under.")
+    # the one strict absolute: nothing of the body may hang below the boot soles,
+    # because the boot is what stands on z = 0 after the drop.
+    body_floor = min(co.z for co in body.surface())
+    boot_floor = min(by_name["Foot_L"].centre[2] - by_name["Foot_L"].radii[2],
+                     by_name["Foot_R"].centre[2] - by_name["Foot_R"].radii[2])
+    print(f"BODY_COVER soles body_floor={body_floor * 1000.0:+.1f}mm "
+          f"boot_floor={boot_floor * 1000.0:+.1f}mm")
+    if body_floor < boot_floor + 0.004:
+        blendkit.fail(
+            f"the body's lowest skin ({body_floor * 1000.0:+.1f} mm) reaches within "
+            f"4 mm of the boot sole ({boot_floor * 1000.0:+.1f} mm) — the figure "
+            "would stand on its feet instead of its boots.")
+
+
+def _poke_distance(part: Part, co: Vector) -> float:
+    """How far ``co`` sits OUTSIDE ``part`` — 0 when inside; used only to grade
+    coverage escapes, so a cheap conservative metric per part class is enough."""
+    if part.contains(co):
+        return 0.0
+    if isinstance(part, Ellipsoid):
+        c, r = Vector(part.centre), part.radii
+        q = math.sqrt(part.quadric(co))
+        reach = (co - c).length
+        return reach * (1.0 - 1.0 / q) if q > 1.0 else 0.0
+    if isinstance(part, Loft):
+        rx, ry, yc = part._profile(co.z)
+        frac = math.sqrt(max(part._frac(co), 1e-12))
+        radial = (frac - 1.0) * min(rx, ry)
+        below = part.rings[0][0] - co.z
+        above = co.z - part.rings[-1][0]
+        return max(radial if frac > 1.0 else 0.0, below, above, 0.0)
+    if isinstance(part, Shaft):
+        top, bottom = part._ends()
+        if part.z_bottom <= co.z <= part.z_top:
+            return max(0.0, math.hypot(co.x - part.x, co.y - part.y)
+                       - part.radius_at(co.z))
+        end = top if co.z > part.z_top else bottom
+        return _poke_distance(end, co)
+    if isinstance(part, Box):
+        c, h = part.centre, part.half
+        return max(max(abs(co[i] - c[i]) - h[i] for i in range(3)), 0.0)
+    return 0.0
+
+
+def verify_shells(obj: bpy.types.Object, expect: int = 3) -> list[set[int]]:
+    """The figure must be EXACTLY ``expect`` closed shells: the welded suit, then one
+    watertight hand per side.
+
+    The old figure was one shell and the check demanded one; this figure is one WELD
+    plus two harvested hands that are deliberately not welded (a 9 mm voxel would
+    re-mitten the fingers — ``harvest_hands``), so the honest invariant is the exact
+    census: 3 shells, every one of them closed, the suit overwhelmingly the biggest.
+    Anything else is the old failure wearing a new count — a fourth shell is a piece
+    of the union that never joined (a head floating over a body in Unity), and a
+    boundary edge is a leak. Returns the shells' vertex-index sets, biggest first,
+    because the limb and hand checks below reason about specific shells.
     """
     bm = bmesh.new()
     bm.from_mesh(obj.data)
 
     seen: set[int] = set()
-    shells: list[int] = []
+    shells: list[set[int]] = []
     for vert in bm.verts:
         if vert.index in seen:
             continue
         seen.add(vert.index)
         stack = [vert]
-        size = 0
+        members = {vert.index}
         while stack:
             v = stack.pop()
-            size += 1
             for e in v.link_edges:
                 w = e.other_vert(v)
                 if w.index not in seen:
                     seen.add(w.index)
+                    members.add(w.index)
                     stack.append(w)
-        shells.append(size)
-    shells.sort(reverse=True)
+        shells.append(members)
+    shells.sort(key=len, reverse=True)
 
     boundary = sum(1 for e in bm.edges if len(e.link_faces) < 2)
     nonmanifold = sum(1 for e in bm.edges if len(e.link_faces) > 2)
     bm.free()
 
-    print(f"SHELL_COUNT shells={len(shells)} verts={','.join(str(s) for s in shells[:6])}"
+    print(f"SHELL_COUNT shells={len(shells)} "
+          f"verts={','.join(str(len(s)) for s in shells[:6])}"
           f"{'...' if len(shells) > 6 else ''} boundary_edges={boundary} "
-          f"nonmanifold_edges={nonmanifold}")
+          f"nonmanifold_edges={nonmanifold} expected={expect} (suit + 2 hands)")
 
-    if len(shells) != 1:
+    if len(shells) != expect:
         blendkit.fail(
-            f"the welded body is {len(shells)} shells, not 1 "
-            f"(vertex counts {shells[:8]}). Parts must OVERLAP, not merely touch — a "
-            "primitive stops at its own surface, so a gap of a few centimetres between "
-            "two of them leaves a limb or a head as its own closed surface and the weld "
-            "had nothing to weld. Deepen the overlap in build_parts().")
+            f"the figure is {len(shells)} shells, not {expect} "
+            f"(vertex counts {[len(s) for s in shells[:8]]}). Three are legitimate — "
+            "the welded suit and the two harvested hands — and nothing else is: an "
+            "extra shell is a part the union never joined (in Unity, a piece hanging "
+            "in the air beside a running body), and a missing one is a hand that got "
+            "swallowed. Deepen the overlap in build_parts(), or check harvest_hands.")
 
     if boundary:
         blendkit.fail(
-            f"{boundary} boundary edges — the body is not watertight. A voxel remesh "
-            "returns a closed surface, so holes mean a primitive was open before the "
-            "join (a cone exported without caps is the usual cause).")
+            f"{boundary} boundary edges — the figure is not watertight. The remesh "
+            "returns closed surfaces and both hand cuts are capped, so holes mean a "
+            "cap failed or a primitive was open before the join.")
+
+    if len(shells) >= 3 and len(shells[1]) > len(shells[0]) // 3:
+        blendkit.fail(
+            f"the second-biggest shell has {len(shells[1])} vertices against the "
+            f"suit's {len(shells[0])} — that is not a hand, that is the weld split "
+            "in two. A hand is a few hundred cage vertices.")
+    return shells
 
 
-def verify_limbs_hang_free(obj: bpy.types.Object, ankle_z: float, crotch_z: float,
-                           hip_z: float, leg_part_z: float, armpit_z: float,
-                           armpit_x: float, armpit_r: float) -> None:
+def verify_hand_shells(obj: bpy.types.Object, shells: list[set[int]],
+                       fit: Fit) -> None:
+    """Each hand shell must be TUCKED, CLEAR, and never coplanar with the suit.
+
+    Three measured invariants, replacing what "one shell" used to guarantee for the
+    mittens (which, being welded, could not float, gape or z-fight — the hands can,
+    so the checks move to where the risk moved):
+
+    * **tucked** — the CUT RING (the recorded ``_HAND_CAP_POINTS``, carried through
+      the fit) is buried ≥ 3 mm inside the cuff, so the severed wrist and its cap
+      never surface. Exactly the ring: the glove's own flare beside it (the thumb
+      base) is visible surface and belongs outside — an earlier cut of this check
+      banded "the top 20 mm" and correctly refused a cuff that no wearable cuff
+      could satisfy;
+    * **clear** — the finger region sits ≥ 2.5 mm OUTSIDE the suit everywhere, so no
+      fingertip is buried in a thigh or a cuff across any pose the rigid bind allows;
+    * **no z-fight** — no hand face is both within 2.5 mm of the suit surface and
+      near-parallel to it (|n·n| > 0.95): crossing surfaces are a visible seam by
+      design, but parallel-and-touching surfaces shimmer.
+    """
+    mesh = obj.data
+    suit = shells[0]
+    verts = [v.co.copy() for v in mesh.vertices]
+    suit_polys = [tuple(p.vertices) for p in mesh.polygons
+                  if all(i in suit for i in p.vertices)]
+    bvh = BVHTree.FromPolygons([tuple(co) for co in verts], suit_polys)
+
+    def signed(co: Vector) -> float:
+        near, normal, _i, dist = bvh.find_nearest(co)
+        if near is None:
+            return math.inf
+        return -dist if normal.dot(co - near) < 0.0 else dist
+
+    for shell in shells[1:]:
+        cos = [verts[i] for i in shell]
+        cen = sum(cos, Vector()) / len(cos)
+        side = "left" if cen.x > 0.0 else "right"
+        zlo = min(co.z for co in cos)
+        zhi = max(co.z for co in cos)
+
+        ring = _HAND_CAP_POINTS.get(side)
+        if not ring:
+            blendkit.fail(f"harvest_hands recorded no cut ring for the {side} hand — "
+                          "the tuck check has nothing to measure.")
+        cap_pts = [Vector((fit.d(p.x), fit.d(p.y), fit.z(p.z))) for p in ring]
+        cap = [signed(co) for co in cap_pts]
+        fingers = [signed(co) for co in cos if co.z < zlo + 0.40 * (zhi - zlo)]
+        tuck = -max(cap)          # worst (shallowest) burial of the cut ring
+        clear = min(fingers)      # worst (closest) finger approach to the suit
+        worst_cap = cap_pts[cap.index(max(cap))]
+        near_pt = bvh.find_nearest(worst_cap)[0]
+        print(f"HAND_TUCK {side:5s} ring={len(cap_pts)}v worst_cap=({worst_cap.x:+.3f},"
+              f"{worst_cap.y:+.3f},{worst_cap.z:.3f}) nearest_suit="
+              f"({near_pt.x:+.3f},{near_pt.y:+.3f},{near_pt.z:.3f})")
+
+        zfights = 0
+        zfight_at = None
+        for poly in mesh.polygons:
+            if poly.vertices[0] not in shell:
+                continue
+            centre = Vector(poly.center)
+            near, normal, _i, dist = bvh.find_nearest(centre)
+            if near is not None and dist < 0.0025 \
+                    and abs(normal.dot(poly.normal)) > 0.95:
+                zfights += 1
+                zfight_at = centre
+        where = (f" at=({zfight_at.x:+.3f},{zfight_at.y:+.3f},{zfight_at.z:.3f})"
+                 if zfight_at is not None else "")
+        print(f"HAND_SHELL {side:5s} verts={len(shell)} z={zlo:.3f}..{zhi:.3f} "
+              f"tuck_depth={tuck * 1000.0:+.1f}mm finger_clear={clear * 1000.0:+.1f}mm "
+              f"zfight_faces={zfights}{where}")
+
+        if tuck < 0.003:
+            blendkit.fail(
+                f"the {side} hand's cut ring is buried only {tuck * 1000.0:.1f} mm "
+                "inside the cuff (3 mm minimum). The severed wrist and its cap would "
+                "surface through the sleeve — deepen CUFF_R or move the cut back "
+                "into the wrist's narrow.")
+        if clear < 0.0025:
+            blendkit.fail(
+                f"the {side} hand's fingers come within {clear * 1000.0:.1f} mm of the "
+                "suit (2.5 mm minimum). A finger inside the trouser or cuff surface "
+                "is a finger the beam amputates — move HAND_C or shrink the cuff.")
+        if zfights:
+            blendkit.fail(
+                f"{zfights} faces of the {side} hand lie within 2.5 mm of the suit "
+                "surface while near-parallel to it. That is a z-fight at render "
+                "distance — the glove and the cuff must cross cleanly, not kiss.")
+
+
+def verify_limbs_hang_free(obj: bpy.types.Object, suit: set[int], ankle_z: float,
+                           crotch_z: float, hip_z: float, leg_part_z: float,
+                           armpit_z: float, ball_c: tuple[float, float, float],
+                           ball_r: tuple[float, float, float]) -> None:
     """A limb may reach its opposite number only through the JOINT it hangs from.
 
+    ``suit`` is the welded shell's vertex-index set (``verify_shells``): every walk
+    below runs on the SUIT, because a hand shell is disconnected by construction and
+    seeding a connectivity test on one would prove nothing about anything — the exact
+    way this check would have gone silently vacuous after the body swap.
+
     A third check on the weld, and it is here because a walk cycle found the first half of
-    it. ``verify_one_shell`` wants the body to be one connected surface and it is; this
+    it. ``verify_shells`` wants the suit to be one connected surface and it is; this
     wants each connection to run where the skeleton says it does — the feet through the
     legs, the arms through the shoulders. Anything else is a bridge, and a bridge between
     two limbs that move apart is not a gap that opens: it is a **sheet of skin drawn across
@@ -1600,7 +2266,7 @@ def verify_limbs_hang_free(obj: bpy.types.Object, ankle_z: float, crotch_z: floa
              "A stride pulls that bridge into a sail from heel to toe. Move the pads apart "
              "in build_parts() until the gap clears the voxel with margin, or narrow them."),
     ):
-        pool = [v for v in bm.verts if v.co.z < ceiling]
+        pool = [v for v in bm.verts if v.co.z < ceiling and v.index in suit]
         if not pool:
             bm.free()
             blendkit.fail(f"no mesh below z = {ceiling:.3f} — the {label} are not where "
@@ -1631,7 +2297,8 @@ def verify_limbs_hang_free(obj: bpy.types.Object, ankle_z: float, crotch_z: floa
     for i in range(slices):
         lo = ankle_z + (crotch_z - ankle_z) * i / slices
         hi = ankle_z + (crotch_z - ankle_z) * (i + 1) / slices
-        band = [abs(v.co.x) for v in bm.verts if lo <= v.co.z < hi]
+        band = [abs(v.co.x) for v in bm.verts
+                if lo <= v.co.z < hi and v.index in suit]
         profile.append((0.5 * (lo + hi), 2.0 * min(band) if band else math.inf))
     print("LEG_SLOT " + " ".join(f"{z:.2f}m:{gap * 1000.0:.0f}mm" for z, gap in profile))
 
@@ -1659,18 +2326,60 @@ def verify_limbs_hang_free(obj: bpy.types.Object, ankle_z: float, crotch_z: floa
     # right hand through the chest and the test passes on a figure with no arms at all.
     # The question is not "can it get across", it is "can it get across WITHOUT USING THE
     # SHOULDER". So the shoulder ball is removed from the graph and the arm must then be
-    # unable to reach the body's midline at all.
-    ball = Vector((0.0, 0.0, 0.0))
+    # unable to reach the body's midline at all. The cut is the DESIGNED joint's own
+    # ellipsoid (the ball is deeper than it is wide since the body swap), dilated 15 % —
+    # a spherical cut on an ellipsoid ball leaves weld surface outside the cut and
+    # flags the joint itself as a bridge.
+    rx, ry, rz = (r * 1.15 for r in ball_r)
     for sign, side in ((1.0, "left"), (-1.0, "right")):
-        ball.x, ball.z = sign * armpit_x, armpit_z + armpit_r
-        hand = max((v for v in bm.verts if v.co.z < armpit_z and v.co.x * sign > 0.0),
+        bc = Vector((sign * ball_c[0], ball_c[1], ball_c[2]))
+
+        def outside_ball(w) -> bool:
+            d = w.co - bc
+            return (d.x / rx) ** 2 + (d.y / ry) ** 2 + (d.z / rz) ** 2 > 1.0
+
+        # Seed on the SUIT's own sleeve — the outermost suit vertex below the armpit
+        # — never on a hand shell, which is disconnected and would pass vacuously.
+        hand = max((v for v in bm.verts
+                    if v.co.z < armpit_z and v.co.x * sign > 0.0
+                    and v.index in suit),
                    key=lambda v: v.co.x * sign)
-        reach = walk(hand, lambda w: (w.co - ball).length > armpit_r * 1.15)
+        reach = walk(hand, outside_ball)
         onto_body = [bm.verts[i].co.x * sign for i in reach if bm.verts[i].co.x * sign < 0.02]
         print(f"LIMB_FREE {side}_arm bridged={'YES' if onto_body else 'no'} "
               f"reachable_without_shoulder={len(reach)}v "
-              f"shoulder_r={armpit_r * 1000.0:.0f}mm")
+              f"shoulder_cut=({rx * 1000.0:.0f},{ry * 1000.0:.0f},{rz * 1000.0:.0f})mm")
         if onto_body:
+            # name the crossing before failing: BFS again with parent tracking and
+            # trace the first far-side vertex back to the seed — the printed route
+            # IS the bridge, so the fix can aim at a place instead of a symptom.
+            parent = {hand.index: None}
+            queue = [hand]
+            first_far = None
+            while queue and first_far is None:
+                nxt = []
+                for v in queue:
+                    for e in v.link_edges:
+                        w = e.other_vert(v)
+                        if w.index in parent or not outside_ball(w):
+                            continue
+                        parent[w.index] = v.index
+                        if w.co.x * sign < 0.02:
+                            first_far = w
+                            break
+                        nxt.append(w)
+                    if first_far is not None:
+                        break
+                queue = nxt
+            if first_far is not None:
+                path = []
+                i = first_far.index
+                while i is not None:
+                    path.append(bm.verts[i].co.copy())
+                    i = parent[i]
+                pts = " ".join(f"({c.x:+.2f},{c.y:+.2f},{c.z:.2f})"
+                               for c in path[::max(1, len(path) // 14)])
+                print(f"LIMB_BRIDGE {side}_arm shortest_route {len(path)}v: {pts}")
             bm.free()
             blendkit.fail(
                 f"the {side} arm is welded to the torso somewhere other than the shoulder: "
@@ -1791,10 +2500,12 @@ RIG_NAME = "Runner_Rig"
 ``Player_Rig`` / ``Monster_Rig``. **This renames the FBX root**, which is what Unity
 derives a model prefab's root fileID from — see the report in ``main``."""
 
-KNEE_FRACTION = 0.5
-"""Where the knee sits between hip and ankle. A tapered column with no knee bends in the
-middle; equal segments also make ``|THIGH − SHANK|`` zero, which is the inner limit
-``_solve_leg`` clamps against, so the IK has no dead zone near the hip."""
+KNEE_FRACTION = 0.433
+"""Where the knee sits between hip and ankle — measured off the harvested leg (knee
+centre z 0.492 between hip 0.780 and ankle 0.115), not the old kneeless column's
+midpoint. The mesh has a real knee now, and a knee bone anywhere else is a crease
+that folds the calf instead of the joint. Thigh 0.288 / shank 0.377: unequal, which
+``_solve_leg`` handles the same way it handles the player's own unequal pair."""
 
 HEEL_T, BALL_T, TOE_T, TIP_T = 0.62, -0.40, -0.78, -0.92
 """Bands along the foot, as a fraction of the foot ellipsoid's half-length (+ = heelward).
@@ -1831,12 +2542,23 @@ where it points."""
 
 @dataclass(frozen=True)
 class Skeleton:
-    """Joint positions in FINAL metres, derived from the placement table and the fit."""
+    """Joint positions in FINAL metres, derived from the placement table and the fit.
+
+    The leg chain is no longer a plumb line: the harvested leg splays hip → ankle
+    (x 0.092 → 0.172) and drops its ankle 56 mm behind the body line, so the chain
+    carries per-joint x and y now. The retarget transfers mocap as rest-relative
+    deltas, so a slanted rest leg swings exactly as well as a vertical one did.
+    """
 
     hip_z: float
     knee_z: float
     ankle_z: float
+    hip_x: float
+    hip_y: float
+    knee_x: float
+    knee_y: float
     leg_x: float
+    ankle_y: float
     thigh: float
     shank: float
     spine_z: float
@@ -1904,22 +2626,18 @@ def measure_sole(body: bpy.types.Object, fit: Fit,
 def build_skeleton(body: bpy.types.Object, fit: Fit) -> Skeleton:
     """Reads the joints off the placement table.
 
-    Two of these are measurements rather than choices and both are worth stating.
-
-    The **hip** is the centre of the leg shaft's top ball. Not a nicer, higher number
-    inside the pelvis: that ball is the only spherical thing in the leg, and a sphere
-    turning about its own centre does not move its own surface, so the thigh swings
-    without dragging the belly it is buried in. It lands at 0.44 of the figure's height
-    where a person's is at 0.53 — this figure is short-legged by construction, and
-    ``solve_cadence`` is what pays for that rather than a longer bone that would tear the
-    belly.
-
-    The **ankle** is where the leg column's axis meets the top of the foot pad. Solved
-    two ways and they agree to 2 mm: the shaft's bottom ball centre sits at the pad's own
-    upper surface at y = 0.
+    Every leg landmark is now a MEASUREMENT of the harvested body rather than a
+    property of a shaft primitive: the hip is the groin-crease/femoral-head level
+    (LEG_Z_TOP's note — this base mesh is short-legged on purpose, crotch at 0.41 of
+    height, so the leg stays inside the pendulum band the meta's frame ranges
+    assume), the knee is the measured knee centre, and the ankle is the measured
+    malleolus — 56 mm behind the body line, where a real ankle is. The sole contacts
+    are still taken off the WELDED mesh (``measure_sole``), because what stands on
+    the floor is the boot after the voxel grid, not the anatomy inside it.
     """
     hip_z = fit.z(LEG_Z_TOP)
     ankle_z = fit.z(ANKLE_Z)
+    ankle_y = fit.d(ANKLE_Y)
     knee_z = hip_z - (hip_z - ankle_z) * KNEE_FRACTION
 
     ball_y, ball_sole = _sole(fit, BALL_T)
@@ -1933,15 +2651,20 @@ def build_skeleton(body: bpy.types.Object, fit: Fit) -> Skeleton:
           f"ball=({mid_y:+.4f},{mid_z:+.4f}) toe=({toe_y:+.4f},{toe_z:+.4f}) "
           f"(off the welded mesh, not off the ideal pad)")
 
-    # Heel behind the ball joint belongs to Foot; everything ahead of it rolls with Toes.
+    # Heel behind the ball joint belongs to Foot; everything ahead of it rolls with
+    # Toes. Contact offsets are FROM the Foot bone's head, which now sits at the
+    # anatomical ankle (leg_x, ankle_y, ankle_z) rather than on the y = 0 plane.
     contacts = (
-        ("Foot", (0.0, heel_y, heel_z - ankle_z)),
+        ("Foot", (0.0, heel_y - ankle_y, heel_z - ankle_z)),
         ("Toes", (0.0, mid_y - ball[0], mid_z - ball[1])),
         ("Toes", (0.0, toe_y - ball[0], toe_z - ball[1])),
     )
 
     return Skeleton(
-        hip_z=hip_z, knee_z=knee_z, ankle_z=ankle_z, leg_x=fit.d(LEG_X),
+        hip_z=hip_z, knee_z=knee_z, ankle_z=ankle_z,
+        hip_x=fit.d(HIP_X), hip_y=fit.d(HIP_Y),
+        knee_x=fit.d(KNEE_X), knee_y=fit.d(KNEE_Y),
+        leg_x=fit.d(LEG_X), ankle_y=ankle_y,
         thigh=hip_z - knee_z, shank=knee_z - ankle_z,
         spine_z=fit.z(SPINE_JOIN_Z),
         neck_z=fit.z(NECK_BASE_Z),
@@ -1951,14 +2674,12 @@ def build_skeleton(body: bpy.types.Object, fit: Fit) -> Skeleton:
         ball=ball, toe_tip=tip, contacts=contacts)
 
 
-KNEE_BIAS_Y = -0.006
-"""The knee is pushed 6 mm forward of the hip–ankle line. Mirrors the player's rig, and
-for the same reason: a leg whose three joints are exactly collinear at rest leaves the
-bend direction undefined, and the IK is then free to pick a knee that bends backwards."""
-
-
 def bone_specs(sk: Skeleton) -> list[BoneSpec]:
-    """The 13 bones, in final metres. See the essay above for the count."""
+    """The 13 bones, in final metres. See the essay above for the count.
+
+    The old KNEE_BIAS_Y −0.006 nudge is gone: the measured knee already sits ~22 mm
+    forward of the hip–ankle line (the anatomical bend bias), so the IK's bend
+    direction is set by the body instead of by an authored fudge."""
     specs = [
         BoneSpec("Hips", (0.0, 0.0, sk.hip_z), (0.0, 0.0, sk.spine_z)),
         BoneSpec("Spine", (0.0, 0.0, sk.spine_z), (0.0, 0.0, sk.neck_z), "Hips", True),
@@ -1970,11 +2691,11 @@ def bone_specs(sk: Skeleton) -> list[BoneSpec]:
             BoneSpec(f"{s}UpperArm", (x * sk.shoulder_x, 0.0, sk.shoulder_z),
                      (x * sk.hand_x, 0.0, sk.hand_z), "Spine"),
 
-            BoneSpec(f"{s}UpperLeg", (x * sk.leg_x, 0.0, sk.hip_z),
-                     (x * sk.leg_x, KNEE_BIAS_Y, sk.knee_z), "Hips"),
-            BoneSpec(f"{s}LowerLeg", (x * sk.leg_x, KNEE_BIAS_Y, sk.knee_z),
-                     (x * sk.leg_x, 0.0, sk.ankle_z), f"{s}UpperLeg", True),
-            BoneSpec(f"{s}Foot", (x * sk.leg_x, 0.0, sk.ankle_z),
+            BoneSpec(f"{s}UpperLeg", (x * sk.hip_x, sk.hip_y, sk.hip_z),
+                     (x * sk.knee_x, sk.knee_y, sk.knee_z), "Hips"),
+            BoneSpec(f"{s}LowerLeg", (x * sk.knee_x, sk.knee_y, sk.knee_z),
+                     (x * sk.leg_x, sk.ankle_y, sk.ankle_z), f"{s}UpperLeg", True),
+            BoneSpec(f"{s}Foot", (x * sk.leg_x, sk.ankle_y, sk.ankle_z),
                      (x * sk.leg_x, sk.ball[0], sk.ball[1]), f"{s}LowerLeg", True),
             BoneSpec(f"{s}Toes", (x * sk.leg_x, sk.ball[0], sk.ball[1]),
                      (x * sk.leg_x, sk.toe_tip[0], sk.toe_tip[1]), f"{s}Foot", True),
@@ -2013,11 +2734,12 @@ def retarget_gait_solver(sk: Skeleton) -> None:
     gpm.THIGH_LEN = sk.thigh
     gpm.SHANK_LEN = sk.shank
     gpm.CONTACTS = sk.contacts
-    gpm.FOOT_REST = Vector((0.0, sk.ball[0], sk.ball[1] - sk.ankle_z)).normalized()
+    gpm.FOOT_REST = Vector((0.0, sk.ball[0] - sk.ankle_y,
+                            sk.ball[1] - sk.ankle_z)).normalized()
     gpm.TOES_REST = Vector((0.0, sk.toe_tip[0] - sk.ball[0],
                             sk.toe_tip[1] - sk.ball[1])).normalized()
 
-    ball_ahead = -sk.ball[0]
+    ball_ahead = sk.ankle_y - sk.ball[0]
     print(f"RIG_LEG hip_z={sk.hip_z:.4f}m knee_z={sk.knee_z:.4f}m ankle_z={sk.ankle_z:.4f}m "
           f"thigh={sk.thigh:.4f}m shank={sk.shank:.4f}m leg={sk.leg:.4f}m "
           f"({sk.leg / TARGET_HEIGHT:.3f} of height; player {0.835 / 1.75:.3f}) "
@@ -2141,21 +2863,38 @@ is ``verify_limbs_hang_free`` and ``verify_skin_stretch``, which measure the thi
 rather than a proxy for it."""
 
 
-def build_rig(sk: Skeleton, body: bpy.types.Object) -> bpy.types.Object:
+def build_rig(sk: Skeleton, body: bpy.types.Object,
+              hand_shells: list[set[int]]) -> bpy.types.Object:
     """Builds the armature, binds the body to it and proves every bone reached the mesh.
 
-    Automatic (bone-heat) weights, not hand-painted ones. On this mesh that is the honest
-    choice rather than the lazy one: the vertices come out of a voxel remesh and a 10%
-    decimation, so there is no correspondence at all between a vertex and the primitive it
-    used to belong to — any hand weighting would be a second implicit model of where the
-    parts are, maintained by nobody. Bone heat solves it off the geometry that actually
-    exists, and ``verify_skin`` checks the result instead of trusting it.
+    Automatic (bone-heat) weights for the SUIT, not hand-painted ones. On the welded
+    shell that is the honest choice rather than the lazy one: its vertices come out of
+    a voxel remesh and a heavy decimation, so there is no correspondence at all between
+    a vertex and the part it used to belong to. Bone heat solves it off the geometry
+    that actually exists, and ``verify_skin`` checks the result instead of trusting it.
+
+    The two HAND shells are then overridden to 100 % of their arm bone. That is not a
+    convenience: the hand hangs at the end of a one-bone arm beside a thigh driven by
+    a different bone, and bone heat on a disconnected shell happily samples both — a
+    thumb two-thirds owned by LeftUpperLeg is a glove that tears itself open on the
+    first stride. A glove on a one-bone arm is rigid by definition, so the weights
+    say so exactly.
     """
     specs = bone_specs(sk)
     rig = blendkit.build_armature(RIG_NAME, specs)
     gpm.cache_rig(rig)
 
     blendkit.bind_skin(body, rig, auto_weights=True)
+
+    for shell in hand_shells:
+        indices = sorted(shell)
+        cen_x = sum(body.data.vertices[i].co.x for i in indices) / len(indices)
+        side = "Left" if cen_x > 0.0 else "Right"
+        for vg in body.vertex_groups:
+            vg.remove(indices)
+        body.vertex_groups[f"{side}UpperArm"].add(indices, 1.0, "REPLACE")
+        print(f"HAND_SKIN {side.lower():5s} verts={len(indices)} -> "
+              f"{side}UpperArm=1.0 (rigid glove; heat smear across shells removed)")
 
     print(f"RIG_BONES count={len(rig.data.bones)} deform="
           f"{sum(1 for b in rig.data.bones if b.use_deform)} sockets=0")
@@ -3492,17 +4231,30 @@ def main() -> None:
     print(f"RUNNER_PARTS count={len(parts)} "
           f"names={','.join(p.name for p in parts)}")
 
-    # Before any geometry: the table itself has to describe one solid. Cheap, and it
-    # fails by name instead of by symptom.
+    # Before any geometry: the table itself has to describe one solid, and the
+    # garment has to actually dress the harvested body. Both are cheap, and both
+    # fail by name instead of by symptom.
     verify_parts_interpenetrate(parts)
+    verify_body_covered(parts)
 
     primitives: list[bpy.types.Object] = []
     for part in parts:
         primitives += part.build()
     print(f"RUNNER_PRIMITIVES count={len(primitives)} "
-          f"(ellipsoids and capped cones; {SAMPLE_CHORD * 1000.0:.0f}mm target chord)")
+          f"(harvested body, loft and capped primitives; "
+          f"{SAMPLE_CHORD * 1000.0:.0f}mm target chord)")
 
     body = weld(primitives)
+
+    # The hands join AFTER the weld and the decimation, because both would destroy
+    # them: the voxel grid re-mittens fingers and the collapse eats knuckles. They
+    # are placed in the same canonical frame, so the fit below carries them with
+    # everything else.
+    hands = harvest_hands()
+    body = blendkit.join([body] + hands, MESH_NAME)
+    body.data.name = MESH_NAME
+    blendkit.shade_smooth(body, angle_degrees=42.0)
+    _stage("hands_joined", body)
 
     fit = fit_height_and_ground(body, TARGET_HEIGHT)
     print(f"RUNNER_FIT scale={fit.scale:.5f}x drop={fit.drop:.5f}m "
@@ -3512,7 +4264,8 @@ def main() -> None:
     # After the fit, because the paint regions are stated in final metres.
     assign_materials(body, fit)
 
-    verify_one_shell(body)
+    shells = verify_shells(body, expect=3)
+    verify_hand_shells(body, shells, fit)
     # The ceilings are the joints themselves: below the ankle the only way across is the
     # floor, and below the shoulder ball the only way across is the chest.
     # The crotch ceiling is the belly's own underside: above it the legs are allowed to
@@ -3522,12 +4275,14 @@ def main() -> None:
         # The crotch ceiling stops UNDER the hem: the jacket's skirt legitimately
         # crosses the midline above 0.74, and a profile that included it would read
         # the hem as a thigh weld.
-        body, ankle_z=ankle_z, crotch_z=fit.z(HEM_BOTTOM_Z - 0.02), hip_z=hip_z,
+        body, shells[0], ankle_z=ankle_z, crotch_z=fit.z(HEM_BOTTOM_Z - 0.02),
+        hip_z=hip_z,
         # The lower two thirds of a leg has to be a leg. The top third is inside the
         # pelvis, where being one mass is the point.
         leg_part_z=hip_z - LEG_PART_FRACTION * (hip_z - ankle_z),
         armpit_z=fit.z(SHOULDER_Z - SHOULDER_R),
-        armpit_x=fit.d(SHOULDER_X), armpit_r=fit.d(SHOULDER_R))
+        ball_c=(fit.d(SHOULDER_X), fit.d(0.004), fit.z(SHOULDER_Z)),
+        ball_r=(fit.d(SHOULDER_R), fit.d(0.100), fit.d(SHOULDER_R)))
     size = verify_height(body)
     print(f"RUNNER_SHAPE height={size[2]:.3f}m span={size[0]:.3f}m depth={size[1]:.3f}m "
           f"tris={_tris(body)} verts={len(body.data.vertices)}")
@@ -3545,7 +4300,7 @@ def main() -> None:
     verify_gun_pose(skeleton, arm_len, size[1] * 0.5)
     verify_gun_mount(mount_ratio)
 
-    rig = build_rig(skeleton, body)
+    rig = build_rig(skeleton, body, shells[1:])
     verify_skin(rig, body)
 
     # DEFAULT: the eight clips are professional mocap retargeted onto this rig (Task #84 —
