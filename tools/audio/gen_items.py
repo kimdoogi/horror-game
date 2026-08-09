@@ -94,8 +94,26 @@ from scipy import signal as sg
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import source_bank  # noqa: E402
 import synth  # noqa: E402
 from synth import Mode  # noqa: E402
+
+DOOR_REAL = 1.15
+"""How much of a door is a recording, as a fraction of the synthesised body's
+energy. See `source_bank.mix_real`.
+
+The three door gestures are the only clips in this file where a recording beats
+the model outright, and they are also the ones §04 leans on hardest: opening a
+door is what makes the 청음사 deaf to the thing he is listening for, so the
+player has to believe it enough to weigh it.
+
+What synthesis misses is the same thing in all three. `hinge_creak` is a
+modulated sweep, and a hinge does not glide — it seizes, releases, seizes again,
+and the pitch *jumps*. `door_close` places a strike plate, a leaf and a settle as
+three impacts, and a real door is one object whose parts arrive in an order the
+door decides. `door_lock` clicks a mechanism three times, and a real lock is a
+dozen small steel parts moving at once, which is a texture rather than a count.
+None of those is a tuning error; all three are the model being a model."""
 
 SR = synth.SAMPLE_RATE
 
@@ -517,6 +535,46 @@ def battery_dead(seed: int) -> np.ndarray:
 # ── §04 · §12 — doors ───────────────────────────────────────────────────────
 
 
+def _with_real(out: np.ndarray, key: str, seed: int, dur: float,
+               band: tuple[float, float], at: float = 0.0,
+               amount: float = DOOR_REAL, tame: float = 1.0) -> np.ndarray:
+    """Lays the vendored recording of this gesture under the synthesised one.
+
+    Band-limited and centroid-matched to the synthesised body first, for the
+    reason `source_bank.match_centroid` gives: a recording brings the room and
+    the microphone position along with the object, and the level relationships
+    in `LEVELS` were tuned against the model's spectrum, not a recordist's.
+    `at` places the recording where the gesture actually starts — a door's creak
+    begins after its latch has already released.
+
+    Returns `out` untouched when nothing is vendored, so `gen_items.py` still
+    builds every clip on a clean checkout.
+    """
+    real = source_bank.pick("items", key, seed + 5501, max(0.05, dur - at))
+    if real is None:
+        return out
+    real = synth.bandpass(real, band[0], band[1], sr=SR)
+    real = source_bank.match_centroid(
+        real, source_bank.band_centroid(out, band[0], band[1]), band[0], band[1])
+    real = source_bank.taper_tail(real, 0.30)
+    placed = synth.place(synth.silence(len(out) / SR, SR), real, at, sr=SR)
+    mixed = source_bank.mix_real(out, placed, amount)
+
+    # Recover the crest the recording spent.
+    #
+    # `LEVELS` is a table of *peak* targets, so a clip that gets peakier gets
+    # quieter: a real door contributes a harder transient than the modelled one,
+    # and measured against the synthesised originals that cost door_close 5.3 dB
+    # and door_open 4.7 dB of RMS at an identical peak. §04's whole reason for
+    # these clips is that using a door is loud enough to blind the 청음사, so
+    # losing 5 dB of loudness to gain a transient is the wrong trade.
+    #
+    # tanh rather than a limiter because it is what this file already uses for
+    # weight (see door_close's body and door_lock's bolt), and because a gesture
+    # this short has no room for a release envelope.
+    return synth.saturate(norm(mixed), 1.0 + 1.9 * tame) if tame > 0.0 else mixed
+
+
 def door_open(seed: int, f0: float, f1: float, k: float) -> np.ndarray:
     """Latch release, wood taking its own weight, then a long binding creak.
 
@@ -541,6 +599,7 @@ def door_open(seed: int, f0: float, f1: float, k: float) -> np.ndarray:
 
     synth.place(out, impact(scaled(WOOD_LIGHT, 0.85 * k), 0.24, seed + 6, noise=0.3),
                 1.06, 0.42, SR)
+    out = _with_real(out, "hinge", seed, dur, band=(140.0, 6200.0), at=0.10, tame=0.6)
     return synth.highpass(out, 60.0, order=2, sr=SR)
 
 
@@ -565,6 +624,7 @@ def door_close(seed: int, k: float, firm: float) -> np.ndarray:
 
     settle = impact(scaled(WOOD_LIGHT, 0.9 * k), 0.14, seed + 5, noise=0.35)
     synth.place(out, settle, 0.58, 0.16, SR)
+    out = _with_real(out, "doorbody", seed, dur, band=(90.0, 7000.0), at=0.20, tame=0.6)
     return synth.highpass(out, 45.0, order=2, sr=SR)
 
 
@@ -608,6 +668,9 @@ def door_lock(seed: int, k: float) -> np.ndarray:
     synth.place(out, impact(scaled(LATCH, 0.8 * k), 0.05, seed + 7, noise=0.5,
                             noise_tau=0.0012), 0.52, 0.26, SR)
 
+    # Before the drive, so the saturation compresses the whole assembled bolt —
+    # the recording included — rather than leaving it sitting on top untouched.
+    out = _with_real(out, "bolt", seed, dur, band=(110.0, 8000.0), at=0.0, tame=0.0)
     out = synth.highpass(out, 38.0, order=2, sr=SR)
     # Drive, then a hard 35 ms cut. The drive is why the bolt out-reads the close it
     # follows (measured, not assumed — see verify_cost_ladder); the cut is why it

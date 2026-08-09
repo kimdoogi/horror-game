@@ -1,0 +1,472 @@
+{
+  "license": "CC0 1.0 (public-domain-equivalent, commercial use, no attribution required)",
+  "source": "USC Optical Sound Effects Library (archive.org/details/usc-sound-effect-archive)",
+  "source_note": "Red Library: first-generation copies of 1930s-40s nitrate optical sound effects collected by a Hollywood sound editor, donated to USC, transferred to tape by USC Cinema students in the early 1970s, digitised by Craig Smith (Academic Sound Coordinator, CalArts School of Film/Video) and uploaded to the Internet Archive by jscott@archive.org under CC0 1.0. Bandwidth is optical-era (99% of energy under ~5-8 kHz) and the transfers are unrestored — which is why these are a base layer under the generators' own high band, not a drop-in replacement.",
+  "verified": "2026-08-09 — licenseurl CC0 1.0 on every item, uploader jscott@archive.org (Internet Archive staff), collection usc-sound-effect-archive carries a written donation history",
+  "note": "Vendored so the gen_*.py generators rebuild without a network. These are trimmed single contacts, denoised and levelled; the untrimmed originals are at the source_url of each entry. Each generator falls back to fully-procedural if this directory is missing, so a clean checkout still builds.",
+  "rebuild": "tools/audio/.venv/bin/python tools/audio/fetch_sources.py",
+  "assets": [
+    {
+      "key": "carpet",
+      "source_item": "Red_Library_Footsteps_2",
+      "source_file": "R10-42-Muffled Steps on Floor or Stairs.wav",
+      "source_url": "https://archive.org/download/Red_Library_Footsteps_2/R10-42-Muffled%20Steps%20on%20Floor%20or%20Stairs.wav",
+      "source_item_url": "https://archive.org/details/Red_Library_Footsteps_2",
+      "source_sha1": "0ed58705ebc026958551afcf87bc762208f14167",
+      "source_seconds": 30.58,
+      "license": "CC0 1.0 (public-domain-equivalent, commercial use, no attribution required)",
+      "collection": "USC Optical Sound Effects Library (archive.org/details/usc-sound-effect-archive)",
+      "feeds": "step_carpet_* — a muffled contact, the hardest thing in the set to synthesise because almost nothing is left after the damping",
+      "extraction": {
+        "onsets_detected": 74,
+        "contacts_usable": 26,
+        "kept": 6,
+        "best_snr_db": 45.6,
+        "worst_kept_snr_db": 36.7,
+        "rejected": {
+          "short": 0,
+          "crowded": 0,
+          "quiet": 0,
+          "tonal": 12,
+          "slow": 36
+        },
+        "denoise_oversubtraction": 1.6,
+        "format": "48 kHz 16-bit PCM mono"
+      },
+      "files": [
+        {
+          "file": "carpet_01.wav",
+          "bytes": 38684,
+          "seconds": 0.4025,
+          "sha1": "7cec4113b307ec4fd8c8738d7147dd0099424ff5"
+        },
+        {
+          "file": "carpet_02.wav",
+          "bytes": 47084,
+          "seconds": 0.49,
+          "sha1": "7d2379afd72491f0969d01e20c4272d9dcafe712"
+        },
+        {
+          "file": "carpet_03.wav",
+          "bytes": 42524,
+          "seconds": 0.4425,
+          "sha1": "c193f94380c62ccf7a34764607ef69002d3f0e58"
+        },
+        {
+          "file": "carpet_04.wav",
+          "bytes": 43724,
+          "seconds": 0.455,
+          "sha1": "585ed32c9a04bf9e32654c3e1ec076a176debda9"
+        },
+        {
+          "file": "carpet_05.wav",
+          "bytes": 44444,
+          "seconds": 0.4625,
+          "sha1": "9a32d91ea929a6c356e5bab5ae0ee8e4a9988e5a"
+        },
+        {
+          "file": "carpet_06.wav",
+          "bytes": 35084,
+          "seconds": 0.365,
+          "sha1": "a96fe2d1fe7f032f91412a48a0a8e864fea40556"
+        }
+      ]
+    },
+    {
+      "key": "concrete",
+      "source_item": "Red_Library_Footsteps_4",
+      "source_file": "R27-45-Footsteps on Hard Surface.wav",
+      "source_url": "https://archive.org/download/Red_Library_Footsteps_4/R27-45-Footsteps%20on%20Hard%20Surface.wav",
+      "source_item_url": "https://archive.org/details/Red_Library_Footsteps_4",
+      "source_sha1": "ecc3eec9b59d9ef9146fb5dbb7a36f4e5cca4a19",
+      "source_seconds": 15.16,
+      "license": "CC0 1.0 (public-domain-equivalent, commercial use, no attribution required)",
+      "collection": "USC Optical Sound Effects Library (archive.org/details/usc-sound-effect-archive)",
+      "feeds": "step_concrete_{player_walk,player_run,monster_step}_01..04 — contact body",
+      "extraction": {
+        "onsets_detected": 36,
+        "contacts_usable": 26,
+        "kept": 6,
+        "best_snr_db": 52.6,
+        "worst_kept_snr_db": 49.2,
+        "rejected": {
+          "short": 0,
+          "crowded": 0,
+          "quiet": 0,
+          "tonal": 0,
+          "slow": 10
+        },
+        "denoise_oversubtraction": 1.6,
+        "format": "48 kHz 16-bit PCM mono"
+      },
+      "files": [
+        {
+          "file": "concrete_01.wav",
+          "bytes": 28364,
+          "seconds": 0.295,
+          "sha1": "11cb921d7149f1adf991aca93dcd875be61c241c"
+        },
+        {
+          "file": "concrete_02.wav",
+          "bytes": 32684,
+          "seconds": 0.34,
+          "sha1": "232569aea395fcf7352373de41ec4b93714e6f79"
+        },
+        {
+          "file": "concrete_03.wav",
+          "bytes": 31244,
+          "seconds": 0.325,
+          "sha1": "aa9c38702724b7e31a54383f950a317aa635ccc1"
+        },
+        {
+          "file": "concrete_04.wav",
+          "bytes": 31004,
+          "seconds": 0.3225,
+          "sha1": "5b429247a4eae2547857ed3d12d52579e4590a26"
+        },
+        {
+          "file": "concrete_05.wav",
+          "bytes": 30284,
+          "seconds": 0.315,
+          "sha1": "a11231dceccd303802206fcd7511f5e991850807"
+        },
+        {
+          "file": "concrete_06.wav",
+          "bytes": 32444,
+          "seconds": 0.3375,
+          "sha1": "ab2d551ec726314a57c7d98d6034bf23c823de7b"
+        }
+      ]
+    },
+    {
+      "key": "earth",
+      "source_item": "Red_Library_Footsteps_4",
+      "source_file": "R19-19-Slow Footsteps Deep Dirt.wav",
+      "source_url": "https://archive.org/download/Red_Library_Footsteps_4/R19-19-Slow%20Footsteps%20Deep%20Dirt.wav",
+      "source_item_url": "https://archive.org/details/Red_Library_Footsteps_4",
+      "source_sha1": "7ecc617a07e4ad8c65e04c5e3c2a483c93ecdc69",
+      "source_seconds": 24.54,
+      "license": "CC0 1.0 (public-domain-equivalent, commercial use, no attribution required)",
+      "collection": "USC Optical Sound Effects Library (archive.org/details/usc-sound-effect-archive)",
+      "feeds": "step_earth_* — the compression of a mass that answers as one body",
+      "extraction": {
+        "onsets_detected": 47,
+        "contacts_usable": 18,
+        "kept": 6,
+        "best_snr_db": 59.0,
+        "worst_kept_snr_db": 41.7,
+        "rejected": {
+          "short": 0,
+          "crowded": 0,
+          "quiet": 0,
+          "tonal": 1,
+          "slow": 28
+        },
+        "denoise_oversubtraction": 1.6,
+        "format": "48 kHz 16-bit PCM mono"
+      },
+      "files": [
+        {
+          "file": "earth_01.wav",
+          "bytes": 9644,
+          "seconds": 0.1,
+          "sha1": "e1eb4c75695ff6a25ab7b96ef0a69b0daf2e2494"
+        },
+        {
+          "file": "earth_02.wav",
+          "bytes": 45884,
+          "seconds": 0.4775,
+          "sha1": "d90482c11746e0729223401fb4f275410fc26a20"
+        },
+        {
+          "file": "earth_03.wav",
+          "bytes": 32444,
+          "seconds": 0.3375,
+          "sha1": "dba261af81820beb3c3d19dd0675b8f4e2869d24"
+        },
+        {
+          "file": "earth_04.wav",
+          "bytes": 25484,
+          "seconds": 0.265,
+          "sha1": "bf775657038c341a491fe32933fba72c360b75e3"
+        },
+        {
+          "file": "earth_05.wav",
+          "bytes": 29804,
+          "seconds": 0.31,
+          "sha1": "6a6148b1476b2b2877750237b6dd8bd04695c9a2"
+        },
+        {
+          "file": "earth_06.wav",
+          "bytes": 27644,
+          "seconds": 0.2875,
+          "sha1": "6cba69cfd358272072c40b92195ca94d07695016"
+        }
+      ]
+    },
+    {
+      "key": "gravel",
+      "source_item": "Red_Library_Footsteps_3",
+      "source_file": "R11-03-Walking on Gravel.wav",
+      "source_url": "https://archive.org/download/Red_Library_Footsteps_3/R11-03-Walking%20on%20Gravel.wav",
+      "source_item_url": "https://archive.org/details/Red_Library_Footsteps_3",
+      "source_sha1": "18b767a2f3ea58f8c167784d85ea88721d11c87e",
+      "source_seconds": 21.35,
+      "license": "CC0 1.0 (public-domain-equivalent, commercial use, no attribution required)",
+      "collection": "USC Optical Sound Effects Library (archive.org/details/usc-sound-effect-archive)",
+      "feeds": "step_gravel_* — the aggregate re-seating, which grain synthesis renders as a scatter with no substrate under it",
+      "extraction": {
+        "onsets_detected": 57,
+        "contacts_usable": 15,
+        "kept": 6,
+        "best_snr_db": 67.3,
+        "worst_kept_snr_db": 29.2,
+        "rejected": {
+          "short": 0,
+          "crowded": 0,
+          "quiet": 0,
+          "tonal": 2,
+          "slow": 40
+        },
+        "denoise_oversubtraction": 1.6,
+        "format": "48 kHz 16-bit PCM mono"
+      },
+      "files": [
+        {
+          "file": "gravel_01.wav",
+          "bytes": 9644,
+          "seconds": 0.1,
+          "sha1": "266f89468e0061e5ca8cb2704a3d456a76df1214"
+        },
+        {
+          "file": "gravel_02.wav",
+          "bytes": 14444,
+          "seconds": 0.15,
+          "sha1": "14896fa68239df73e795cf24b2f0089a6c4fc151"
+        },
+        {
+          "file": "gravel_03.wav",
+          "bytes": 9164,
+          "seconds": 0.095,
+          "sha1": "aaeb103620052919153b9406e45b054fcc0b8cee"
+        },
+        {
+          "file": "gravel_04.wav",
+          "bytes": 44204,
+          "seconds": 0.46,
+          "sha1": "6e09a4e421db9e55fb0ff6ab1da0950d049bf398"
+        },
+        {
+          "file": "gravel_05.wav",
+          "bytes": 23084,
+          "seconds": 0.24,
+          "sha1": "b73f98e28a3bd517c8f348c5ef794b14024b3b03"
+        },
+        {
+          "file": "gravel_06.wav",
+          "bytes": 22124,
+          "seconds": 0.23,
+          "sha1": "2a81beacbdc60c29ef65071f9824c7bcb19c2a41"
+        }
+      ]
+    },
+    {
+      "key": "metal",
+      "source_item": "Red_Library_Footsteps_4",
+      "source_file": "R11-41-Walking Up Metal Stairs.wav",
+      "source_url": "https://archive.org/download/Red_Library_Footsteps_4/R11-41-Walking%20Up%20Metal%20Stairs.wav",
+      "source_item_url": "https://archive.org/details/Red_Library_Footsteps_4",
+      "source_sha1": "1a5cda45ea527093c9cb6d18a26efa6ae2f3f87c",
+      "source_seconds": 28.33,
+      "license": "CC0 1.0 (public-domain-equivalent, commercial use, no attribution required)",
+      "collection": "USC Optical Sound Effects Library (archive.org/details/usc-sound-effect-archive)",
+      "feeds": "step_metal_* — contact body under the synthesised comb 울림",
+      "extraction": {
+        "onsets_detected": 60,
+        "contacts_usable": 25,
+        "kept": 6,
+        "best_snr_db": 49.0,
+        "worst_kept_snr_db": 39.7,
+        "rejected": {
+          "short": 0,
+          "crowded": 0,
+          "quiet": 0,
+          "tonal": 5,
+          "slow": 30
+        },
+        "denoise_oversubtraction": 1.6,
+        "format": "48 kHz 16-bit PCM mono"
+      },
+      "files": [
+        {
+          "file": "metal_01.wav",
+          "bytes": 35324,
+          "seconds": 0.3675,
+          "sha1": "628963d0b1fc9a2f272d867d33bd2456e72e3a59"
+        },
+        {
+          "file": "metal_02.wav",
+          "bytes": 6764,
+          "seconds": 0.07,
+          "sha1": "c1593e2a41cf9e87971280b75c501e135813547a"
+        },
+        {
+          "file": "metal_03.wav",
+          "bytes": 37964,
+          "seconds": 0.395,
+          "sha1": "02479427456935b0dafa3f8220d4ec92caa3e451"
+        },
+        {
+          "file": "metal_04.wav",
+          "bytes": 40364,
+          "seconds": 0.42,
+          "sha1": "f51098c81ee344e43e25e876609de91cc0c05929"
+        },
+        {
+          "file": "metal_05.wav",
+          "bytes": 31484,
+          "seconds": 0.3275,
+          "sha1": "cdc0852360fba25b676a60511fcbfbce26a8bbb8"
+        },
+        {
+          "file": "metal_06.wav",
+          "bytes": 35564,
+          "seconds": 0.37,
+          "sha1": "2780dcc2bc22ae92bdb6343c67dde38fb144a8e8"
+        }
+      ]
+    },
+    {
+      "key": "tile",
+      "source_item": "Red_Library_Footsteps_1",
+      "source_file": "R10-22-Shoes on Tile Floor.wav",
+      "source_url": "https://archive.org/download/Red_Library_Footsteps_1/R10-22-Shoes%20on%20Tile%20Floor.wav",
+      "source_item_url": "https://archive.org/details/Red_Library_Footsteps_1",
+      "source_sha1": "fd521a62842c040cf0e5f519f69577d4dab6072b",
+      "source_seconds": 52.86,
+      "license": "CC0 1.0 (public-domain-equivalent, commercial use, no attribution required)",
+      "collection": "USC Optical Sound Effects Library (archive.org/details/usc-sound-effect-archive)",
+      "feeds": "step_tile_* — contact body under the synthesised early reflections",
+      "extraction": {
+        "onsets_detected": 161,
+        "contacts_usable": 46,
+        "kept": 6,
+        "best_snr_db": 45.4,
+        "worst_kept_snr_db": 39.2,
+        "rejected": {
+          "short": 0,
+          "crowded": 0,
+          "quiet": 0,
+          "tonal": 19,
+          "slow": 96
+        },
+        "denoise_oversubtraction": 1.6,
+        "format": "48 kHz 16-bit PCM mono"
+      },
+      "files": [
+        {
+          "file": "tile_01.wav",
+          "bytes": 45404,
+          "seconds": 0.4725,
+          "sha1": "10864dbb0a92a187faaeaf5b049f91765314f2f8"
+        },
+        {
+          "file": "tile_02.wav",
+          "bytes": 15884,
+          "seconds": 0.165,
+          "sha1": "f3c5a31c3adcdb95c3d93a3e35cacf3f4655acb6"
+        },
+        {
+          "file": "tile_03.wav",
+          "bytes": 14924,
+          "seconds": 0.155,
+          "sha1": "caa05123191bae111cb364d08fd53488fadda629"
+        },
+        {
+          "file": "tile_04.wav",
+          "bytes": 25244,
+          "seconds": 0.2625,
+          "sha1": "2fc74e0939955addfa1752022bc0063dd8517a79"
+        },
+        {
+          "file": "tile_05.wav",
+          "bytes": 20924,
+          "seconds": 0.2175,
+          "sha1": "d5156b15c40c32d7c493b010936b8745d7db0c72"
+        },
+        {
+          "file": "tile_06.wav",
+          "bytes": 19004,
+          "seconds": 0.1975,
+          "sha1": "384e99eb7b7d9f23c8512984c23118dd37b47274"
+        }
+      ]
+    },
+    {
+      "key": "wood",
+      "source_item": "Red_Library_Footsteps_4",
+      "source_file": "R19-07-Footsteps on wood with Leather.wav",
+      "source_url": "https://archive.org/download/Red_Library_Footsteps_4/R19-07-Footsteps%20on%20wood%20with%20Leather.wav",
+      "source_item_url": "https://archive.org/details/Red_Library_Footsteps_4",
+      "source_sha1": "1c243c7c4213c46c4057cd8e6348c6984238f39f",
+      "source_seconds": 42.26,
+      "license": "CC0 1.0 (public-domain-equivalent, commercial use, no attribution required)",
+      "collection": "USC Optical Sound Effects Library (archive.org/details/usc-sound-effect-archive)",
+      "feeds": "step_wood_* — contact body under the synthesised 삐걱 stick-slip",
+      "extraction": {
+        "onsets_detected": 90,
+        "contacts_usable": 14,
+        "kept": 6,
+        "best_snr_db": 57.7,
+        "worst_kept_snr_db": 38.4,
+        "rejected": {
+          "short": 0,
+          "crowded": 0,
+          "quiet": 0,
+          "tonal": 41,
+          "slow": 35
+        },
+        "denoise_oversubtraction": 1.6,
+        "format": "48 kHz 16-bit PCM mono"
+      },
+      "files": [
+        {
+          "file": "wood_01.wav",
+          "bytes": 13964,
+          "seconds": 0.145,
+          "sha1": "d1c88625628cc95fa938c5bdbd725fe63cb38109"
+        },
+        {
+          "file": "wood_02.wav",
+          "bytes": 17084,
+          "seconds": 0.1775,
+          "sha1": "828704ab6ee9a9c239ce35826f13c249d5820ec2"
+        },
+        {
+          "file": "wood_03.wav",
+          "bytes": 28604,
+          "seconds": 0.2975,
+          "sha1": "52420e4a786ddb637931c94a67e06929fbad9157"
+        },
+        {
+          "file": "wood_04.wav",
+          "bytes": 29804,
+          "seconds": 0.31,
+          "sha1": "4e82c8229d593b183b87b594bccbd33f3ea60f02"
+        },
+        {
+          "file": "wood_05.wav",
+          "bytes": 22364,
+          "seconds": 0.2325,
+          "sha1": "587f8d07c89b15690c07a8d2b6fc00a83881777b"
+        },
+        {
+          "file": "wood_06.wav",
+          "bytes": 32204,
+          "seconds": 0.335,
+          "sha1": "62eb912403b7f8c6e286e14a9e862ed85b62d9b6"
+        }
+      ]
+    }
+  ]
+}

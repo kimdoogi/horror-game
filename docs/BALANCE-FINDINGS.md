@@ -69,7 +69,40 @@ entry must be updated in the same commit.
 ## F-002 · The Listener's HUD contradicts the player's ears through a wall
 
 **Sections:** §04 (청음사) × §12 (바닥 재질) · **Priority:** 🔴 blocking — the role
-misinforms the player · **Status:** open
+misinforms the player · **Status:** open, **halved 2026-08-09**
+
+> 🟡 **Halved from the audio side, 2026-08-09 — one of the three inversions no longer
+> reproduces and the other two shrank by 14.7 dB each.** The CC0 footstep pass gave
+> gravel something it never had: energy below 1.9 kHz. Its synthesised `band` started
+> at 1900 Hz, so through a 600 Hz low-pass the surface had *literally zero* signal —
+> that absence, not a mixing choice, is what made it 32 dB quieter than concrete.
+> A 320–620 Hz substrate taken from the real recording (USC Red Library `R11-03`)
+> gives the aggregate the body a real gravel bed has. Measured:
+>
+> | pair | before | after |
+> |---|--:|--:|
+> | gravel vs concrete | 32.5 dB | **17.8 dB** |
+> | gravel vs earth | 28.5 dB | **13.8 dB** |
+> | gravel vs carpet | 12.2 dB | **no longer inverted** |
+>
+> `gravel vs carpet` is deleted from `tools/ci/audio_baseline.json` in the same commit,
+> as that gate requires. The §12 dry alphabet still passes with margin (worst pair
+> 1.50× → 1.44× against a 1.40× floor).
+>
+> **What it cost, stated plainly.** Occluded separation at 800 Hz — exactly
+> `AudioTuning.ListenerChannelOcclusionFloorHz` — fell from 1.377× to 1.137× (worst
+> pair now metal vs gravel). That row was already failing before the change. The trade
+> is binary: gravel's occluded centroid has to land ≤381 Hz or ≥1473 Hz to clear
+> metal/water/tile, and no substrate value reaches either without breaking dry
+> separation. It is kept because the audit itself classes the occluded row as a
+> **warning** whose answer "has to be in the Unity mix (occlusion filter strength, 3D
+> rolloff)", while the inversions above are **blocking defects** — and those went 3 → 2.
+> To revert, set `substrate=0.0` on the gravel `Surface` in `gen_footsteps.py` and
+> rebuild; one line, nothing else changes.
+>
+> This does not close F-002. Option 1 below — clarity as a function of occlusion rather
+> than a constant — is still the decision this finding is waiting on, and it is still
+> the designer's. The audio side has now done what the audio side can.
 
 ### What disagrees
 

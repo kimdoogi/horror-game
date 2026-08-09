@@ -1,0 +1,196 @@
+{
+  "license": "CC0 1.0 (public-domain-equivalent, commercial use, no attribution required)",
+  "source": "USC Optical Sound Effects Library (archive.org/details/usc-sound-effect-archive)",
+  "source_note": "Red Library: first-generation copies of 1930s-40s nitrate optical sound effects collected by a Hollywood sound editor, donated to USC, transferred to tape by USC Cinema students in the early 1970s, digitised by Craig Smith (Academic Sound Coordinator, CalArts School of Film/Video) and uploaded to the Internet Archive by jscott@archive.org under CC0 1.0. Bandwidth is optical-era (99% of energy under ~5-8 kHz) and the transfers are unrestored — which is why these are a base layer under the generators' own high band, not a drop-in replacement.",
+  "verified": "2026-08-09 — licenseurl CC0 1.0 on every item, uploader jscott@archive.org (Internet Archive staff), collection usc-sound-effect-archive carries a written donation history",
+  "note": "Vendored so the gen_*.py generators rebuild without a network. These are trimmed single contacts, denoised and levelled; the untrimmed originals are at the source_url of each entry. Each generator falls back to fully-procedural if this directory is missing, so a clean checkout still builds.",
+  "rebuild": "tools/audio/.venv/bin/python tools/audio/fetch_sources.py",
+  "assets": [
+    {
+      "key": "bolt",
+      "source_item": "Red_Library_Doors",
+      "source_file": "R09-44-Unlocking a Door.wav",
+      "source_url": "https://archive.org/download/Red_Library_Doors/R09-44-Unlocking%20a%20Door.wav",
+      "source_item_url": "https://archive.org/details/Red_Library_Doors",
+      "source_sha1": "349b6300849a08154a18b3cb5e64228b20629c7f",
+      "source_seconds": 20.43,
+      "license": "CC0 1.0 (public-domain-equivalent, commercial use, no attribution required)",
+      "collection": "USC Optical Sound Effects Library (archive.org/details/usc-sound-effect-archive)",
+      "feeds": "door_lock_01..02 — §04's Engineer closing a §12 순환로. The mechanism noise before the bolt is a dozen small metal parts, which is a texture rather than a set of clicks",
+      "extraction": {
+        "onsets_detected": 50,
+        "contacts_usable": 21,
+        "kept": 6,
+        "best_snr_db": 44.9,
+        "worst_kept_snr_db": 38.8,
+        "rejected": {
+          "short": 0,
+          "crowded": 1,
+          "quiet": 0,
+          "tonal": 3,
+          "slow": 25
+        },
+        "denoise_oversubtraction": 1.6,
+        "format": "48 kHz 16-bit PCM mono"
+      },
+      "files": [
+        {
+          "file": "bolt_01.wav",
+          "bytes": 30284,
+          "seconds": 0.315,
+          "sha1": "077f7138869a9e4f396cf8ef1ee4bd03577234ef"
+        },
+        {
+          "file": "bolt_02.wav",
+          "bytes": 18044,
+          "seconds": 0.1875,
+          "sha1": "88e2445f6a523001c60233fe24a8f4762803da67"
+        },
+        {
+          "file": "bolt_03.wav",
+          "bytes": 22364,
+          "seconds": 0.2325,
+          "sha1": "de8bd46e2c2962169af4d4c0edda11f101072d7c"
+        },
+        {
+          "file": "bolt_04.wav",
+          "bytes": 22604,
+          "seconds": 0.235,
+          "sha1": "94c5c772802f767dd69f44e97b718e47d7c224b1"
+        },
+        {
+          "file": "bolt_05.wav",
+          "bytes": 23084,
+          "seconds": 0.24,
+          "sha1": "f4489193fcf4c325ff27727eb3becd56cfffe560"
+        },
+        {
+          "file": "bolt_06.wav",
+          "bytes": 48764,
+          "seconds": 0.5075,
+          "sha1": "fde707a3f2f4d2a908880c7cbbe4627b923bd827"
+        }
+      ]
+    },
+    {
+      "key": "doorbody",
+      "source_item": "Red_Library_Doors",
+      "source_file": "R09-24-Doors Being Opened and Shut.wav",
+      "source_url": "https://archive.org/download/Red_Library_Doors/R09-24-Doors%20Being%20Opened%20and%20Shut.wav",
+      "source_item_url": "https://archive.org/details/Red_Library_Doors",
+      "source_sha1": "42d6a8fdba316e0d1da328ea52e67088fcecf3a2",
+      "source_seconds": 16.74,
+      "license": "CC0 1.0 (public-domain-equivalent, commercial use, no attribution required)",
+      "collection": "USC Optical Sound Effects Library (archive.org/details/usc-sound-effect-archive)",
+      "feeds": "door_close_01..02 — the leaf, the strike plate and the frame answering as one object rather than as three placed impacts",
+      "extraction": {
+        "onsets_detected": 21,
+        "contacts_usable": 9,
+        "kept": 6,
+        "best_snr_db": 49.8,
+        "worst_kept_snr_db": 31.4,
+        "rejected": {
+          "short": 1,
+          "crowded": 1,
+          "quiet": 0,
+          "tonal": 2,
+          "slow": 8
+        },
+        "denoise_oversubtraction": 1.5,
+        "format": "48 kHz 16-bit PCM mono"
+      },
+      "files": [
+        {
+          "file": "doorbody_01.wav",
+          "bytes": 29084,
+          "seconds": 0.3025,
+          "sha1": "1bc3395ba34a9627a1c6b5b43077643cee62e080"
+        },
+        {
+          "file": "doorbody_02.wav",
+          "bytes": 55004,
+          "seconds": 0.5725,
+          "sha1": "ac123450b6488375603a062064b65f255d193963"
+        },
+        {
+          "file": "doorbody_03.wav",
+          "bytes": 47324,
+          "seconds": 0.4925,
+          "sha1": "37b9c53fc9bffdbe85e0ca447ef1d7e12bfe1e3e"
+        },
+        {
+          "file": "doorbody_04.wav",
+          "bytes": 43244,
+          "seconds": 0.45,
+          "sha1": "881e53c826373a4a50e02ad1e8dc6b681e263253"
+        },
+        {
+          "file": "doorbody_05.wav",
+          "bytes": 30044,
+          "seconds": 0.3125,
+          "sha1": "611e714a486fbf01ea62b876e3d653f078ee7949"
+        },
+        {
+          "file": "doorbody_06.wav",
+          "bytes": 41084,
+          "seconds": 0.4275,
+          "sha1": "b9b924144d507aa7ae39e22ce8e8146aa6b4216d"
+        }
+      ]
+    },
+    {
+      "key": "hinge",
+      "source_item": "Red_Library_Doors",
+      "source_file": "R18-51-Door Hinge Squeaks.wav",
+      "source_url": "https://archive.org/download/Red_Library_Doors/R18-51-Door%20Hinge%20Squeaks.wav",
+      "source_item_url": "https://archive.org/details/Red_Library_Doors",
+      "source_sha1": "1b201b48ad2c1474d376c0cc8a57fdf10901371a",
+      "source_seconds": 11.94,
+      "license": "CC0 1.0 (public-domain-equivalent, commercial use, no attribution required)",
+      "collection": "USC Optical Sound Effects Library (archive.org/details/usc-sound-effect-archive)",
+      "feeds": "door_open_01..02 — the binding creak. `hinge_creak` models it as a modulated sweep, which is the mechanism and not the sound: a hinge squeals because it is repeatedly seizing, and the pitch jumps rather than glides",
+      "extraction": {
+        "onsets_detected": 12,
+        "contacts_usable": 4,
+        "kept": 4,
+        "best_snr_db": 42.2,
+        "worst_kept_snr_db": 16.6,
+        "rejected": {
+          "short": 3,
+          "crowded": 0,
+          "quiet": 0,
+          "tonal": 1,
+          "slow": 4
+        },
+        "denoise_oversubtraction": 1.4,
+        "format": "48 kHz 16-bit PCM mono"
+      },
+      "files": [
+        {
+          "file": "hinge_01.wav",
+          "bytes": 72284,
+          "seconds": 0.7525,
+          "sha1": "1399f89ad0a00963935dc37de0b50393116dd965"
+        },
+        {
+          "file": "hinge_02.wav",
+          "bytes": 55964,
+          "seconds": 0.5825,
+          "sha1": "223afd5d73b76f75a07a9f82623e7873cb50a0cf"
+        },
+        {
+          "file": "hinge_03.wav",
+          "bytes": 66764,
+          "seconds": 0.695,
+          "sha1": "468e45d0cdea98e9237fdf36d33c37546b7d88f3"
+        },
+        {
+          "file": "hinge_04.wav",
+          "bytes": 119324,
+          "seconds": 1.2425,
+          "sha1": "8a09e14f132ded838290f45081cbb275962c1895"
+        }
+      ]
+    }
+  ]
+}

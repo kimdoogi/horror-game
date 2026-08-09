@@ -69,6 +69,30 @@ what makes a horror game feel cheap, and worse here: a machine-gun-identical
 step reads as a looping sound cue rather than as a creature walking, which is
 exactly the information §04 asks the Listener to extract.
 
+Where the sound starts, since 2026-08-09
+---------------------------------------
+The contact itself is now a **real recording** where one is vendored: a CC0
+field recording of a foot on that material, sliced to a single contact,
+denoised, and put into the actor's register by `source_bank`. Everything after
+the contact is unchanged and still synthesised — the heel-toe roll, the
+monster's tick and drag and sub, wood's creak, metal's comb, tile's early
+reflections, the per-surface band and tilt, the per-variant jitter, the loudness
+landing. See `Surface.real_amount` for how much of each surface is which, and
+`fetch_sources.py` for where the recordings come from and why that source.
+
+The reason is narrow and worth stating: `synth.modal_impact` is an excellent
+model of one resonant body being struck and a poor model of a *foot*, which is
+two contacts of different hardness arriving a few milliseconds apart onto a
+floor that is itself sitting on something else. That last part is the one that
+mattered — see `F-002` in `docs/BALANCE-FINDINGS.md`, where gravel measured 32 dB
+quieter than concrete through a wall because a synthesised scatter has no
+substrate under it to transmit anything below 1900 Hz. A recording of a boot on
+gravel does, because the gravel was on ground.
+
+If `tools/audio/source/` is absent this file still builds all 96 clips, fully
+procedurally, and prints one line per missing surface saying so. The generator
+is the source of truth; the recordings are a layer inside it.
+
 Determinism: every random draw comes from a seed derived by CRC32 from the
 clip's own name, so a rebuild produces byte-identical files. `hash()` is
 deliberately not used — Python randomises string hashing per process.
@@ -86,6 +110,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import source_bank  # noqa: E402
 import synth  # noqa: E402
 from synth import Mode  # noqa: E402
 
@@ -339,6 +364,84 @@ class Surface:
     level_db: float = 0.0
     """Per-surface loudness trim. Gravel absorbs; tile slaps."""
 
+    real_amount: float = 0.0
+    """How much of the vendored recording of this material sits under the
+    synthesised contact, as a fraction of the synthesised body's peak.
+
+    Not one global number, because the two halves are good at different things
+    per material and the separation matrix is what pays for getting it wrong:
+
+    * **High (gravel, earth, carpet, water).** These are the four surfaces whose
+      body is an aggregate rather than a resonator. `modal_impact` has nothing
+      to model — hence `grains`, `grit` and `sheet`, which are scatters of
+      synthetic clicks. A scatter is a decent imitation of the *texture* and a
+      poor one of the *mass*: it has no substrate, no compression, and its
+      envelope is statistically flat where a real one is not.
+    * **Low (tile, metal).** These two are exactly what modal synthesis is for,
+      and both carry a designed acoustic on top — tile's early reflections and
+      metal's comb — that a recording of *someone else's* stairwell fights
+      rather than supports. The recording is here for the contact transient
+      only, which is why it sits well under the modal body.
+
+    Zero disables the base layer for that surface without touching the bank."""
+
+    real_hp: float = 0.0
+    """A high-pass on the recording before it is blended in, in Hz.
+
+    Distinct from `band` on purpose. `band` is applied to the finished step and
+    defines the material; this one only removes what the *recording* brought and
+    the material should not have — chiefly the room the recordist was standing
+    in. Left at 0 the surface's own band edge does the work."""
+
+    substrate: float = 0.0
+    """The recording's energy *below* this surface's band, added back after the
+    band has been applied, as a fraction of the finished clip's RMS.
+
+    The floor is not the only thing a foot hits. It hits the floor, and the floor
+    hits whatever it is resting on, and that second contact radiates far lower
+    than the first — which is why `band` is a description of the *material* and
+    not of the whole event. For seven surfaces this costs nothing, because their
+    band already reaches low enough to keep it. Gravel's does not: `band` starts
+    at 1900 Hz, so everything the ground under the stones transmitted is
+    high-passed away, and F-002 in `docs/BALANCE-FINDINGS.md` is the bill for
+    that — through a wall, which is exactly where §04 says the Listener works,
+    gravel measured 32 dB quieter than concrete while `GameConstants` promises
+    the player the opposite.
+
+    Synthesis could not answer that honestly, because there was nothing to model:
+    `build_grains` is a scatter of clicks with no mass underneath it. A recording
+    of a boot on gravel has one — 20% of its energy sits below 120 Hz, because
+    the gravel was on ground — and this field is what lets that through.
+
+    Sized by measurement rather than taste. The §12 centroid margin between
+    gravel and water is what pays for it, and section [2] of this file's output
+    is where the bill arrives."""
+
+    substrate_hz: float = 0.0
+    """Upper corner for the substrate. Defaults to the surface's band floor."""
+
+    substrate_lo: float = 0.0
+    """Lower corner for the substrate, in Hz. Below 34 Hz is always removed.
+
+    Worth a paragraph, because the naive setting of this field is 0 and the naive
+    setting is wrong twice over.
+
+    F-002 is measured as **A-weighted** energy through a low-pass, which is the
+    right way to measure it — the question the finding asks is what a player can
+    hear through a wall, not what a spectrum analyser can see. A-weighting is
+    -19 dB at 100 Hz and -3 dB at 500 Hz, so a substrate placed at the bottom of
+    the recording pays roughly 16 dB for nothing.
+
+    It also costs the most where the game can least afford it. The §12 alphabet
+    is re-measured through the same wall, and gravel's occluded centroid is what
+    a substrate drags down: the lower the substrate sits, the further it drags.
+    Filling 320-620 Hz instead of 34-1900 Hz buys the same audibility for a
+    fraction of the centroid, because it is nearer the energy it is being
+    averaged against.
+
+    Both effects point the same way, which is the only reason this is a band and
+    not a shelf."""
+
     def pitch(self, a: "Actor") -> float:
         """This surface's effective frequency scale for a given actor."""
         return 1.0 + self.pitch_follow * (a.pitch - 1.0)
@@ -366,6 +469,7 @@ SURFACES: Tuple[Surface, ...] = (
         drag_reach=0.88,
         strike_spread=0.065,
         level_db=-1.5,
+        real_amount=1.05,
     ),
     # A 나무 — 삐걱. Low-mid body, moderate decay, plus the creak.
     Surface(
@@ -391,6 +495,7 @@ SURFACES: Tuple[Surface, ...] = (
         drag_reach=0.78,
         strike_spread=0.050,
         level_db=-1.0,
+        real_amount=1.1,
     ),
     # 계단 금속 — 울림. Strong high modes, long decay, comb-filtered structure.
     Surface(
@@ -422,6 +527,7 @@ SURFACES: Tuple[Surface, ...] = (
         drag_reach=0.50,
         strike_spread=0.035,
         level_db=-0.5,
+        real_amount=0.42,
     ),
     # B 타일 — 딱딱, 반향. Bright, long ring, and a real room slap.
     Surface(
@@ -455,6 +561,7 @@ SURFACES: Tuple[Surface, ...] = (
         drag_reach=0.78,
         strike_spread=0.026,
         level_db=0.0,
+        real_amount=0.4,
     ),
     # C 자갈 — 부스럭. Broadband, no pitch, granular. The brightest.
     Surface(
@@ -479,6 +586,10 @@ SURFACES: Tuple[Surface, ...] = (
         sub_scale=0.07,
         pitch_follow=0.30,
         level_db=-2.0,
+        real_amount=1.65,
+        substrate=0.16,
+        substrate_lo=320.0,
+        substrate_hz=620.0,
     ),
     # 침수 — 첨벙. §04 clarity 1.00: the loudest floor in the building, and the
     # only one that cannot be crossed quietly at any speed. Three gestures in one
@@ -542,6 +653,7 @@ SURFACES: Tuple[Surface, ...] = (
         drag_scale=1.25,
         strike_spread=0.030,
         level_db=2.0,
+        real_amount=0.0,  # see the note on Surface.real_amount — water stays synthetic
     ),
     # 파헤쳐진 흙 — 퍽. §04 clarity 0.40, under concrete. The only surface in the
     # set built from a body *and* a scatter: see Surface.grit.
@@ -573,6 +685,7 @@ SURFACES: Tuple[Surface, ...] = (
         drag_scale=0.85,
         strike_spread=0.070,
         level_db=-4.0,
+        real_amount=1.6,
     ),
     # 카펫 — §04 clarity 0.22, below even an unassigned floor. The quietest and
     # darkest surface in the game, and deliberately so: §04's blind spot has to be
@@ -623,6 +736,7 @@ SURFACES: Tuple[Surface, ...] = (
         # and 콘크리트's -26.5, so the Listener's channel does not merely get worse
         # here, it runs out.
         level_db=-12.0,
+        real_amount=1.7,
     ),
 )
 
@@ -910,6 +1024,93 @@ def build_sub(a: Actor, s: Surface, seed: int, seconds: float) -> np.ndarray:
     return synth.place(canvas, synth.normalize(body, 0.0), 0.0)
 
 
+mix_real = source_bank.mix_real
+spectral_tilt = source_bank.spectral_tilt
+band_centroid = source_bank.band_centroid
+match_centroid = source_bank.match_centroid
+"""Shared with `gen_ambience.py`, which needs the same guarantee for its drips.
+See `source_bank.match_centroid` — the short version is that a recording is not
+allowed to bring its own spectral balance, because §12's alphabet is written in
+exactly that and eight microphone positions land far closer together than eight
+designed materials do."""
+
+
+def build_real(
+    s: Surface, a: Actor, tag: Tuple[object, ...], seconds: float, body: np.ndarray
+) -> Optional[np.ndarray]:
+    """The vendored contact for this surface, in this actor's register.
+
+    `body` is the synthesised contact it is about to join, and is used only as
+    the spectral target — see `match_centroid`.
+
+    Returns `None` when the surface has no bank or has `real_amount` at zero, in
+    which case `build_step` proceeds exactly as it did before any of this
+    existed.
+    """
+    if s.real_amount <= 0.0:
+        return None
+    real = source_bank.pick(
+        "footsteps", s.key, seed_for("real", *tag), seconds, pitch=s.pitch(a)
+    )
+    if real is None:
+        return None
+
+    low = s.band[0] * s.pitch(a)
+    high = min(s.band[1] * s.pitch(a), 0.94 * 0.5 * synth.SAMPLE_RATE)
+    if s.real_hp > 0.0:
+        real = synth.highpass(real, s.real_hp * s.pitch(a), order=2)
+    real = band_shape(real, low, high)
+    real = match_centroid(real, band_centroid(body, low, high), low, high)
+
+    # A run lands harder and shorter than the walk these were recorded as, and
+    # the monster harder still. Sharpening the recording's own envelope is what
+    # makes one bank serve three actors without three recordings: it is the same
+    # contact, hit with more force.
+    if a.noise > 1.0:
+        env = synth.exp_decay(seconds, max(0.02, 0.16 / a.noise))
+        real = real * (0.55 + 0.45 * env[: len(real)])
+
+    # The recording has to finish inside the clip length the *material* asks for,
+    # and it does not know that length — `Surface.seconds` is a design decision
+    # (concrete is over before tile has started to ring, and the Listener uses
+    # that) while the recording just runs until the recordist's floor stopped.
+    # Truncation is not an option: TAIL_HEADROOM_DB exists because a decay cut
+    # off mid-level reads as the audio being switched off, and earth's recording
+    # was ending the clip at -25 dB against a -32 dB requirement. A raised-cosine
+    # over the last third lands it decayed instead of gated.
+    return taper_tail(real)
+
+
+taper_tail = source_bank.taper_tail
+"""Raised-cosine over the tail, so a recording finishes inside the clip length
+`Surface.seconds` asks for. TAIL_HEADROOM_DB is the assertion that made this
+necessary: earth's recording was ending its clip at -25 dB against a -32 dB
+requirement, because a recording does not know how long it is allowed to be."""
+
+
+def build_substrate(
+    s: Surface, a: Actor, tag: Tuple[object, ...], seconds: float
+) -> Optional[np.ndarray]:
+    """What the ground under this floor transmitted, taken from the recording.
+
+    Deliberately the *same* slice `build_real` used — same seed, same contact —
+    because this is not a second sound, it is the low half of the one sound the
+    band split off. Reading it from a different contact would put a thump under a
+    footstep that did not make it.
+    """
+    if s.substrate <= 0.0:
+        return None
+    raw = source_bank.pick(
+        "footsteps", s.key, seed_for("real", *tag), seconds, pitch=s.pitch(a)
+    )
+    if raw is None:
+        return None
+    corner = (s.substrate_hz or s.band[0]) * s.pitch(a)
+    low = synth.lowpass(raw, corner, order=4)
+    low = synth.highpass(low, max(34.0, s.substrate_lo * s.pitch(a)), order=2)
+    return taper_tail(low, 0.40)
+
+
 # ── The step ────────────────────────────────────────────────────────────────
 
 
@@ -956,6 +1157,20 @@ def build_step(s: Surface, a: Actor, variant: int) -> Tuple[np.ndarray, float]:
                 band=s.grit_band,
             )
             acc = blend(acc, grit, s.grit * float(g.uniform(0.82, 1.22)))
+
+    # ── the recording ───────────────────────────────────────────────────────
+    # Placed here, between the contact body and everything that decorates it, so
+    # the whole rest of the file still applies on top: the heel-toe roll, the
+    # monster's tick and drag, the creak, the comb, the reflections, the band,
+    # the tilt and the loudness landing all treat the combination as the contact.
+    #
+    # It goes in at the surface's *own* pitch scale, not the actor's raw one:
+    # `Surface.pitch` is what keeps gravel from following the monster down a
+    # sixth, and a recording that ignored it would drag gravel's centroid into
+    # tile's on monster steps — the exact failure `pitch_follow` exists to stop.
+    real = build_real(s, a, tag, seconds, acc)
+    if real is not None:
+        acc = mix_real(acc, real, s.real_amount * float(g.uniform(0.88, 1.14)))
 
     # ── second contact: the heel-toe roll of a walk, or the monster's tick ───
     if a.heel_toe is not None:
@@ -1039,6 +1254,13 @@ def build_step(s: Surface, a: Actor, variant: int) -> Tuple[np.ndarray, float]:
     acc = band_shape(acc, s.band[0] * s.pitch(a), s.band[1] * s.pitch(a))
     if s.tilt_gain > 0.0:
         acc = blend(acc, synth.resonator(acc, s.tilt_hz * s.pitch(a), q=s.tilt_q), s.tilt_gain)
+
+    # After the band, on purpose — the point of the substrate is that it lives
+    # below the material's own band and the band would otherwise delete it.
+    # See Surface.substrate, and F-002.
+    sub = build_substrate(s, a, tag, seconds)
+    if sub is not None:
+        acc = mix_real(acc, sub, s.substrate * float(g.uniform(0.90, 1.12)))
 
     # Final DC guard. Sub-thumps and summed noise both bias the waveform, and
     # assert_usable is strict about it for good reason: inaudible, and it eats

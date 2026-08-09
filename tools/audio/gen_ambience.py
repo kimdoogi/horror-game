@@ -141,6 +141,7 @@ from typing import Callable, Sequence
 import numpy as np
 from scipy.ndimage import uniform_filter1d
 
+import source_bank
 import synth as S
 
 # ── Output ──────────────────────────────────────────────────────────────────
@@ -227,6 +228,31 @@ not an event — but sharp enough to notice in a dark, quiet mix."""
 
 CREAK_PEAK_DB = -12.0
 """Distant by definition. Quieter still, and rolled off up top."""
+
+DRIP_REAL_AMOUNT = 0.85
+"""How much of a drip is a recording, as a fraction of the synthesised body's
+energy. See `source_bank.mix_real`.
+
+High, because the synthesis is right about the *tell* and wrong about the
+*place*. `_drip` gets the rising chirp — the Minnaert collapse — exactly right,
+and that is the part that says "water". What it cannot produce is the cavity: a
+real drip in a basement is one droplet plus the specific irregular splatter of
+the pool it landed in plus the small hard room around it, and none of those is a
+sum of three decaying oscillators. §03's worked clue is literally 그것은 물이
+있는 층에 있다, so this clip is information, and information is exactly the thing
+a listener stops trusting when it sounds synthetic."""
+
+CREAK_REAL_AMOUNT = 1.30
+"""How much of a distant creak is a recording.
+
+The highest ratio anywhere in this pass, because stick-slip is the one gesture in
+the whole game that synthesis cannot honestly reach. `_creak` models it as a
+swept impulse train through resonant modes, which is the correct mechanism and
+still sounds like a mechanism: the pitch of a real creak wanders because the
+wood is repeatedly failing to slide, and that wander is not a rate parameter, it
+is chaos. §06 gives the monster silence in 정지 and these clips are what has to
+fill it — the failure mode is not "unconvincing creak", it is the player reading
+the silence as the audio having dropped out."""
 
 HUM_PEAK_DB = -12.0
 """Positional and continuous. Steady sounds sit well under transients."""
@@ -570,6 +596,25 @@ def _drip(seed: int, f0: float, f1: float, tau: float, seconds: float,
         second = S.sweep(f0 * 0.86, s_f1, s_dur, log=True, sr=sr) \
             * S.exp_decay(s_dur, s_tau, sr)
         S.place(out, second.astype(np.float32) * 0.55, echo_at, sr=sr)
+
+    # The real cavity, under the synthesised droplet. Band-limited to the drip's
+    # own register first so the recording brings its splatter and its room and
+    # not its own pitch — the rising chirp above is what makes this read as water
+    # and it has to stay the loudest idea in the clip. See DRIP_REAL_AMOUNT.
+    real = source_bank.pick("ambience", "drip", seed + 7717, seconds, pitch=f0 / 900.0)
+    if real is not None:
+        lo, hi = max(150.0, f0 * 0.45), min(0.45 * sr, f1 * 6.0)
+        real = S.bandpass(real, lo, hi, sr=sr)
+        # Matched to the synthesised droplet's own centroid, for the same reason
+        # gen_footsteps matches its surfaces: four drips are four *pitches* here
+        # (505 / 820 / 1180 / 1390 Hz f0) and one recording dropped into all four
+        # overwrites that with its own. Measured before this line existed, drip 1
+        # and drip 4 went from 2.11x apart to 1.14x — two clips that had been
+        # obviously different became the same sound twice.
+        real = source_bank.match_centroid(real, source_bank.band_centroid(out, lo, hi),
+                                          lo, hi)
+        out = source_bank.mix_real(out, source_bank.taper_tail(real, 0.30),
+                                   DRIP_REAL_AMOUNT)
 
     out = S.normalize(S.highpass(out, 120.0, sr=sr), 0.0)
     return S.concat(S.silence(DRIP_LEAD_S, sr), out)
@@ -1834,7 +1879,30 @@ def main(only: Sequence[str] | None = None) -> int:
         # attenuate. §06's 정지 state is what these are really for: when the
         # monster stops it makes no sound at all, and the building has to keep
         # being audible or the silence reads as a bug instead of a threat.
-        return S.lowpass(S.mix(body, S.lowpass(g, groan * 4.0), gains=[1.0, 0.34]), lp)
+        dry = S.mix(body, S.lowpass(g, groan * 4.0), gains=[1.0, 0.34])
+
+        # The recording of an actual failing joint, under the modelled one. It is
+        # pitched into this creak's register by the ratio of the fundamental
+        # mode, so five clips built from one bank are five different pieces of
+        # timber rather than one played five times. See CREAK_REAL_AMOUNT.
+        real = source_bank.pick("ambience", "creak", seed + 9931, dur,
+                                pitch=modes[0][0] / 130.0)
+        if real is not None:
+            real = S.bandpass(real, 70.0, lp, sr=SR)
+            # Same guard the drips and the footsteps use. Here it protects the
+            # *distance*: these five differ by how far away the building is
+            # creaking, which is expressed as `lp`, and a recording made two
+            # metres from the joint arrives brighter than any of them. Unmatched,
+            # creaks 3 and 5 measured 1.6-1.7x brighter than designed, which is
+            # the same clip moving closer.
+            real = source_bank.match_centroid(
+                real, source_bank.band_centroid(dry, 70.0, lp), 70.0, lp)
+            dry = source_bank.mix_real(dry, source_bank.taper_tail(real, 0.28),
+                                       CREAK_REAL_AMOUNT)
+
+        # Distance is a low-pass, applied last so it also removes whatever top
+        # end the recording brought from being two metres from the microphone.
+        return S.lowpass(dry, lp)
 
     for i, spec in enumerate(creaks, start=1):
         emit_oneshot("creaks", f"sfx_creak_distant_{i:02d}.wav",
