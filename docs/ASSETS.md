@@ -1,16 +1,25 @@
 # ASSETS — what exists, what it is for, and how to rebuild it
 
-Everything in `Assets/Audio` and `Assets/Models` is **procedurally generated** from the
-scripts in `tools/`, with **two third-party families, both added 2026-08-09**: (1) the
-runner's eight animation clips are Adobe Mixamo mocap, retargeted onto the
-procedurally-built 13-bone rig; (2) six zone wall/floor materials in `Assets/Textures`
-now carry a **CC0 photo-scan base layer** under `gen_textures.py`'s own procedural grime,
-§3.8c wet and §3.9 grain. In both cases the geometry, rig and every procedural pass are
-still 100 % generated; only the pose curves (Mixamo) and the base albedo/normal/rough
-(CC0 scans) are third-party. §13 ships this on Steam and an asset of unclear provenance is
-a legal problem rather than a mixing problem — so the provenance is recorded in full
-below. Mixamo's licence (free for commercial use in a game, no attribution required) and
-CC0 1.0 (public-domain-equivalent, commercial use, no attribution required) both cover it.
+Everything here is still **built by the scripts in `tools/`**, but as of **2026-08-09** the
+generators no longer start from nothing. Five third-party families now sit underneath
+them, all landed that day:
+
+1. the runner's eight animation clips are **Adobe Mixamo mocap**, retargeted onto the
+   procedurally-built **17-bone** rig;
+2. six zone wall/floor materials carry a **CC0 photo-scan base** under `gen_textures.py`'s
+   own grime, §3.8c wet and §3.9 grain;
+3. twelve `Dress_*` pieces are **CC0 PolyHaven scans** with their real PBR maps;
+4. the runner's anatomy is a **CC0 human base mesh**, with the jacket lofted around it as
+   a garment;
+5. 101 of the 168 audio clips carry a **CC0 field recording** as their base layer.
+
+In every case the generator still owns the result — the rig, the garment, the grime, the
+loudness landing, the §12 contracts and every verification are ours; what is third-party
+is the pose curves, the base albedo/normal/rough, the scan geometry, the body cage and
+the contact body of a sound. §13 ships this on Steam and an asset of unclear provenance
+is a legal problem rather than a mixing problem, so the provenance is recorded in full
+below. Mixamo's licence (royalty-free, commercial games, no attribution) and CC0 1.0
+(public-domain-equivalent, commercial use, no attribution) cover all five.
 
 | Third-party source | Files | Licence | Used for |
 |---|---|---|---|
@@ -27,6 +36,26 @@ CC0 1.0 (public-domain-equivalent, commercial use, no attribution required) both
 | PolyHaven `worn_metal_rack` | `tools/blender/source/props/worn_metal_rack/` | CC0 1.0 (PolyHaven) | `Dress_ShelfStocked / ShelfToppled` bay (depth squashed 0.60→0.42 m per kit mount_depth) + `Dress_RackWorn` maps |
 | PolyHaven `portable_generator` | `tools/blender/source/props/portable_generator/` | CC0 1.0 (PolyHaven) | `Dress_Generator` (new Bulk piece) + `Dress_GeneratorBody` maps |
 | Blender Foundation "Human Base Meshes" v1.4.1 | `tools/blender/source/human/body_male_realistic.blend` (base cage of `GEO-body_male_realistic`, 10,590 quads; multires + eyeballs stripped, canonicalized to 1.700 m, feet on z=0; 519 KB) | CC0 1.0 | the runner's anatomy — head/neck/torso/legs welded under the generated garment, hands harvested as rigid glove shells, by `gen_runner.py` |
+| USC HMH Foundation optical sound-effects collection — Red Library `R27-45`, `R19-07`, `R11-41`, `R10-22`, `R11-03`, `R19-19`, `R10-42` | `tools/audio/source/footsteps/{concrete,wood,metal,tile,gravel,earth,carpet}_01..06.wav` | CC0 1.0 (Internet Archive `usc-sound-effect-archive`) | the contact body under all 84 dry footstep clips; `R11-03` also supplies the 320–620 Hz gravel substrate that halves F-002 |
+| USC Gold Library `G27-12`, `G53-16` | `tools/audio/source/ambience/{creak,drip}_01..08.wav` | CC0 1.0 | `sfx_creak_distant_01..05` (§06's 정지) and `sfx_water_drip_01..04` (§03's 「물이 있는 층」), plus the drips inside `amb_zone_c/f` |
+| USC Red Library `R18-51`, `R09-24`, `R09-44` | `tools/audio/source/items/{hinge,doorbody,bolt}_*.wav` | CC0 1.0 | `door_open/close/lock_01..02` — §04 makes opening a door the Listener's own blindness |
+
+The audio sources are 1930s–40s nitrate optical effects collected by a Hollywood sound
+editor, donated to the USC HMH Foundation Moving Image Archive, transferred by USC
+Cinema students in the 1970s, digitised at CalArts and uploaded by Archive.org's own
+staff under CC0 1.0. Vendored **trimmed** (3.31 MB) with per-file source URLs, source
+and output SHA-1s and extraction parameters in each category's `PROVENANCE.json`;
+`tools/audio/fetch_sources.py` rebuilds the bank, caching the ~90 MB of originals
+outside the tree. Delete `tools/audio/source/` and every clip still generates, fully
+procedural, with a printed note per missing bank.
+
+> ⚠️ **On trusting an archive.org licence tag.** `licenseurl` is set by the uploader and
+> is not verified by anyone. The same CC0-filtered search that found this collection also
+> returned a Skywalker Sound pack tagged CC0 whose entire description reads "I Own
+> Nothing." Nothing was taken unless the uploader was Archive.org staff **and** the
+> collection carried a written donation history. Freesound's CC0 pool was evaluated and
+> rejected as a source: originals need an account and only lossy previews are publicly
+> reachable, which is not a base layer.
 
 The prop scans are vendored under `tools/blender/source/props/` (~87 MB with
 `PROVENANCE.json`; `gen_dressing.py` loads only from there and fails loudly if it is
@@ -56,7 +85,7 @@ model in headless Blender.
 
 | | count | size | notes |
 |---|--:|--:|---|
-| `Assets/Audio/**.wav` | **170** | 87.20 MB | all 48 kHz, 16-bit PCM; 130 positional, 40 non-diegetic |
+| `Assets/Audio/**.wav` | **168** | 94 MB | re-counted 2026-08-09; all 48 kHz, 16-bit PCM; 136 mono positional, 28 stereo non-diegetic (+4 Presence) |
 | `Assets/Models/**.fbx` | **74** | 8.7 MB | re-counted 2026-08-09 (startle kit + dressing growth since 07-30); Dressing alone measures 28,889 tris in its manifest, MapKit 12,166 |
 | `Assets/Models/**.glb` | **2** | 0.76 MB | preview copies of the two characters |
 | manifests | 2 | — | `Monster/monster_audio.manifest.json`, `MapKit/MapKit.manifest.json` |
@@ -156,7 +185,7 @@ you two Avatars for the same character.
 
 ## 2. Audio
 
-### 2.1 Footsteps — 60 clips, 2.79 MB (`Assets/Audio/Footsteps/`)
+### 2.1 Footsteps — 96 clips, 4.6 MB (`Assets/Audio/Footsteps/`)
 
 `step_{surface}_{actor}_{01..04}.wav` — 5 surfaces × 3 actors × 4 variants. All mono,
 all positional.
@@ -211,7 +240,7 @@ machine and is the file the engine should read rather than hardcoding names.
 | FlashStun | `monster_stun_01..02` | exactly 2.5 s, mirroring `GameConstants.FlashStunSeconds` (§04 섬광수). Regenerate if that constant changes |
 | proximity bed | `monster_presence_bed` (25.6 s loop), `monster_breath_loop_01..02` | crossfade **by distance only, never by state** — a state-gated bed would leak the position §06's 정지 exists to hide |
 
-### 2.3 Ambience — 21 clips, 62.32 MB (`Assets/Audio/Ambience/`)
+### 2.3 Ambience — 22 clips, 72 MB (`Assets/Audio/Ambience/`)
 
 Twelve stereo 2D beds and nine mono positional one-shots.
 
@@ -224,7 +253,7 @@ Twelve stereo 2D beds and nine mono positional one-shots.
 | `sfx_water_drip_01..04` | **mono, positional.** §03's worked clue is literally "그것은 물이 있는 층에 있다" — dripping is diegetic information, not decoration | §03 |
 | `sfx_creak_distant_01..05` | **mono, positional.** What remains when the footsteps stop, so §06's 정지 reads as *ominous* rather than as *the audio dropped out*. Also the false alarms: "어디 갔어? 방금 여기 있었는데" | §06 |
 
-### 2.4 Items — 43 clips, 4.02 MB (`Assets/Audio/Items/`)
+### 2.4 Items — 10 clips, 704 KB (`Assets/Audio/Items/`)
 
 Mono and positional except `shop_purchase_confirm` and `loot_sell_credit`, which are
 shop UI.
@@ -248,7 +277,7 @@ shop UI.
 | `detector_ping` | §11's 청음사 substitute. §08 prices it: 작동 시 소리를 낸다 — the cost *is* this noise | §11, §08 |
 | `muffler_equip` | §08's 소음기: 발소리 감소, **자기도 못 듣게 됨 → 청음사 무효.** The one item that invalidates a role | §08 |
 
-### 2.5 UI — 27 clips, 10.47 MB (`Assets/Audio/UI/`)
+### 2.5 UI — 15 clips, 8.1 MB (`Assets/Audio/UI/`)
 
 Stereo 2D, except the four ghost rattles. Everything peaks at or below −6 dBFS,
 deliberately underneath positional world audio at −3, because UI that masks a
