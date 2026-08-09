@@ -196,7 +196,12 @@ namespace HorrorGame.EditorTools
         /// <param name="policyMisgraded">
         /// True when the shared policy and the file disagree, so the caller can say so.
         /// </param>
-        private static ModelImportRule ResolveGovernedRule(string path, out bool policyMisgraded)
+        // Internal, not private: AssetImportValidator's model sweep must grade every
+        // file against the SAME governed rule the import actually ran under. It once
+        // graded Runner.fbx against the raw shared policy instead and reported four
+        // failures (compression, lightmap UVs, rig, collider) for settings this class
+        // had deliberately forced the other way — a validator red on a correct import.
+        internal static ModelImportRule ResolveGovernedRule(string path, out bool policyMisgraded)
         {
             policyMisgraded = false;
 

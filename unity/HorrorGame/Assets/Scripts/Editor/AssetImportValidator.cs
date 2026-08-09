@@ -566,7 +566,12 @@ namespace HorrorGame.EditorTools
 
                 report.CountInspected();
 
-                var rule = AssetImportPolicy.ResolveModel(path);
+                // Grade against the rule the import actually ran under, not the raw
+                // shared policy: the postprocessor corrects a rigged character living
+                // outside Models/Characters (Runner.fbx in Models/Player) upward to the
+                // character rule, and grading the corrected import against the
+                // uncorrected policy manufactured four false failures on 2026-08-09.
+                var rule = AssetImportModelPostprocessor.ResolveGovernedRule(path, out _);
                 var root = AssetDatabase.LoadAssetAtPath<GameObject>(path);
                 if (root == null)
                 {
