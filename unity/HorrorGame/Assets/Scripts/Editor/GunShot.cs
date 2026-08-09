@@ -148,11 +148,18 @@ namespace HorrorGame.EditorTools
 
         /// <summary>
         /// The held gun as another runner sees it: a real rig posed with GunIdle, the
-        /// held clone mounted by RunnerGun's OWN arithmetic — identity local rotation
-        /// under RightUpperArm, offset <c>head.localPosition.magnitude ×
-        /// GunMountArmsPerSpine</c> along the bone's +Y (RunnerGun.MountOffset,
-        /// reproduced not referenced: the runtime method is private, and reproducing it
-        /// here means a drift between the two is a photograph, not a mystery).
+        /// held clone mounted by <see cref="HorrorGame.Gameplay.Race.RunnerGun.MountOffset"/>
+        /// itself — identity local rotation under <c>RunnerGun.ArmBone</c>, the offset the
+        /// runtime computes, along the bone's +Y.
+        /// <para>
+        /// It used to REPRODUCE that arithmetic rather than call it, on the argument that a
+        /// drift between the two would be a photograph rather than a mystery. The argument
+        /// was wrong in the direction that matters: when the rig grew a Neck and a Chest,
+        /// the copy's <c>head.localPosition.magnitude</c> quietly stopped being the Spine
+        /// chain (0.739 m) and became the neck alone (0.126 m), so this harness would have
+        /// photographed the gun at the elbow and blamed the game. The runtime method is
+        /// public now and there is one implementation.
+        /// </para>
         /// This is the frame that has never been taken: the mount POINT is measured to
         /// 1e-7, but the clone's ORIENTATION under the bone has shipped sight unseen.
         /// </summary>
@@ -213,8 +220,8 @@ namespace HorrorGame.EditorTools
                 var held = UnityEngine.Object.Instantiate(heldTemplate, arm, false);
                 held.SetActive(true);
                 held.transform.localRotation = Quaternion.identity;
-                held.transform.localPosition = new Vector3(0f,
-                    head.localPosition.magnitude * HorrorGame.Gameplay.Race.RunnerGun.GunMountArmsPerSpine, 0f);
+                held.transform.localPosition =
+                    HorrorGame.Gameplay.Race.RunnerGun.MountOffset(root);
 
                 // Mirror of RunnerGun.Arm's bone-scale normalization — keep in sync by
                 // hand; a drift between the two shows up as a photograph, which is the

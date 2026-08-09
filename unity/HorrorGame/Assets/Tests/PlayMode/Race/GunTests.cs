@@ -578,20 +578,40 @@ namespace HorrorGame.Tests.PlayMode.Racing
 
             rig.position = monster!.transform.position + new Vector3(0f, 0f, 3f);
 
-            if (controller != null)
-            {
-                controller.enabled = true;
-            }
-
+            // And it STAYS off until the shot is fired. Re-enabling it let two frames of
+            // gravity run before the assertions, and 3 m north of a creature is not promised
+            // to be floor: over a 투하구 mouth the rig falls, and past ~1.8 m of fall
+            // (MapGraph.StoreyChangeMetres) the runner's own storey — and therefore
+            // LocalStoreyMonster — becomes the floor below. Nothing between here and Fire()
+            // needs the controller: the assertions are about the cue, and a rig that cannot
+            // fall cannot change floors.
             yield return null;
 
             var gun = rig.gameObject.GetComponent<RunnerGun>() ?? rig.gameObject.AddComponent<RunnerGun>();
             yield return null;
 
+            // Re-resolve, then stand beside whoever it IS, with no frame in between.
+            //
+            // This assertion used to be "the local creature did not change", and it went red
+            // about one run in three: the creatures are patrolling through all of this, and
+            // §12-B③'s creature one floor down can walk a 계단 up to within
+            // StoreyChangeMetres of the runner's height and, being nearer in flat distance
+            // than the 3 m we just stood off, win LocalStoreyCreature's tie-break. Nothing
+            // was wrong with the game — the test was asserting that a live building holds
+            // still. The subject is "the creature on the shooter's floor is told", and it is
+            // told whoever it turns out to be, so the test now takes the answer instead of
+            // demanding a particular one, and takes it in the same instant it acts on it.
+            monster = director.LocalStoreyMonster;
+            Assert.That(monster, Is.Not.Null,
+                "no creature shares the runner's storey after the move, so there is nothing to "
+                + "hear the shot.");
+            rig.position = monster!.transform.position + new Vector3(0f, 0f, 3f);
+
             Assert.That(gun.TryTake(BuildPickup(rig.position + (Vector3.up * EyeHeightMetres))),
                 Is.True, "the runner could not be armed");
             Assert.That(director.LocalStoreyMonster, Is.SameAs(monster),
-                "moving the rig beside the creature changed which creature is local to it.");
+                "the creature local to the rig changed within a single frame, with nothing "
+                + "moving. That is not the patrol race this test was rewritten for.");
             Assert.That(monster.State, Is.EqualTo(MonsterStateId.Patrol),
                 "the creature is already out of 순찰 before the shot, so this test cannot tell what "
                 + "moved it.");

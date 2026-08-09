@@ -606,6 +606,30 @@ sits directly on B2's ceiling at a 3.75 m pitch; a rig or sample point landing i
 seam bin resolves down). Whoever chases it: reproduce by running the suite in order, not
 the test alone — alone it passes, which is the signature of the whole class.
 
+> 🟢 **Chased down and closed, 2026-08-09 — and the diagnosis above was wrong in the
+> way that matters.** `MatchDirector.LocalStoreyCreature` was never at fault: its
+> threshold is `MapGraph.StoreyChangeMetres` = 1.8 m, half the 3.75 m storey, so a
+> creature a full floor away cannot qualify and there is no "seam bin". The fault was
+> in the test, twice over. (1) It teleported the rig 3 m north of the creature and then
+> **re-enabled the CharacterController**, letting two frames of gravity run before the
+> assertions — and 3 m north of a creature is not promised to be floor. Over a 투하구
+> mouth the rig falls, and past 1.8 m of fall the storey answer legitimately becomes the
+> floor below. On a regenerated building that spot became a hole and the failure went
+> from intermittent to **deterministic**, which is what finally made it findable. (2)
+> With the fall fixed it still failed about one run in three, because the assertion was
+> `LocalStoreyMonster` **is unchanged** while every creature in the building is
+> patrolling: §12-B③'s creature one floor down can climb a 계단 to within 1.8 m of the
+> runner's height and, being nearer in flat distance than the 3 m stand-off, win the
+> tie-break honestly. The test was asserting that a live building holds still.
+>
+> Fixed by making the test take the answer instead of demanding one: the controller
+> stays off through the shot, and the local creature is re-resolved and stood beside in
+> the same frame it is acted on — the subject was always "the creature on the shooter's
+> floor is told", and it is told whoever that turns out to be. **Five consecutive runs,
+> 8/8 each.** The lesson for the rest of this page: "flaky harness" was a story that
+> fit; the message named monster spawns, and nobody had asked why a test whose own
+> comment says it is avoiding one floor's geometry then hard-coded a 3 m offset into it.
+
 ---
 
 ## Regenerating assets

@@ -97,11 +97,12 @@ A SKELETON, AND WHAT RIGGING A STATIC PROP COST THE STATIC PROP
 This figure shipped for a while as geometry with **bones=0 actions=0**, so
 ``PlayerAnimatorDriver`` — which reads the motor's ground speed and fires a Footfall
 event off the phase of whatever clip is playing — was handed a mesh with no clips at all,
-and twenty racers glided through the maze like furniture. It now carries a 13-bone rig and
-the eight clips ``CLIP_NAMES`` lists. The count is argued where the bones are
-defined; the short version is that a bone earns its place only if the surface it moves has
-somewhere to bend, and this body's only creases are ``sculpt_folds``' garment folds —
-static compression wrinkles, not joints.
+and twenty racers glided through the maze like furniture. It now carries a 17-bone rig and
+the eight clips ``CLIP_NAMES`` lists. The count is argued where the bones are defined; the
+short version is that it started at 13 on a reading of the MESH — a bone earns its place
+only if the surface it moves has somewhere to bend — and four more were owed the moment
+the clips became mocap, because a recorded skeleton's motion is not attenuated by a bone
+you do not have, it is deleted. An elbow each side, a neck, and a second torso bone.
 
 The gait is not re-derived. ``gen_player_model`` already solved it — a two-bone IK that
 places the stance keys by POSITION so the planted foot travels at a constant speed, and a
@@ -433,23 +434,59 @@ first build (LIMB_BRIDGE traced the route), so the cuff owns a measured 30+ mm s
 against the hem now."""
 
 GUN_MOUNT_RATIO = 0.9904
-"""``RunnerGun.GunMountArmsPerSpine``, restated. The C# is the consumer and
-``verify_gun_mount`` re-reads it every run; this copy exists so the hand can be PLACED
-from the contract instead of drifting toward it. The gun mount is why the arm length is
-solved, not sculpted."""
+"""Arms per TORSO: the arm's length as a multiple of ``SPINE_JOIN_Z``→``NECK_BASE_Z``.
+This is what solves ``HAND_Z``, and it is why the arm length is solved rather than
+sculpted — the hand is PLACED from the proportion instead of drifting toward it.
+
+**It is no longer the same number as ``RunnerGun.GunMountArmsPerSpine``, and that is the
+one thing to read carefully here.** It was, while the arm was a single bone and the torso
+a single bone: one length over another, measured the same way on both sides of the
+language boundary. The 17-bone rig broke that coincidence twice over — the gun hangs off
+``RightLowerArm`` (half an arm) and the C# measures its unit down a three-bone chain
+(``Spine``+``Chest``+``Neck``, which runs to ``HEAD_BASE_Z``, not to ``NECK_BASE_Z``). So
+the C# constant is DERIVED, by ``report_arm``, and ``verify_gun_mount`` re-reads the C# to
+prove the two have not drifted. Do not copy this 0.9904 into RunnerGun.cs."""
 
 SPINE_JOIN_Z = 0.80
 """Where Hips ends and Spine begins. 20 mm above the hip joint so the Hips bone rests
 pointing UP — the pose solver aims bones at absolute world directions, and a pelvis bone
 resting downward would flip the body the first time ``torso()`` aimed it."""
 
+CHEST_JOIN_Z = 1.191
+"""Where the lumbar ``Spine`` ends and the thoracic ``Chest`` begins — **placed by the
+mocap, not by a vertebra**, and that is the honest description of what this joint is for.
+
+The eight source clips carry a THREE-segment spine (mixamo ``Spine``/``Spine1``/``Spine2``)
+and this rig answers with two. Anchor the source's torso onto this one by its ends — mixamo
+``Hips``.head 104.27 ≡ ``SPINE_JOIN_Z``, mixamo ``Neck``.head 150.31 ≡ ``NECK_BASE_Z`` — and
+one source unit is 13.34 mm here. Mixamo ``Spine2``.head sits at 133.57, i.e. **1.191**. So a
+``Chest`` starting here spans exactly what the source's ``Spine2`` spans, and the ``Spine``
+below it spans exactly what the source's ``Spine`` + ``Spine1`` span. The check is the
+midpoints, which is what ``MIXAMO_MAP`` actually matches on: this ``Spine``'s midpoint maps
+back to source 118.96 against mixamo ``Spine``'s own 119.4, and this ``Chest``'s to 141.94
+against mixamo ``Spine2``'s 141.94 — the same number to two decimals.
+
+It reads as a plausible vertebra afterwards (0.70 of height ≈ T8, the mid-thoracic) but that
+is a sanity check and not the derivation. The derivation is that the one thing this joint
+has to do is carry ``Spine2``'s share of a lean that used to be telescoped onto a single
+bone — see ``MIXAMO_MAP``, and the 45° plank in the round-3 renders that is why."""
+
 NECK_BASE_Z = 1.414
-"""Where Spine ends and Head begins — the base of the harvested neck (C7 sits at
-~1.42 on the canonical body), just under the collar. ``Head.localPosition`` in Unity
-IS the spine length ``RunnerGun`` multiplies by the mount ratio, and this landmark is
-the one that closes the anatomy loop: spine 0.614 × 0.9904 = an arm of 0.608, which
-lands the bone tail — and therefore the gun — in the palm of a human-proportioned
+"""Where Chest ends and Neck begins — the base of the harvested neck (C7 sits at
+~1.42 on the canonical body), just under the collar. Still the top of the TORSO, and
+therefore still the landmark the gun mount's length is measured to: spine 0.614 ×
+0.9904 = an arm of 0.608, which lands the hand — and, split across an elbow now, the
+``LowerArm``'s tail and therefore the gun — in the palm of a human-proportioned
 hanging hand instead of at a mitten blob."""
+
+HEAD_BASE_Z = 1.540
+"""Where Neck ends and Head begins — MEASURED off the harvested body, as the level where
+the neck column flares into the jaw. Slicing the canonical mesh at 5 mm and taking each
+slice's half-width (arms excluded) gives a dead-straight neck column at 60–61 mm from
+z = 1.455 to z = 1.535, and then 83.3 mm at 1.540: a 37 % step in one slice, which is the
+mandible. Cross-checked against the source rig through ``CHEST_JOIN_Z``'s own anchor —
+mixamo ``Head``.head 159.93 maps to 1.542 here — so the mesh and the mocap put the skull
+base 2 mm apart and this bone is where both of them say it is."""
 
 HAND_X, HAND_Y = 0.272, -0.050
 HAND_Z = SHOULDER_Z - math.sqrt(
@@ -465,9 +502,23 @@ HAND_C = (HAND_X, HAND_Y, HAND_Z)
 """Where the harvested hand's palm anchor goes — no longer a mitten ellipsoid's centre,
 but the same solved point it always was."""
 
-ARMBAND_C, ARMBAND_R = (0.279, -0.022, 1.100), (0.077, 0.077, 0.045)
+ARMBAND_C, ARMBAND_R = (0.279, -0.022, 0.960), (0.077, 0.077, 0.045)
 """LEFT sleeve only (not mirrored): a ring ~16 mm proud of the sleeve. Carries
-``Runner_Accent`` — the tint band that tells twenty runners apart."""
+``Runner_Accent`` — the tint band that tells twenty runners apart.
+
+**Moved DOWN onto the forearm when the arm grew an elbow, and the render is the reason.**
+It used to sit at 1.100, which is 43 mm above ``ELBOW_Z`` — harmless on a one-bone arm
+where nothing between shoulder and cuff ever moved relative to anything else. With a joint
+there, a 90 mm band spanning 1.055–1.145 has its lower half inside the bend, and the first
+17-bone Run render shows it as a torn yellow smear folded round the crease instead of a
+ring. An identifying mark that deforms differently every frame identifies nothing.
+
+Down rather than up, and that was measured too. Mid-upper-arm (1.210) is the other rigid
+segment and it FAILS ``verify_limbs_hang_free``: the trunk is widening toward the deltoid
+yoke by then, the band's inner face comes within 17 mm of it, and the 9 mm voxel bridges
+the armpit slot — 2467 vertices of the far side became reachable from the hand. At 0.960
+the band spans 0.915–1.005: 52 mm clear of the elbow, 45 mm above the cuff, on the rigid
+forearm, with the same ~23 mm of armpit slot the original position had."""
 
 LEG_PART_FRACTION = 0.33
 """How far down from the hip the two thighs are still allowed to be one mass.
@@ -552,11 +603,33 @@ SLEEVE_FOLD_AXIS = -2.5
 forward): the inner-front of the elbow, where a hanging arm's sleeve compresses. The
 crease fan is deepest there and shallows around the ring."""
 
-ELBOW_Z = 1.054
-"""Metres, placement-table frame: the elbow crease line of the hanging arm — ~55 % of
-the shoulder (1.340) → wrist (0.815) drop, matching the harvested body's upper-arm to
-forearm ratio. The rig has no elbow bone (the arm never articulates), but the SLEEVE
-must still know where the arm WOULD bend: it is where compression folds bunch."""
+ELBOW_Z = 1.0571
+"""Metres, placement-table frame: the elbow, and since the rig grew a ``LowerArm`` it is
+both the sleeve's crease line AND the joint the bone bends at. One elbow in this file.
+
+**Measured, off the OLECRANON.** The obvious probe — walk the harvested arm from the
+fingertip, slab it along its own axis and look for a narrow ring — does not work on this
+body: the mean cross-section radius climbs monotonically from the wrist (19.7 mm) to the
+deltoid (50 mm) with no elbow notch at all, so a radius minimum would have picked the band
+edge. What the mesh does carry is the point of the elbow. Measuring each slab's most
+POSTERIOR extent relative to the arm axis gives a clean local maximum at 54.7 mm, 0.369 m
+from the fingertip, at **z = 1.0571** — the olecranon, the one elbow landmark that is a
+bump rather than a waist.
+
+Three independent numbers agree on it and none of them was used to derive it: the previous
+constant here (1.054, authored as ~55 % of the shoulder→wrist drop) is 3 mm away; the
+fraction it implies along this rig's shoulder→hand line, 0.4676, sits against the mixamo
+source rig's own upper-arm : forearm + half-hand proportion of 0.4618; and the sleeve fold
+cluster that has always been drawn at this height does not move."""
+
+ELBOW_FRACTION = (SHOULDER_Z - ELBOW_Z) / (SHOULDER_Z - HAND_Z)
+"""How far down the shoulder→hand line the elbow sits — 0.4676, derived from ``ELBOW_Z``
+rather than typed, so the joint and the fold cluster cannot drift apart.
+
+The elbow is put ON that line, not beside it, and that is deliberate: the split must not
+change the arm's REACH. ``GUN_MOUNT_RATIO`` is solved from shoulder→hand and
+``verify_gun_pose`` measures the held pose against the torso's half-depth; a rest elbow
+nudged off the line would quietly shorten the arm and move both."""
 
 SLEEVE_CLUSTER_SIGMA = 0.072
 """Metres, gaussian half-width of the elbow-cluster envelope. Round-3 judge: rings at
@@ -1137,6 +1210,48 @@ HAND_PALM_FROM_WRIST = 0.085
 is the point ``harvest_hands`` lands on ``HAND_C`` — which is the gun-mount solve —
 so the bone tail, the mount, and the visible palm coincide by construction."""
 
+KNUCKLE_FROM_TIP = 0.093
+"""Where the fingers start, in metres from the middle fingertip along the hand's axis:
+the MCP line. MEASURED — slabbing the harvested arm and reading its width across the
+palm plane, the section jumps 28.5 mm → 58.1 mm between 0.075 and 0.105 m from the tip,
+which is the metacarpal heads spreading into four fingers. 0.093 is the middle of that
+step and it is where ``harvest_hands`` starts curling."""
+
+FINGER_CURL_DEG = 88.0
+"""Total curl from the MCP line to the fingertip, degrees, applied as a circular BEND
+(radius = length / angle) so the fingers arc instead of hinging as one flap.
+
+**Why the hands are curled at all.** The vendored body is a T/A-posed reference mesh and
+its hands are FLAT — every finger straight, fingers fanned apart, thumb out. On a body
+they read as a reference pose; on a hooded worker sprinting down a corridor they read as
+claws, which is the round-3 judgement of ``close_hand.png`` and a monster's silhouette on
+the figure that is supposed to be the monster's negation. There are no finger bones and
+there will not be any — a 9 mm voxel already turns fingers into a mitten and the shells
+exist to escape that — so the curl is baked at harvest time and the glove stays rigid.
+
+88° is a RELAXED curl, not a fist: the fingertips end roughly a knuckle's width off the
+palm. A full fist would read as a threat, and this figure is not carrying one."""
+
+FINGER_GATHER = 0.42
+"""How much of their lateral spread the fingers keep at the tip — they are drawn toward
+the hand's own axis, 1.0 at the knuckle line and this at the fingertip.
+
+The curl alone was not enough and the round-1 close-up is why. The vendored body is a
+reference mesh and its fingers are FANNED, four separate tapered rods with 6–10 mm of air
+between them; bending them turns four rods into four hooks, and four hooks under a torch
+at 3 m is still a claw. What a work glove looks like is one mass with the finger line
+suggested on it, so the fan is closed and the four merge into that mass. They interpenetrate
+after this and that is intended — the shell is welded to nothing, rendered as a solid, and
+its interior is never seen; ``verify_hand_shells`` measures what matters about it, which is
+the tuck, the clearance from the suit and the absence of a z-fight."""
+
+THUMB_CURL_DEG = 34.0
+"""Extra sweep on the thumb column, about the palm normal, bringing it in across the
+fingers. The bend above runs about the knuckle axis and the thumb's own column lies close
+to that axis, so the bend alone leaves it sticking out — which is exactly the spike that
+photographs in ``close_hand.png``. Applied to the radial third of the hand only, ramped
+in from the wrist so the cut ring — which ``verify_hand_shells`` measures — cannot move."""
+
 _HUMAN_MESH: bpy.types.Mesh | None = None
 
 
@@ -1407,6 +1522,84 @@ def harvest_hands() -> list[bpy.types.Object]:
         a_src = axis
         w_src = a_src.cross(n).normalized()
         n = w_src.cross(a_src).normalized()   # exact orthonormal triad
+
+        # ── the relaxed curl (FINGER_CURL_DEG / THUMB_CURL_DEG) ──────────────
+        # Both passes run in this measured triad, on the hand's own axis, BEFORE the
+        # frame change below — so the palm anchor, the wrist ring and the cut the cuff
+        # has to swallow are all measured on geometry the curl never touched.
+
+        def _from_tip(co):
+            return tipd - (co - cen).dot(axis)
+
+        # 0. close the fan (FINGER_GATHER) — before anything else, because it is stated
+        #    in the undeformed hand's own frame and it must not fight the curl.
+        gathered = 0
+        for v in bm.verts:
+            t = _from_tip(v.co)
+            if t >= KNUCKLE_FROM_TIP:
+                continue
+            d = v.co - cen
+            axial = d.dot(axis)
+            perp = d - axis * axial
+            lat = perp.dot(w_src)
+            k = 1.0 - (1.0 - FINGER_GATHER) * (1.0 - t / KNUCKLE_FROM_TIP)
+            v.co -= w_src * (lat * (1.0 - k))
+            gathered += 1
+
+        # Which side is the thumb on? Answered by the mesh rather than assumed. In the
+        # band from_tip 0.10-0.17 the four fingers are already behind us and the only
+        # thing still sticking out sideways is the thumb column, so the extreme |w|
+        # vertex in that band names the side.
+        band = [v.co for v in bm.verts if 0.10 <= _from_tip(v.co) <= 0.17]
+        thumb_side = 0.0
+        if band:
+            far = max(band, key=lambda co: abs((co - cen).dot(w_src)))
+            thumb_side = math.copysign(1.0, (far - cen).dot(w_src))
+
+        # 1. thumb in — a rotation ABOUT THE HAND'S AXIS, which leaves every vertex's
+        #    axial coordinate alone, so pass 2 below still sees the same from_tip.
+        moved = 0
+        if thumb_side:
+            for v in bm.verts:
+                d = v.co - cen
+                axial = d.dot(axis)
+                perp = d - axis * axial
+                if perp.dot(w_src) * thumb_side < 0.018:
+                    continue
+                t = _from_tip(v.co)
+                ramp = min(1.0, max(0.0, (0.160 - t) / 0.040))
+                if ramp <= 0.0:
+                    continue
+                # +psi takes w toward -n (w x a = n), so the sweep is toward the palm
+                # whichever side the thumb turned out to be on.
+                psi = -thumb_side * math.radians(THUMB_CURL_DEG) * ramp
+                v.co = cen + axis * axial + (Matrix.Rotation(psi, 3, axis) @ perp)
+                moved += 1
+
+        # 2. the fingers — a circular bend about the MCP line. Radius = length / angle,
+        #    so the neutral fibre keeps its arc length and a finger arcs instead of
+        #    hinging as one flap. u = 0 at the knuckle plane maps to itself, so the
+        #    palm is untouched and the surface cannot tear there.
+        kn = [v.co for v in bm.verts if abs(_from_tip(v.co) - KNUCKLE_FROM_TIP) < 0.008]
+        theta = math.radians(max(1e-3, FINGER_CURL_DEG))
+        radius = KNUCKLE_FROM_TIP / theta
+        curled = 0
+        if kn and FINGER_CURL_DEG > 0.0:
+            knuckle = sum(kn, Vector()) / len(kn)
+            for v in bm.verts:
+                d = v.co - knuckle
+                u = d.dot(a_src)
+                if u <= 0.0:
+                    continue
+                m, lat = d.dot(n), d.dot(w_src)
+                phi = u / radius
+                v.co = (knuckle + n * radius + w_src * lat
+                        - (radius - m) * (n * math.cos(phi) - a_src * math.sin(phi)))
+                curled += 1
+        print(f"HAND_CURL {side} fingers={curled}v x{FINGER_CURL_DEG:.0f}deg "
+              f"(bend radius {radius * 1000.0:.1f}mm) gathered={gathered}v "
+              f"to {FINGER_GATHER:.2f} thumb={moved}v "
+              f"x{THUMB_CURL_DEG:.0f}deg side={thumb_side:+.0f}w")
 
         # target frame: fingers nearly straight down with a touch of forward drift,
         # palm on the thigh, thumb forward — the relaxed hang of a gloved worker.
@@ -2449,51 +2642,69 @@ def report_breadth(obj: bpy.types.Object, size: tuple[float, float, float]) -> N
 
 # ── The skeleton ────────────────────────────────────────────────────────────
 #
-# THIRTEEN BONES, AND WHY THAT IS THE ANSWER RATHER THAN A SHORTCUT
-# -----------------------------------------------------------------
-# ``Player.fbx`` carries 26. This carries 13, and the count is not a budget — it is a
-# reading of the mesh. A bone earns its place here only if the surface it moves has
-# somewhere to bend. The Runner is a voxel union smoothed three times whose only
-# creases are static garment folds (``sculpt_folds``) — nothing on it articulates, so
-# a joint put where the geometry is a straight taper does not articulate anything, it
-# just gives the skinning solver a second influence to smear across a region that has
-# no reason to bend.
+# SEVENTEEN BONES, AND WHY THIRTEEN WAS WRONG
+# -------------------------------------------
+# This comment used to argue for 13, and the argument was: *"a bone earns its place only
+# if the surface it moves has somewhere to bend"* — a reading of the MESH, back when every
+# pose in this file was authored by hand a few degrees at a time. Four of those bones are
+# here because that premise stopped being true. The clips are professional mocap now
+# (``MIXAMO_MAP``), and mocap is not a set of angles you can spread over whatever bones
+# happen to exist: it is a recording of a skeleton, and the parts of it you have no bone
+# for are not attenuated, they are DELETED.
 #
-#   Hips, Spine                the torso and the belly are two ellipsoids fused into one
-#                              mass with a waist in the OUTLINE and no joint in the
-#                              surface. One spine bone bends it; the player's three
-#                              (Spine/Chest/UpperChest) would distribute a lean across a
-#                              shape that has no vertebrae to distribute it over.
-#   Head                       head + neck as one. The neck ellipsoid is 90 mm tall on a
-#                              1.75 m figure. Splitting it buys a nod nobody resolves at
-#                              §03's ten metres of dark corridor.
-#   Left/RightUpperArm         the WHOLE arm, shoulder to mitten, one pendulum. The arm
-#                              is a single tapered shaft with a ball at each end — there
-#                              is no elbow to hinge, and the module docstring above is an
-#                              essay on why this figure is made of placements rather than
-#                              of anatomy.
-#   Left/RightUpperLeg         }  the only place the count is NOT minimal, and it is
-#   Left/RightLowerLeg         }  deliberate. Two bones per leg is what the player's
-#                              two-bone IK needs (``gen_player_model._solve_leg``), and
-#                              that solver is the difference between running and sliding:
-#                              it places the planted foot by POSITION so the foot travels
-#                              at a constant speed, which no amount of angle-authoring
-#                              achieves. A one-bone leg cannot be levelled by it. So the
-#                              knee exists to serve the gait solver, not the silhouette,
-#                              and it sits at the middle of the column because a column
-#                              with no knee bends in the middle.
+# The old map said so in its own docstring — Neck, both ForeArms and every finger "are
+# DROPPED … which is acceptable because this rig has no bone to carry it onto". It was not
+# acceptable, and the round-3 renders are the receipt: a running arm in mocap is an upper
+# arm swung BACK with the forearm folded ~90° across it, and if you keep only the shoulder
+# the surviving shoulder→hand line projects straight out SIDEWAYS. Both arms held out level
+# with the shoulders, zero elbow, over a torso folded at one hinge — a scarecrow. Measured
+# on the committed rig: 84.6° of arm abduction at the peak of Run, 605 mm of the hand's
+# travel side-to-side against 341 mm fore-and-aft.
+#
+#   Hips                       the pelvis, 20 mm long, so ``torso()`` has something to
+#                              aim (see SPINE_JOIN_Z).
+#   Spine, Chest               TWO now, split at ``CHEST_JOIN_Z``. Not because the jacket
+#                              grew vertebrae — it did not — but because the source has
+#                              three spine segments and telescoping their accumulated lean
+#                              onto one bone bends the WHOLE torso by the top segment's
+#                              angle. That is the 45° plank. Two bones let the fold
+#                              distribute, and the split is placed where the source's own
+#                              chest segment begins so each bone carries one thing.
+#   Neck                       the head is no longer welded to the chest. Mixamo Neck
+#                              carries 20° of its own in Run and it used to be discarded;
+#                              with it the head stays level over a leaning torso, which is
+#                              what a runner's head does and what a plank's does not.
+#   Head                       from ``HEAD_BASE_Z`` (measured at the jaw) to the crown.
+#   Left/RightUpperArm         }  shoulder→elbow and elbow→palm. **This is the fix.** The
+#   Left/RightLowerArm         }  elbow is at ``ELBOW_Z``, measured off the harvested
+#                              body's olecranon and sitting ON the shoulder→hand line, so
+#                              the arm's total reach — and therefore ``GUN_MOUNT_RATIO``
+#                              and ``verify_gun_pose`` — is exactly what it was. The
+#                              LowerArm is also what the gun hangs off now: mounting on
+#                              the UpperArm after the split would put it at the elbow.
+#   Left/RightUpperLeg         }  two bones per leg is what the player's two-bone IK needs
+#   Left/RightLowerLeg         }  (``gen_player_model._solve_leg``), and that solver is the
+#                              difference between running and sliding: it places the
+#                              planted foot by POSITION so the foot travels at a constant
+#                              speed, which no amount of angle-authoring achieves. The knee
+#                              sits at the measured knee centre (``KNEE_FRACTION``).
 #   Left/RightFoot, …Toes      the foot pad is 324 mm long — a quarter of the figure's
 #                              leg. Rigid, it is a plank, and toe-off pivots the whole
 #                              body about the tip. The toe joint is also what makes
 #                              ``FOOT_ROLL`` mean the same thing here as it does on the
 #                              player (see ``retarget_gait_solver``).
 #
+# WHAT IS STILL NOT HERE: hands and fingers. The two glove shells are rigid, weighted 100 %
+# to their LowerArm, and their relaxed curl is baked at harvest time
+# (``FINGER_CURL_DEG``). That one really is a reading of the mesh — a 9 mm voxel turns
+# fingers into a mitten, the shells exist to escape that, and nothing at §03's ten metres
+# of dark corridor resolves a knuckle.
+#
 # Every name is one of Unity's humanoid spellings, so this rig is a strict SUBSET of
 # Player.fbx's vocabulary and nothing downstream has to learn a second one. It is still
-# imported **Generic**, not Humanoid: Unity's humanoid skeleton requires LowerArm and
-# Hand on both sides, and inventing four bones to satisfy a mapper — on a figure whose
-# arm has no elbow — is exactly the kind of geometry-free bone this comment argues
-# against. ``Monster.fbx`` is Generic for the same class of reason.
+# imported **Generic**, not Humanoid, and the reason has narrowed rather than gone: the
+# humanoid skeleton also requires a Hand on each side, and this figure's hand is a glove
+# shell rather than a joint. ``Monster.fbx`` is Generic for the same class of reason.
 
 RIG_NAME = "Runner_Rig"
 """The armature object, and therefore the FBX's root Model node. Matches
@@ -2562,10 +2773,14 @@ class Skeleton:
     thigh: float
     shank: float
     spine_z: float
+    chest_z: float
     neck_z: float
+    head_z: float
     crown_z: float
     shoulder_x: float
     shoulder_z: float
+    elbow_x: float
+    elbow_z: float
     hand_x: float
     hand_z: float
     ball: tuple[float, float]
@@ -2667,29 +2882,46 @@ def build_skeleton(body: bpy.types.Object, fit: Fit) -> Skeleton:
         leg_x=fit.d(LEG_X), ankle_y=ankle_y,
         thigh=hip_z - knee_z, shank=knee_z - ankle_z,
         spine_z=fit.z(SPINE_JOIN_Z),
+        chest_z=fit.z(CHEST_JOIN_Z),
         neck_z=fit.z(NECK_BASE_Z),
+        head_z=fit.z(HEAD_BASE_Z),
         crown_z=fit.z(HOOD_C[2] + HOOD_R[2] * 0.8),
         shoulder_x=fit.d(SHOULDER_X), shoulder_z=fit.z(SHOULDER_Z),
+        # ON the shoulder→hand line, at the measured ELBOW_FRACTION — so splitting the
+        # arm cannot change its reach, and the gun mount solve is untouched.
+        elbow_x=fit.d(SHOULDER_X + ELBOW_FRACTION * (HAND_C[0] - SHOULDER_X)),
+        elbow_z=fit.z(ELBOW_Z),
         hand_x=fit.d(HAND_C[0]), hand_z=fit.z(HAND_C[2]),
         ball=ball, toe_tip=tip, contacts=contacts)
 
 
 def bone_specs(sk: Skeleton) -> list[BoneSpec]:
-    """The 13 bones, in final metres. See the essay above for the count.
+    """The 17 bones, in final metres. See the essay above for the count.
+
+    Every name that existed at 13 bones is byte-identical here and in the same place;
+    the four new ones (Chest, Neck, Left/RightLowerArm) are inserted into chains rather
+    than bolted onto them, so ``PlayerRigBones.Find`` keeps resolving every string the
+    C# side holds. The arms now hang off ``Chest`` rather than ``Spine`` — a shoulder
+    belongs on the ribcage, and hanging it on the lumbar would have swung both arms
+    with a bone that is meant to describe a runner's crouch.
 
     The old KNEE_BIAS_Y −0.006 nudge is gone: the measured knee already sits ~22 mm
     forward of the hip–ankle line (the anatomical bend bias), so the IK's bend
     direction is set by the body instead of by an authored fudge."""
     specs = [
         BoneSpec("Hips", (0.0, 0.0, sk.hip_z), (0.0, 0.0, sk.spine_z)),
-        BoneSpec("Spine", (0.0, 0.0, sk.spine_z), (0.0, 0.0, sk.neck_z), "Hips", True),
-        BoneSpec("Head", (0.0, 0.0, sk.neck_z), (0.0, 0.0, sk.crown_z), "Spine", True),
+        BoneSpec("Spine", (0.0, 0.0, sk.spine_z), (0.0, 0.0, sk.chest_z), "Hips", True),
+        BoneSpec("Chest", (0.0, 0.0, sk.chest_z), (0.0, 0.0, sk.neck_z), "Spine", True),
+        BoneSpec("Neck", (0.0, 0.0, sk.neck_z), (0.0, 0.0, sk.head_z), "Chest", True),
+        BoneSpec("Head", (0.0, 0.0, sk.head_z), (0.0, 0.0, sk.crown_z), "Neck", True),
     ]
     for side, s in ((1, "Left"), (-1, "Right")):
         x = float(side)
         specs += [
             BoneSpec(f"{s}UpperArm", (x * sk.shoulder_x, 0.0, sk.shoulder_z),
-                     (x * sk.hand_x, 0.0, sk.hand_z), "Spine"),
+                     (x * sk.elbow_x, 0.0, sk.elbow_z), "Chest"),
+            BoneSpec(f"{s}LowerArm", (x * sk.elbow_x, 0.0, sk.elbow_z),
+                     (x * sk.hand_x, 0.0, sk.hand_z), f"{s}UpperArm", True),
 
             BoneSpec(f"{s}UpperLeg", (x * sk.hip_x, sk.hip_y, sk.hip_z),
                      (x * sk.knee_x, sk.knee_y, sk.knee_z), "Hips"),
@@ -2760,31 +2992,56 @@ def report_arm(sk: Skeleton) -> tuple[float, float]:
     """Measures the arm and the spine, and proves the held pose is a silhouette.
 
     **Why an arm needs measuring at all.** ``RunnerGun`` hangs ``Gun_Held`` off the end of
-    ``RightUpperArm``, and the end of a leaf bone is a thing Unity does not know. Blender
-    writes a bone as a node with a head transform; the LENGTH lives in the bone's tail,
-    the tail of a leaf is not a node, and ``export_fbx`` sets ``add_leaf_bones=False``
-    precisely so that no tip node is invented. So the hand's position is authored here and
-    nowhere else, and if it is not carried across it is guessed.
+    an arm bone, and the end of a leaf bone is a thing Unity does not know. Blender writes
+    a bone as a node with a head transform; the LENGTH lives in the bone's tail, the tail
+    of a leaf is not a node, and ``export_fbx`` sets ``add_leaf_bones=False`` precisely so
+    that no tip node is invented. So the hand's position is authored here and nowhere
+    else, and if it is not carried across it is guessed.
+
+    **THE ARM SPLIT MOVED THIS NUMBER AND THE C# HAD TO MOVE WITH IT.** The mount used to
+    be the whole arm's length hung off ``RightUpperArm``; that bone now ends at the ELBOW,
+    so the same offset on the same bone would put the revolver in the crook of the runner's
+    arm. ``RunnerGun.ArmBone`` is ``RightLowerArm`` now and the offset it needs is the
+    FOREARM's length — the LowerArm's own head-to-tail, elbow to palm. Reach is unchanged
+    (the elbow sits on the shoulder→hand line by construction) so ``verify_gun_pose`` still
+    measures the same silhouette; what changed is which bone the number is measured along,
+    and it is a bit over half of what it was.
 
     **It is carried across as a RATIO, not as metres, and that is deliberate.** This kit
     exports through ``FBX_SCALE_NONE``, which parks the unit conversion on the root node
     rather than in the data, so what "1.0" means inside a bone's local transform after
     Unity's importer has had it is a function of import settings this file cannot see.
-    A ratio has no units to be wrong about: the runtime reads the SPINE's length off the
-    rig it actually loaded — ``Head`` is connected to ``Spine``, so ``Head.localPosition``
-    IS the spine's length in whatever units arrived — and multiplies. Both bones come out
-    of the same skeleton, so the ratio is fixed by the figure and by nothing else.
+    A ratio has no units to be wrong about: the runtime reads a length off the rig it
+    actually loaded and multiplies. The denominator is the ``Spine`` → ``Head`` CHAIN —
+    the C# walks Head's parents up to Spine and sums each one's ``localPosition``, which
+    is Spine + Chest + Neck in whatever units arrived. A chain rather than the single
+    ``Head.localPosition`` the 13-bone rig used, because Head's parent is ``Neck`` now and
+    that one bone alone is not a unit of anything.
 
     The pose check is the other half. ``GUN_ARM_SWING`` claims the hand leaves the body's
     outline; this measures whether it does, on the body that was actually built rather
     than on the table that was meant to build it.
     """
     arm_len = math.hypot(sk.hand_x - sk.shoulder_x, sk.hand_z - sk.shoulder_z)
-    spine_len = sk.neck_z - sk.spine_z
-    ratio = arm_len / spine_len
+    upper_len = math.hypot(sk.elbow_x - sk.shoulder_x, sk.elbow_z - sk.shoulder_z)
+    fore_len = math.hypot(sk.hand_x - sk.elbow_x, sk.hand_z - sk.elbow_z)
+    torso_len = sk.neck_z - sk.spine_z
+    chain_len = sk.head_z - sk.spine_z      # Spine + Chest + Neck, the C#'s own sum
+    ratio = fore_len / chain_len
     print(f"RIG_ARM shoulder=({sk.shoulder_x:.4f},{sk.shoulder_z:.4f})m "
+          f"elbow=({sk.elbow_x:.4f},{sk.elbow_z:.4f})m "
           f"hand=({sk.hand_x:.4f},{sk.hand_z:.4f})m arm={arm_len:.4f}m "
-          f"spine={spine_len:.4f}m {GUN_MOUNT_CONSTANT}={ratio:.4f}")
+          f"(upper={upper_len:.4f} fore={fore_len:.4f}, split "
+          f"{upper_len / arm_len:.4f}/{fore_len / arm_len:.4f}) "
+          f"torso={torso_len:.4f}m spine_chain={chain_len:.4f}m "
+          f"arm/torso={arm_len / torso_len:.4f} {GUN_MOUNT_CONSTANT}={ratio:.4f}")
+    if abs((upper_len + fore_len) - arm_len) > 1e-6:
+        blendkit.fail(
+            f"the elbow is not on the shoulder→hand line: upper {upper_len:.4f} + fore "
+            f"{fore_len:.4f} = {upper_len + fore_len:.4f} against an arm of {arm_len:.4f}. "
+            "The split is only free of the gun contract while it preserves reach — off the "
+            "line it silently shortens the arm, and GUN_MOUNT_RATIO, verify_gun_pose and "
+            "the placed hand all key off that length.")
     return arm_len, ratio
 
 
@@ -2873,12 +3130,13 @@ def build_rig(sk: Skeleton, body: bpy.types.Object,
     a vertex and the part it used to belong to. Bone heat solves it off the geometry
     that actually exists, and ``verify_skin`` checks the result instead of trusting it.
 
-    The two HAND shells are then overridden to 100 % of their arm bone. That is not a
-    convenience: the hand hangs at the end of a one-bone arm beside a thigh driven by
-    a different bone, and bone heat on a disconnected shell happily samples both — a
-    thumb two-thirds owned by LeftUpperLeg is a glove that tears itself open on the
-    first stride. A glove on a one-bone arm is rigid by definition, so the weights
-    say so exactly.
+    The two HAND shells are then overridden to 100 % of their **LowerArm** — the forearm,
+    not the upper arm it used to be. That is not a convenience twice over. It is a glove
+    hanging on a disconnected shell beside a thigh driven by a different bone, and bone
+    heat happily samples both — a thumb two-thirds owned by LeftUpperLeg is a glove that
+    tears itself open on the first stride. And it is the elbow: a hand still weighted to
+    the upper arm would swing about the SHOULDER while the sleeve it sits in swings about
+    the elbow, which is the wrist detaching once per stride.
     """
     specs = bone_specs(sk)
     rig = blendkit.build_armature(RIG_NAME, specs)
@@ -2892,9 +3150,9 @@ def build_rig(sk: Skeleton, body: bpy.types.Object,
         side = "Left" if cen_x > 0.0 else "Right"
         for vg in body.vertex_groups:
             vg.remove(indices)
-        body.vertex_groups[f"{side}UpperArm"].add(indices, 1.0, "REPLACE")
+        body.vertex_groups[f"{side}LowerArm"].add(indices, 1.0, "REPLACE")
         print(f"HAND_SKIN {side.lower():5s} verts={len(indices)} -> "
-              f"{side}UpperArm=1.0 (rigid glove; heat smear across shells removed)")
+              f"{side}LowerArm=1.0 (rigid glove on the FOREARM; heat smear removed)")
 
     print(f"RIG_BONES count={len(rig.data.bones)} deform="
           f"{sum(1 for b in rig.data.bones if b.use_deform)} sockets=0")
@@ -2996,10 +3254,43 @@ def hang_dir(side: int, out: float = 0.0, swing: float = 0.0) -> tuple:
     return tuple(v)
 
 
-def arm(side: int, out: float = 4.0, swing: float = 0.0) -> dict:
-    s = "Left" if side > 0 else "Right"
-    return {f"{s}UpperArm": Aim(hang_dir(side, out, swing))}
+def arm(side: int, out: float = 4.0, swing: float = 0.0,
+        elbow: float | None = None) -> dict:
+    """Upper arm AND forearm, because the rig has an elbow now.
 
+    ``elbow`` is the EXTRA forward swing the forearm carries over the upper arm — i.e. the
+    joint's flexion, in the same absolute-aim vocabulary as everything else here. It has a
+    default rather than being required, and the default is not zero: ``gpm.solve`` gives an
+    unaimed bone its parent's absolute rotation, so a caller that named only the upper arm
+    would get a forearm collinear with it, which is a straight rod from shoulder to
+    fingertips. That is the exact defect the 17-bone rig exists to remove, so the fallback
+    is not allowed to reintroduce it — an arm that hangs still carries ELBOW_REST.
+    """
+    s = "Left" if side > 0 else "Right"
+    flex = ELBOW_REST if elbow is None else elbow
+    return {f"{s}UpperArm": Aim(hang_dir(side, out, swing)),
+            f"{s}LowerArm": Aim(hang_dir(side, out * 0.4, swing + flex))}
+
+
+ELBOW_REST = 14.0
+"""Degrees of elbow flexion a hanging arm carries in the PROCEDURAL clips. A relaxed arm
+at the side is not straight — the carrying angle puts it at 5–15° — and more to the point
+a rig whose fallback rested the elbow at exactly 0° would photograph the one pose the
+retarget path was rebuilt to delete. Swings add to it: see WALK_ELBOW / RUN_ELBOW.
+
+14 rather than the 9 this started at, because 9 leaves no margin: it puts the walk's most
+extended frame at 170.7° of anatomical elbow against ``ELBOW_STRAIGHT_DEG``'s 172° ceiling,
+and a fallback that passes its own straightness gate by 1.3° is one authored tweak away
+from failing it."""
+
+WALK_ELBOW = 26.0
+RUN_ELBOW = 74.0
+"""Elbow flexion at the extremes of the procedural walk and run. 74° is the mocap's own
+number rounded off — ``Running.fbx`` measures 74°–105° of elbow through its cycle (the
+anatomical angle, 180° = straight), so a procedural run that bends less than the shallowest
+frame of the real thing is not a fallback, it is a different animation. The walk's 26° sits
+against the source's 122°–164°, i.e. 16°–58° of flexion, near the top of that band because
+a procedural walk has no forearm swing of its own to add to it."""
 
 ARM_OUT = 4.0
 """Degrees the arms hang clear of the body. The mitten sits 61 mm INSIDE the thigh in the
@@ -3015,6 +3306,12 @@ WALK_ARM_SWING = 9.0
 RUN_ARM_SWING = 15.0
 
 GUN_ARM_SWING = 55.0
+
+GUN_ELBOW = 55.0
+"""Elbow flexion on the arm that holds §01's 총, procedural path. ``Pistol Idle.fbx``
+measures 119°–135° of anatomical elbow — 45°–61° of flexion — and a low-ready pistol is
+the middle of that. A straight arm holding a revolver is a duellist, not a worker who
+found one in a corridor."""
 """Degrees the RIGHT arm is held forward while a runner carries §01's 총, and the whole of
 what makes GunIdle and GunWalk different from Idle and Walk.
 
@@ -3270,7 +3567,7 @@ def _still_clip(rig, name: str, keys, cycle_frames: int, note: str, spec_fn, tab
 
 def _cycle_body(lean: float, twist_amp: float, sway_amp: float, swing_amp: float,
                 head_lean: float = 2.0, arm_out: float = ARM_OUT, period: int = 4,
-                right_held: float | None = None):
+                right_held: float | None = None, elbow_amp: float = WALK_ELBOW):
     """The shared above-the-hips half of a locomotion cycle.
 
     One function for every walking clip because the difference between them lives in the
@@ -3286,15 +3583,33 @@ def _cycle_body(lean: float, twist_amp: float, sway_amp: float, swing_amp: float
     held arm that also swung would be a runner waving a revolver in time with their steps.
     """
     def body(i, left, right):
+        # TWO phases, and they are a quarter cycle apart on purpose.
+        #
+        # `phase` is the LATERAL one — the weight shift that follows whichever foot is
+        # planted — and the key orders put a foot down at i = 0, so a sine is right for it.
+        #
+        # `drive` is the arms and the torso's counter-rotation, and it is a NEGATIVE COSINE
+        # because at i = 0 the left leg is at contact, i.e. forward, and an arm opposes the
+        # leg on its own side. Both were keyed off `phase` until report_motion measured the
+        # result: the arm ended a quarter cycle from where it belongs, correlating +0.29
+        # with its own foot instead of about −1. Neither opposed nor in phase — the walk of
+        # something that has been told about arms rather than issued with them. It never
+        # showed up because nothing in this file compared one limb against another.
         phase = math.sin(2.0 * math.pi * i / period)
-        twist = -twist_amp * phase
+        drive = -math.cos(2.0 * math.pi * i / period)
+        twist = -twist_amp * drive
         sway = sway_amp * phase
+        # The elbow closes as the arm comes FORWARD and opens as it goes back, which is
+        # what an elbow does in a gait — flexion in phase with the swing, never zero.
         spec = gpm.merge(
             torso(lean=lean, twist=twist, hips_yaw=-twist * 0.8, hips_tilt=sway * 80),
             head(lean=head_lean, yaw=-twist * 0.25),
-            arm(1, arm_out, +swing_amp * phase),
+            arm(1, arm_out, +swing_amp * drive,
+                elbow=ELBOW_REST + elbow_amp * 0.5 * (1.0 + drive)),
             arm(-1, arm_out,
-                -swing_amp * phase if right_held is None else right_held),
+                -swing_amp * drive if right_held is None else right_held,
+                elbow=(ELBOW_REST + elbow_amp * 0.5 * (1.0 - drive))
+                if right_held is None else GUN_ELBOW),
         )
         return spec, (sway, 0.0)
     return body
@@ -3326,7 +3641,8 @@ def clip_run(rig) -> gpm.Clip:
     return solve_cadence(
         rig, "Run", gpm.RUN_GAIT, ("contact", "stance", "toeoff"),
         _cycle_body(lean=14.0, twist_amp=12.0, sway_amp=0.018,
-                    swing_amp=RUN_ARM_SWING, head_lean=-4.0, period=8),
+                    swing_amp=RUN_ARM_SWING, head_lean=-4.0, period=8,
+                    elbow_amp=RUN_ELBOW),
         gpm.RUN_ORDER, RUN_SPEED, 0.55, (1, 2, 3),
         "§06 달리기 4.5 m/s; 질주 = ×1.24")
 
@@ -3348,7 +3664,9 @@ def clip_crouch(rig) -> gpm.Clip:
         lambda b: gpm.merge(
             torso(lean=24.0 + b * 0.6, hips_lean=2.4),
             head(lean=4.0 - b, yaw=b * 4.0),
-            arm(1, ARM_OUT + 2.0, 6.0), arm(-1, ARM_OUT + 2.0, 6.0),
+            # elbows well closed: a crouched worker draws their arms in
+            arm(1, ARM_OUT + 2.0, 6.0, elbow=34.0),
+            arm(-1, ARM_OUT + 2.0, 6.0, elbow=34.0),
             gpm.leg(1, base["thigh"], base["shank"], 0.0, 0.0, out=6.0),
             gpm.leg(-1, base["thigh"], base["shank"], 0.0, 0.0, out=6.0)),
         breath, hips_xy=(0.0, 0.100))
@@ -3399,7 +3717,8 @@ def clip_gun_idle(rig) -> gpm.Clip:
                            torso(lean=b["lean"], hips_lean=0.4),
                            head(lean=b["hl"], yaw=b["yaw"]),
                            arm(1, ARM_OUT, b["sw"]),
-                           arm(-1, ARM_OUT, GUN_ARM_SWING + b["sw"]),
+                           arm(-1, ARM_OUT, GUN_ARM_SWING + b["sw"],
+                               elbow=GUN_ELBOW),
                            gpm.leg(1, 0.0, -2.0, 0.0, 0.0),
                            gpm.leg(-1, 0.0, -2.0, 0.0, 0.0)),
                        breath)
@@ -3470,8 +3789,9 @@ def clip_death(rig) -> gpm.Clip:
         spec = gpm.merge(
             torso(lean=lean, tilt=tilt, twist=yaw * 0.5),
             head(lean=hlean, yaw=yaw, tilt=tilt),
-            arm(1, ARM_OUT + 14.0, swing[0]),
-            arm(-1, ARM_OUT + 6.0, swing[1]),
+            # the elbows fold as the body goes down and stay folded under it
+            arm(1, ARM_OUT + 14.0, swing[0], elbow=ELBOW_REST + abs(swing[0]) * 0.45),
+            arm(-1, ARM_OUT + 6.0, swing[1], elbow=ELBOW_REST + abs(swing[1]) * 0.45),
             gpm.leg(1, thigh, shank, foot, 0.0, out=7.0),
             gpm.leg(-1, thigh - 8.0, shank + 6.0, foot - 6.0, 0.0, out=-3.0),
         )
@@ -3537,14 +3857,53 @@ MIXAMO_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "source", 
 
 MIXAMO_PREFIX = "mixamorig:"
 
+REREF_SUFFIXES = ("UpperArm", "LowerArm", "UpperLeg", "LowerLeg", "Foot", "Toes")
+"""Which target bones get their source rest DECLARED rather than measured — every LIMB
+bone. See the long note in ``sample_mixamo`` for what declaring it means and why.
+
+**The legs are on this list because of a measurement, and it is the second defect this
+task found.** They were left off the first draft on the standing argument that only the
+arms rest differently from the source. Then the arms started transferring correctly and
+the new ``arm_vs_leg`` opposition read **+0.98** — the runner swinging its left arm
+forward together with its left leg, which no human gait does. Index-aligned against the
+source (``sample_mixamo`` samples source frame i at i/N, so the two series compare
+frame-for-frame) the rig's left ankle correlated **−1.00 with the source's left ankle and
++0.91 with its RIGHT**: the legs were running half a cycle out of phase, a left/right swap
+in everything but name. Declaring their reference too puts both at +1.00 against their own
+source leg and the opposition at −0.98.
+
+It had been invisible, and the reason it was invisible is the whole shape of this task. A
+symmetric gait shifted half a cycle is the same gait — nothing measures it, no render
+shows it, the floor and the cadence and the sole error are all exactly as good. It only
+becomes a defect once there is something else in the clip whose phase it has to agree
+with, and until the arms worked there wasn't.
+
+The torso is deliberately NOT on this list. Hips/Spine/Chest/Neck/Head keep the
+rest-relative transfer: their leans measure correct in sign and size on every clip, a roll
+mismatch on a vertical bone would have leaned them backwards, and Crouch's depth has
+already been judged once at the angle that transfer produces."""
+
+SOURCE_TO_RIG = Matrix.Rotation(math.pi / 2.0, 3, "X")
+"""The frame change from a mixamo armature's world to this rig's world, and the ONLY
+thing the retarget is allowed to do to a source bone's orientation.
+
+Measured off the source's own rest, not assumed: mixamo's ``LeftArm`` sits at x = +15.16
+so +X is the figure's left, as it is here; its ``Spine`` climbs in y so +Y is up, which is
+this rig's +Z; and its spine leans back toward −z, so +Z is forward, which is this rig's
+−Y. That is a quarter turn about X and nothing else. ``sample_mixamo`` re-measures it
+against the legs every run."""
+
 MIXAMO_MAP = {
     "Hips": "Hips",
-    "Spine": "Spine2",   # the runner's single Spine is the whole torso; Spine2 is the top
-                         # of the mixamo spine chain, so its accumulated world lean is the
-                         # torso's, and Head-relative-to-Spine then reads as the neck alone.
-    "Head": "Head",      # mixamo Neck is dropped; the runner has no neck bone.
+    "Spine": "Spine",        # lumbar ← the source's own lumbar
+    "Chest": "Spine2",       # thoracic ← the source's own chest. See CHEST_JOIN_Z: the
+                             # two rig bones and these two source bones share midpoints.
+    "Neck": "Neck",
+    "Head": "Head",
     "LeftUpperArm": "LeftArm",
     "RightUpperArm": "RightArm",
+    "LeftLowerArm": "LeftForeArm",
+    "RightLowerArm": "RightForeArm",
     "LeftUpperLeg": "LeftUpLeg",
     "RightUpperLeg": "RightUpLeg",
     "LeftLowerLeg": "LeftLeg",
@@ -3554,26 +3913,48 @@ MIXAMO_MAP = {
     "LeftToes": "LeftToeBase",
     "RightToes": "RightToeBase",
 }
-"""target bone → mixamo source bone (short, no prefix). All 13 rig bones are mapped. The
-mixamo bones with no entry here — Neck, both ForeArms, the hands and every finger — are
-DROPPED: their motion is not carried, which is acceptable because this rig has no bone to
-carry it onto (one bone per arm, no forearm, no neck)."""
+"""target bone → mixamo source bone (short, no prefix). All 17 rig bones are mapped.
+
+**What this map used to drop, and what dropping it looked like.** The 13-bone version
+carried no ForeArm and no Neck and hung the one Spine on ``Spine2``, and said so: those
+source bones "are DROPPED: their motion is not carried, which is acceptable because this
+rig has no bone to carry it onto". It was not. Measured on the source, ``Running.fbx``
+holds the elbow between 74° and 105° through the whole cycle — an arm swung back with the
+forearm folded across it — and deleting the fold leaves the shoulder→hand line pointing
+straight OUT SIDEWAYS, because that is where the upper arm alone points. Both arms level
+with the shoulders, no bend anywhere: the scarecrow in the round-3 renders.
+
+**The spine is a re-split, not a re-aim.** The single Spine used to take ``Spine2``'s
+accumulated world lean on the argument that the top of the source chain is the whole
+torso's angle. It is — for the TOP of the torso. Applied to a bone that spans hips to
+neck it leans the entire trunk by the chest's angle: 27° of source ``Spine2`` delta became
+a 26° fold of everything above the pelvis, against an actor whose own hips→neck chord in
+that clip is 10.5°. Two bones on two source segments, matched by midpoint, put ~10° in the
+lumbar and ~27° in the chest and land the chord where the mocap actually has it.
+
+Still dropped, and now honestly: the two hands and every finger. This rig has no hand
+joint — the gloves are rigid shells (``FINGER_CURL_DEG``) weighted 100 % to their
+``LowerArm`` — so a mixamo ``LeftHand`` curve has nothing to drive. Nothing else is."""
 
 CLIP_MAP_OVERRIDES: dict[str, dict[str, str]] = {
-    # Crouch ONLY. The runner has a SINGLE Spine bone, and the default map hangs it on
-    # mixamo Spine2 (top of the chest) so its accumulated world lean IS the whole torso's —
-    # correct for every clip whose torso stays upright. But "Crouching Idle" doubles the
-    # mixamo actor over at the WAIST: measured off the source, Spine2 pitches ~70° off
-    # vertical and the PELVIS (Hips) tilts ~42° with it, so telescoping Spine2's ~70° onto
-    # the one runner Spine reads as a doubled-over crawl on all fours — the single clip the
-    # motion judge refuted, while it passed the other seven. Re-hang the runner Spine on the
-    # LOWER mixamo Spine for THIS clip only: it takes the lumbar's ~40° instead of the
-    # chest's ~70°, landing the torso in the hiding-crouch band. The head is retargeted from
-    # mixamo Head independently (only ~19° off vertical in this source — already raised and
-    # watching), so it lands up on top of the more-upright torso rather than nosing the
-    # floor, and the source's deep knee bend + dropped hips + genuine idle breathing all
-    # carry through untouched. Every other clip keeps Spine2 — this is a Crouch-only fix.
-    "Crouch": {"Spine": "Spine"},
+    # Crouch ONLY, and RE-AIMED by the spine split rather than retired by it.
+    #
+    # The old entry re-hung the single Spine from mixamo Spine2 onto mixamo Spine, because
+    # "Crouching Idle" doubles the actor over at the waist — Spine2 pitches ~77° off its
+    # rest, and telescoping that onto one runner bone read as a crawl on all fours. It was
+    # the one clip of eight the motion judge refuted.
+    #
+    # The base map now already gives the runner's LUMBAR the source's lumbar, so that entry
+    # would be a no-op. The same clip's problem has simply moved up one bone: the runner's
+    # Chest would take Spine2's ~77°, and stacked on a lumbar already at ~49° the hips→neck
+    # chord lands past 60° — deeper than the pose this generator has been shipping, on the
+    # one clip whose depth was argued over. So the override moves to CHEST and points it at
+    # the same source bone the lumbar uses: the torso folds by the lumbar's ~49°, which is
+    # exactly the angle the shipped Crouch already stands at, and the fold is simply no
+    # longer being asked to also carry the chest's. The head still comes off mixamo Head
+    # through its own Neck, so it lands up and watching instead of nosing the floor, and
+    # the source's deep knee bend, dropped hips and genuine idle breathing are untouched.
+    "Crouch": {"Chest": "Spine"},
 }
 """Per-clip source-bone remaps layered over ``MIXAMO_MAP``. Absent clip → the base map."""
 
@@ -3657,20 +4038,65 @@ def sample_mixamo(path: str, target_frames: int, loop: bool, mapping=MIXAMO_MAP)
                       + ", ".join(missing))
 
     srest = {s: _rot3(bones[full(s)].matrix_local) for s in needed}
-    # THE ARM RE-REFERENCE, and why only the arms need it. The retarget transfers each
-    # source bone's rotation measured FROM ITS REST. That is exact when the two rests mean
-    # the same pose — and the mixamo rest is a T-pose whose legs point down and spine points
-    # up, which is exactly how THIS rig rests them, so the legs and spine need nothing. But
-    # the T-pose rests the ARMS straight OUT while this rig rests them at the SIDE, so a
-    # source arm that simply hangs is already 90° from its own rest, and transferring that
-    # 90° would stand this rig's arms out horizontally through every clip (the exact defect
-    # a first render showed). Re-reference the arms from a NATURAL HANG instead — the T-pose
-    # arm rotated 90° DOWN about the source's forward axis (+Z in this rig's armature-local
-    # frame; X is left, Y is up, measured off the rest) — so "arm hanging" is the shared
-    # zero: a source arm that hangs maps to this rig's rest arm, and a source arm that
-    # swings maps to a swing. Left drops about -Z, right about +Z (mirror).
-    srest["LeftArm"] = Matrix.Rotation(-math.pi / 2.0, 3, "Z") @ srest["LeftArm"]
-    srest["RightArm"] = Matrix.Rotation(math.pi / 2.0, 3, "Z") @ srest["RightArm"]
+    # THE LIMB RE-REFERENCE, and why a rest-relative retarget needed one at all.
+    #
+    # ``bworld[t] = rest[t] @ srest[s]⁻¹ @ world[s]`` transfers the source bone's rotation
+    # measured IN ITS OWN LOCAL FRAME onto the target's rest. That is only ever as good as
+    # the correspondence between the two bones' local frames — and a bone's local frame is
+    # its direction plus its ROLL. Direction is easy to see and easy to argue about. Roll is
+    # invisible, nobody authors it (Blender computes it from the bone vector, the FBX
+    # importer from the source's node axes), and it is what decides which PLANE a source
+    # rotation lands in on the target. Get the roll wrong by 90° and a fore-aft swing
+    # arrives as a sideways one; get it wrong by 180° and it arrives backwards.
+    #
+    # Both had happened here, and neither was visible until the other was fixed.
+    #
+    #   ARMS. The mixamo rest is a T-pose with the arms straight OUT; this rig rests them at
+    #   the SIDE. The old fix pre-multiplied the T-pose arm rest by 90° "down" about the
+    #   source's forward axis, which fixed the direction and left the roll to chance. On the
+    #   committed rig a walking hand travelled 418 mm side-to-side against 177 mm fore-and-
+    #   aft — the swing plane had tipped almost fully over, which is half of why the renders
+    #   read as a scarecrow. (The other half was having no forearm at all.)
+    #
+    #   LEGS. Nothing looked wrong with them, and they were 180° out: the rig's left leg was
+    #   reproducing the source's RIGHT one. A symmetric gait shifted half a cycle is the same
+    #   gait, so no gate and no render could see it — until the arms came good and started
+    #   swinging in phase with the leg on the same side.
+    #
+    # So the reference is DECLARED rather than nudged: for every bone in REREF_SUFFIXES the
+    # source's zero IS this rig's own rest bone, expressed in the source's frame. The
+    # correction then reduces to SOURCE_TO_RIG exactly — a pure frame change, no roll left
+    # to be wrong about — and each limb bone simply takes the source bone's world
+    # orientation converted into this rig's axes.
+    if not gpm.REST:
+        blendkit.fail("sample_mixamo ran before the rig was cached; gpm.REST is empty and "
+                      "the arm re-reference has no target rest to declare against.")
+    inv_frame = SOURCE_TO_RIG.inverted()
+    for tbone, s in mapping.items():
+        if tbone.endswith(REREF_SUFFIXES):
+            srest[s] = inv_frame @ gpm.REST[tbone]
+    # And SOURCE_TO_RIG is CHECKED against the source's own rest geometry rather than
+    # taken on trust — three landmarks that cannot be argued with. Up is hips→spine, left
+    # is right shoulder→left shoulder, and forward is their cross product; the frame change
+    # has to put all three on this rig's +Z, +X and −Y.
+    heads = {n: bones[full(n)].matrix_local.to_translation()
+             for n in ("Hips", "Spine", "LeftArm", "RightArm")}
+    up_s = (heads["Spine"] - heads["Hips"]).normalized()
+    left_s = (heads["LeftArm"] - heads["RightArm"]).normalized()
+    fwd_s = left_s.cross(up_s).normalized()
+    got = [SOURCE_TO_RIG @ v for v in (up_s, left_s, fwd_s)]
+    want = [Vector((0.0, 0.0, 1.0)), Vector((1.0, 0.0, 0.0)), Vector((0.0, -1.0, 0.0))]
+    errs = [math.degrees(math.acos(max(-1.0, min(1.0, g.dot(w)))))
+            for g, w in zip(got, want)]
+    print(f"SOURCE_FRAME up={errs[0]:.1f}deg left={errs[1]:.1f}deg fwd={errs[2]:.1f}deg "
+          f"off this rig's +Z/+X/−Y (SOURCE_TO_RIG checked against the source's rest)")
+    if max(errs) > 5.0:
+        blendkit.fail(
+            f"SOURCE_TO_RIG does not convert {os.path.basename(path)}'s frame: its up, left "
+            f"and forward land {errs[0]:.1f}/{errs[1]:.1f}/{errs[2]:.1f} degrees off this "
+            "rig's. Every arm in every clip is re-referenced through that matrix, so a wrong "
+            "one swings them in the wrong plane — which is the defect this rig was rebuilt "
+            "to remove. A re-export from Mixamo with different axis settings would do it.")
     # up axis and rest hip height, both in the source armature-local frame (Y-up, cm).
     up = (bones[full("Spine")].matrix_local.to_translation()
           - bones[full("Hips")].matrix_local.to_translation()).normalized()
@@ -3803,7 +4229,8 @@ def retarget_clip(rig: bpy.types.Object, body: bpy.types.Object, name: str) -> g
         # the same summed-direction metric the source LOOP_DIFF used. Small = no pop.
         seam = f" seam={_loop_seam(poses[-1], poses[0]):.3f}"
     override = CLIP_MAP_OVERRIDES.get(name)
-    ov = f" spine_src={mapping['Spine']}" if override and "Spine" in override else ""
+    ov = (" override=" + ",".join(f"{t}<-{s}" for t, s in sorted(override.items()))
+          if override else "")
     print(f"RETARGET_CLIP {name:11s} src={filename!r} frames={target_frames} "
           f"loop={int(loop)} hip_scale={hip_scale:.5f} bob={min(world_offsets):+.3f}.."
           f"{max(world_offsets):+.3f}m floor_shift={shift * 1000.0:+.1f}mm"
@@ -4005,7 +4432,10 @@ def pose_measure(rig, clip: gpm.Clip) -> None:
     """
     gpm.apply_pose(rig, clip.poses[[p.frame for p in clip.poses].index(clip.measure_frame)])
     hips = gpm.bone_point(rig, "Hips", (0.0, 0.0, 0.0))
-    spine_dir = (gpm.bone_point(rig, "Head", (0.0, 0.0, 0.0)) - hips).normalized()
+    # hips → TOP OF THE TORSO. That landmark is ``Neck``'s head since the spine was
+    # split; it is the same height (NECK_BASE_Z) the old ``Head``'s head sat at, so the
+    # number stays comparable with every lean printed before the 17-bone rig.
+    spine_dir = (gpm.bone_point(rig, "Neck", (0.0, 0.0, 0.0)) - hips).normalized()
     lean = math.degrees(math.atan2(-spine_dir.y, spine_dir.z))
 
     # `Bone.vector` is PARENT-relative; `bone_point` wants a world offset from the head.
@@ -4029,6 +4459,139 @@ def pose_measure(rig, clip: gpm.Clip) -> None:
     print(f"POSE_MEASURE {clip.name:11s} frame={clip.measure_frame:3d} "
           f"hip=({hips.y:+.3f},{hips.z:.3f}) spine_lean={lean:+.1f}deg "
           f"arm_swing={math.degrees(math.atan2(-arm.y, -arm.z)):+.1f}deg " + "  ".join(feet))
+
+
+ELBOW_STRAIGHT_DEG = 172.0
+"""The anatomical elbow angle (180° = a straight rod) past which the arm has stopped
+being an arm. The whole of task #85 is that the 13-bone rig held every frame of every
+clip at exactly 180°; ``report_motion`` fails the build if any frame of a LOCOMOTION clip
+reaches this. 172° rather than 179° because "not quite straight" is not a bend either —
+at this arm length 8° is 85 mm of hand travel, which is the difference between a bent
+elbow and a measurement artefact."""
+
+SWING_PLANE_MAX = 0.90
+"""How much of the hand's fore-aft travel it is allowed to also travel SIDEWAYS, over a
+running cycle. Arms drive fore-and-aft; the failure this number fences is the one the
+renders showed, where the hand's lateral excursion (583 mm) was 1.71× its fore-aft one
+(341 mm) because the arm was pointing out of the side of the body. Not 0.0 — a real
+running arm crosses slightly toward the chest and a mirror-perfect sagittal swing reads as
+a toy soldier — but past this the plane has tipped and the swing is no longer a swing."""
+
+SWING_PLANE_FLOOR = 0.100
+"""Metres of fore-aft hand travel below which the plane ratio is printed but not judged.
+A ratio needs a denominator: CrouchWalk holds its arms in against the body and moves a
+hand 20 mm over a whole cycle, where 20 mm of unavoidable lateral wobble reads as a 1.03
+"failure" and means nothing at all. 100 mm is a tenth of an arm — under it there is no
+swing to have a plane, and what keeps those clips honest is the elbow check and the
+render, not this."""
+
+
+def report_motion(rig, clips: list[gpm.Clip]) -> None:
+    """The acceptance instrument for task #85: elbow, swing plane, torso lean, per clip.
+
+    **Why these three and why measured over the whole cycle rather than at one frame.**
+    Each is a number a render can be argued with and this cannot. The elbow says the
+    forearm exists and is being driven — a rig with no elbow reads exactly 180.0 every
+    frame, which is what the 13-bone version did. The swing plane says the arm is driving
+    the run rather than being held out of it: a hand's lateral excursion measured against
+    its fore-aft one, in the shoulder's own frame. The lean says the torso is a runner's
+    and not a plank's.
+
+    Locomotion clips are ASSERTED, the rest are only printed. Idle and GunIdle have no
+    swing to have a plane, and Death ends face down with an arm folded under a body — a
+    clip whose whole content is the figure ceasing to be upright cannot be held to a
+    runner's posture.
+    """
+    graded = {"Walk", "Run", "CrouchWalk", "GunWalk"}
+    for clip in clips:
+        rows = []
+        for pose in clip.poses:
+            gpm.apply_pose(rig, pose)
+            row = {}
+            for side, s in (("Left", 1.0), ("Right", -1.0)):
+                sh = gpm.bone_point(rig, side + "UpperArm", (0.0, 0.0, 0.0))
+                el = gpm.bone_point(rig, side + "LowerArm", (0.0, 0.0, 0.0))
+                low = rig.data.bones[side + "LowerArm"]
+                hand = gpm.bone_point(rig, side + "LowerArm",
+                                      tuple(low.tail_local - low.head_local))
+                u = (el - sh).normalized()
+                f = (hand - el).normalized()
+                d = hand - sh
+                row[side] = (
+                    180.0 - math.degrees(math.acos(max(-1.0, min(1.0, u.dot(f))))),
+                    s * d.x,        # + = outboard of the shoulder
+                    -d.y,           # + = in front of the shoulder
+                )
+            hips = gpm.bone_point(rig, "Hips", (0.0, 0.0, 0.0))
+            chord = gpm.bone_point(rig, "Neck", (0.0, 0.0, 0.0)) - hips
+            row["lean"] = math.degrees(math.atan2(-chord.y, chord.z))
+            for side in ("Left", "Right"):
+                hip = gpm.bone_point(rig, side + "UpperLeg", (0.0, 0.0, 0.0))
+                low = rig.data.bones[side + "LowerLeg"]
+                row[side + "foot"] = -(gpm.bone_point(
+                    rig, side + "LowerLeg", tuple(low.tail_local - low.head_local)) - hip).y
+            rows.append(row)
+
+        worst_straight, worst_plane, worst_opp = 0.0, 0.0, -1.0
+        for side in ("Left", "Right"):
+            elbows = [r[side][0] for r in rows]
+            lat = [r[side][1] for r in rows]
+            fore = [r[side][2] for r in rows]
+            lat_t, fore_t = max(lat) - min(lat), max(fore) - min(fore)
+            plane = lat_t / fore_t if fore_t > 1e-4 else 0.0
+            worst_straight = max(worst_straight, max(elbows))
+            if fore_t >= SWING_PLANE_FLOOR:
+                worst_plane = max(worst_plane, plane)
+            # Opposition: a hand and the foot on the SAME side move in antiphase in every
+            # human gait. Reported as the correlation of their fore-aft offsets, so it is
+            # NEGATIVE when the figure is running and positive when an arm has been
+            # transferred with its swing direction reversed — the one failure the plane
+            # ratio cannot see, because a backwards swing is still a swing in the plane.
+            ankles = [r[side + "foot"] for r in rows]
+            mf, ma = (sum(fore) / len(fore)), (sum(ankles) / len(ankles))
+            cov = sum((f - mf) * (a - ma) for f, a in zip(fore, ankles))
+            sf = math.sqrt(sum((f - mf) ** 2 for f in fore))
+            sa = math.sqrt(sum((a - ma) ** 2 for a in ankles))
+            opp = cov / (sf * sa) if sf > 1e-9 and sa > 1e-9 else -1.0
+            if fore_t >= SWING_PLANE_FLOOR:
+                worst_opp = max(worst_opp, opp)
+            print(f"MOTION {clip.name:11s} {side:5s} "
+                  f"elbow={min(elbows):6.1f}..{max(elbows):6.1f}deg "
+                  f"fore_travel={fore_t * 1000.0:6.1f}mm "
+                  f"lat_travel={lat_t * 1000.0:6.1f}mm plane={plane:5.2f}"
+                  f"{'' if fore_t >= SWING_PLANE_FLOOR else '*'} "
+                  f"hand_out_max={max(lat) * 1000.0:+7.1f}mm arm_vs_leg={opp:+.2f}")
+        leans = [r["lean"] for r in rows]
+        print(f"MOTION {clip.name:11s} torso lean={min(leans):+6.1f}..{max(leans):+6.1f}deg "
+              f"mean={sum(leans) / len(leans):+6.1f}deg (hips→Neck)")
+
+        if clip.name not in graded:
+            continue
+        if worst_straight > ELBOW_STRAIGHT_DEG:
+            blendkit.fail(
+                f"{clip.name} straightens an elbow to {worst_straight:.1f}° against a "
+                f"{ELBOW_STRAIGHT_DEG:.0f}° ceiling. A locomotion clip on this rig must "
+                "bend the arm every frame — a straight one means the LowerArm is inheriting "
+                "its parent's rotation and not being driven, which is the 13-bone scarecrow "
+                "with two extra bones in the file. Check MIXAMO_MAP still names both "
+                "ForeArms, or that the procedural arm() is being given an elbow.")
+        if worst_plane > SWING_PLANE_MAX:
+            blendkit.fail(
+                f"{clip.name} swings a hand {worst_plane:.2f}× as far sideways as it does "
+                f"fore-and-aft, past the {SWING_PLANE_MAX:.2f} a swing plane is allowed to "
+                "tip. The arm is being held out of the side of the body rather than driving "
+                "the stride — measured at 1.71 on the 13-bone rig, which is what the round-3 "
+                "renders show. The usual cause is the arm re-reference in sample_mixamo "
+                "having stopped matching the rig's rest arm.")
+        if worst_opp > 0.0:
+            blendkit.fail(
+                f"{clip.name} swings a hand IN PHASE with the foot on the same side "
+                f"(correlation {worst_opp:+.2f}; a gait is negative). No human walks or runs "
+                "like that — arm and same-side leg oppose, which is what stops a body "
+                "rotating about its own axis every step. This is the check that caught the "
+                "legs being retargeted half a cycle out (REREF_SUFFIXES): it is invisible in "
+                "a render because both sides of the figure are symmetric, and it will only "
+                "ever be caught by measuring one limb against the other.")
 
 
 def verify_clip_speeds(clips: list[gpm.Clip]) -> None:
@@ -4347,6 +4910,7 @@ def main() -> None:
     verify_skin_stretch(rig, body, clips)
     for clip in clips:
         pose_measure(rig, clip)
+    report_motion(rig, clips)
     gpm.clear_pose(rig)
 
     for clip in clips:

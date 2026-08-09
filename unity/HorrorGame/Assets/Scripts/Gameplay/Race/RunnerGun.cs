@@ -46,19 +46,30 @@ namespace HorrorGame.Gameplay.Race
     public sealed class RunnerGun : MonoBehaviour
     {
         /// <summary>
-        /// How far along the arm bone <c>Gun_Held</c> hangs, measured as a multiple of the
-        /// SPINE bone's length. 0.9904 on 주자 — the arm is a hair shorter than the spine.
+        /// How far along <see cref="ArmBone"/> <c>Gun_Held</c> hangs, measured as a multiple
+        /// of the <c>Spine</c>→<c>Head</c> chain's length. 0.4376 on 주자.
         /// <para>
-        /// <b>Why a ratio and not metres.</b> The rig's <c>RightUpperArm</c> is a leaf bone,
+        /// <b>Why a ratio and not metres.</b> The rig's <c>RightLowerArm</c> is a leaf bone,
         /// <c>gen_runner.export_fbx</c> sets <c>add_leaf_bones=False</c> so no tip node is
         /// invented, and a bone's LENGTH lives in a tail that FBX does not write as a node.
         /// Unity therefore does not know where this rig's hand is, and cannot be made to.
         /// The number has to be authored, and the only unit-safe way to carry it is as a
-        /// proportion of something the runtime can measure on the rig it actually loaded:
-        /// <c>Head</c> is connected to <c>Spine</c>, so <c>Head.localPosition</c> IS the
-        /// spine's length in whatever units the importer settled on. Metres would be a bet
-        /// on <c>FBX_SCALE_NONE</c>, <c>useFileScale</c> and the model importer's global
-        /// scale all staying where they are.
+        /// proportion of something the runtime can measure on the rig it actually loaded.
+        /// Metres would be a bet on <c>FBX_SCALE_NONE</c>, <c>useFileScale</c> and the model
+        /// importer's global scale all staying where they are.
+        /// </para>
+        /// <para>
+        /// <b>Both ends of that ratio moved when 주자 grew from 13 bones to 17, and this
+        /// value moved with them — it is NOT the 0.9904 that stood here.</b> The numerator
+        /// was the whole arm hung off <c>RightUpperArm</c>; that bone now stops at the
+        /// ELBOW, so the same offset on the same bone would have put the revolver in the
+        /// crook of the runner's arm — silently, in the third-person view nobody is looking
+        /// at while they play. The gun rides the FOREARM now and the number is the forearm's
+        /// own length. The denominator was <c>Head.localPosition</c>, which worked only
+        /// because <c>Head</c> was a direct child of <c>Spine</c>; a <c>Chest</c> and a
+        /// <c>Neck</c> sit between them today, so <see cref="MountOffset"/> walks the chain
+        /// and sums it instead. Same physical length as before plus the neck, and
+        /// <c>gen_runner.report_arm</c> measures exactly that.
         /// </para>
         /// <para>
         /// <b>It is checked from the other end.</b> <c>gen_runner.verify_gun_mount</c> reads
@@ -68,15 +79,22 @@ namespace HorrorGame.Gameplay.Race
         /// thing they named has moved — so the generator is made to look.
         /// </para>
         /// </summary>
-        public const float GunMountArmsPerSpine = 0.9904f;
+        public const float GunMountArmsPerSpine = 0.4376f;
 
-        /// <summary>Bone the gun hangs off. 주자 has no hand bone — 13 bones, one per arm.</summary>
-        public const string ArmBone = "RightUpperArm";
+        /// <summary>
+        /// Bone the gun hangs off: the FOREARM, whose tail is the palm. 주자 still has no
+        /// hand bone — 17 bones, two per arm, and the glove is a rigid shell weighted to
+        /// this one. Mounting on <c>RightUpperArm</c> would hang it at the elbow.
+        /// </summary>
+        public const string ArmBone = "RightLowerArm";
 
         /// <summary>The two bones whose separation gives the rig's own unit of length.</summary>
         public const string SpineBone = "Spine";
 
-        /// <summary>Child of <see cref="SpineBone"/>, and therefore the spine's length. See <see cref="GunMountArmsPerSpine"/>.</summary>
+        /// <summary>
+        /// Descendant of <see cref="SpineBone"/>, no longer its direct child — the chain
+        /// between them is the rig's unit of length. See <see cref="GunMountArmsPerSpine"/>.
+        /// </summary>
         public const string HeadBone = "Head";
 
         /// <summary>
@@ -614,21 +632,49 @@ namespace HorrorGame.Gameplay.Race
         /// Where along the arm bone the hand is, in the rig's own units. See
         /// <see cref="GunMountArmsPerSpine"/> for why it is measured rather than typed.
         /// </summary>
-        private static Vector3 MountOffset(Transform root)
+        /// <summary>
+        /// Where the held gun sits in the arm bone's local space. Public because the
+        /// editor's <c>GunShot</c> harness photographs this exact mount, and it used to
+        /// reproduce the arithmetic by hand — a seam that silently went stale the day the
+        /// rig grew a Neck and a Chest (the copy read Head's localPosition, which had
+        /// stopped being the Spine chain and become the neck alone: 0.126 m where the
+        /// answer is 0.739 m, hanging the photographed gun at the elbow). The generator is
+        /// already made to look at this file rather than restate it; the harness now does
+        /// the same, so there is one implementation and the photograph is of the game.
+        /// </summary>
+        public static Vector3 MountOffset(Transform root)
         {
             var head = PlayerRigBones.Find(root, HeadBone);
             var spine = PlayerRigBones.Find(root, SpineBone);
-            if (head == null || spine == null || head.parent != spine)
+            if (head == null || spine == null)
             {
                 // The rig is not the one this constant was measured on. Zero puts the gun
-                // at the shoulder, which is visibly wrong rather than subtly wrong — the
+                // at the elbow, which is visibly wrong rather than subtly wrong — the
                 // failure a reviewer notices beats the failure they do not.
                 return Vector3.zero;
             }
 
-            // Blender exports with primary_bone_axis='Y', so a bone's local +Y runs from
-            // its head to its tail: along the arm, toward the hand.
-            return new Vector3(0f, head.localPosition.magnitude * GunMountArmsPerSpine, 0f);
+            // Sum the chain from Head back up to Spine. Each bone's localPosition is the
+            // offset from its parent's origin — i.e. that parent's own length — so the
+            // sum is Spine + Chest + Neck, in whatever units the importer settled on, and
+            // it is the same unit the arm bone's local space uses (bones do not scale
+            // relative to one another). This used to be one hop: Head WAS a child of Spine
+            // on the 13-bone rig. Walking it means the number survives another bone being
+            // inserted in the neck, and it still refuses a rig where Head is not under
+            // Spine at all.
+            var length = 0f;
+            for (var t = head; t != null && t != root; t = t.parent)
+            {
+                length += t.localPosition.magnitude;
+                if (t.parent == spine)
+                {
+                    // Blender exports with primary_bone_axis='Y', so a bone's local +Y
+                    // runs from its head to its tail: along the forearm, toward the palm.
+                    return new Vector3(0f, length * GunMountArmsPerSpine, 0f);
+                }
+            }
+
+            return Vector3.zero;
         }
 
         private GameObject? FindTemplate()
