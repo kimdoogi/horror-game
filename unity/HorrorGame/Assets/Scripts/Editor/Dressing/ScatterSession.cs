@@ -1079,12 +1079,19 @@ namespace HorrorGame.EditorTools.Dressing
         /// </para>
         /// </summary>
         /// <summary>A placed bulb fitting waiting for <see cref="LightStratifiedBulbs"/>'s selection.</summary>
-        private readonly List<(GameObject Bulb, int Depth, string Palette)> _bulbFittings
-            = new List<(GameObject, int, string)>();
+        private readonly List<(GameObject Bulb, int Depth, string Palette, bool Mains)> _bulbFittings
+            = new List<(GameObject, int, string, bool)>();
 
         private void RecordBulb(GameObject bulb, DressingSpace.CellInfo info)
         {
-            _bulbFittings.Add((bulb, Mathf.Max(0, -info.Cell.Level), info.Palette));
+            // 기계실 fittings are flagged so the storey can keep its mains — see
+            // LightStratifiedBulbs. Matched on the zone name's floor-material suffix,
+            // the same key PaletteFor reads, because the palette itself cannot tell
+            // the plant room apart: "utility" is the default palette and covers
+            // concrete, carpet and the deep storeys too.
+            var mains = info.ZoneName.EndsWith(
+                FloorMaterial.Metal.ToString(), StringComparison.Ordinal);
+            _bulbFittings.Add((bulb, Mathf.Max(0, -info.Cell.Level), info.Palette, mains));
         }
 
         /// <summary>
@@ -1128,7 +1135,16 @@ namespace HorrorGame.EditorTools.Dressing
                     Mathf.Atan2(a.Bulb.transform.position.z - centre.z, a.Bulb.transform.position.x - centre.x)
                         .CompareTo(Mathf.Atan2(b.Bulb.transform.position.z - centre.z, b.Bulb.transform.position.x - centre.x)));
 
-                var everyNth = WorkingBulbInN + (2 * group.Key);
+                // 기계실 keeps its mains. The plant storey is where the building's
+                // power lives, so §07's depth penalty does not apply to it — fiction
+                // and measurement pointing the same way: after the CC0 photo floors
+                // landed, the metal zone view measured 27.4 % legible against the 30
+                // floor with ZERO lit fittings in frame, and the material-side lever
+                // (zone AO ×1.05 → ×0.88) measured +0.2 — the zone was short of light,
+                // not of texels. Majority vote, not any(), so a storey that merely
+                // borders the plant room keeps its gradient.
+                var mains = fittings.Count(f => f.Mains) * 2 > fittings.Count;
+                var everyNth = mains ? WorkingBulbInN : WorkingBulbInN + (2 * group.Key);
                 var picks = Mathf.Max(1, Mathf.CeilToInt(fittings.Count / (float)everyNth));
                 for (var i = 0; i < picks; i++)
                 {

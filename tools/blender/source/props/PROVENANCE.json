@@ -1,0 +1,222 @@
+{
+ "license": "CC0 1.0 (public-domain-equivalent, commercial use, no attribution required)",
+ "source": "PolyHaven (polyhaven.com), downloaded 2026-08-09",
+ "note": "Vendored so tools/blender/gen_dressing.py rebuilds without a network. Each dir carries the 2k .blend plus its textures exactly as served.",
+ "assets": [
+  {
+   "id": "barrel_03",
+   "res": "2k",
+   "blend": "barrel_03_2k.blend",
+   "blend_bytes": 156523,
+   "tex_bytes": 6828191,
+   "tex": [
+    [
+     "textures/barrel_03_rough_2k.jpg",
+     1011647,
+     "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/barrel_03/barrel_03_rough_2k.jpg"
+    ],
+    [
+     "textures/barrel_03_diff_2k.jpg",
+     581642,
+     "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/barrel_03/barrel_03_diff_2k.jpg"
+    ],
+    [
+     "textures/barrel_03_nor_gl_2k.exr",
+     4756289,
+     "https://dl.polyhaven.org/file/ph-assets/Models/exr/2k/barrel_03/barrel_03_nor_gl_2k.exr"
+    ],
+    [
+     "textures/barrel_03_metal_2k.exr",
+     478613,
+     "https://dl.polyhaven.org/file/ph-assets/Models/exr/2k/barrel_03/barrel_03_metal_2k.exr"
+    ]
+   ],
+   "total_bytes": 6984714
+  },
+  {
+   "id": "caged_hanging_light",
+   "res": "2k",
+   "blend": "caged_hanging_light_2k.blend",
+   "blend_bytes": 621184,
+   "tex_bytes": 13523935,
+   "tex": [
+    [
+     "textures/caged_hanging_light_diff_2k.jpg",
+     2175755,
+     "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/caged_hanging_light/caged_hanging_light_diff_2k.jpg"
+    ],
+    [
+     "textures/caged_hanging_light_emissive_2k.png",
+     270951,
+     "https://dl.polyhaven.org/file/ph-assets/Models/png/2k/caged_hanging_light/caged_hanging_light_emissive_2k.png"
+    ],
+    [
+     "textures/caged_hanging_light_metal_2k.exr",
+     2427885,
+     "https://dl.polyhaven.org/file/ph-assets/Models/exr/2k/caged_hanging_light/caged_hanging_light_metal_2k.exr"
+    ],
+    [
+     "textures/caged_hanging_light_nor_gl_2k.exr",
+     5838095,
+     "https://dl.polyhaven.org/file/ph-assets/Models/exr/2k/caged_hanging_light/caged_hanging_light_nor_gl_2k.exr"
+    ],
+    [
+     "textures/caged_hanging_light_rough_2k.exr",
+     2811249,
+     "https://dl.polyhaven.org/file/ph-assets/Models/exr/2k/caged_hanging_light/caged_hanging_light_rough_2k.exr"
+    ]
+   ],
+   "total_bytes": 14145119
+  },
+  {
+   "id": "modular_industrial_pipes_01",
+   "res": "2k",
+   "blend": "modular_industrial_pipes_01_2k.blend",
+   "blend_bytes": 392563,
+   "tex_bytes": 28457247,
+   "tex": [
+    [
+     "textures/modular_industrial_pipes_01_group01_rough_2k.png",
+     2241068,
+     "https://dl.polyhaven.org/file/ph-assets/Models/png/2k/modular_industrial_pipes_01/modular_industrial_pipes_01_group01_rough_2k.png"
+    ],
+    [
+     "textures/modular_industrial_pipes_01_group02_nor_gl_2k.png",
+     5880490,
+     "https://dl.polyhaven.org/file/ph-assets/Models/png/2k/modular_industrial_pipes_01/modular_industrial_pipes_01_group02_nor_gl_2k.png"
+    ],
+    [
+     "textures/modular_industrial_pipes_01_group02_rough_2k.png",
+     2384750,
+     "https://dl.polyhaven.org/file/ph-assets/Models/png/2k/modular_industrial_pipes_01/modular_industrial_pipes_01_group02_rough_2k.png"
+    ],
+    [
+     "textures/modular_industrial_pipes_01_group02_diff_2k.png",
+     4527371,
+     "https://dl.polyhaven.org/file/ph-assets/Models/png/2k/modular_industrial_pipes_01/modular_industrial_pipes_01_group02_diff_2k.png"
+    ],
+    [
+     "textures/modular_industrial_pipes_01_group01_diff_2k.png",
+     4203967,
+     "https://dl.polyhaven.org/file/ph-assets/Models/png/2k/modular_industrial_pipes_01/modular_industrial_pipes_01_group01_diff_2k.png"
+    ],
+    [
+     "textures/modular_industrial_pipes_01_group01_nor_gl_2k.png",
+     5669294,
+     "https://dl.polyhaven.org/file/ph-assets/Models/png/2k/modular_industrial_pipes_01/modular_industrial_pipes_01_group01_nor_gl_2k.png"
+    ],
+    [
+     "textures/modular_industrial_pipes_01_group02_metal_2k.png",
+     1796022,
+     "https://dl.polyhaven.org/file/ph-assets/Models/png/2k/modular_industrial_pipes_01/modular_industrial_pipes_01_group02_metal_2k.png"
+    ],
+    [
+     "textures/modular_industrial_pipes_01_group01_metal_2k.png",
+     1754285,
+     "https://dl.polyhaven.org/file/ph-assets/Models/png/2k/modular_industrial_pipes_01/modular_industrial_pipes_01_group01_metal_2k.png"
+    ]
+   ],
+   "total_bytes": 28849810
+  },
+  {
+   "id": "old_military_crate",
+   "res": "2k",
+   "blend": "old_military_crate_2k.blend",
+   "blend_bytes": 420625,
+   "tex_bytes": 12982621,
+   "tex": [
+    [
+     "textures/old_military_crate_diff_2k.jpg",
+     2968985,
+     "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/old_military_crate/old_military_crate_diff_2k.jpg"
+    ],
+    [
+     "textures/old_military_crate_metal_2k.exr",
+     253403,
+     "https://dl.polyhaven.org/file/ph-assets/Models/exr/2k/old_military_crate/old_military_crate_metal_2k.exr"
+    ],
+    [
+     "textures/old_military_crate_nor_gl_2k.exr",
+     7194445,
+     "https://dl.polyhaven.org/file/ph-assets/Models/exr/2k/old_military_crate/old_military_crate_nor_gl_2k.exr"
+    ],
+    [
+     "textures/old_military_crate_rough_2k.exr",
+     2565788,
+     "https://dl.polyhaven.org/file/ph-assets/Models/exr/2k/old_military_crate/old_military_crate_rough_2k.exr"
+    ]
+   ],
+   "total_bytes": 13403246
+  },
+  {
+   "id": "worn_metal_rack",
+   "res": "2k",
+   "blend": "worn_metal_rack_2k.blend",
+   "blend_bytes": 214962,
+   "tex_bytes": 11682443,
+   "tex": [
+    [
+     "textures/worn_metal_rack_diff_2k.jpg",
+     2201125,
+     "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/worn_metal_rack/worn_metal_rack_diff_2k.jpg"
+    ],
+    [
+     "textures/worn_metal_rack_metal_2k.exr",
+     3268547,
+     "https://dl.polyhaven.org/file/ph-assets/Models/exr/2k/worn_metal_rack/worn_metal_rack_metal_2k.exr"
+    ],
+    [
+     "textures/worn_metal_rack_nor_gl_2k.exr",
+     4097576,
+     "https://dl.polyhaven.org/file/ph-assets/Models/exr/2k/worn_metal_rack/worn_metal_rack_nor_gl_2k.exr"
+    ],
+    [
+     "textures/worn_metal_rack_rough_2k.exr",
+     2115195,
+     "https://dl.polyhaven.org/file/ph-assets/Models/exr/2k/worn_metal_rack/worn_metal_rack_rough_2k.exr"
+    ]
+   ],
+   "total_bytes": 11897405
+  },
+  {
+   "id": "portable_generator",
+   "res": "2k",
+   "blend": "portable_generator_2k.blend",
+   "blend_bytes": 789698,
+   "tex_bytes": 14773564,
+   "tex": [
+    [
+     "textures/portable_generator_alpha_2k.png",
+     236005,
+     "https://dl.polyhaven.org/file/ph-assets/Models/png/2k/portable_generator/portable_generator_alpha_2k.png"
+    ],
+    [
+     "textures/portable_generator_diff_2k.jpg",
+     2680935,
+     "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/portable_generator/portable_generator_diff_2k.jpg"
+    ],
+    [
+     "textures/portable_generator_metal_2k.exr",
+     2548414,
+     "https://dl.polyhaven.org/file/ph-assets/Models/exr/2k/portable_generator/portable_generator_metal_2k.exr"
+    ],
+    [
+     "textures/portable_generator_nor_gl_2k.exr",
+     6515763,
+     "https://dl.polyhaven.org/file/ph-assets/Models/exr/2k/portable_generator/portable_generator_nor_gl_2k.exr"
+    ],
+    [
+     "textures/portable_generator_rough_2k.exr",
+     2731790,
+     "https://dl.polyhaven.org/file/ph-assets/Models/exr/2k/portable_generator/portable_generator_rough_2k.exr"
+    ],
+    [
+     "textures/portable_generator_spec_2k.png",
+     60657,
+     "https://dl.polyhaven.org/file/ph-assets/Models/png/2k/portable_generator/portable_generator_spec_2k.png"
+    ]
+   ],
+   "total_bytes": 15563262
+  }
+ ]
+}

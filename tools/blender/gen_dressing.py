@@ -100,15 +100,19 @@ from __future__ import annotations
 import json
 import math
 import os
+import struct
 import sys
 import traceback
+import zlib
 from dataclasses import dataclass, field
 from typing import Callable
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import bmesh  # noqa: E402
 import bpy  # noqa: E402
-from mathutils import Euler, Vector  # noqa: E402
+import numpy as np  # noqa: E402  (bundled with Blender's Python)
+from mathutils import Euler, Matrix, Vector  # noqa: E402
 
 import blendkit  # noqa: E402
 import gen_props  # noqa: E402
@@ -178,6 +182,18 @@ BULB_LIT = "Dress_BulbLit"
 RUBBER = "Dress_Rubber"
 GRIME = "Dress_Grime"
 BRASS_FITTING = "Dress_BrassFitting"
+
+# Materials carried by the CC0 PolyHaven replacements (see REAL PROPS below).
+# Each has real 1024² maps shipped beside the kit and bound by DressingMaterials;
+# the flat numbers here are the FALLBACK the binder uses when a map is missing,
+# so they approximate each texture's average rather than invent a new look.
+BARREL03 = "Dress_Barrel03"
+PIPE_GALV01 = "Dress_PipeGalv01"
+PIPE_VALVE02 = "Dress_PipeValve02"
+CRATE_MIL = "Dress_CrateMilitary"
+CAGED_LAMP = "Dress_CagedLamp"
+RACK_WORN = "Dress_RackWorn"
+GENERATOR_BODY = "Dress_GeneratorBody"
 
 # DELETED: CLUE_FACE. It was `gen_props.CLUE_FACE` — §13's seam, the surface the
 # host rendered one clue's glyph onto and stamped here. §03 단서 is deleted:
@@ -273,6 +289,17 @@ MATERIALS: dict[str, MaterialSpec] = {
     RUBBER: MaterialSpec(RUBBER, (0.062, 0.062, 0.068), roughness=0.85),
     GRIME: MaterialSpec(GRIME, (0.092, 0.086, 0.078), roughness=0.98),
     BRASS_FITTING: MaterialSpec(BRASS_FITTING, (0.482, 0.382, 0.162), roughness=0.34, metallic=1.0),
+    # ── Real-prop materials (CC0 PolyHaven, textured — flat values are fallbacks).
+    # Painted drums and crates are dielectric paint over the metal/wood (§7.12's
+    # rule, same argument as STEEL_PAINTED above); the per-pixel metal that
+    # survives scratches lives in the shipped mask map, not in this number.
+    BARREL03: MaterialSpec(BARREL03, (0.212, 0.286, 0.352), roughness=0.56, metallic=0.12),
+    PIPE_GALV01: MaterialSpec(PIPE_GALV01, (0.402, 0.442, 0.468), roughness=0.55, metallic=0.72),
+    PIPE_VALVE02: MaterialSpec(PIPE_VALVE02, (0.382, 0.418, 0.448), roughness=0.58, metallic=0.70),
+    CRATE_MIL: MaterialSpec(CRATE_MIL, (0.302, 0.292, 0.202), roughness=0.80, metallic=0.0),
+    CAGED_LAMP: MaterialSpec(CAGED_LAMP, (0.202, 0.262, 0.182), roughness=0.55, metallic=0.30),
+    RACK_WORN: MaterialSpec(RACK_WORN, (0.478, 0.488, 0.468), roughness=0.50, metallic=0.60),
+    GENERATOR_BODY: MaterialSpec(GENERATOR_BODY, (0.522, 0.402, 0.122), roughness=0.60, metallic=0.10),
 }
 
 gen_props.register_materials(MATERIALS)
@@ -280,6 +307,384 @@ gen_props.register_materials(MATERIALS)
 
 def rads(degrees):
     return gen_props.rads(degrees)
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  REAL PROPS — six pieces' visuals now come from CC0 PolyHaven scans.
+#
+#  The procedural kit's whole §03 argument is that a surface only exists when
+#  it returns light, and a flat-colour cylinder returns light as one unbroken
+#  gradient. The 2 k scans return it the way forty years of basement do:
+#  roughness that varies per pixel, paint that thins over rust, stencils.
+#  Geometry, pivot, budget and the manifest contract are unchanged — a piece
+#  still goes out through the same emit()/export_fbx path as its procedural
+#  siblings, and the scatter tool cannot tell which kind it placed.
+#
+#  Sources are VENDORED under tools/blender/source/props/<id>/ (.blend plus
+#  textures, exactly as PolyHaven serves them — see PROVENANCE.json there) so
+#  a rebuild needs no network and no scratch dir. CC0 1.0: no attribution
+#  required, commercial use fine; recorded in docs/ASSETS.md all the same.
+# ══════════════════════════════════════════════════════════════════════════
+
+SOURCE_PROPS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "source", "props")
+
+
+def _source_blend(prop_id: str) -> str:
+    path = os.path.join(SOURCE_PROPS, prop_id, prop_id + "_2k.blend")
+    if not os.path.exists(path):
+        blendkit.fail(f"vendored CC0 source missing: {path} — restore tools/blender/source/props/"
+                      f" (PolyHaven '{prop_id}', see PROVENANCE.json)")
+    return path
+
+
+def _source_texture(prop_id: str, filename: str) -> str:
+    path = os.path.join(SOURCE_PROPS, prop_id, "textures", filename)
+    if not os.path.exists(path):
+        blendkit.fail(f"vendored CC0 texture missing: {path}")
+    return path
+
+
+def _append_object(prop_id: str, name: str) -> bpy.types.Object:
+    """Appends one object from a vendored .blend and returns it.
+
+    Appending the same name twice is legal (Blender suffixes the copy), so the
+    new object is found by set difference rather than by name.
+    """
+    blend = _source_blend(prop_id)
+    before = set(bpy.data.objects)
+    bpy.ops.wm.append(filepath=blend + "/Object/" + name,
+                      directory=blend + "/Object/", filename=name)
+    fresh = [o for o in bpy.data.objects if o not in before and o.type == "MESH"]
+    if len(fresh) != 1:
+        blendkit.fail(f"append of {prop_id}/{name} produced {len(fresh)} mesh objects, expected 1")
+    obj = fresh[0]
+    # Bake the source file's own transform in immediately, so every later
+    # measurement and placement works in plain world coordinates.
+    blendkit.apply_transforms(obj, location=True, rotation=True, scale=True)
+    return obj
+
+
+def _adopt(b: PropBuild, obj: bpy.types.Object, mat_name: str) -> bpy.types.Object:
+    """Registers an imported object as a PropBuild part: kit material, no bevel.
+
+    The source's own materials are dropped here on purpose. The FBX carries only
+    slot NAMES; Unity rebuilds URP materials from the manifest, and the manifest
+    row for `mat_name` is what points at the shipped texture maps.
+    """
+    blendkit.assign_material(obj, gen_props.mat(mat_name))
+    b.parts.append(obj)
+    b.nobevel.add(obj.name)
+    return obj
+
+
+def _orient(obj: bpy.types.Object, translate=(0.0, 0.0, 0.0), rot_deg=(0.0, 0.0, 0.0),
+            scale=(1.0, 1.0, 1.0), pivot=(0.0, 0.0, 0.0)) -> bpy.types.Object:
+    """Applies scale→rotation→translation about `pivot`, baked into the mesh.
+
+    Baking immediately (instead of leaving transforms on the object) means
+    world_bbox measurements between composition steps are always honest.
+    """
+    if isinstance(scale, (int, float)):
+        scale = (scale, scale, scale)
+    p = Vector(pivot)
+    m = (Matrix.Translation(Vector(translate) + p)
+         @ Euler(rads(tuple(rot_deg)), "XYZ").to_matrix().to_4x4()
+         @ Matrix.Diagonal((scale[0], scale[1], scale[2], 1.0))
+         @ Matrix.Translation(-p))
+    obj.matrix_world = m @ obj.matrix_world
+    blendkit.apply_transforms(obj, location=True, rotation=True, scale=True)
+    return obj
+
+
+def _decimate(obj: bpy.types.Object, ratio: float) -> None:
+    """Collapse-decimates in place. Deterministic for a given mesh and ratio.
+
+    The scans arrive at 1.5–26 k triangles and the kit budgets 700–2600 per
+    piece (§05: dark, first person). The 2 k normal maps are what carry the
+    detail the collapse throws away — that trade is the whole point of
+    shipping textures with these pieces.
+    """
+    if ratio >= 1.0:
+        return
+    mod = obj.modifiers.new("dec", "DECIMATE")
+    mod.ratio = ratio
+    bpy.ops.object.select_all(action="DESELECT")
+    obj.select_set(True)
+    bpy.context.view_layer.objects.active = obj
+    bpy.ops.object.modifier_apply(modifier=mod.name)
+
+
+def _dup(b: PropBuild, obj: bpy.types.Object, mat_name: str) -> bpy.types.Object:
+    """A registered copy of an already-adopted part (own mesh, so edits stay local)."""
+    twin = obj.copy()
+    twin.data = obj.data.copy()
+    bpy.context.scene.collection.objects.link(twin)
+    return _adopt(b, twin, mat_name)
+
+
+def _filter_islands(obj: bpy.types.Object, keep) -> int:
+    """Deletes every connected island `keep(lo, hi)` rejects; returns kept count.
+
+    Used to harvest a sub-assembly out of a one-mesh scan (the caged lamp's
+    body without its authored chains) without hand-editing the CC0 source.
+    """
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    bm.verts.ensure_lookup_table()
+    parent = list(range(len(bm.verts)))
+
+    def find(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    for edge in bm.edges:
+        a, c = find(edge.verts[0].index), find(edge.verts[1].index)
+        if a != c:
+            parent[a] = c
+
+    groups: dict[int, list] = {}
+    for v in bm.verts:
+        g = groups.setdefault(find(v.index), [Vector((math.inf,) * 3),
+                                              Vector((-math.inf,) * 3), []])
+        for k in range(3):
+            g[0][k] = min(g[0][k], v.co[k])
+            g[1][k] = max(g[1][k], v.co[k])
+        g[2].append(v)
+
+    doomed: list = []
+    kept = 0
+    for lo, hi, verts in groups.values():
+        if keep(lo, hi):
+            kept += 1
+        else:
+            doomed.extend(verts)
+    if doomed:
+        bmesh.ops.delete(bm, geom=doomed, context="VERTS")
+    bm.to_mesh(obj.data)
+    bm.free()
+    obj.data.update()
+    return kept
+
+
+def _paint_faces_by_image(obj: bpy.types.Object, image_path: str, mat_name: str,
+                          threshold: float = 0.20) -> int:
+    """Assigns `mat_name` to every face whose UV centre samples bright in `image_path`.
+
+    This is how the caged lamp keeps the bulb-swap contract: the scan is one
+    mesh with one material, but `ScatterSession.LightBulb` swaps a slot named
+    Dress_BulbDead for Dress_BulbLit, so the glass faces — found through the
+    scan's own emissive map — get that slot while the housing keeps its scan.
+    """
+    img = bpy.data.images.load(image_path, check_existing=False)
+    img.colorspace_settings.name = "Non-Color"
+    w, h = img.size
+    buf = np.empty(w * h * 4, dtype=np.float32)
+    img.pixels.foreach_get(buf)
+    px = buf.reshape(h, w, 4)
+    bpy.data.images.remove(img)
+
+    me = obj.data
+    if not me.uv_layers.active:
+        blendkit.fail(f"{obj.name}: no UV layer to sample {os.path.basename(image_path)} through")
+    uv = me.uv_layers.active.data
+    me.materials.append(gen_props.mat(mat_name))
+    slot = len(me.materials) - 1
+    painted = 0
+    for poly in me.polygons:
+        cu = cv = 0.0
+        for li in poly.loop_indices:
+            cu += uv[li].uv[0]
+            cv += uv[li].uv[1]
+        cu = (cu / poly.loop_total) % 1.0
+        cv = (cv / poly.loop_total) % 1.0
+        x = min(w - 1, int(cu * w))
+        y = min(h - 1, int(cv * h))
+        r, g, bl = px[y, x, 0], px[y, x, 1], px[y, x, 2]
+        if 0.2126 * r + 0.7152 * g + 0.0722 * bl > threshold:
+            poly.material_index = slot
+            painted += 1
+    return painted
+
+
+# ── Texture shipping ────────────────────────────────────────────────────────
+# The FBX deliberately carries no textures (path_mode is a blendkit decision
+# this file does not own, and the binder rebuilds URP materials anyway). What
+# ships is one 1024² PNG set per scan under Assets/Models/Dressing/Textures/,
+# named in the manifest per MATERIAL — DressingMaterials loads them by path.
+#   albedo.png  sRGB base colour     → _BaseMap
+#   normal.png  tangent-space GL +Y  → _BumpMap (+_NORMALMAP)
+#   mask.png    R=metallic, A=1−rough (smoothness) → _MetallicGlossMap
+# Written by hand (fixed zlib level, no Blender colour management) so a rebuild
+# is byte-identical, which is the same determinism rule the FBXs live under.
+
+TEXTURE_RECIPES: dict[str, dict] = {
+    # `albedo_gain` and `rough_scale` are §03 art direction, not correction:
+    # the building is lit by one 12 m torch in near-black ambient, and the kit
+    # doctrine (see the MATERIALS block) is that a surface only exists if it
+    # returns light. The pipe scans' worn blue-grey paint sits BELOW the
+    # darkest corridor wall's 0.21 luminance, which round 1's beam render
+    # showed as two invisible lines where the manifest promises "the
+    # corridor's depth cue". Gain lifts the albedo toward the procedural
+    # galvanised it replaces; the roughness scale restores the along-pipe
+    # beam streak that flat 0.52-roughness metal used to give. Both are
+    # applied at export so the SHIPPED maps are the judged artefact.
+    BARREL03: {
+        "dir": "Barrel03",
+        "albedo": ("barrel_03", "barrel_03_diff_2k.jpg"),
+        "normal": ("barrel_03", "barrel_03_nor_gl_2k.exr"),
+        "rough": ("barrel_03", "barrel_03_rough_2k.jpg"),
+        "metal": ("barrel_03", "barrel_03_metal_2k.exr"),
+    },
+    PIPE_GALV01: {
+        "dir": "Pipes01",
+        "albedo_gain": 1.5,
+        "rough_scale": 0.7,
+        "albedo": ("modular_industrial_pipes_01", "modular_industrial_pipes_01_group01_diff_2k.png"),
+        "normal": ("modular_industrial_pipes_01", "modular_industrial_pipes_01_group01_nor_gl_2k.png"),
+        "rough": ("modular_industrial_pipes_01", "modular_industrial_pipes_01_group01_rough_2k.png"),
+        "metal": ("modular_industrial_pipes_01", "modular_industrial_pipes_01_group01_metal_2k.png"),
+    },
+    PIPE_VALVE02: {
+        "dir": "Pipes02",
+        "albedo_gain": 1.5,
+        "rough_scale": 0.7,
+        "albedo": ("modular_industrial_pipes_01", "modular_industrial_pipes_01_group02_diff_2k.png"),
+        "normal": ("modular_industrial_pipes_01", "modular_industrial_pipes_01_group02_nor_gl_2k.png"),
+        "rough": ("modular_industrial_pipes_01", "modular_industrial_pipes_01_group02_rough_2k.png"),
+        "metal": ("modular_industrial_pipes_01", "modular_industrial_pipes_01_group02_metal_2k.png"),
+    },
+    CRATE_MIL: {
+        "dir": "MilitaryCrate",
+        "albedo_gain": 1.18,
+        "albedo": ("old_military_crate", "old_military_crate_diff_2k.jpg"),
+        "normal": ("old_military_crate", "old_military_crate_nor_gl_2k.exr"),
+        "rough": ("old_military_crate", "old_military_crate_rough_2k.exr"),
+        "metal": ("old_military_crate", "old_military_crate_metal_2k.exr"),
+    },
+    CAGED_LAMP: {
+        "dir": "CagedLamp",
+        "albedo_gain": 1.3,
+        "rough_scale": 0.85,
+        "albedo": ("caged_hanging_light", "caged_hanging_light_diff_2k.jpg"),
+        "normal": ("caged_hanging_light", "caged_hanging_light_nor_gl_2k.exr"),
+        "rough": ("caged_hanging_light", "caged_hanging_light_rough_2k.exr"),
+        "metal": ("caged_hanging_light", "caged_hanging_light_metal_2k.exr"),
+    },
+    RACK_WORN: {
+        "dir": "MetalRack",
+        "albedo": ("worn_metal_rack", "worn_metal_rack_diff_2k.jpg"),
+        "normal": ("worn_metal_rack", "worn_metal_rack_nor_gl_2k.exr"),
+        "rough": ("worn_metal_rack", "worn_metal_rack_rough_2k.exr"),
+        "metal": ("worn_metal_rack", "worn_metal_rack_metal_2k.exr"),
+    },
+    GENERATOR_BODY: {
+        "dir": "Generator",
+        "albedo": ("portable_generator", "portable_generator_diff_2k.jpg"),
+        "normal": ("portable_generator", "portable_generator_nor_gl_2k.exr"),
+        "rough": ("portable_generator", "portable_generator_rough_2k.exr"),
+        "metal": ("portable_generator", "portable_generator_metal_2k.exr"),
+    },
+}
+
+MATERIAL_MAPS: dict[str, dict[str, str]] = {}
+"""Per-material map paths (relative to the kit root), filled by export_real_textures
+and merged into the manifest's material rows by write_manifest. Procedural
+materials never appear here, so their manifest rows are byte-identical to before."""
+
+TEXTURE_SIZE = 1024
+"""Shipped texel side. The scans are 2048; §05 (dark, first person) and the 12 m
+beam mean the extra octave is invisible, and halving quarters the repo cost."""
+
+
+def _load_pixels(path: str) -> np.ndarray:
+    """An image file as HxWx4 float32, raw values (no colour management).
+
+    Non-Color stops Blender linearising 8-bit files on read, so a JPEG's bytes
+    and an EXR's floats both arrive exactly as stored — which is what the PNG
+    writer below re-quantises. Albedo therefore stays sRGB-encoded end to end,
+    and data maps stay data.
+    """
+    img = bpy.data.images.load(path, check_existing=False)
+    img.colorspace_settings.name = "Non-Color"
+    w, h = img.size
+    buf = np.empty(w * h * 4, dtype=np.float32)
+    img.pixels.foreach_get(buf)
+    bpy.data.images.remove(img)
+    return buf.reshape(h, w, 4)
+
+
+def _downscale(px: np.ndarray, side: int) -> np.ndarray:
+    """Box-filters to side×side. Source sides are powers of two (PolyHaven 2k)."""
+    h, w = px.shape[:2]
+    fy, fx = h // side, w // side
+    if fy < 1 or fx < 1 or h % side or w % side:
+        blendkit.fail(f"texture is {w}x{h}, cannot box-filter to {side}")
+    return px.reshape(side, fy, side, fx, 4).mean(axis=(1, 3))
+
+
+def _write_png(path: str, rgb: np.ndarray, alpha: np.ndarray | None = None) -> int:
+    """Writes an 8-bit PNG (RGB, or RGBA when `alpha` given). Deterministic bytes."""
+    h, w = rgb.shape[:2]
+    rgb8 = np.clip(np.rint(rgb * 255.0), 0, 255).astype(np.uint8)
+    if alpha is not None:
+        a8 = np.clip(np.rint(alpha * 255.0), 0, 255).astype(np.uint8).reshape(h, w, 1)
+        data = np.concatenate([rgb8, a8], axis=2)
+        color_type = 6
+    else:
+        data = rgb8
+        color_type = 2
+    data = data[::-1]  # Blender buffers are bottom-up; PNG rows are top-down.
+    raw = b"".join(b"\x00" + row.tobytes() for row in data)
+
+    def chunk(tag: bytes, body: bytes) -> bytes:
+        return (struct.pack(">I", len(body)) + tag + body
+                + struct.pack(">I", zlib.crc32(tag + body) & 0xFFFFFFFF))
+
+    png = (b"\x89PNG\r\n\x1a\n"
+           + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, color_type, 0, 0, 0))
+           + chunk(b"IDAT", zlib.compress(raw, 9))
+           + chunk(b"IEND", b""))
+    with open(path, "wb") as fh:
+        fh.write(png)
+    return len(png)
+
+
+def export_real_textures() -> None:
+    """Writes every scan's Unity texture set and records the manifest paths."""
+    for mat_name, recipe in sorted(TEXTURE_RECIPES.items()):
+        folder = recipe["dir"]
+        rel = "Textures/" + folder
+
+        albedo = _downscale(_load_pixels(_source_texture(*recipe["albedo"])), TEXTURE_SIZE)
+        gain = recipe.get("albedo_gain", 1.0)
+        if gain != 1.0:
+            albedo = np.clip(albedo * gain, 0.0, 1.0)
+        albedo_path = blendkit.out_path("Dressing", "Textures", folder, "albedo.png")
+        albedo_bytes = _write_png(albedo_path, albedo[:, :, :3])
+
+        normal = _downscale(_load_pixels(_source_texture(*recipe["normal"])), TEXTURE_SIZE)
+        vec = normal[:, :, :3] * 2.0 - 1.0  # renormalise after the box filter
+        length = np.maximum(1e-6, np.sqrt((vec * vec).sum(axis=2, keepdims=True)))
+        normal_path = blendkit.out_path("Dressing", "Textures", folder, "normal.png")
+        normal_bytes = _write_png(normal_path, vec / length * 0.5 + 0.5)
+
+        rough = _downscale(_load_pixels(_source_texture(*recipe["rough"])), TEXTURE_SIZE)
+        rough = np.clip(rough * recipe.get("rough_scale", 1.0), 0.0, 1.0)
+        metal = _downscale(_load_pixels(_source_texture(*recipe["metal"])), TEXTURE_SIZE)
+        mask = np.zeros((TEXTURE_SIZE, TEXTURE_SIZE, 3), dtype=np.float32)
+        mask[:, :, 0] = metal[:, :, 0]
+        mask_path = blendkit.out_path("Dressing", "Textures", folder, "mask.png")
+        mask_bytes = _write_png(mask_path, mask, alpha=1.0 - rough[:, :, 0])
+
+        MATERIAL_MAPS[mat_name] = {
+            "albedo_map": rel + "/albedo.png",
+            "normal_map": rel + "/normal.png",
+            "mask_map": rel + "/mask.png",
+        }
+        print(f"DRESS_TEXTURES {mat_name} dir={rel} albedo={albedo_bytes}b "
+              f"normal={normal_bytes}b mask={mask_bytes}b")
 
 
 # ── Measurement helpers ─────────────────────────────────────────────────────
@@ -331,79 +736,39 @@ def _case(f: Frame, side: float, height: float, wood: str = TIMBER_PALE,
         f.box((side, side, t), (0.0, 0.0, height - t / 2), mat=wood, nobevel=True)
 
 
-def _barrel(f: Frame, radius: float, height: float, body: str = RUST_HEAVY,
-            hoop: str = STEEL_BARE, dent: bool = False,
-            streaks: tuple = (), streak_mat: str = RUST_HEAVY,
-            skirt: bool = True) -> None:
-    """A 55-gallon drum: body, two rolling hoops, a rim, a bung — and its history.
-
-    The hoops are `STEEL_BARE` on purpose. A drum in one flat rust tone is a
-    cylinder-shaped hole in the frame; two bright rings around it are what let a
-    beam say "drum" from 8 m.
-
-    Round 1 showed the rest: a perfectly smooth cylinder with clean ends reads
-    as a flowerpot, not as forty years of basement. So a drum now carries
-    *asymmetric* wear — `dent` sinks one side of the lid and creases it,
-    `streaks` runs thin stain strips down the body at the given (azimuth°,
-    width, drop) triples, and `skirt` is the §03 grime gradient: a dark ring
-    where the floor's dirt climbs the steel. Streaks are thin boxes hugging the
-    surface rather than texture because the kit has no texture pipeline — and at
-    beam range a 4 mm relief strip reads exactly like a stain.
-    """
-    f.cyl(radius, height, (0.0, 0.0, height / 2), verts=16, mat=body, nobevel=True)
-    for z in (height * 0.28, height * 0.72):
-        f.cyl(radius + 0.016, 0.052, (0.0, 0.0, z), verts=16, mat=hoop, nobevel=True)
-    # The end rims take the *body* material, not the hoop's. They are solid discs,
-    # so a bare-steel rim paints the whole lid — and a mirror-finish lid in a dark
-    # basement reads as a white hole rather than as a drum.
-    f.cyl(radius + 0.010, 0.030, (0.0, 0.0, 0.015), verts=16, mat=body, nobevel=True)
-    if dent:
-        # Rim stays level; the lid disc tips 6° into the drum, its low side
-        # sunk 5 cm with a grime wedge in the fold. Round 2 taught the number:
-        # a 3° dent is invisible at beam range, a 6° one reads from the floor.
-        f.cyl(radius + 0.010, 0.030, (0.0, 0.0, height - 0.019), verts=16, mat=body,
-              nobevel=True)
-        f.cyl(radius - 0.032, 0.016, (0.014, -0.022, height - 0.032),
-              rot=(6.0, 2.6, 0.0), mat=body, verts=16, nobevel=True)
-        f.box((radius * 1.4, 0.052, 0.010), (0.02, -0.07, height - 0.030),
-              rot=(6.0, 0.0, 20.0), mat=GRIME, nobevel=True)
-    else:
-        f.cyl(radius + 0.010, 0.030, (0.0, 0.0, height - 0.015), verts=16, mat=body,
-              nobevel=True)
-    for (az, width, drop) in streaks:
-        # Two layers per streak: a rust bleed at the source and a DARK tail
-        # running further down. Round 2's even strip read as pinstripe tape and
-        # round 3's rust-on-rust pair read no better — the tail has to lose
-        # both width and value as it falls, so it falls in GRIME.
-        a = math.radians(az)
-        top = height * 0.72 - 0.030
-        f.box((width, 0.004, drop * 0.4), (math.cos(a) * (radius + 0.003),
-                                           math.sin(a) * (radius + 0.003),
-                                           top - drop * 0.2),
-              rot=(0.0, 0.0, az + 90.0), mat=streak_mat, nobevel=True)
-        f.box((width * 0.5, 0.004, drop), (math.cos(a) * (radius + 0.0025),
-                                           math.sin(a) * (radius + 0.0025),
-                                           top - drop / 2),
-              rot=(0.0, 0.0, az + 90.0), mat=GRIME, nobevel=True)
-    if skirt:
-        f.cyl(radius + 0.006, 0.070, (0.0, 0.0, 0.035), verts=16, mat=GRIME, nobevel=True)
-    f.cyl(0.036, 0.018, (radius * 0.5, 0.0, height - (0.010 if dent else -0.006)),
-          verts=10, mat=BRASS_FITTING, nobevel=True)
+BARREL_SCALE = 0.9578
+"""barrel_03's scanned diameter is 0.639 m; the procedural drum the scatterer has
+been packing corridors around was 0.612 m. §12's clear-band arithmetic is done
+against the manifest footprint, so the scan is shrunk to the footprint it is
+replacing rather than the footprint growing to meet the scan."""
 
 
-def _shelf_frame(b: PropBuild, w: float, d: float, h: float, decks: tuple) -> None:
-    """Four angle-iron uprights, cross braces and the named deck heights."""
-    for (sx, sy) in ((-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)):
-        b.box((0.048, 0.048, h), (sx * (w / 2 - 0.024), sy * (d / 2 - 0.024), h / 2),
-              mat=STEEL_PAINTED, nobevel=True)
-    for z in decks:
-        b.box((w, d, 0.026), (0.0, 0.0, z), mat=PLY, nobevel=True)
-        b.box((w, 0.024, 0.044), (0.0, -d / 2 + 0.012, z + 0.026), mat=STEEL_PAINTED,
-              nobevel=True)
-    b.box((w - 0.10, 0.020, 0.048), (0.0, d / 2 - 0.020, h * 0.55), rot=(0.0, 24.0, 0.0),
-          mat=STEEL_PAINTED, nobevel=True)
-    b.box((w - 0.10, 0.020, 0.048), (0.0, d / 2 - 0.020, h * 0.55), rot=(0.0, -24.0, 0.0),
-          mat=STEEL_PAINTED, nobevel=True)
+def _real_barrel(b: PropBuild, ratio: float, translate=(0.0, 0.0, 0.0),
+                 rot_deg=(0.0, 0.0, 0.0), scale: float = BARREL_SCALE) -> bpy.types.Object:
+    """One PolyHaven barrel_03 (CC0), decimated and placed.
+
+    The procedural drum needed hoop/streak/skirt geometry because flat colour
+    has no history; the scan's 2 k maps carry the paint, the rust bleed and the
+    grime gradient per pixel, so the geometry is just the drum. `rot_deg`
+    composes X-tilt→Y-roll→Z-yaw, so (0, 90, yaw) is a drum on its side."""
+    obj = _adopt(b, _append_object("barrel_03", "barrel_03"), BARREL03)
+    _decimate(obj, ratio)
+    _orient(obj, translate=translate, rot_deg=rot_deg, scale=scale)
+    return obj
+
+
+def _real_rack(b: PropBuild, ratio: float) -> bpy.types.Object:
+    """PolyHaven worn_metal_rack (CC0), decimated and squashed 0.60 m → 0.42 m deep.
+
+    The squash is a §12/§08 contract, not taste: the scatterer fits this bay
+    against a corridor wall by its manifest `mount_depth`, and the procedural
+    bay it replaces shipped at 0.42 m. Angle-iron uprights and flat decks
+    survive a 30 % depth squash without reading as squashed; growing the
+    corridor-side depth by 18 cm would eat the two-runner clear band instead."""
+    obj = _adopt(b, _append_object("worn_metal_rack", "worn_metal_rack"), RACK_WORN)
+    _decimate(obj, ratio)
+    _orient(obj, scale=(1.0, 0.70, 1.0))
+    return obj
 
 
 def _tin(f: Frame, radius: float, height: float, loc, mat_name: str = STEEL_BARE) -> None:
@@ -413,24 +778,52 @@ def _tin(f: Frame, radius: float, height: float, loc, mat_name: str = STEEL_BARE
           mat=STEEL_BARE, nobevel=True)
 
 
-def _pipe_run(b: PropBuild, length: float, y: float, specs: tuple, bracket_x: tuple) -> None:
-    """A horizontal parallel pipe run laid along X, plus its brackets.
+PIPE_SOURCE = "modular_industrial_pipes_01"
+PIPE_GROUP: dict[str, str] = {
+    # Which of the scan's two texture groups each modular segment belongs to.
+    # Assigning across groups would put group01's UV island under group02's
+    # map — the pipe would render wearing another pipe's rust.
+    "modular_industrial_pipes_01_pipe01": PIPE_GALV01,
+    "modular_industrial_pipes_01_pipe02": PIPE_GALV01,
+    "modular_industrial_pipes_01_pipe03": PIPE_GALV01,
+    "modular_industrial_pipes_01_pipe04": PIPE_GALV01,
+    "modular_industrial_pipes_01_pipe05": PIPE_VALVE02,
+    "modular_industrial_pipes_01_pipe06": PIPE_VALVE02,
+    "modular_industrial_pipes_01_pipe07": PIPE_VALVE02,
+    "modular_industrial_pipes_01_pipe08": PIPE_VALVE02,
+}
 
-    `specs` is (radius, z, material, verts) per pipe. Runs are authored 2.5 m long
-    so they tile exactly on the MapKit's 2.5 m grid — a run that does not tile
-    leaves a gap at every cell boundary, which reads worse than no pipes at all.
+
+def _pipe_line(b: PropBuild, segments: tuple, ratio: float,
+               target_len: float) -> tuple[list, float]:
+    """Chains scan pipe segments into one straight line along X.
+
+    The modular segments stand vertically in the scan (length along Z, wall
+    behind +Y). Each is normalised onto its own axis, laid along +X, butted
+    flange-to-opening in order, and the whole line is uniform-scaled to exactly
+    `target_len` — the MapKit tiling contract the procedural run also obeyed;
+    a run that does not tile leaves a gap at every 2.5 m cell boundary.
+    Returns (objects, pipe radius); the axis lies on y=0 / z=0, x centred on 0.
     """
-    for (radius, z, mat_name, verts) in specs:
-        b.cyl(radius, length, (0.0, y, z), rot=(0.0, 90.0, 0.0), verts=verts, mat=mat_name,
-              nobevel=True)
-    for x in bracket_x:
-        lo = min(s[1] for s in specs) - 0.09
-        hi = max(s[1] for s in specs) + 0.09
-        b.box((0.056, 0.026, hi - lo), (x, y * 0.35, (lo + hi) / 2), mat=STEEL_PAINTED,
-              nobevel=True)
-        for (radius, z, _m, _v) in specs:
-            b.box((0.056, abs(y) * 1.05, 0.026), (x, y * 0.5, z + radius + 0.013),
-                  mat=STEEL_PAINTED, nobevel=True)
+    objs = []
+    cursor = 0.0
+    for name in segments:
+        obj = _adopt(b, _append_object(PIPE_SOURCE, name), PIPE_GROUP[name])
+        _decimate(obj, ratio)
+        lo, hi = world_bbox([obj])
+        # Pipe axis: x-centre of the segment (side outlets are symmetric), and
+        # y=0.025 in every scan segment (measured; the wall side is +Y).
+        _orient(obj, translate=(-(lo.x + hi.x) / 2.0, -0.025, 0.0))
+        _orient(obj, rot_deg=(0.0, 90.0, 0.0))
+        lo, hi = world_bbox([obj])
+        _orient(obj, translate=(cursor - lo.x, 0.0, 0.0))
+        cursor += hi.x - lo.x
+        objs.append(obj)
+    s = target_len / cursor
+    for obj in objs:
+        _orient(obj, scale=s)
+        _orient(obj, translate=(-target_len / 2.0, 0.0, 0.0))
+    return objs, 0.1035 * s
 
 
 def _plank_scatter(b: PropBuild, planks: tuple, mat_name: str = TIMBER_PALE) -> None:
@@ -556,57 +949,115 @@ def _stencil(b: PropBuild, glyphs: tuple, x0: float, z0: float, s: float,
 # ══════════════════════════════════════════════════════════════════════════
 
 
+def _crate_closed(b: PropBuild) -> bpy.types.Object:
+    """One CLOSED old_military_crate (CC0): body, lid, latch, hasp loop, joined
+    and centred on its own footprint. The caller stacks copies via `_dup`.
+
+    Parts are decimated SEPARATELY, at ~570 triangles a unit. Round 1 decimated
+    the joined unit to one ratio and the render showed a stack of shredded
+    fins: collapse spends its budget by error metric, so the curvy latch
+    hardware hoarded triangles while the crate WALLS collapsed first. The
+    open-crate builder already worked this way, and its render was intact at
+    half the density — per-part ratios are the lesson, not gentler ones."""
+    ratios = {"old_military_crate_a": 0.066, "old_military_crate_lid_a": 0.044,
+              "old_military_crate_latch_a": 0.055, "old_military_crate_loop_a": 0.055}
+    parts = []
+    for name, ratio in ratios.items():
+        obj = _append_object("old_military_crate", name)
+        _decimate(obj, ratio)
+        parts.append(obj)
+    unit = blendkit.join(parts, "crate_closed_unit")
+    _orient(unit, translate=(0.5, 0.0, 0.0))  # the a-set is authored around x=-0.5
+    return _adopt(b, unit, CRATE_MIL)
+
+
+def _crate_open(b: PropBuild) -> bpy.types.Object:
+    """The scan's OPEN crate: body, packing cloth, lid leaning behind (+Y), open
+    latch hardware. Parts decimated separately — one collapse ratio across a
+    box, a cloth and thin hardware wrecks whichever it was not tuned for."""
+    ratios = {"old_military_crate_b": 0.075, "old_military_crate_cloth_b": 0.09,
+              "old_military_crate_lid_b": 0.045, "old_military_crate_latch_b": 0.06,
+              "old_military_crate_loop_b": 0.06}
+    parts = []
+    for name, ratio in ratios.items():
+        obj = _append_object("old_military_crate", name)
+        _decimate(obj, ratio)
+        if name == "old_military_crate_cloth_b":
+            # The scan's cloth flops 9 cm over the crate's front lip, and with
+            # the lid leaning off the back that drape sets the whole piece's
+            # depth — which is a §12 clearance number. Tucking the drape 20 %
+            # toward its hinge line keeps the cloth and loses the centimetres.
+            _orient(obj, scale=(1.0, 0.80, 1.0), pivot=(0.0, 0.188, 0.0))
+        parts.append(obj)
+    unit = blendkit.join(parts, "crate_open_unit")
+    _orient(unit, translate=(-0.5, 0.0, 0.0))  # the b-set is authored around x=+0.5
+    return _adopt(b, unit, CRATE_MIL)
+
+
 def build_case_stack_tall() -> PropBuild:
-    """Three cases stacked to 1.72 m — a sight-line break that is not a wall.
+    """Three flat crates with a fourth stood on END on top — a 1.6 m sight break.
 
     §12 wants 시야 차단 지점 every 15~25 m and §06 needs 3 s of broken line of
-    sight for an aggro release. A stack just under standing eye height
-    (1.63 m assumed) breaks the line for a running player without hiding the
-    route, which a full-height block would. The slight yaw on each case is what
-    stops three boxes reading as one extruded box."""
+    sight for an aggro release; this tower breaks the line just under standing
+    eye height without hiding the route. Standing the top crate on end is what
+    makes the height honest at four crates' triangle budget — round 1 tried
+    six flat-stacked crates and had to shred each one to afford the stack,
+    and the render said so. An end-stand only rolls about Y, so every latch
+    face still points down the corridor."""
     b = PropBuild("Dress_CaseStack_Tall")
-    _case(b.frame((0.0, 0.0, 0.0), yaw=0.0), 0.640, 0.600)
-    _case(b.frame((0.05, -0.04, 0.600), yaw=9.0), 0.600, 0.560)
-    _case(b.frame((-0.05, 0.04, 1.160), yaw=-14.0), 0.560, 0.520, lid_pop=True)
-    b.pivot_part = b.parts[0]
-    # Round 1's stack fused into one extruded monolith: the offsets above are
-    # now real steps, the top lid is popped, and the bottom case carries the
-    # shipping marks and floor grime that break the flat faces up.
-    b.quad(0.40, 0.055, (0.0, -0.308, 0.410), rot=(90.0, 0.0, 0.0), mat=GRIME)
-    b.quad(0.30, 0.045, (-0.04, -0.308, 0.330), rot=(90.0, 8.0, 0.0), mat=GRIME)
-    b.quad(0.055, 0.30, (0.308, 0.06, 0.370), rot=(90.0, 0.0, 90.0), mat=GRIME)
-    b.box((0.130, 0.014, 0.090), (0.12, -0.310, 0.480), rot=(0.0, 0.0, -7.0), mat=PAPER,
-          nobevel=True)  # torn shipping label
-    # Worn pale edges down the two corridor-facing battens.
-    for sx in (-1.0, 1.0):
-        b.box((0.014, 0.008, 0.520), (sx * 0.312, -0.318, 0.290), mat=PLY, nobevel=True)
-    # Grime skirt.
-    b.box((0.648, 0.030, 0.070), (0.0, -0.310, 0.035), mat=GRIME, nobevel=True)
-    b.box((0.030, 0.648, 0.070), (-0.310, 0.0, 0.035), mat=GRIME, nobevel=True)
+    base = _crate_closed(b)
+    lo, hi = world_bbox([base])
+    pitch = hi.z * 0.94
+    flat2 = _dup(b, base, CRATE_MIL)
+    flat3 = _dup(b, base, CRATE_MIL)
+    stander = _dup(b, base, CRATE_MIL)
+    _orient(base, rot_deg=(0.0, 0.0, 1.6), translate=(0.0, 0.0, 0.0), scale=0.94)
+    _orient(flat2, rot_deg=(0.0, 0.0, -2.0), translate=(0.004, -0.008, pitch), scale=0.94)
+    _orient(flat3, rot_deg=(0.0, 0.0, 1.2), translate=(-0.004, 0.006, 2 * pitch), scale=0.94)
+    # The fourth crate stood on END on the pile — somebody wanted the one
+    # under it. Ry(−90) turns the crate's 0.76 m length into height, keeps the
+    # latch face on −Y, and its centre lands on the pile's own z-axis; the
+    # pivot shift below zeroes the whole tower onto the floor.
+    _orient(stander, rot_deg=(0.0, -90.0, -2.4), translate=(0.02, 0.01, 3 * pitch + 0.378),
+            scale=0.94)
+    b.pivot_part = base
+    # Packing cloth flopped out under the third lid, pinned by the stander —
+    # the scan authored it for exactly this seam, the tower's one soft line.
+    cloth = _adopt(b, _append_object("old_military_crate", "old_military_crate_cloth_a"),
+                   CRATE_MIL)
+    _decimate(cloth, 0.085)
+    _orient(cloth, translate=(0.5, 0.0, 0.0))
+    _orient(cloth, rot_deg=(0.0, 0.0, 1.2), translate=(-0.004, 0.006, 2 * pitch), scale=0.94)
     return b
 
 
 def build_case_stack_low() -> PropBuild:
-    """Two cases and a sack — waist height, so it is cover to crouch behind.
+    """A crate stood on end on a flat one, beside an OPENED crate — §06 cover.
 
-    **Why this is still worth building now that §12's 막힌 길 pay nothing.** The old
-    reason read *"막힌 길 need a reason to be entered and something to hide 전리품
-    behind; §08 hides the good pieces there, and it stays low enough to see over so
-    §04's Observer sightlines survive"*. Both halves are deleted — a dead end costs a
-    racer time and gives nothing back, and every runner has the same eyes. What
-    survives is the shape: waist height is the one height a player can BREAK a
-    creature's line of sight behind without also losing their own view of the route
-    out, which is §06's 3 s aggro release bought at no cost to §01's race."""
+    **Why this is still worth building now that §12's 막힌 길 pay nothing.** What
+    survives of the old reason is the shape: around chest height is the one height a
+    player can BREAK a creature's line of sight behind without also losing their own
+    view of the route out, which is §06's 3 s aggro release bought at no cost to
+    §01's race. The opened crate — lid leaning against the column, packing cloth
+    thrown back — is the human evidence the dust sheet used to provide, and its
+    pale cloth is still the brightest patch in the pile."""
     b = PropBuild("Dress_CaseStack_Low")
-    _case(b.frame((-0.30, 0.0, 0.0), yaw=-5.0), 0.640, 0.600)
-    _case(b.frame((-0.26, 0.04, 0.600), yaw=9.0), 0.580, 0.540)
-    _case(b.frame((0.38, -0.06, 0.0), yaw=22.0), 0.560, 0.520)
-    # A dust sheet half-pulled off the low case: the brightest thing in the pile.
-    b.box((0.700, 0.640, 0.030), (0.38, -0.06, 0.525), rot=(0.0, -4.0, 22.0), mat=CLOTH_DUST,
-          nobevel=True)
-    b.box((0.180, 0.560, 0.026), (0.66, -0.14, 0.360), rot=(0.0, 26.0, 22.0), mat=CLOTH_DUST,
-          nobevel=True)
-    b.pivot_part = b.parts[0]
+    base = _crate_closed(b)
+    lo, hi = world_bbox([base])
+    pitch = hi.z * 0.92
+    # Every copy is taken BEFORE any placement bakes — _orient writes into the
+    # mesh, so a late _dup would clone a crate already standing in the column.
+    stander = _dup(b, base, CRATE_MIL)
+    _orient(base, translate=(-0.36, 0.0, 0.0), rot_deg=(0.0, 0.0, -1.8), scale=0.92)
+    # A crate stood on END on the flat one: chest height (§06's 3 s break)
+    # from two crates' worth of triangles, exactly the tall stack's trick.
+    _orient(stander, rot_deg=(0.0, -90.0, 1.4), translate=(-0.35, 0.008, pitch + 0.370),
+            scale=0.92)
+    b.pivot_part = base
+    # The opened crate beside it, lid leaning back toward +Y (authored that way
+    # in the scan) — the human evidence, and its pale cloth is the §03 bright.
+    opened = _crate_open(b)
+    _orient(opened, translate=(0.36, -0.012, 0.0), rot_deg=(0.0, 0.0, -1.6), scale=0.92)
     return b
 
 
@@ -633,146 +1084,121 @@ def build_case_broken() -> PropBuild:
 
 
 def build_barrel_upright() -> PropBuild:
-    """One steel drum, 0.88 m. The kit's most reusable single silhouette.
+    """One scanned steel drum, 0.89 m. The kit's most reusable single silhouette.
 
-    Painted body, not rust: a painted drum with rust BLEEDING DOWN it carries
-    two materials in one silhouette, which is the §03 break-up a flat rust
-    cylinder never had. The dented lid is its one asymmetric feature — the
-    scatterer repeats this piece more than anything else in the kit, and a
-    dent is what stops instance three reading as instance one."""
+    The procedural version earned its keep with a dented lid, relief streaks
+    and a grime skirt, because a flat-colour cylinder has no history. The scan
+    carries all of that in its maps — blue paint thinning over rust, a grimy
+    skirt, a stencilled bung — so the piece is now one drum and nothing else,
+    and instance three still does not read as instance one because the wear is
+    azimuth-asymmetric and the scatterer yaws every placement."""
     b = PropBuild("Dress_BarrelUpright")
-    _barrel(b.frame((0.0, 0.0, 0.0)), 0.290, 0.880, body=STEEL_PAINTED, dent=True,
-            streaks=((36.0, 0.050, 0.520), (162.0, 0.080, 0.360), (208.0, 0.034, 0.620)))
-    b.pivot_part = b.parts[0]
-    # Rust bloom where the bottom hoop meets the body, one side only.
-    f = b.frame((0.0, 0.0, 0.0))
-    f.box((0.180, 0.004, 0.110), (math.cos(2.4) * 0.293, math.sin(2.4) * 0.293, 0.175),
-          rot=(0.0, 0.0, math.degrees(2.4) + 90.0), mat=RUST_HEAVY, nobevel=True)
+    # The z-stretch is 1.1 % and it is load-bearing: at the scan's own
+    # proportions the drum lands at 0.891 m and `breaks_sightline` (0.897 m,
+    # 55 % of eye height) silently flips off the kit's most-repeated Bulk
+    # piece. Stretching height back to the procedural drum's 0.901 m keeps
+    # BOTH manifest contracts — footprint ≤ 0.612 m AND the §12 flag.
+    b.pivot_part = _real_barrel(b, ratio=0.46,
+                                scale=(BARREL_SCALE, BARREL_SCALE, 0.9686))
     return b
 
 
 def build_barrel_cluster() -> PropBuild:
-    """Three drums, one on its side — a 1.6 m wide block of cover.
+    """Three scanned drums, one on its side — a 1.4 m wide block of cover.
 
     Wide on purpose: §12 asks for cover at 15~25 m spacing and a single drum is
-    too narrow to break a corridor's line of sight. The toppled one gives the
-    cluster a horizontal element, and the three now differ in HISTORY as well as
-    pose — one rusted through, one painted with a dented lid, one leaking — so
-    the group reads as three drums rather than three copies."""
+    too narrow to break a corridor's line of sight. The three share one scan but
+    never read as copies: each shows the texture from a different yaw, and the
+    lying one shows the beam its lid. Decimated harder than the solo drum —
+    mid-cluster silhouettes overlap, so the extra edges bought nothing."""
     b = PropBuild("Dress_BarrelCluster")
-    _barrel(b.frame((-0.36, 0.10, 0.0), yaw=17.0), 0.290, 0.880,
-            streaks=((70.0, 0.060, 0.420), (210.0, 0.040, 0.300)), streak_mat=GRIME)
-    b.pivot_part = b.parts[0]
-    _barrel(b.frame((0.28, -0.14, 0.0), yaw=-53.0), 0.290, 0.880, body=STEEL_PAINTED,
-            dent=True, streaks=((120.0, 0.055, 0.480),))
-    # Toppled, lying along X with a slight yaw, resting on its hoops.
-    f = b.frame((0.30, 0.52, 0.306), yaw=8.0)
-    f.cyl(0.290, 0.880, (0.0, 0.0, 0.0), rot=(0.0, 90.0, 0.0), verts=16, mat=RUST_HEAVY,
-          nobevel=True)
-    for x in (-0.246, 0.246):
-        f.cyl(0.306, 0.052, (x, 0.0, 0.0), rot=(0.0, 90.0, 0.0), verts=16, mat=STEEL_BARE,
-              nobevel=True)
+    b.pivot_part = _real_barrel(b, ratio=0.33, translate=(-0.36, 0.10, 0.0),
+                                rot_deg=(0.0, 0.0, 17.0))
+    _real_barrel(b, ratio=0.33, translate=(0.28, -0.14, 0.0), rot_deg=(0.0, 0.0, -53.0))
+    # The toppled one, lying along X with a slight yaw, its open end at -X.
+    _real_barrel(b, ratio=0.33, translate=(-0.22, 0.43, 0.3045), rot_deg=(0.0, 90.0, 8.0))
     # What it spilled, dried dark under the open end.
-    f.cyl(0.240, 0.005, (-0.560, -0.060, -0.3035), verts=14, mat=WET_STAIN, nobevel=True)
-    f.cyl(0.150, 0.006, (-0.660, 0.080, -0.3030), verts=12, mat=WET_STAIN, nobevel=True)
+    b.cyl(0.240, 0.005, (-0.320, 0.38, 0.0025), verts=14, mat=WET_STAIN, nobevel=True)
+    b.cyl(0.150, 0.006, (-0.430, 0.52, 0.0030), verts=12, mat=WET_STAIN, nobevel=True)
     return b
 
 
 def build_barrel_toppled() -> PropBuild:
-    """A drum on its side with a wedge under it, 0.62 m tall — walk-over-able cover.
+    """A scanned drum on its side with a wedge under it — walk-over-able cover.
 
-    The crease across the upper flank is the one asymmetric feature: a drum that
-    fell gets a dent where it landed, and the beam rakes it at close range."""
+    The chock is the one procedural part left: a drum that stays where it fell
+    on a route players sprint through needs a visible reason not to roll."""
     b = PropBuild("Dress_BarrelToppled")
-    body = b.cyl(0.290, 0.880, (0.0, 0.0, 0.300), rot=(0.0, 90.0, 0.0), verts=16,
-                 mat=STEEL_PAINTED, nobevel=True)
-    b.pivot_part = body
-    for x in (-0.246, 0.246):
-        b.cyl(0.306, 0.052, (x, 0.0, 0.300), rot=(0.0, 90.0, 0.0), verts=16, mat=STEEL_BARE,
-              nobevel=True)
-    b.cyl(0.010, 0.020, (0.0, 0.0, 0.596), verts=8, mat=BRASS_FITTING, nobevel=True)
-    b.box((0.180, 0.220, 0.070), (0.36, 0.0, 0.035), rot=(0.0, 12.0, 0.0), mat=TIMBER_DARK,
+    b.pivot_part = _real_barrel(b, ratio=0.44, translate=(-0.4455, 0.0, 0.3040),
+                                rot_deg=(0.0, 90.0, 0.0))
+    b.box((0.180, 0.220, 0.070), (0.30, 0.0, 0.035), rot=(0.0, 12.0, 0.0), mat=TIMBER_DARK,
           nobevel=True)
-    # Impact crease along the upper flank, and the scrape it left.
-    b.box((0.360, 0.030, 0.008), (-0.10, -0.196, 0.518), rot=(-42.0, 0.0, 7.0),
-          mat=GRIME, nobevel=True)
-    b.box((0.240, 0.004, 0.090), (0.05, -0.284, 0.360), rot=(-14.0, 0.0, 3.0),
-          mat=RUST_HEAVY, nobevel=True)
-    # Rust weeping around the circumference from each rim, gravity-honest for a
-    # drum on its side.
-    b.box((0.030, 0.004, 0.200), (-0.360, -0.276, 0.240), rot=(-24.0, 0.0, 0.0),
-          mat=RUST_HEAVY, nobevel=True)
-    b.box((0.022, 0.004, 0.150), (0.330, -0.284, 0.210), rot=(-16.0, 0.0, 0.0),
-          mat=RUST_HEAVY, nobevel=True)
     return b
 
 
 def build_shelf_stocked() -> PropBuild:
-    """A 1.10 m stocked shelving bay, 1.95 m tall.
+    """The scanned rack, stocked. 0.92 m wide, 1.90 m tall — a §12 sightline blocker.
 
-    Narrower than `gen_props`' 1.84 m Shelving so it fits a 2.5 m corridor cell
-    against one wall while leaving the §08 two-person carry channel open — the
-    scatter tool checks that arithmetic per cell, but a piece that could never
-    pass it would simply never be placed. §12 counts it as a sightline blocker:
-    the gaps between decks make it usable cover rather than a wall, which is also
-    why the import policy lists shelving as concave."""
+    The bay itself is PolyHaven's worn_metal_rack; the STOCK stays procedural,
+    because the scan ships empty and a bare rack in a storage wing reads as a
+    showroom. The clutter follows the old builder's §03 logic: tins and glass
+    put small bright specular hits at beam height, cardboard and ledgers break
+    the deck lines, and nothing overhangs the squashed 0.42 m depth the
+    scatterer fits against the wall."""
     b = PropBuild("Dress_ShelfStocked")
-    W, D, H = 1.100, 0.420, 1.950
-    _shelf_frame(b, W, D, H, (0.140, 0.640, 1.140, 1.640))
-    b.pivot_part = b.parts[0]
+    rack = _real_rack(b, 0.30)
+    b.pivot_part = rack
     f = b.frame((0.0, 0.0, 0.0))
-    # Deck 1 — paint tins and a coil of hose.
-    for i, x in enumerate((-0.40, -0.24, -0.08)):
-        _tin(f, 0.072, 0.180, (x, 0.02, 0.153))
-    f.cyl(0.150, 0.090, (0.30, 0.0, 0.198), verts=12, mat=RUBBER, nobevel=True)
-    # Deck 2 — cardboard boxes, one crooked.
-    f.box((0.320, 0.300, 0.240), (-0.32, 0.01, 0.773), rot=(0.0, 0.0, 4.0), mat=CARD)
-    f.box((0.260, 0.260, 0.200), (0.02, -0.02, 0.753), rot=(0.0, 0.0, -9.0), mat=CARD)
-    f.box((0.220, 0.240, 0.180), (0.34, 0.03, 0.743), mat=CARD)
-    # Deck 3 — bottles and jars, the bright row. One has gone over and rolled
-    # to the shelf lip: five identical soldiers was the copy-paste tell.
-    for i, x in enumerate((-0.44, -0.30, -0.16, 0.10)):
-        lean = 4.0 if i == 2 else 0.0
-        f.cyl(0.046, 0.230, (x, 0.0, 1.268), rot=(lean, 0.0, 0.0), verts=10,
+    # Deck 1 (top at 0.43) — paint tins and a coil of hose.
+    for x in (-0.30, -0.15):
+        _tin(f, 0.062, 0.160, (x, 0.02, 0.430))
+    f.cyl(0.115, 0.080, (0.24, 0.0, 0.470), verts=12, mat=RUBBER, nobevel=True)
+    # Deck 2 (top at 0.92) — cardboard boxes, one crooked.
+    f.box((0.280, 0.250, 0.220), (-0.22, 0.01, 1.032), rot=(0.0, 0.0, 5.0), mat=CARD)
+    f.box((0.230, 0.230, 0.180), (0.16, -0.02, 1.012), rot=(0.0, 0.0, -8.0), mat=CARD)
+    # Deck 3 (top at 1.41) — bottles, a paper bundle, one bottle over and rolled
+    # to the lip: identical soldiers was the copy-paste tell the first time.
+    for i, x in enumerate((-0.32, -0.20, 0.02)):
+        lean = 4.0 if i == 1 else 0.0
+        f.cyl(0.040, 0.200, (x, 0.0, 1.512), rot=(lean, 0.0, 0.0), verts=10,
               mat=GLASS_DIRTY, nobevel=True)
-        f.cyl(0.022, 0.070, (x, 0.0, 1.418), rot=(lean, 0.0, 0.0), verts=8,
+        f.cyl(0.019, 0.060, (x, 0.0, 1.642), rot=(lean, 0.0, 0.0), verts=8,
               mat=GLASS_DIRTY, nobevel=True)
-    f.cyl(0.046, 0.260, (0.26, -0.12, 1.202), rot=(90.0, 0.0, 74.0), verts=10,
+    f.cyl(0.040, 0.230, (0.24, -0.10, 1.452), rot=(90.0, 0.0, 74.0), verts=10,
           mat=GLASS_DIRTY, nobevel=True)
-    f.box((0.180, 0.300, 0.120), (0.42, 0.0, 1.213), mat=PAPER, nobevel=True)
-    # Deck 4 — ledgers and a folded sheet.
-    for i, x in enumerate((-0.42, -0.36, -0.30, -0.24)):
-        f.box((0.048, 0.280, 0.320), (x, 0.0, 1.813), rot=(0.0, 3.0 * i - 4.0, 0.0),
+    f.box((0.160, 0.260, 0.110), (0.33, 0.0, 1.467), mat=PAPER, nobevel=True)
+    # Top deck (1.90) — ledgers and a folded dust sheet, kept low so the piece
+    # stays inside the height the manifest already promised §12.
+    for i, x in enumerate((-0.34, -0.28, -0.22)):
+        f.box((0.044, 0.240, 0.280), (x, 0.0, 1.762), rot=(0.0, 3.0 * i - 3.0, 0.0),
               mat=TIMBER_DARK, nobevel=True)
-    f.box((0.420, 0.360, 0.130), (0.22, 0.0, 1.718), mat=CLOTH_DUST, nobevel=True)
+    f.box((0.360, 0.300, 0.060), (0.20, 0.0, 1.932), mat=CLOTH_DUST, nobevel=True)
     return b
 
 
 def build_shelf_toppled() -> PropBuild:
-    """The same bay on its face, contents spilled. Knee height, walk-around cover.
+    """The same scanned bay on its face, contents spilled. Knee height.
 
     A toppled unit is the cheapest way to say "something happened here" without
     animating anything — §06 designs the building to be silent, so the evidence
-    has to be in the geometry."""
+    has to be in the geometry. Decimated harder than the standing bay: a rack
+    on the floor is read from above at a walk, not searched at arm's length."""
     b = PropBuild("Dress_ShelfToppled")
-    W, D, H = 1.100, 0.420, 1.900
-    # The frame, laid over: uprights along Y, decks stacked in Y.
-    for (sy) in (-1.0, 1.0):
-        b.box((W, 0.048, 0.048), (0.0, sy * (H / 2 - 0.024), 0.396), rot=(0.0, 0.0, 0.0),
-              mat=STEEL_PAINTED, nobevel=True)
-        b.box((W, 0.048, 0.048), (0.0, sy * (H / 2 - 0.024), 0.048), mat=STEEL_PAINTED,
+    rack = _real_rack(b, 0.16)
+    # Fallen forward: the 1.90 m height lies along -Y, decks facing the floor,
+    # then recentred so the piece straddles its own footprint centre. The spill
+    # hugs the fallen top edge — the manifest footprint this piece already
+    # ships (1.21 × 2.17 m) is a §12 clearance input, so nothing may roll past it.
+    _orient(rack, rot_deg=(90.0, 0.0, 0.0), translate=(0.0, 0.95, 0.212))
+    b.pivot_part = rack
+    # What shook out when it went over, thrown past the top edge.
+    for (x, y, yaw) in ((-0.30, -1.06, 24.0), (0.14, -1.08, -33.0), (0.38, -1.02, 61.0)):
+        b.cyl(0.062, 0.160, (x, y, 0.062), rot=(90.0, 0.0, yaw), verts=10, mat=STEEL_BARE,
               nobevel=True)
-    b.pivot_part = b.parts[0]
-    for i, y in enumerate((-0.62, -0.14, 0.34, 0.78)):
-        b.box((W, 0.026, 0.360), (0.0, y, 0.200), rot=(3.0 - i * 2.0, 0.0, 0.0), mat=PLY,
+    for (x, y, yaw) in ((-0.06, -1.02, 18.0), (0.28, -1.05, -37.0)):
+        b.box((0.260, 0.220, 0.024), (x, y, 0.012), rot=(0.0, 0.0, yaw), mat=PAPER,
               nobevel=True)
-    # Spilled contents in front of it.
-    for (x, y, r, h) in ((-0.36, -0.72, 0.072, 0.180), (0.12, -0.86, 0.072, 0.180),
-                         (0.46, -0.66, 0.072, 0.180)):
-        b.cyl(r, h, (x, y, r), rot=(90.0, 0.0, 24.0), verts=10, mat=STEEL_BARE, nobevel=True)
-    for (x, y, yaw) in ((-0.10, -0.98, 18.0), (0.34, -1.04, -37.0)):
-        b.box((0.280, 0.240, 0.026), (x, y, 0.013), rot=(0.0, 0.0, yaw), mat=PAPER, nobevel=True)
-    b.box((0.300, 0.280, 0.220), (-0.44, -1.00, 0.110), rot=(0.0, 8.0, 27.0), mat=CARD)
+    b.box((0.280, 0.260, 0.200), (-0.38, -0.99, 0.100), rot=(0.0, 8.0, 27.0), mat=CARD)
     return b
 
 
@@ -1050,6 +1476,29 @@ def build_chair() -> PropBuild:
           mat=CLOTH_STAINED, nobevel=True)
     b.box((0.120, 0.060, 0.330), (-0.170, 0.150, 0.560), rot=(0.0, -7.0, 8.0),
           mat=CLOTH_STAINED, nobevel=True)  # one sleeve hanging
+    return b
+
+
+def build_generator() -> PropBuild:
+    """A portable generator, dead. 0.82 × 0.56 × 0.58 m. BRAND-NEW piece.
+
+    The manifest is the whole integration: `BulkPass`/`PickBulk` choose by
+    group, palette and weight, so a new Bulk row ships with zero scatterer
+    changes — which is exactly the seam this kit exists to prove. §12 gives
+    zone D (utility) its plant character; a generator that clearly does not run
+    — no light, no cable, dust on the tank — is §06's silence made visible, and
+    its worn yellow shell is the largest bright object the utility palette
+    owns. PolyHaven portable_generator (CC0), 26 k triangles decimated to ~2.5 k;
+    the vents and fins the collapse eats come back in the normal map. The
+    scan's control panel already faces −Y, which is the kit's front."""
+    b = PropBuild("Dress_Generator")
+    body = _adopt(b, _append_object("portable_generator", "portable_generator"),
+                  GENERATOR_BODY)
+    _decimate(body, 0.092)
+    b.pivot_part = body
+    for name in ("portable_generator_dial", "portable_generator_switch",
+                 "portable_generator_toggle"):
+        _adopt(b, _append_object("portable_generator", name), GENERATOR_BODY)
     return b
 
 
@@ -1335,115 +1784,131 @@ docks with the next cell's run instead of leaving a gap every 2.5 m."""
 
 
 def build_pipe_run_wall() -> PropBuild:
-    """A 2.5 m parallel run at 1.95–2.25 m with brackets. WALL mount.
+    """Two scanned flanged lines at ~2.0–2.3 m, tied by a real tee. WALL mount.
 
-    Galvanised on purpose. A horizontal bright line at head height is the single
-    most effective depth cue available in a corridor with no textures — the beam
-    slides along it and the corridor's length becomes visible. §12 also wanted a
-    way to give a zone its own character without touching the floor, which is what
-    the Listener reads."""
+    A horizontal bright line at head height is the single most effective depth
+    cue in a dark corridor — the beam slides along it and the corridor's length
+    becomes visible. The scan's flange joints give the run the rhythm the
+    procedural version faked with rings, and the tee's up-stub almost touching
+    the top line plus a copper drop leg off its down-stub keep it reading as
+    plumbing rather than as two stripes. Brackets, the one bracket hanging 14°
+    off plumb, and the wall's rust/damp memory stay procedural — they are the
+    kit's own storytelling and they sit on the mount plane, not on the pipes."""
     b = PropBuild("Dress_PipeRun_Wall")
-    specs = ((0.062, 2.230, GALVANISED, 12), (0.044, 2.060, RUST_HEAVY, 10),
-             (0.026, 1.950, COPPER, 8))
-    _pipe_run(b, RUN_LENGTH, -0.130, specs, (-0.960, 0.960))
-    b.pivot_part = b.parts[0]
-    # A union and a drop leg, so the run reads as plumbing rather than as a stripe.
-    b.cyl(0.072, 0.090, (0.520, -0.130, 2.230), rot=(0.0, 90.0, 0.0), verts=12,
-          mat=STEEL_BARE, nobevel=True)
-    b.cyl(0.030, 0.420, (-0.480, -0.130, 1.760), verts=8, mat=COPPER, nobevel=True)
-    b.cyl(0.038, 0.050, (-0.480, -0.130, 1.955), verts=8, mat=BRASS_FITTING, nobevel=True)
-    # Flange pairs give the top run a rhythm along its length — round 1 showed
-    # three sterile rods, and a pipe with no joints is a stripe, not plumbing.
-    for x in (-0.700, 0.150):
-        for dx in (-0.022, 0.022):
-            b.cyl(0.080, 0.026, (x + dx, -0.130, 2.230), rot=(0.0, 90.0, 0.0), verts=10,
-                  mat=STEEL_BARE, nobevel=True)
-    # A rusted-through sleeve on the middle pipe, off-centre.
-    b.cyl(0.047, 0.180, (0.680, -0.130, 2.060), rot=(0.0, 90.0, 0.0), verts=10,
-          mat=RUST_HEAVY, nobevel=True)
-    # The middle bracket has torn its lower fixing and hangs 14° off plumb —
-    # the run's one asymmetric feature.
-    lo = 1.950 - 0.09
-    hi = 2.230 + 0.09
-    b.box((0.056, 0.026, hi - lo), (0.020, -0.078, (lo + hi) / 2 - 0.020),
-          rot=(14.0, 0.0, 6.0), mat=STEEL_PAINTED, nobevel=True)
-    # What the wall remembers: rust weeping from the union and the flanges,
-    # and a long damp streak under the leak. All of it on the mount plane.
-    b.quad(0.070, 0.560, (0.520, -0.002, 1.920), rot=(90.0, 0.0, 0.0), mat=RUST_HEAVY)
-    b.quad(0.048, 0.320, (-0.700, -0.002, 2.030), rot=(90.0, 0.0, 0.0), mat=RUST_HEAVY)
-    b.quad(0.110, 0.550, (0.560, -0.001, 1.720), rot=(90.0, 0.0, 4.0), mat=WET_STAIN)
+    line_a, r_a = _pipe_line(b, ("modular_industrial_pipes_01_pipe02",
+                                 "modular_industrial_pipes_01_pipe01"),
+                             ratio=0.42, target_len=RUN_LENGTH)
+    for obj in line_a:
+        _orient(obj, translate=(0.0, -0.112, 2.240))
+    line_b, r_b = _pipe_line(b, ("modular_industrial_pipes_01_pipe01",
+                                 "modular_industrial_pipes_01_pipe07",
+                                 "modular_industrial_pipes_01_pipe02"),
+                             ratio=0.26, target_len=RUN_LENGTH)
+    for obj in line_b:
+        _orient(obj, translate=(0.0, -0.112, 2.008))
+    # The tee sits 1.0655/3.225 along line b; its down-stub takes the drop leg.
+    tee_x = -RUN_LENGTH / 2.0 + 1.0655 * (RUN_LENGTH / 3.225)
+    b.cyl(0.026, 0.340, (tee_x, -0.112, 1.700), verts=8, mat=COPPER, nobevel=True)
+    b.cyl(0.034, 0.050, (tee_x, -0.112, 1.810), verts=8, mat=BRASS_FITTING, nobevel=True)
+    # Brackets at the tiling thirds; the middle one has torn its lower fixing
+    # and hangs 14° off plumb — the run's procedural asymmetric feature.
+    for x in (-0.960, 0.960):
+        b.box((0.056, 0.026, 0.420), (x, -0.046, 2.115), mat=STEEL_PAINTED, nobevel=True)
+        for (z, r) in ((2.240, r_a), (2.008, r_b)):
+            b.box((0.056, 0.135, 0.026), (x, -0.0675, z + r + 0.013), mat=STEEL_PAINTED,
+                  nobevel=True)
+    b.box((0.056, 0.026, 0.400), (0.020, -0.078, 2.105), rot=(14.0, 0.0, 6.0),
+          mat=STEEL_PAINTED, nobevel=True)
+    # What the wall remembers: rust weeping under the flange joints, and a damp
+    # streak under the drop leg. All of it on the mount plane.
+    b.quad(0.070, 0.560, (0.486, -0.002, 1.920), rot=(90.0, 0.0, 0.0), mat=RUST_HEAVY)
+    b.quad(0.048, 0.320, (-0.583, -0.002, 1.840), rot=(90.0, 0.0, 0.0), mat=RUST_HEAVY)
+    b.quad(0.110, 0.450, (tee_x + 0.04, -0.001, 1.750), rot=(90.0, 0.0, 4.0), mat=WET_STAIN)
     return b
 
 
 def build_pipe_run_ceiling() -> PropBuild:
-    """A 2.5 m run hung under the ceiling on drop rods. CEILING mount.
+    """Two scanned lines hung under the ceiling on drop rods. CEILING mount.
 
-    Hangs 0.42 m at most, which leaves a standing player 2.58 m of the kit's 3.0 m
-    clear height — head clearance, not a duck."""
+    The scan composes cleanly here because a ceiling run IS the wall run lying
+    down: the same straight segments butt to the same 2.5 m tiling length, and
+    the cross fitting's stubs point at the ceiling and the floor, which is what
+    a take-off on a hung main really does. Hangs 0.44 m at most, leaving a
+    standing player head clearance under the kit's 3.0 m clear height. Rods,
+    anchor plates and the bright cable tray stay procedural — they are rigging,
+    not pipe, and the tray is the flat overhead plane that reads at distance."""
     b = PropBuild("Dress_PipeRun_Ceiling")
-    specs = ((0.070, -0.320, GALVANISED, 12), (0.048, -0.300, STEEL_PAINTED, 10),
-             (0.030, -0.150, COPPER, 8))
-    for (radius, z, mat_name, verts) in specs:
-        y = {0.070: -0.150, 0.048: 0.130, 0.030: 0.010}[radius]
-        b.cyl(radius, RUN_LENGTH, (0.0, y, z), rot=(0.0, 90.0, 0.0), verts=verts,
-              mat=mat_name, nobevel=True)
-    b.pivot_part = b.parts[0]
+    line_a, r_a = _pipe_line(b, ("modular_industrial_pipes_01_pipe02",
+                                 "modular_industrial_pipes_01_pipe01"),
+                             ratio=0.42, target_len=RUN_LENGTH)
+    for obj in line_a:
+        _orient(obj, translate=(0.0, -0.150, -0.320))
+    line_b, r_b = _pipe_line(b, ("modular_industrial_pipes_01_pipe01",
+                                 "modular_industrial_pipes_01_pipe06",
+                                 "modular_industrial_pipes_01_pipe02"),
+                             ratio=0.28, target_len=RUN_LENGTH)
+    for obj in line_b:
+        _orient(obj, translate=(0.0, 0.130, -0.298))
+    # Anchor plates and drop rods at the tiling thirds. One rod on the thin
+    # line has torn its anchor and hangs kinked — the asymmetric feature.
     for x in (-0.960, 0.0, 0.960):
-        b.box((0.560, 0.050, 0.030), (x, -0.010, -0.055), mat=STEEL_PAINTED, nobevel=True)
-        for (y, z, radius) in ((-0.150, -0.320, 0.070), (0.130, -0.300, 0.048),
-                               (0.010, -0.150, 0.030)):
-            if x == 0.0 and radius == 0.048:
-                # One drop rod has torn its ceiling anchor and hangs kinked —
-                # the run's asymmetric feature, right where a beam sweeps it.
-                b.cyl(0.011, abs(z) - 0.055, (x + 0.030, y, (-0.055 + z + radius) / 2),
+        b.box((0.060, 0.420, 0.024), (x, -0.010, -0.012), mat=STEEL_PAINTED, nobevel=True)
+        for (y, z, r) in ((-0.150, -0.320, r_a), (0.130, -0.298, r_b)):
+            if x == 0.0 and y > 0.0:
+                b.cyl(0.011, -z - r - 0.024, (x + 0.030, y, (z + r - 0.024) / 2),
                       rot=(0.0, 16.0, 0.0), verts=6, mat=STEEL_BARE, nobevel=True)
                 continue
-            b.cyl(0.011, abs(z) - 0.055, (x, y, (-0.055 + z + radius) / 2), verts=6,
+            b.cyl(0.011, -z - r - 0.024, (x, y, (z + r - 0.024) / 2), verts=6,
                   mat=STEEL_BARE, nobevel=True)
-            b.box((0.036, 0.030, 0.030), (x, y, z + radius + 0.014), mat=STEEL_BARE,
-                  nobevel=True)
     # A cable tray beside the pipes: a flat bright plane overhead reads at distance.
-    b.box((RUN_LENGTH, 0.220, 0.020), (0.0, 0.300, -0.170), mat=GALVANISED, nobevel=True)
+    b.box((RUN_LENGTH, 0.200, 0.020), (0.0, 0.310, -0.170), mat=GALVANISED, nobevel=True)
     for x in (-0.960, 0.0, 0.960):
-        b.box((0.026, 0.220, 0.060), (x, 0.300, -0.150), mat=GALVANISED, nobevel=True)
-        b.cyl(0.009, 0.115, (x, 0.300, -0.105), verts=6, mat=STEEL_BARE, nobevel=True)
-    for y in (0.240, 0.300, 0.360):
+        b.box((0.026, 0.200, 0.060), (x, 0.310, -0.150), mat=GALVANISED, nobevel=True)
+        b.cyl(0.009, 0.100, (x, 0.310, -0.050), verts=6, mat=STEEL_BARE, nobevel=True)
+    for y in (0.250, 0.310, 0.370):
         b.cyl(0.014, RUN_LENGTH - 0.10, (0.0, y, -0.146), rot=(0.0, 90.0, 0.0), verts=6,
               mat=RUBBER, nobevel=True)
     return b
 
 
 def build_pipe_valve_cluster() -> PropBuild:
-    """A valve station: two handwheels, a gauge and a manifold. WALL mount.
+    """The scan's globe valve and a tee on a wall manifold, plus a gauge. WALL.
 
-    §04's 정비공 turns things on; this is what "on" looks like when it belongs to
-    the building. The gauge face is albedo 0.86, the brightest disc in the kit, so
-    the cluster resolves before its outline does."""
+    §04's 정비공 turns things on; this is what "on" looks like when it belongs
+    to the building. The valve — red handwheel facing the corridor — is the
+    scan's 5.8 k-triangle showpiece decimated to ~800, and it carries the red
+    the procedural version had to paint on with enamel tori. The gauge stays
+    procedural: its face is albedo 0.86, the brightest disc in the kit, so the
+    cluster resolves before its outline does."""
     b = PropBuild("Dress_PipeValve_Cluster")
-    manifold = b.cyl(0.070, 0.760, (0.0, -0.140, 1.700), rot=(0.0, 90.0, 0.0), verts=12,
-                     mat=STEEL_PAINTED, nobevel=True)
-    b.pivot_part = manifold
-    for x in (-0.380, 0.380):
-        b.cyl(0.086, 0.060, (x, -0.140, 1.700), rot=(0.0, 90.0, 0.0), verts=12,
-              mat=STEEL_BARE, nobevel=True)
-        b.box((0.060, 0.150, 0.150), (x, -0.070, 1.700), mat=STEEL_PAINTED, nobevel=True)
-    # Two handwheels on risers.
-    for (x, z, r) in ((-0.230, 2.060, 0.150), (0.230, 1.980, 0.120)):
-        b.cyl(0.036, z - 1.760, (x, -0.140, (1.760 + z) / 2), verts=8, mat=STEEL_PAINTED,
-              nobevel=True)
-        b.cyl(0.062, 0.060, (x, -0.140, z - 0.050), verts=10, mat=STEEL_BARE, nobevel=True)
-        b.torus(r, 0.016, (x, -0.140, z), rot=(0.0, 0.0, 0.0), mseg=14, nseg=5,
-                mat=ENAMEL_RED)
-        for i in range(3):
-            b.box((r * 2.0, 0.024, 0.024), (x, -0.140, z), rot=(0.0, 0.0, i * 60.0),
-                  mat=ENAMEL_RED, nobevel=True)
-    # Gauge on a stub.
-    b.cyl(0.016, 0.130, (0.0, -0.140, 1.830), verts=6, mat=BRASS_FITTING, nobevel=True)
-    b.cyl(0.088, 0.050, (0.0, -0.140, 1.930), rot=(90.0, 0.0, 0.0), verts=16,
+    valve = _adopt(b, _append_object(PIPE_SOURCE, "modular_industrial_pipes_01_pipe08"),
+                   PIPE_VALVE02)
+    _decimate(valve, 0.14)
+    # Axis to origin, base to z=0. The axis is MEASURED (top-flange centroid at
+    # x −0.3003, y 0.0253), not the bbox centre — the handwheel bulge skews the
+    # bbox 3 cm, which round 2's render exposed as a valve parked off its riser.
+    _orient(valve, translate=(0.3003, -0.0253, 0.914))
+    # The scan's wheel sits 24° shy of the kit's −Y front; square it up so the
+    # red disc faces the corridor the way the procedural handwheels did.
+    _orient(valve, rot_deg=(0.0, 0.0, -24.4))
+    _orient(valve, translate=(-0.200, -0.117, 1.660))
+    b.pivot_part = valve
+    tee = _adopt(b, _append_object(PIPE_SOURCE, "modular_industrial_pipes_01_pipe07"),
+                 PIPE_VALVE02)
+    _decimate(tee, 0.24)
+    _orient(tee, translate=(0.0, -0.025, 0.131))
+    _orient(tee, translate=(0.200, -0.117, 1.660))
+    # The manifold both risers stand on, and the wall memory under the valve.
+    b.cyl(0.052, 0.700, (0.0, -0.117, 1.712), rot=(0.0, 90.0, 0.0), verts=12,
+          mat=GALVANISED, nobevel=True)
+    b.quad(0.050, 0.140, (-0.200, -0.002, 1.600), rot=(90.0, 2.0, 0.0), mat=RUST_HEAVY)
+    # Gauge on a brass stub between the risers.
+    b.cyl(0.016, 0.150, (0.0, -0.117, 1.815), verts=6, mat=BRASS_FITTING, nobevel=True)
+    b.cyl(0.075, 0.045, (0.0, -0.117, 1.905), rot=(90.0, 0.0, 0.0), verts=16,
           mat=BRASS_FITTING, nobevel=True)
-    b.cyl(0.076, 0.014, (0.0, -0.172, 1.930), rot=(90.0, 0.0, 0.0), verts=16,
+    b.cyl(0.064, 0.012, (0.0, -0.146, 1.905), rot=(90.0, 0.0, 0.0), verts=16,
           mat=GAUGE_FACE, nobevel=True)
-    b.box((0.056, 0.008, 0.010), (0.020, -0.182, 1.938), rot=(0.0, 24.0, 0.0), mat=GRIME,
+    b.box((0.048, 0.008, 0.009), (0.016, -0.154, 1.911), rot=(0.0, 24.0, 0.0), mat=GRIME,
           nobevel=True)
     return b
 
@@ -1587,31 +2052,41 @@ def build_bulb_cord() -> PropBuild:
 
 
 def build_bulb_caged() -> PropBuild:
-    """A caged bulb on a short flex. CEILING mount, 0.46 m drop.
+    """The scanned twin-chain caged fitting, dead. CEILING mount, 0.68 m drop.
 
-    The short version, for cells where a 1 m drop would be in a player's face.
-    The cage is six bright wires around a bulb: in a beam it is a bright ring
-    with a dark centre, which reads as a fitting at 10 m where a sphere does not."""
+    PolyHaven's caged_hanging_light: a 1.05 m military strip fitting whose glass
+    windows sit behind a real wire cage. The scan's own chains, cable and
+    ceiling pads are harvested OFF (their islands all reach above z −0.50) and
+    the body is re-hung on the kit's procedural chain — same links as every
+    other hang in the building, and a third of the triangles.
+
+    THE BULB CONTRACT HOLDS BY CONSTRUCTION: the glass faces are found through
+    the scan's own emissive map and given the `Dress_BulbDead` slot, so
+    `ScatterSession.LightBulb` still swaps them to the emissive `Dress_BulbLit`
+    kit material by name, and `LightStratifiedBulbs` still finds the piece by
+    its `Dress_Bulb` prefix. The housing keeps the scan's maps."""
     b = PropBuild("Dress_BulbCaged")
-    rose = b.cyl(0.058, 0.028, (0.0, 0.0, -0.014), verts=12, mat=GRIME, nobevel=True)
-    b.pivot_part = rose
-    b.cyl(0.007, 0.180, (0.0, 0.0, -0.118), verts=6, mat=RUBBER, nobevel=True)
-    b.cyl(0.034, 0.090, (0.0, 0.0, -0.255), verts=10, mat=BRASS_FITTING, nobevel=True)
-    b.sph(0.045, (0.0, 0.0, -0.340), scale=(1.0, 1.0, 1.2), segs=12, rings=6,
-          mat=BULB_DEAD, nobevel=True)
-    for i in range(6):
-        a = math.radians(i * 60.0)
-        if i == 2:
-            # One wire pried outward — every cage in the building was hit by
-            # something once, and it is this piece's asymmetric feature.
-            b.box((0.012, 0.012, 0.210), (0.082 * math.cos(a), 0.082 * math.sin(a),
-                                          -0.345), rot=(14.0, 0.0, math.degrees(a)),
-                  mat=STEEL_BARE, nobevel=True)
-            continue
-        b.box((0.012, 0.012, 0.200), (0.072 * math.cos(a), 0.072 * math.sin(a), -0.345),
-              rot=(0.0, 0.0, math.degrees(a)), mat=STEEL_BARE, nobevel=True)
-    b.torus(0.074, 0.008, (0.0, 0.0, -0.300), mseg=12, nseg=4, mat=STEEL_BARE)
-    b.torus(0.052, 0.008, (0.0, 0.0, -0.440), mseg=12, nseg=4, mat=STEEL_BARE)
+    lamp = _adopt(b, _append_object("caged_hanging_light", "caged_hanging_light"),
+                  CAGED_LAMP)
+    kept = _filter_islands(lamp, lambda lo, hi: hi.z <= -0.50)
+    if kept < 8:
+        blendkit.fail(f"Dress_BulbCaged: island harvest kept only {kept} islands — "
+                      "the vendored scan changed shape")
+    _decimate(lamp, 0.086)
+    painted = _paint_faces_by_image(
+        lamp, _source_texture("caged_hanging_light", "caged_hanging_light_emissive_2k.png"),
+        BULB_DEAD, threshold=0.20)
+    if painted < 8:
+        blendkit.fail(f"Dress_BulbCaged: only {painted} glass faces found via the emissive "
+                      "map — the Dress_BulbDead slot would be empty and "
+                      "ScatterSession.LightBulb would have nothing to swap")
+    _orient(lamp, scale=0.90)
+    b.pivot_part = lamp
+    # Ceiling roses over the scan's own chain lugs, and the kit chain between.
+    for sx in (-1.0, 1.0):
+        b.cyl(0.045, 0.024, (sx * 0.114, 0.0, -0.012), verts=10, mat=STEEL_PAINTED,
+              nobevel=True)
+        _chain(b, sx * 0.114, 0.0, -0.028, -0.462, radius=0.020)
     return b
 
 
@@ -1948,6 +2423,12 @@ class Piece:
     solid: bool = True
     """Whether the piece should keep a collider and be baked into the NavMesh."""
 
+    keep_uvs: bool = False
+    """True for pieces built from CC0 scans: their authored UVs are the seam the
+    shipped texture maps land on, so smart-project must not touch them. These
+    pieces also get the §7.12 dark-metal-panel check a textured surface can
+    still fail — see emit()."""
+
     note: str = ""
     checks: tuple[str, ...] = ()
 
@@ -1961,24 +2442,31 @@ PALETTES: dict[str, str] = {
 
 PIECES: list[Piece] = [
     # ── Bulk — cover, and §12's 시야 차단 지점 ───────────────────────────────
-    Piece("Dress_CaseStack_Tall", build_case_stack_tall, "Bulk", (0.783, 0.763, 1.759),
-          palettes=("storage", "utility"), weight=1.2, max_tris=1200,
-          note="sightline break just under eye height"),
-    Piece("Dress_CaseStack_Low", build_case_stack_low, "Bulk", (1.492, 0.860, 1.140),
-          palettes=("storage", "wet"), weight=1.0, max_tris=1300, note="crouch cover"),
+    # Budget bumps on the scan-built pieces, each inside the kit's 2600 cap:
+    # CaseStack_Tall 1200→2500 (four real crates at ~570 tris replace three
+    # 140-tri boxes); CaseStack_Low 1300→2000 (two closed + one opened crate);
+    # BulbCaged 900→2400 (a real wire cage cannot survive 900); PipeRun_Wall
+    # 900→1400 (two flanged lines and a tee replace three bare cylinders).
+    Piece("Dress_CaseStack_Tall", build_case_stack_tall, "Bulk", (0.776, 0.528, 1.585),
+          palettes=("storage", "utility"), weight=1.2, max_tris=2500, keep_uvs=True,
+          note="sightline break at eye height"),
+    Piece("Dress_CaseStack_Low", build_case_stack_low, "Bulk", (1.465, 0.841, 1.008),
+          palettes=("storage", "wet"), weight=1.0, max_tris=2000, keep_uvs=True,
+          note="crouch cover"),
     Piece("Dress_CaseBroken", build_case_broken, "Debris", (1.181, 1.072, 0.397),
           palettes=("storage", "wet"), weight=0.8, max_tris=900),
-    Piece("Dress_BarrelUpright", build_barrel_upright, "Bulk", (0.612, 0.612, 0.911),
-          weight=1.3, max_tris=700),
-    Piece("Dress_BarrelCluster", build_barrel_cluster, "Bulk", (1.441, 1.311, 0.895),
-          palettes=("wet", "utility"), weight=0.9, max_tris=1600),
-    Piece("Dress_BarrelToppled", build_barrel_toppled, "Bulk", (0.895, 0.612, 0.624),
-          palettes=("wet", "utility", "storage"), weight=0.7, max_tris=700),
-    Piece("Dress_ShelfStocked", build_shelf_stocked, "Bulk", (1.100, 0.420, 1.974),
+    Piece("Dress_BarrelUpright", build_barrel_upright, "Bulk", (0.607, 0.612, 0.901),
+          weight=1.3, max_tris=700, keep_uvs=True),
+    Piece("Dress_BarrelCluster", build_barrel_cluster, "Bulk", (1.368, 1.299, 0.891),
+          palettes=("wet", "utility"), weight=0.9, max_tris=1600, keep_uvs=True),
+    Piece("Dress_BarrelToppled", build_barrel_toppled, "Bulk", (0.892, 0.612, 0.625),
+          palettes=("wet", "utility", "storage"), weight=0.7, max_tris=700, keep_uvs=True),
+    Piece("Dress_ShelfStocked", build_shelf_stocked, "Bulk", (0.915, 0.420, 1.962),
           palettes=("storage", "institutional", "utility"), weight=1.2, max_tris=2600,
+          keep_uvs=True,
           note="§12 sightline blocker; gaps make it cover rather than wall"),
-    Piece("Dress_ShelfToppled", build_shelf_toppled, "Bulk", (1.206, 2.170, 0.439),
-          palettes=("storage", "institutional"), weight=0.6, max_tris=1200),
+    Piece("Dress_ShelfToppled", build_shelf_toppled, "Bulk", (1.051, 2.166, 0.440),
+          palettes=("storage", "institutional"), weight=0.6, max_tris=1200, keep_uvs=True),
     Piece("Dress_FilingCabinet", build_filing_cabinet, "Bulk", (0.480, 0.995, 1.333),
           palettes=("institutional", "utility"), weight=1.0, max_tris=1100),
     Piece("Dress_LockerBank", build_locker_bank, "Bulk", (1.090, 0.668, 1.860),
@@ -1991,6 +2479,14 @@ PIECES: list[Piece] = [
           palettes=("storage", "institutional"), weight=0.7, max_tris=800),
     Piece("Dress_ChairBroken", build_chair_broken, "Debris", (0.851, 0.817, 0.416),
           palettes=("storage", "institutional"), weight=0.6, max_tris=800),
+    # The kit's one brand-new piece: entering through the manifest means
+    # BulkPass/PickBulk place it with zero ScatterSession changes.
+    Piece("Dress_Generator", build_generator, "Bulk", (0.814, 0.566, 0.578),
+          palettes=("utility", "storage"), weight=0.25, max_tris=2600, keep_uvs=True,
+          note="dead plant for zone D; §06's silence made visible. Weight cut 0.9→0.25 "
+               "on 2026-08-09: at 0.9 the building scattered twelve identical EN2500s "
+               "and a hero landmark repeated twelve times stops being one; at 0.25 the "
+               "same seed measures six, which an 8-storey building can carry."),
     # ── Debris — never above knee height (§05's 65 % backward speed) ────────
     Piece("Dress_RubblePile", build_rubble_pile, "Debris", (1.201, 0.957, 0.348),
           palettes=("wet", "utility", "storage"), weight=1.2, max_tris=1200),
@@ -2015,12 +2511,12 @@ PIECES: list[Piece] = [
           mount="WALL", palettes=("wet", "institutional"), weight=0.9, max_tris=900,
           solid=False),
     # ── Wall services ──────────────────────────────────────────────────────
-    Piece("Dress_PipeRun_Wall", build_pipe_run_wall, "Wall", (2.500, 0.213, 0.860),
-          mount="WALL", weight=1.6, max_tris=900, solid=False,
-          note="tiles on the 2.5 m grid; galvanised = the corridor's depth cue"),
+    Piece("Dress_PipeRun_Wall", build_pipe_run_wall, "Wall", (2.500, 0.206, 0.833),
+          mount="WALL", weight=1.6, max_tris=1400, solid=False, keep_uvs=True,
+          note="tiles on the 2.5 m grid; the flanged lines are the corridor's depth cue"),
     Piece("Dress_PipeValve_Cluster", build_pipe_valve_cluster, "Wall",
-          (0.820, 0.324, 0.461), mount="WALL", palettes=("utility", "wet"), weight=0.8,
-          max_tris=1400, solid=False),
+          (0.747, 0.340, 0.542), mount="WALL", palettes=("utility", "wet"), weight=0.8,
+          max_tris=1400, solid=False, keep_uvs=True),
     Piece("Dress_GaugeBoard", build_gauge_board, "Wall", (0.680, 0.100, 0.520),
           mount="WALL", palettes=("utility", "institutional"), weight=0.8, max_tris=1400,
           solid=False),
@@ -2030,12 +2526,14 @@ PIECES: list[Piece] = [
           mount="WALL", weight=1.0, max_tris=900, solid=False),
     # ── Hanging ────────────────────────────────────────────────────────────
     Piece("Dress_PipeRun_Ceiling", build_pipe_run_ceiling, "Ceiling",
-          (2.500, 0.630, 0.370), mount="CEILING", weight=1.5, max_tris=1600, solid=False),
+          (2.500, 0.652, 0.421), mount="CEILING", weight=1.5, max_tris=1600, solid=False,
+          keep_uvs=True),
     Piece("Dress_BulbCord", build_bulb_cord, "Ceiling", (0.340, 0.340, 1.020),
           mount="CEILING", weight=1.4, max_tris=700, solid=False,
           note="§03: a minority get a real light, ranged to one cell"),
-    Piece("Dress_BulbCaged", build_bulb_caged, "Ceiling", (0.164, 0.164, 0.448),
-          mount="CEILING", weight=1.0, max_tris=900, solid=False),
+    Piece("Dress_BulbCaged", build_bulb_caged, "Ceiling", (1.047, 0.285, 0.674),
+          mount="CEILING", weight=1.0, max_tris=2400, solid=False, keep_uvs=True,
+          note="glass carries Dress_BulbDead; LightBulb swaps it lit by name"),
     Piece("Dress_ChainHang", build_chain_hang, "Ceiling", (0.120, 0.120, 0.977),
           mount="CEILING", palettes=("storage", "wet", "utility"), weight=0.8,
           max_tris=1400, solid=False),
@@ -2123,7 +2621,27 @@ def emit(piece: Piece) -> None:
     obj = blendkit.join(b.parts, piece.name)
     blendkit.triangulate(obj)
     sharp = gen_props.apply_smooth(obj, 30.0)
-    blendkit.uv_smart_project(obj)
+    if piece.keep_uvs:
+        # A scan-built piece's authored UVs ARE the seam its shipped maps land
+        # on; smart-project would scramble every texel. Its procedural garnish
+        # (brackets, chains, stock) keeps primitive UVs, which is all the flat
+        # kit materials ever needed. And §7.12's check runs here because a
+        # textured piece can still ship a dark-metal slab — the rule is about
+        # what a flat face gives a torch back, not about how it was authored.
+        for material, (area, span) in gen_props.largest_visible_panel(obj).items():
+            spec = MATERIALS.get(material)
+            if spec is None or spec.metallic <= 0.5:
+                continue
+            if gen_props.albedo_luminance(material) >= gen_props.DARK_METAL_LUMINANCE:
+                continue
+            if (area > gen_props.DARK_METAL_PANEL_AREA
+                    and span > gen_props.DARK_METAL_PANEL_SPAN):
+                blendkit.fail(
+                    f"{piece.name}: a {area:.2f} m² face of '{material}', {span:.2f} m "
+                    "across its narrow side — dark metal renders what it reflects, and "
+                    "under a 12 m torch in a black corridor that is a hole (ART.md §7.12)")
+    else:
+        blendkit.uv_smart_project(obj)
 
     path = blendkit.out_path("Dressing", piece.name + ".fbx")
     blendkit.export_fbx(path, objects=[obj], with_animation=False)
@@ -2260,6 +2778,11 @@ def write_manifest(rows: list[dict]) -> str:
             "source": "NOT_IN_DESIGN_DOC",
         },
         "palettes": [{"name": k, "note": v} for k, v in sorted(PALETTES.items())],
+        # A material row optionally carries `albedo_map` / `normal_map` /
+        # `mask_map` — kit-root-relative paths written by export_real_textures.
+        # Absent for every procedural material, so their rows (and Unity's
+        # JsonUtility view of them) are unchanged: an absent field deserialises
+        # to its default and the flat-value path keeps doing what it did.
         "materials": [
             {
                 "name": spec.name,
@@ -2269,6 +2792,7 @@ def write_manifest(rows: list[dict]) -> str:
                 "roughness": spec.roughness,
                 "metallic": spec.metallic,
                 "emission": spec.emission,
+                **MATERIAL_MAPS.get(spec.name, {}),
             }
             for spec in sorted(MATERIALS.values(), key=lambda s: s.name)
         ],
@@ -2331,7 +2855,13 @@ def main() -> None:
                  f"{sum(1 for m in MATERIALS.values() if m.roughness <= 0.35)} at roughness "
                  "≤ 0.35 for specular response  OK")
 
-    manifest_path = write_manifest(ROWS) if len(todo) == len(PIECES) else None
+    # Textures ship only on a full run, exactly like the manifest that names
+    # them — a filtered iteration run regenerates neither, so it can never
+    # leave the two disagreeing.
+    manifest_path = None
+    if len(todo) == len(PIECES):
+        export_real_textures()
+        manifest_path = write_manifest(ROWS)
 
     print()
     print("=" * 112)

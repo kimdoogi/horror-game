@@ -20,6 +20,22 @@ CC0 1.0 (public-domain-equivalent, commercial use, no attribution required) both
 | ambientCG `PaintedPlaster016` | `tools/textures/cc0/ambientcg/PaintedPlaster016/{albedo, normal, rough, ao}` | CC0 1.0 (ambientCG) | base of `Wall_Plaster_Stained`; rising-damp band re-applied procedurally, keyed to the floor line |
 | ambientCG `Tiles133B` | `tools/textures/cc0/ambientcg/Tiles133B/{albedo, normal, rough, ao}` | CC0 1.0 (ambientCG) | base of `Floor_Tile` (dirty white mosaic, dark grout) |
 | ambientCG `DiamondPlate008A` | `tools/textures/cc0/ambientcg/DiamondPlate008A/{albedo, normal, rough, ao, metal}` | CC0 1.0 (ambientCG) | base of `Floor_Metal`; metalness scaled to a partial ceiling, light procedural rust |
+| PolyHaven `barrel_03` | `tools/blender/source/props/barrel_03/` | CC0 1.0 (PolyHaven) | `Dress_BarrelUpright/Toppled/Cluster` geometry + `Dress_Barrel03` maps (`Assets/Models/Dressing/Textures/Barrel03/`) |
+| PolyHaven `modular_industrial_pipes_01` | `tools/blender/source/props/modular_industrial_pipes_01/` | CC0 1.0 (PolyHaven) | `Dress_PipeRun_Wall / PipeRun_Ceiling / PipeValve_Cluster` segments + `Dress_PipeGalv01`/`Dress_PipeValve02` maps (albedo ×1.5, roughness ×0.7 at export — §03 beam visibility) |
+| PolyHaven `old_military_crate` | `tools/blender/source/props/old_military_crate/` | CC0 1.0 (PolyHaven) | `Dress_CaseStack_Tall / CaseStack_Low` crates + `Dress_CrateMilitary` maps (albedo ×1.18) |
+| PolyHaven `caged_hanging_light` | `tools/blender/source/props/caged_hanging_light/` | CC0 1.0 (PolyHaven) | `Dress_BulbCaged` housing (scan chains harvested off, kit chain re-hung; glass slot = `Dress_BulbDead` so the lit/dead swap survives) + `Dress_CagedLamp` maps |
+| PolyHaven `worn_metal_rack` | `tools/blender/source/props/worn_metal_rack/` | CC0 1.0 (PolyHaven) | `Dress_ShelfStocked / ShelfToppled` bay (depth squashed 0.60→0.42 m per kit mount_depth) + `Dress_RackWorn` maps |
+| PolyHaven `portable_generator` | `tools/blender/source/props/portable_generator/` | CC0 1.0 (PolyHaven) | `Dress_Generator` (new Bulk piece) + `Dress_GeneratorBody` maps |
+| Blender Foundation "Human Base Meshes" v1.4.1 | `tools/blender/source/human/body_male_realistic.blend` (base cage of `GEO-body_male_realistic`, 10,590 quads; multires + eyeballs stripped, canonicalized to 1.700 m, feet on z=0; 519 KB) | CC0 1.0 | the runner's anatomy — head/neck/torso/legs welded under the generated garment, hands harvested as rigid glove shells, by `gen_runner.py` |
+
+The prop scans are vendored under `tools/blender/source/props/` (~87 MB with
+`PROVENANCE.json`; `gen_dressing.py` loads only from there and fails loudly if it is
+missing). Their 1024² albedo/normal/mask PNGs ship under
+`Assets/Models/Dressing/Textures/` and are bound per material by
+`DressingMaterials` when a manifest material row names them — absent fields fall back
+to the flat-value path, so the 27 procedural material rows behave exactly as before.
+Downloaded-but-skipped (NOT vendored): `metal_tool_chest` (red enamel, off-palette),
+`Barrel_01` (redundant against barrel_03).
 
 The CC0 scans are **vendored** under `tools/textures/cc0/` (curated 1024², ~12 MB) so the
 generator rebuilds self-contained without a download; override the path with
@@ -41,7 +57,7 @@ model in headless Blender.
 | | count | size | notes |
 |---|--:|--:|---|
 | `Assets/Audio/**.wav` | **170** | 87.20 MB | all 48 kHz, 16-bit PCM; 130 positional, 40 non-diegetic |
-| `Assets/Models/**.fbx` | **47** | 6.45 MB | 32,948 triangles total |
+| `Assets/Models/**.fbx` | **74** | 8.7 MB | re-counted 2026-08-09 (startle kit + dressing growth since 07-30); Dressing alone measures 28,889 tris in its manifest, MapKit 12,166 |
 | `Assets/Models/**.glb` | **2** | 0.76 MB | preview copies of the two characters |
 | manifests | 2 | — | `Monster/monster_audio.manifest.json`, `MapKit/MapKit.manifest.json` |
 
@@ -322,21 +338,34 @@ from a numbered rule. `MapKit.manifest.json` carries the grid (2.5 m), storey he
 | `Doorway_Frame`, `Door_Panel_Lockable` | §12's 정비공 requirement: 구역당 잠글 수 있는 문 1~2개, at a bottleneck. More than that and 정비공 becomes 만능 |
 | `WallPanel_Electrical` | 전기 패널 구역당 1개; §03 requires clue sites to have panel access so 정비공 can light them |
 
-### 3.3 Props — 24 files, 0.95 MB, 17,068 tris (`Assets/Models/Props/`)
+### 3.3 Props — 9 files, 0.53 MB (`Assets/Models/Props/`)
+
+Re-measured 2026-08-09. The §08 loot/safe/vehicle pieces this table once listed were
+deleted with their systems; what remains:
 
 | prop(s) | role | section |
 |---|---|---|
-| `Loot_Trinket_SilverSpoons`, `Loot_Trinket_Junk`, `Loot_Timepiece_PocketWatch`, `Loot_Timepiece_Ring`, `Loot_SafeDocument`, `Loot_LargePiece_Portrait`, `Loot_LargePiece_Chest` | §08's 무게 vs 가치 ladder, one model per class. The chest is the weight-5 two-person carry | §08 |
-| `Safe_Closed` / `Safe_Open` | §08's 금고 속 문서; §04 gives 정비공 the job of opening it | §08, §04 |
-| `Clue_WallBoard`, `Clue_LedgerStand`, `Clue_EngravedPlate` | §03's three clue presentations. The clue cannot leave the room — "그 자리에서 보고, 기억해서, 말로 전달해야 한다" | §03 |
-| `ElectricalPanel` | §04's 정비공 lighting a zone; §10's dilemma — 밝히면 괴물이 온다 | §04, §10 |
-| `SurfaceGenerator` | §03's battery source, paired with the mono positional `amb_generator_hum_loop` | §03 |
-| `Vehicle` | §08's 지상 차량 — safe zone, shop, 보급소, and where §07's clock is legible | §08, §07 |
-| `Barricade` | §04's 차단물 | §04 |
-| `NoiseTrap` | §04's 소음 함정, the 정비공 mistake that kills the 주자 | §04 |
-| `Flare_Unlit` / `Flare_Lit` | §08's 조명탄: 1회용 · 소리를 낸다 | §08 |
-| `HidingSpot_Locker` | §12's checklist item "출입구 근처에 은폐 지점이 있다", for §07's 새벽 stage when 괴물이 출입구를 안다 | §12, §07 |
-| `Crate`, `Pipes`, `Shelving`, `Debris` | sightline blockers. §12 puts 시야 차단 지점 every 15~25 m so a 60 m 질주 has 3~4 chances to break aggro | §12, §04 |
+| `Gun_Pickup` / `Gun_Held` | the 막힌 길 revolver — pickup form and the held form `RunnerGun` mounts on the arm | §08 |
+| `Startle_CabinetShell` / `Startle_CabinetLeaf`, `Startle_PipeStub`, `Startle_Skitterer` | the 깜짝 kit: hinged cabinet, steam stub, skitterer — placed by `MapSceneBuilder.BuildStartles`, judged unable to corrupt the race | §06 |
+| `Pipes`, `Shelving`, `Debris` | sightline blockers. §12 puts 시야 차단 지점 every 15~25 m so a 60 m 질주 has 3~4 chances to break aggro | §12, §04 |
+
+### 3.4 Dressing — 39 pieces, 28,889 tris + 21 texture PNGs (`Assets/Models/Dressing/`)
+
+The set-dressing kit `ScatterSession` scatters per cell (Bulk/Debris/Wall/Ceiling/
+Corner/Sign groups, §12 palettes, KeepOut- and clear-band-gated). Generated by
+`tools/blender/gen_dressing.py`; `Dressing.manifest.json` carries every measured
+footprint, mount, palette and material row — C# reads it and never restates a number.
+
+**Twelve of the 39 are built from CC0 PolyHaven scans as of 2026-08-09** (barrels ×3,
+military crate stacks ×2, metal rack ×2, pipe runs ×3, caged bay light, and the new
+`Dress_Generator`); their real PBR maps ship at 1024² under `Textures/` and bind via
+the manifest's optional `albedo_map`/`normal_map`/`mask_map` fields. The other 27
+pieces stay fully procedural (flat manifest values + the shared noise maps).
+Contracts that survived the swap, by construction: piece names (ScatterSession's
+string literals and `Dress_Bulb` prefix pickers), FLOOR/WALL/CEILING pivots, solid
+floor footprints ≤ their procedural predecessors (§12 two-runner clear band), the
+`Dress_BulbDead`→`Dress_BulbLit` lit-swap slots, per-piece tri budgets ≤ 2,600, and
+byte-identical regeneration for every untouched piece.
 
 ---
 

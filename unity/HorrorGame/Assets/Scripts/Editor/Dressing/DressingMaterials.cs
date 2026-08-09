@@ -21,8 +21,10 @@ namespace HorrorGame.EditorTools.Dressing
     /// rebuilds them on the Unity side, bound by material name.
     /// </para>
     /// <para>
-    /// It also generates the kit's only textures. §03 lights the building with a 12 m
-    /// cone in near-black ambient, and an untextured surface under a moving spot light
+    /// It also generates the kit's procedural noise textures (the CC0-scan pieces ship
+    /// real maps instead, named per material by the manifest and bound below). §03
+    /// lights the building with a 12 m cone in near-black ambient, and an untextured
+    /// surface under a moving spot light
     /// reads as a flat gradient — there is no high-frequency detail for the specular
     /// term to break up, so a steel drum and a wooden crate differ only in hue. Two
     /// deterministic value-noise maps (a grime mask and a normal derived from the same
@@ -152,6 +154,48 @@ namespace HorrorGame.EditorTools.Dressing
             // single thing the material is for, which is mirroring the flashlight.
             var wet = spec.roughness <= 0.25f;
 
+            // The CC0-scan materials carry real maps, named by the manifest relative to
+            // the kit root. When a map is present it takes the slot the shared noise
+            // texture would have used — the noise exists to fake per-pixel history on
+            // flat colour, and layering it over a photoscan would just dirty the scan.
+            // A named map that fails to load falls through to the flat/noise path, so a
+            // missing PNG degrades to exactly the procedural look instead of magenta.
+            var albedo = LoadKitTexture(spec.albedo_map, TextureImporterType.Default, srgb: true);
+            var bump = LoadKitTexture(spec.normal_map, TextureImporterType.NormalMap, srgb: false);
+            var mask = LoadKitTexture(spec.mask_map, TextureImporterType.Default, srgb: false);
+
+            if (albedo != null && material.HasProperty("_BaseMap"))
+            {
+                material.SetTexture("_BaseMap", albedo);
+                material.SetTextureScale("_BaseMap", Vector2.one);
+                // The scan IS the base colour; the flat tint above would multiply it
+                // toward its own average and darken every texel that is not it.
+                if (material.HasProperty("_BaseColor"))
+                {
+                    material.SetColor("_BaseColor", Color.white);
+                }
+
+                material.color = Color.white;
+            }
+
+            if (bump != null && material.HasProperty("_BumpMap"))
+            {
+                material.EnableKeyword("_NORMALMAP");
+                material.SetTexture("_BumpMap", bump);
+                material.SetTextureScale("_BumpMap", Vector2.one);
+                material.SetFloat("_BumpScale", 1f);
+            }
+
+            if (mask != null && material.HasProperty("_MetallicGlossMap"))
+            {
+                // URP Lit reads metallic from the map's R and smoothness from its A,
+                // multiplied by _Smoothness — which therefore goes to 1 so the map's
+                // own values ship unscaled.
+                material.EnableKeyword("_METALLICSPECGLOSSMAP");
+                material.SetTexture("_MetallicGlossMap", mask);
+                material.SetFloat("_Smoothness", 1f);
+            }
+
             if (wet && material.HasProperty("_EnvironmentReflections"))
             {
                 // Environment reflections off, direct specular on. There is no reflection
@@ -169,14 +213,14 @@ namespace HorrorGame.EditorTools.Dressing
                 material.SetFloat("_EnvironmentReflections", 0f);
                 material.EnableKeyword("_ENVIRONMENTREFLECTIONS_OFF");
             }
-            if (grime != null && material.HasProperty("_BaseMap") && !wet)
+            if (albedo == null && grime != null && material.HasProperty("_BaseMap") && !wet)
             {
                 material.SetTexture("_BaseMap", grime);
                 var tiling = TilingFor(spec.name);
                 material.SetTextureScale("_BaseMap", new Vector2(tiling, tiling));
             }
 
-            if (normal != null && material.HasProperty("_BumpMap") && !wet)
+            if (bump == null && normal != null && material.HasProperty("_BumpMap") && !wet)
             {
                 material.EnableKeyword("_NORMALMAP");
                 material.SetTexture("_BumpMap", normal);
@@ -215,6 +259,39 @@ namespace HorrorGame.EditorTools.Dressing
             }
 
             return material;
+        }
+
+        /// <summary>
+        /// Loads one of the kit's shipped scan maps, fixing its importer on the way.
+        /// <para>
+        /// The PNGs are written by <c>gen_dressing.py</c>'s texture pass, so on first
+        /// import Unity guesses their settings; the guess is wrong for a normal map
+        /// (not tagged) and for the mask (sRGB would bend its data). Correcting the
+        /// importer here mirrors what <see cref="WritePng"/> does for the noise maps.
+        /// Returns null for an empty path or a missing file, and the caller falls back
+        /// to the flat-value path — a missing map degrades to the procedural look.
+        /// </para>
+        /// </summary>
+        private static Texture2D? LoadKitTexture(string relative, TextureImporterType type, bool srgb)
+        {
+            if (string.IsNullOrEmpty(relative))
+            {
+                return null;
+            }
+
+            var path = DressingManifest.KitRoot + "/" + relative;
+            var importer = AssetImporter.GetAtPath(path) as TextureImporter;
+            if (importer != null
+                && (importer.textureType != type || importer.sRGBTexture != srgb
+                    || importer.wrapMode != TextureWrapMode.Repeat))
+            {
+                importer.textureType = type;
+                importer.sRGBTexture = srgb;
+                importer.wrapMode = TextureWrapMode.Repeat;
+                importer.SaveAndReimport();
+            }
+
+            return AssetDatabase.LoadAssetAtPath<Texture2D>(path);
         }
 
         /// <summary>

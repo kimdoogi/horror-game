@@ -156,7 +156,12 @@ namespace HorrorGame.EditorTools.Rendering
                 + "legible, back to exactly its original value once the bulb gradient and "
                 + "the AO-corrected ambient gain were carrying the brightness (26.9 % at "
                 + "×0.94, three points shy of the band floor). The cuts belonged to the "
-                + "levers that landed later, not to this colour."),
+                + "levers that landed later, not to this colour. The occlusion made the "
+                + "same round trip on 2026-08-09 — ×0.88 tried when the CC0 photo floors "
+                + "dropped the zone view to 27.4 % legible, measured +0.2 on the full "
+                + "pipeline, reverted the same hour: the zone was short of LIGHT (zero lit "
+                + "fittings in frame), not of material response. The lever that landed is "
+                + "ScatterSession.LightStratifiedBulbs' 기계실-keeps-its-mains rule."),
             new ZoneLook(
                 "Carpet", "병동", new Color(1.35f, 1.42f, 1.30f), 0.85f, 1.0f, 0.92f,
                 "Wall_Plaster_Stained",

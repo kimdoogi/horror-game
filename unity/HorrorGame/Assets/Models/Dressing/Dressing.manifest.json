@@ -27,6 +27,18 @@
   ],
   "materials": [
     {
+      "name": "Dress_Barrel03",
+      "r": 0.212,
+      "g": 0.286,
+      "b": 0.352,
+      "roughness": 0.56,
+      "metallic": 0.12,
+      "emission": 0.0,
+      "albedo_map": "Textures/Barrel03/albedo.png",
+      "normal_map": "Textures/Barrel03/normal.png",
+      "mask_map": "Textures/Barrel03/mask.png"
+    },
+    {
       "name": "Dress_BrassFitting",
       "r": 0.482,
       "g": 0.382,
@@ -61,6 +73,18 @@
       "roughness": 0.1,
       "metallic": 0.0,
       "emission": 2.2
+    },
+    {
+      "name": "Dress_CagedLamp",
+      "r": 0.202,
+      "g": 0.262,
+      "b": 0.182,
+      "roughness": 0.55,
+      "metallic": 0.3,
+      "emission": 0.0,
+      "albedo_map": "Textures/CagedLamp/albedo.png",
+      "normal_map": "Textures/CagedLamp/normal.png",
+      "mask_map": "Textures/CagedLamp/mask.png"
     },
     {
       "name": "Dress_Cardboard",
@@ -126,6 +150,18 @@
       "emission": 0.0
     },
     {
+      "name": "Dress_CrateMilitary",
+      "r": 0.302,
+      "g": 0.292,
+      "b": 0.202,
+      "roughness": 0.8,
+      "metallic": 0.0,
+      "emission": 0.0,
+      "albedo_map": "Textures/MilitaryCrate/albedo.png",
+      "normal_map": "Textures/MilitaryCrate/normal.png",
+      "mask_map": "Textures/MilitaryCrate/mask.png"
+    },
+    {
       "name": "Dress_Enamel",
       "r": 0.702,
       "g": 0.712,
@@ -162,6 +198,18 @@
       "emission": 0.0
     },
     {
+      "name": "Dress_GeneratorBody",
+      "r": 0.522,
+      "g": 0.402,
+      "b": 0.122,
+      "roughness": 0.6,
+      "metallic": 0.1,
+      "emission": 0.0,
+      "albedo_map": "Textures/Generator/albedo.png",
+      "normal_map": "Textures/Generator/normal.png",
+      "mask_map": "Textures/Generator/mask.png"
+    },
+    {
       "name": "Dress_GlassDirty",
       "r": 0.402,
       "g": 0.432,
@@ -189,6 +237,30 @@
       "emission": 0.0
     },
     {
+      "name": "Dress_PipeGalv01",
+      "r": 0.402,
+      "g": 0.442,
+      "b": 0.468,
+      "roughness": 0.55,
+      "metallic": 0.72,
+      "emission": 0.0,
+      "albedo_map": "Textures/Pipes01/albedo.png",
+      "normal_map": "Textures/Pipes01/normal.png",
+      "mask_map": "Textures/Pipes01/mask.png"
+    },
+    {
+      "name": "Dress_PipeValve02",
+      "r": 0.382,
+      "g": 0.418,
+      "b": 0.448,
+      "roughness": 0.58,
+      "metallic": 0.7,
+      "emission": 0.0,
+      "albedo_map": "Textures/Pipes02/albedo.png",
+      "normal_map": "Textures/Pipes02/normal.png",
+      "mask_map": "Textures/Pipes02/mask.png"
+    },
+    {
       "name": "Dress_Ply",
       "r": 0.502,
       "g": 0.402,
@@ -196,6 +268,18 @@
       "roughness": 0.85,
       "metallic": 0.0,
       "emission": 0.0
+    },
+    {
+      "name": "Dress_RackWorn",
+      "r": 0.478,
+      "g": 0.488,
+      "b": 0.468,
+      "roughness": 0.5,
+      "metallic": 0.6,
+      "emission": 0.0,
+      "albedo_map": "Textures/MetalRack/albedo.png",
+      "normal_map": "Textures/MetalRack/normal.png",
+      "mask_map": "Textures/MetalRack/mask.png"
     },
     {
       "name": "Dress_Rubber",
@@ -281,24 +365,20 @@
         "utility"
       ],
       "weight": 1.2,
-      "size_x": 0.7827,
-      "size_y": 0.7627,
-      "size_z": 1.7585,
-      "mount_depth": 0.7627,
+      "size_x": 0.776,
+      "size_y": 0.5283,
+      "size_z": 1.5848,
+      "mount_depth": 0.5283,
       "breaks_sightline": true,
       "solid": true,
       "hangs_low": false,
-      "triangles": 414,
+      "triangles": 2468,
       "emissive_materials": 0,
       "materials": [
-        "Dress_TimberPale",
-        "Dress_TimberDark",
-        "Dress_Paper",
-        "Dress_Grime",
-        "Dress_Ply"
+        "Dress_CrateMilitary"
       ],
       "refused_faces": 0,
-      "note": "sightline break just under eye height"
+      "note": "sightline break at eye height"
     },
     {
       "name": "Dress_CaseStack_Low",
@@ -310,19 +390,17 @@
         "wet"
       ],
       "weight": 1.0,
-      "size_x": 1.4918,
-      "size_y": 0.8597,
-      "size_z": 1.14,
-      "mount_depth": 0.8597,
+      "size_x": 1.4648,
+      "size_y": 0.8406,
+      "size_z": 1.0078,
+      "mount_depth": 0.8406,
       "breaks_sightline": true,
       "solid": true,
       "hangs_low": false,
-      "triangles": 336,
+      "triangles": 1942,
       "emissive_materials": 0,
       "materials": [
-        "Dress_TimberPale",
-        "Dress_TimberDark",
-        "Dress_ClothDust"
+        "Dress_CrateMilitary"
       ],
       "refused_faces": 0,
       "note": "crouch cover"
@@ -363,21 +441,17 @@
         "*"
       ],
       "weight": 1.3,
-      "size_x": 0.612,
-      "size_y": 0.612,
-      "size_z": 0.9017,
-      "mount_depth": 0.612,
+      "size_x": 0.6071,
+      "size_y": 0.6117,
+      "size_z": 0.9015,
+      "mount_depth": 0.6117,
       "breaks_sightline": true,
       "solid": true,
       "hangs_low": false,
-      "triangles": 552,
+      "triangles": 677,
       "emissive_materials": 0,
       "materials": [
-        "Dress_SteelPainted",
-        "Dress_SteelBare",
-        "Dress_Grime",
-        "Dress_RustHeavy",
-        "Dress_BrassFitting"
+        "Dress_Barrel03"
       ],
       "refused_faces": 0,
       "note": ""
@@ -392,21 +466,17 @@
         "utility"
       ],
       "weight": 0.9,
-      "size_x": 1.4407,
-      "size_y": 1.3114,
-      "size_z": 0.895,
-      "mount_depth": 1.3114,
+      "size_x": 1.3682,
+      "size_y": 1.2985,
+      "size_z": 0.8912,
+      "mount_depth": 1.2985,
       "breaks_sightline": false,
       "solid": true,
       "hangs_low": false,
-      "triangles": 1212,
+      "triangles": 1554,
       "emissive_materials": 0,
       "materials": [
-        "Dress_RustHeavy",
-        "Dress_SteelBare",
-        "Dress_Grime",
-        "Dress_BrassFitting",
-        "Dress_SteelPainted",
+        "Dress_Barrel03",
         "Dress_WetStain"
       ],
       "refused_faces": 0,
@@ -423,22 +493,18 @@
         "storage"
       ],
       "weight": 0.7,
-      "size_x": 0.8953,
-      "size_y": 0.6245,
-      "size_z": 0.6239,
-      "mount_depth": 0.6245,
+      "size_x": 0.8915,
+      "size_y": 0.6117,
+      "size_z": 0.6255,
+      "mount_depth": 0.6117,
       "breaks_sightline": false,
       "solid": true,
       "hangs_low": false,
-      "triangles": 268,
+      "triangles": 659,
       "emissive_materials": 0,
       "materials": [
-        "Dress_SteelPainted",
-        "Dress_SteelBare",
-        "Dress_BrassFitting",
-        "Dress_TimberDark",
-        "Dress_Grime",
-        "Dress_RustHeavy"
+        "Dress_Barrel03",
+        "Dress_TimberDark"
       ],
       "refused_faces": 0,
       "note": ""
@@ -454,18 +520,17 @@
         "utility"
       ],
       "weight": 1.2,
-      "size_x": 1.1,
+      "size_x": 0.9154,
       "size_y": 0.42,
-      "size_z": 1.9745,
+      "size_z": 1.962,
       "mount_depth": 0.42,
       "breaks_sightline": true,
       "solid": true,
       "hangs_low": false,
-      "triangles": 924,
+      "triangles": 2474,
       "emissive_materials": 0,
       "materials": [
-        "Dress_SteelPainted",
-        "Dress_Ply",
+        "Dress_RackWorn",
         "Dress_SteelBare",
         "Dress_Rubber",
         "Dress_Cardboard",
@@ -487,18 +552,17 @@
         "institutional"
       ],
       "weight": 0.6,
-      "size_x": 1.2058,
-      "size_y": 2.1701,
-      "size_z": 0.4391,
-      "mount_depth": 2.1701,
+      "size_x": 1.0506,
+      "size_y": 2.1661,
+      "size_z": 0.4398,
+      "mount_depth": 2.1661,
       "breaks_sightline": false,
       "solid": true,
       "hangs_low": false,
-      "triangles": 272,
+      "triangles": 1194,
       "emissive_materials": 0,
       "materials": [
-        "Dress_SteelPainted",
-        "Dress_Ply",
+        "Dress_RackWorn",
         "Dress_SteelBare",
         "Dress_Paper",
         "Dress_Cardboard"
@@ -678,6 +742,31 @@
       ],
       "refused_faces": 0,
       "note": ""
+    },
+    {
+      "name": "Dress_Generator",
+      "file": "Dress_Generator.fbx",
+      "group": "Bulk",
+      "mount": "FLOOR",
+      "palettes": [
+        "utility",
+        "storage"
+      ],
+      "weight": 0.25,
+      "size_x": 0.814,
+      "size_y": 0.5665,
+      "size_z": 0.5781,
+      "mount_depth": 0.5665,
+      "breaks_sightline": false,
+      "solid": true,
+      "hangs_low": false,
+      "triangles": 2537,
+      "emissive_materials": 0,
+      "materials": [
+        "Dress_GeneratorBody"
+      ],
+      "refused_faces": 0,
+      "note": "dead plant for zone D; §06's silence made visible. Weight cut 0.9→0.25 on 2026-08-09: at 0.9 the building scattered twelve identical EN2500s and a hero landmark repeated twelve times stops being one; at 0.25 the same seed measures six, which an 8-storey building can carry."
     },
     {
       "name": "Dress_RubblePile",
@@ -936,25 +1025,25 @@
       ],
       "weight": 1.6,
       "size_x": 2.5,
-      "size_y": 0.2132,
-      "size_z": 0.875,
-      "mount_depth": 0.2132,
+      "size_y": 0.2065,
+      "size_z": 0.833,
+      "mount_depth": 0.2065,
       "breaks_sightline": false,
       "solid": false,
       "hangs_low": false,
-      "triangles": 502,
+      "triangles": 1357,
       "emissive_materials": 0,
       "materials": [
-        "Dress_Galvanised",
-        "Dress_RustHeavy",
+        "Dress_PipeGalv01",
+        "Dress_PipeValve02",
         "Dress_CopperPipe",
-        "Dress_SteelPainted",
-        "Dress_SteelBare",
         "Dress_BrassFitting",
+        "Dress_SteelPainted",
+        "Dress_RustHeavy",
         "Dress_WetStain"
       ],
       "refused_faces": 0,
-      "note": "tiles on the 2.5 m grid; galvanised = the corridor's depth cue"
+      "note": "tiles on the 2.5 m grid; the flanged lines are the corridor's depth cue"
     },
     {
       "name": "Dress_PipeValve_Cluster",
@@ -966,19 +1055,19 @@
         "wet"
       ],
       "weight": 0.8,
-      "size_x": 0.82,
-      "size_y": 0.3237,
-      "size_z": 0.4612,
-      "mount_depth": 0.3237,
+      "size_x": 0.7472,
+      "size_y": 0.3399,
+      "size_z": 0.5421,
+      "mount_depth": 0.3399,
       "breaks_sightline": false,
       "solid": false,
       "hangs_low": false,
-      "triangles": 788,
+      "triangles": 1343,
       "emissive_materials": 0,
       "materials": [
-        "Dress_SteelPainted",
-        "Dress_SteelBare",
-        "Dress_EnamelRed",
+        "Dress_PipeValve02",
+        "Dress_Galvanised",
+        "Dress_RustHeavy",
         "Dress_BrassFitting",
         "Dress_GaugeFace",
         "Dress_Grime"
@@ -1086,19 +1175,20 @@
       ],
       "weight": 1.5,
       "size_x": 2.5,
-      "size_y": 0.63,
-      "size_z": 0.37,
-      "mount_depth": 0.37,
+      "size_y": 0.6517,
+      "size_z": 0.4205,
+      "mount_depth": 0.4205,
       "breaks_sightline": false,
       "solid": false,
       "hangs_low": false,
-      "triangles": 588,
+      "triangles": 1497,
       "emissive_materials": 0,
       "materials": [
-        "Dress_Galvanised",
+        "Dress_PipeGalv01",
+        "Dress_PipeValve02",
         "Dress_SteelPainted",
-        "Dress_CopperPipe",
         "Dress_SteelBare",
+        "Dress_Galvanised",
         "Dress_Rubber"
       ],
       "refused_faces": 0,
@@ -1142,24 +1232,23 @@
         "*"
       ],
       "weight": 1.0,
-      "size_x": 0.164,
-      "size_y": 0.1738,
-      "size_z": 0.4483,
-      "mount_depth": 0.4483,
+      "size_x": 1.0472,
+      "size_y": 0.2852,
+      "size_z": 0.6737,
+      "mount_depth": 0.6737,
       "breaks_sightline": false,
       "solid": false,
       "hangs_low": false,
-      "triangles": 484,
+      "triangles": 2327,
       "emissive_materials": 0,
       "materials": [
-        "Dress_Grime",
-        "Dress_Rubber",
-        "Dress_BrassFitting",
+        "Dress_CagedLamp",
         "Dress_BulbDead",
+        "Dress_SteelPainted",
         "Dress_SteelBare"
       ],
       "refused_faces": 0,
-      "note": ""
+      "note": "glass carries Dress_BulbDead; LightBulb swaps it lit by name"
     },
     {
       "name": "Dress_ChainHang",

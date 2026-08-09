@@ -248,6 +248,20 @@ namespace HorrorGame.EditorTools.Dressing
 
         /// <summary>Emission strength. Non-zero only on the lit bulb and the flare.</summary>
         public float emission;
+
+        /// <summary>
+        /// Optional sRGB base-colour map, path relative to <see cref="DressingManifest.KitRoot"/>.
+        /// Written only for the CC0-scan materials; absent from the JSON for every
+        /// procedural material, which <see cref="JsonUtility"/> deserialises as this
+        /// default — so the flat-value path above keeps doing exactly what it did.
+        /// </summary>
+        public string albedo_map = string.Empty;
+
+        /// <summary>Optional tangent-space normal map (OpenGL +Y), relative to the kit root.</summary>
+        public string normal_map = string.Empty;
+
+        /// <summary>Optional mask map — metallic in R, smoothness in A — relative to the kit root.</summary>
+        public string mask_map = string.Empty;
     }
 
     /// <summary>One dressing piece and everything needed to place it.</summary>
