@@ -2402,6 +2402,11 @@ MICRO_ALBEDO = 0.20
 MICRO_ROUGH = 0.16
 MICRO_AO = 0.12
 
+# Metres of relief across the carapace's own height field. Deeper than the hide's
+# grain by design — a plate that shades like skin stops reading as a plate — and
+# carried separately so it cannot saturate the shared crack/cavity field.
+PLATE_HEIGHT_M = 0.0065
+
 
 def micro_surface(res: int, world_size: float, cav: np.ndarray,
                   armw: np.ndarray | None = None, handw: np.ndarray | None = None,
@@ -2631,6 +2636,7 @@ def dress_sculpt_maps(diffuse: np.ndarray, normal: np.ndarray | None,
     # ── 2026-08: the arms, the claws, the channel, the fins — 3D-gated paint ──
     extra_relief = np.zeros((res, res), dtype=np.float32)
     fin_mask = np.zeros((res, res), dtype=np.float32)
+    plate_relief = np.zeros((res, res), dtype=np.float32)
     plate_found = 0.0
     if wz is not None:
         elbow, tipz = landmarks["elbow"], landmarks["fingertip"]
@@ -2782,14 +2788,15 @@ def dress_sculpt_maps(diffuse: np.ndarray, normal: np.ndarray | None,
             pit = ((1.0 - _smoothstep(0.0, 0.62 / pcells, pf1))
                    * (_per_cell(pown, pcells, 7413, 0.0, 1.0) > 0.62)).astype(np.float32)
 
-            # Amplitudes are ~2.4x what the first pass used. They have to be: this
-            # relief is carried through `extra_relief * 0.30` at a 10 mm height scale,
-            # so the gentle version resolved to well under a millimetre and the round-6
-            # renders showed the crest banding only under a raking beam — under the
-            # frontal beam, which is how a player meets it, the slab was still a card.
-            # A plate is armour; it is allowed to be an order coarser than the hide.
-            relief = (band * 1.30 + pit * 1.90) * plate
-            extra_relief += relief
+            # The plate gets its OWN normal channel rather than riding `extra_relief`.
+            # That shared field is `clip(0.5 - crack*0.5 - cav*0.10 - relief*0.30, 0, 1)`,
+            # so anything past relief 1.667 saturates at zero and every ridge and pit
+            # above it merges into one flat region. The round-7 amplitudes peaked at
+            # 3.20 — **48 % of the plate's relief range was sitting on that clip** —
+            # which is why the chest-height blade stayed a smooth card and why raising
+            # the amplitude made it worse rather than better. Same trap the micro
+            # octave avoids by carrying its own `_height_to_normal`.
+            plate_relief = (band * 0.55 + pit * 0.85) * plate
             lin = lin * (1.0 - (pit * plate)[..., None] * 0.42
                          - (band * plate)[..., None] * 0.20)
             # Keratin is smoother than hide and drier than the crevices, and the
@@ -2817,7 +2824,11 @@ def dress_sculpt_maps(diffuse: np.ndarray, normal: np.ndarray | None,
         sx, sy = _slopes(normal[..., :3] * 2.0 - 1.0)
         cx, cy = _slopes(crack_n)
         mx, my = _slopes(micro["normal"])
-        merged = np.stack([sx + cx + mx, sy + cy + my, np.ones_like(sx)], axis=-1)
+        # The carapace, on its own unclipped height field — see the plate block.
+        gx, gy = _slopes(_height_to_normal(
+            np.clip(0.5 - plate_relief * 0.5, 0.0, 1.0), world_size, PLATE_HEIGHT_M))
+        merged = np.stack([sx + cx + mx + gx, sy + cy + my + gy,
+                           np.ones_like(sx)], axis=-1)
         merged /= np.linalg.norm(merged, axis=-1, keepdims=True)
         normal_out = np.ones((res, res, 4), dtype=np.float32)
         normal_out[..., :3] = merged * 0.5 + 0.5
@@ -3293,6 +3304,26 @@ def rasterize_fields(obj: bpy.types.Object, res: int,
     future re-shaping of the fan with nothing in this file to go stale. The pelvis
     shroud is deliberately NOT passed by the caller — §06's skirt is hide, and
     banding it like a plate would make the tatters read as armour.
+
+    **The mask is not the reason the chest-height blade still reads flat.** That was
+    the standing suspicion — this loop resolves UV overlaps last-writer-wins in
+    polygon order, and `build_rig` appends the crest, then the shroud, then the teeth,
+    so a shroud strip whose planar unwrap landed on a blade would write its `0` over
+    the blade's `1`. Both halves of that were tested and both are false:
+
+    * A second rasterising pass restricted to plate triangles, run after everything
+      else so nothing could overwrite it, produced a **bit-identical mask** —
+      `plate = 0.0035` before and after. No texel was ever being lost.
+    * Measuring the shipped normal map inside the mask against the rest of the
+      covered atlas: **plate texels tilt 19.2° (sd 12.6) versus the body's 13.6°
+      (sd 9.1)**. The carapace paint is not merely landing, the crest is the most
+      relieved region on the whole creature.
+
+    The blade reads flat because it *is* flat — a large, thin, hard-edged planar
+    polygon whose face normal dominates the shading at the angle a grab presents it.
+    A 6 mm normal-map perturbation cannot compete with that. The fix is geometric
+    (bevel or subdivide the blades in `add_crest`), not textural, and nothing in this
+    file can reach it.
 
     This is what turns the UV-space dressing anatomical: ``dress_sculpt_maps`` gets,
     for every texel the mesh actually covers, WHERE that texel sits on the body
