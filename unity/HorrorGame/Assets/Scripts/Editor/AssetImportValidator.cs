@@ -640,27 +640,41 @@ namespace HorrorGame.EditorTools
                 }
             }
 
-            AssetImportPolicy.MetreScaleBand(rule.Category, out var min, out var max);
-            if (extents[0] < min || extents[0] > max)
+            // A per-asset scale anchor outranks the category band, and only the anchor is
+            // checked when one exists. The band is a sanity range for a whole category —
+            // "a character is between 1 and 3 metres" — and it is the weaker statement:
+            // the anchor is that exact file's measured size, held to ScaleTolerance rather
+            // than to two metres of slack. Running both means an asset the project has
+            // measured precisely can still be failed by the vaguer rule, which is what
+            // happened to RunnerArms.fbx: 주자's first-person viewmodel is two arms cut at
+            // the shoulder, 0.887 m, carrying a skin and animation takes — so it grades as
+            // CharacterGeneric and the 1–3 m band called a correct import a unit-scale
+            // error. Accusing a good FBX of a scale fault is the specific failure this file
+            // has spent real time on before (AssetImportPolicy.RequiredLightmapMarginMethod).
+            if (rule.ExpectedTallestExtentMetres <= 0f)
             {
-                report.Fail(path, $"Measures {DescribeExtents(extents)}, and its largest extent is outside the "
-                    + $"{min:0.000000}–{max:0.000000} m band for {rule.Category}. This is a unit-scale error, and it "
-                    + "makes §12's grid, corridor section, straight-run cap and sightline spacing all wrong "
-                    + $"simultaneously. Scale factor is {importer.globalScale:0.000000}, Convert Units is "
-                    + $"{(importer.useFileScale ? "on" : "off")}, and the file reports a scale of "
-                    + $"{importer.fileScale:0.000000}.");
-                return;
+                AssetImportPolicy.MetreScaleBand(rule.Category, out var min, out var max);
+                if (extents[0] < min || extents[0] > max)
+                {
+                    report.Fail(path, $"Measures {DescribeExtents(extents)}, and its largest extent is outside the "
+                        + $"{min:0.000000}–{max:0.000000} m band for {rule.Category}. This is a unit-scale error, and it "
+                        + "makes §12's grid, corridor section, straight-run cap and sightline spacing all wrong "
+                        + $"simultaneously. Scale factor is {importer.globalScale:0.000000}, Convert Units is "
+                        + $"{(importer.useFileScale ? "on" : "off")}, and the file reports a scale of "
+                        + $"{importer.fileScale:0.000000}.");
+                    return;
+                }
             }
-
-            if (rule.ExpectedTallestExtentMetres > 0f)
+            else
             {
                 var expected = rule.ExpectedTallestExtentMetres;
                 if (Mathf.Abs(extents[0] - expected) > expected * AssetImportPolicy.ScaleTolerance)
                 {
                     report.Fail(path, $"Measures {DescribeExtents(extents)} against a scale anchor of "
-                        + $"{expected:0.000000} m. The monster is authored 0.59 m taller than the player and both sit "
-                        + "inside the 1–3 m sanity band; a drift here means §12's dimensions no longer describe the "
-                        + "space this character occupies.");
+                        + $"{expected:0.000000} m, outside ±{AssetImportPolicy.ScaleTolerance:P0}. The anchor is this "
+                        + "exact file's measured size, read out of its own vertex data and re-checked by the "
+                        + "generator that wrote it, so a drift here means the asset changed shape rather than that a "
+                        + "band is wrong — and §12's dimensions no longer describe the space this thing occupies.");
                 }
             }
 

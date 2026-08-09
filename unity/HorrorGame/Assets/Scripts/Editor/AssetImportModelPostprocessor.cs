@@ -99,6 +99,16 @@ namespace HorrorGame.EditorTools
                 // fails outside ±2 mm, so the ±2% band here has seventeen times the generator's
                 // own tolerance and cannot fire on a correctly generated figure.
                 { "Runner", AssetImportPolicy.PlayerHeightMetres },
+
+                // 주자's viewmodel — the first-person arms, cut at the shoulder. It carries a
+                // skin and animation stacks, so IsRiggedCharacterModel promotes it to
+                // CharacterGeneric and it would be graded against that category's 1.0–3.0 m
+                // band; two arms are 0.887 m and would be reported as a unit-scale error on a
+                // correct import, which is the exact accusation this table exists to prevent.
+                // Read out of the FBX: 0.887 × 0.516 × 0.223 m, largest extent the span.
+                // gen_runner.py derives it from the body's own Fit rather than re-solving a
+                // scale, so it moves only when the body's arm length does.
+                { "RunnerArms", 0.887f },
             };
 
         public override uint GetVersion()
@@ -1014,14 +1024,23 @@ namespace HorrorGame.EditorTools
                 return;
             }
 
-            AssetImportPolicy.MetreScaleBand(rule.Category, out var min, out var max);
-            if (largest < min || largest > max)
+            // The category band is skipped when this file has its own anchor — see
+            // CharacterScaleAnchors, and the same reasoning as AssetImportValidator's copy
+            // of this decision: the anchor is the stronger statement, and running both lets
+            // the vaguer one fail an asset the project has measured exactly. RunnerArms.fbx
+            // is the case that forced it — a rigged 0.887 m viewmodel graded as
+            // CharacterGeneric against a 1–3 m band.
+            if (rule.ExpectedTallestExtentMetres <= 0f)
             {
-                Debug.LogError($"[AssetImport] {assetPath} imported with a largest extent of {largest:0.####} m, "
-                    + $"outside the {min:0.###}–{max:0.###} m band for {rule.Category}. The exports are 1 unit = "
-                    + "1 metre and §12's grid, corridor section and sightline distances only hold at that scale, "
-                    + "so a scale error here makes every map rule wrong simultaneously. Scale factor is "
-                    + $"{ScaleDiagnostic()}.");
+                AssetImportPolicy.MetreScaleBand(rule.Category, out var min, out var max);
+                if (largest < min || largest > max)
+                {
+                    Debug.LogError($"[AssetImport] {assetPath} imported with a largest extent of {largest:0.####} m, "
+                        + $"outside the {min:0.###}–{max:0.###} m band for {rule.Category}. The exports are 1 unit = "
+                        + "1 metre and §12's grid, corridor section and sightline distances only hold at that scale, "
+                        + "so a scale error here makes every map rule wrong simultaneously. Scale factor is "
+                        + $"{ScaleDiagnostic()}.");
+                }
             }
 
             if (rule.ExpectedTallestExtentMetres > 0f)

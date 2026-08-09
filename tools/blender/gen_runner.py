@@ -193,7 +193,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import bmesh  # noqa: E402
 import bpy  # noqa: E402
-from mathutils import Euler, Matrix, Vector  # noqa: E402
+from mathutils import Euler, Matrix, Quaternion, Vector  # noqa: E402
 from mathutils.bvhtree import BVHTree  # noqa: E402
 
 import blendkit  # noqa: E402
@@ -501,6 +501,11 @@ are the same location by construction."""
 HAND_C = (HAND_X, HAND_Y, HAND_Z)
 """Where the harvested hand's palm anchor goes — no longer a mitten ellipsoid's centre,
 but the same solved point it always was."""
+
+CUFFROLL_C, CUFFROLL_R = (-0.283, -0.055, 0.878), (0.063, 0.073, 0.026)
+"""RIGHT sleeve only: a rolled cuff, a flattened ring ~15 mm proud of the sleeve just
+above the glove. Lifted out of ``build_parts``'s body of literals so the first-person
+sleeve can be built from the same numbers — see ``arm_garment_parts``."""
 
 ARMBAND_C, ARMBAND_R = (0.279, -0.022, 0.960), (0.077, 0.077, 0.045)
 """LEFT sleeve only (not mirrored): a ring ~16 mm proud of the sleeve. Carries
@@ -1641,6 +1646,72 @@ def harvest_hands() -> list[bpy.types.Object]:
 Part = Ellipsoid | Shaft | Box | Loft | MeshPart
 
 
+# ── The sleeve, as one shared sub-table ─────────────────────────────────────
+#
+# THE FIRST-PERSON ARMS ARE BUILT FROM THESE FIVE CONSTRUCTORS AND NOTHING ELSE.
+# `build_parts` calls them in exactly the positions the literals used to occupy, so the
+# body's placement table — and therefore the welded body, the fit, the paint and every
+# number in the baseline log — is byte-identical to what it was; `arm_garment_parts`
+# calls the same five for RunnerArms.fbx. That is the whole argument for the split being
+# safe: a sleeve is one description with two consumers, not two descriptions that will
+# stop agreeing in six weeks. A second hand-authored arm model is the thing this task
+# was told not to produce, and a second placement table is the same mistake one level
+# down.
+
+
+def shoulder_part(s: float) -> Ellipsoid:
+    """The shoulder ball: welds sleeve to yoke, swallows the capped deltoid stub, and
+    sits AT the arm's pivot so rotating about it barely stretches the skin. Deeper than
+    wide (ry 0.100) because the stub's front/back corners are corners, not a sphere."""
+    return Ellipsoid(f"Shoulder_{'L' if s > 0 else 'R'}",
+                     (s * SHOULDER_X, 0.004, SHOULDER_Z),
+                     (SHOULDER_R, 0.100, SHOULDER_R))
+
+
+def sleeve_part(s: float) -> Shaft:
+    """The sleeve: hangs from the shoulder, leaning 22 mm forward, ending at the cuff
+    the harvested hand tucks into."""
+    return Shaft(f"Arm_{'L' if s > 0 else 'R'}", s * ARM_X, ARM_Y,
+                 z_top=SHOULDER_Z, r_top=ARM_R_TOP,
+                 z_bottom=ARM_Z_BOTTOM, r_bottom=ARM_R_BOTTOM)
+
+
+def cuff_part(s: float) -> Ellipsoid:
+    """The sleeve cuff — the pocket the harvested hand's capped wrist stub tucks into."""
+    return Ellipsoid(f"Cuff_{'L' if s > 0 else 'R'}",
+                     (s * CUFF_C[0], CUFF_C[1], CUFF_C[2]), CUFF_R)
+
+
+def armband_part() -> Ellipsoid:
+    """Left sleeve only — the armband is what breaks the mirror, on purpose: it is the
+    one asymmetry that lets a spectating runner tell front-left from front-right on an
+    otherwise symmetric stranger. It is on the FIRST-PERSON arms for the same reason
+    inverted — the owner's own left forearm is the one thing in their frame that says
+    which arm they are looking at."""
+    return Ellipsoid("Armband", ARMBAND_C, ARMBAND_R)
+
+
+def cuff_roll_part() -> Ellipsoid:
+    """Right sleeve only: the rolled cuff. The second deliberate asymmetry (armband
+    left, roll right): a worker's clothes are not a uniform. Painted back to
+    ``Runner_Jacket`` by an explicit region in ``assign_materials``, or the glove paint
+    would swallow it. Rides ABOVE the harvested hand's wrist stub (stub top ~0.825) so
+    the ring never intersects the hand shell — 0.878 after one build measured a single
+    roll face z-fighting the stub at 0.868."""
+    return Ellipsoid("CuffRoll", CUFFROLL_C, CUFFROLL_R)
+
+
+def arm_garment_parts() -> list[Part]:
+    """Just the sleeves: two shoulder balls, two sleeves, two cuffs, the armband and the
+    rolled cuff. The placement table of ``RunnerArms.fbx``, and a strict subset of the
+    body's — same constructors, same constants, same canonical frame, so a sleeve built
+    here lands on the millimetre where the body's sleeve is."""
+    parts: list[Part] = [armband_part(), cuff_roll_part()]
+    for s in (-1.0, +1.0):
+        parts += [shoulder_part(s), sleeve_part(s), cuff_part(s)]
+    return parts
+
+
 def build_parts() -> list[Part]:
     """The worker's placement table — the harvested body plus its GARMENT, 23 parts.
 
@@ -1665,19 +1736,10 @@ def build_parts() -> list[Part]:
         # and bulges ~5 mm proud of the loft's back — which is where a work
         # jacket's own back yoke pleat sits, so the fix reads as tailoring.
         Ellipsoid("BackYoke", (0.0, 0.072, 1.300), (0.180, 0.062, 0.150)),
-        # Left sleeve only — the armband is what breaks the mirror, on purpose: it is
-        # the one asymmetry that lets a spectating runner tell front-left from
-        # front-right on an otherwise symmetric stranger.
-        Ellipsoid("Armband", ARMBAND_C, ARMBAND_R),
-        # RIGHT sleeve only: a rolled cuff — a flattened ring ~15 mm proud of the
-        # sleeve just above the glove. The second deliberate asymmetry (armband left,
-        # roll right): a worker's clothes are not a uniform, and a mirror-perfect
-        # figure is half the plush-toy read. Painted back to Runner_Jacket by an
-        # explicit region in assign_materials, or the glove paint would swallow it.
-        # Rides ABOVE the harvested hand's wrist stub (stub top ~0.825) so the ring
-        # never intersects the hand shell — 0.878 after one build measured a single
-        # roll face z-fighting the stub at 0.868.
-        Ellipsoid("CuffRoll", (-0.283, -0.055, 0.878), (0.063, 0.073, 0.026)),
+        # The two deliberate asymmetries. Both are shared with the first-person arms —
+        # see arm_garment_parts.
+        armband_part(),
+        cuff_roll_part(),
         # LEFT chest only: a patch-pocket flap, a flat box the remesh rounds into a
         # raised rectangle ~17 mm proud. The one crisp rectangle on the jacket front,
         # and the front's only feature that catches a head-on beam at 3 m.
@@ -1690,18 +1752,10 @@ def build_parts() -> list[Part]:
     for s in (-1.0, +1.0):
         tag = "L" if s > 0 else "R"
         parts += [
-            # The shoulder ball welds sleeve to yoke, swallows the capped deltoid
-            # stub, and sits AT the arm's pivot, so rotating about it barely
-            # stretches the skin (the carry-era lesson). Deeper than wide (ry
-            # 0.100): the stub's front/back corners are corners, not a sphere.
-            Ellipsoid(f"Shoulder_{tag}", (s * SHOULDER_X, 0.004, SHOULDER_Z),
-                      (SHOULDER_R, 0.100, SHOULDER_R)),
-            # The sleeve: hangs from the shoulder, leaning 22 mm forward, ending
-            # at the cuff the harvested hand tucks into.
-            Shaft(f"Arm_{tag}", s * ARM_X, ARM_Y,
-                  z_top=SHOULDER_Z, r_top=ARM_R_TOP,
-                  z_bottom=ARM_Z_BOTTOM, r_bottom=ARM_R_BOTTOM),
-            Ellipsoid(f"Cuff_{tag}", (s * CUFF_C[0], CUFF_C[1], CUFF_C[2]), CUFF_R),
+            # Shoulder ball, sleeve and cuff: the three the first-person arms share.
+            shoulder_part(s),
+            sleeve_part(s),
+            cuff_part(s),
             Ellipsoid(f"BootTop_{tag}",
                       (s * BOOT_TOP_C[0], BOOT_TOP_C[1], BOOT_TOP_C[2]), BOOT_TOP_R),
             Shaft(f"Boot_{tag}", s * LEG_X, 0.042,
@@ -1800,7 +1854,8 @@ def _stage(label: str, obj: bpy.types.Object) -> None:
     print(f"MESH_STAGE {label:<16} verts={len(obj.data.vertices):>7} tris={_tris(obj):>7}")
 
 
-def weld(objects: list[bpy.types.Object]) -> bpy.types.Object:
+def weld(objects: list[bpy.types.Object], name: str = MESH_NAME,
+         ratio: float = DECIMATE_RATIO, tag: str = "") -> bpy.types.Object:
     """Union of the primitives, in the order the pipeline has to run in.
 
     join → remesh → smooth → decimate. The remesh is what actually welds; the join only
@@ -1809,24 +1864,24 @@ def weld(objects: list[bpy.types.Object]) -> bpy.types.Object:
     removes the vertices the smoothing needed to average across and leaves the voxel
     staircase in place at a tenth of the cost.
     """
-    body = blendkit.join(objects, MESH_NAME)
+    body = blendkit.join(objects, name)
     # The joined object inherits the mesh DATA name of whichever primitive was active —
     # "Sphere.018" in practice, which is what both exporters then write into the file.
-    body.data.name = MESH_NAME
-    _stage("raw", body)
+    body.data.name = name
+    _stage(tag + "raw", body)
 
     remesh = body.modifiers.new("Weld", "REMESH")
     remesh.mode = "VOXEL"
     remesh.voxel_size = VOXEL_SIZE
     remesh.adaptivity = 0.0
     _apply_modifier(body, remesh)
-    _stage(f"remesh_{VOXEL_SIZE}", body)
+    _stage(f"{tag}remesh_{VOXEL_SIZE}", body)
 
     smooth = body.modifiers.new("Relax", "SMOOTH")
     smooth.factor = SMOOTH_FACTOR
     smooth.iterations = SMOOTH_ITERATIONS
     _apply_modifier(body, smooth)
-    _stage(f"smooth_{SMOOTH_FACTOR}x{SMOOTH_ITERATIONS}", body)
+    _stage(f"{tag}smooth_{SMOOTH_FACTOR}x{SMOOTH_ITERATIONS}", body)
 
     # The folds go HERE and nowhere else. Before the remesh they are placement-table
     # noise the voxel grid can't record; before the smoothing they'd be eroded with
@@ -1834,14 +1889,14 @@ def weld(objects: list[bpy.types.Object]) -> bpy.types.Object:
     # crease drawn at that pitch is jagged. Between smooth and decimate the surface
     # is clean AND dense, and the collapse metric then preserves what this pass adds.
     sculpt_folds(body)
-    _stage("folds", body)
+    _stage(tag + "folds", body)
 
     decimate = body.modifiers.new("Budget", "DECIMATE")
     decimate.decimate_type = "COLLAPSE"
-    decimate.ratio = DECIMATE_RATIO
+    decimate.ratio = ratio
     decimate.use_collapse_triangulate = True
     _apply_modifier(body, decimate)
-    _stage(f"decimate_{DECIMATE_RATIO}", body)
+    _stage(f"{tag}decimate_{ratio}", body)
 
     # 42°, not the old 180: the figure HAS hard edges now — the fold ridges
     # sculpt_folds just authored — and the whole point of cutting them into a matte
@@ -1921,8 +1976,25 @@ def fit_height_and_ground(obj: bpy.types.Object, target: float) -> Fit:
     return Fit(scale=k, drop=drop)
 
 
-def assign_materials(body: bpy.types.Object, fit: Fit) -> None:
+def assign_materials(body: bpy.types.Object, fit: Fit,
+                     required: tuple[str, ...] | None = None,
+                     label: str = "MATERIAL",
+                     remap: dict[str, str] | None = None) -> dict[str, int]:
     """Classifies every polygon of the welded body into one of the five slots.
+
+    ``remap`` re-routes a region's verdict on a mesh where that region cannot mean what it
+    means on the body — the arms send ``Runner_Trousers`` to ``Runner_Gear``, because the
+    only faces a trouser region can claim on a pair of sleeves are the curled fingertips
+    that reach inside the glove ellipsoid's x-limit, and those are glove.
+
+    ``required`` names the slots that must land on at least one face; ``None`` means
+    all five, which is the body's contract and the default. **The first-person arms
+    pass a subset and that is not a loosening of the rule, it is the same rule stated
+    for a smaller piece of the same figure**: an arms-only mesh cannot carry
+    ``Runner_Trousers`` or ``Runner_Void`` — one is a leg and the other is the hole
+    where a face is not — and asserting it must would be asserting that the split did
+    not happen. All five SLOTS are still appended, in the same order, so slot 0 is
+    ``Runner_Jacket`` on both assets and Unity's binder needs no new case.
 
     Painting by REGION rather than by part, because after the remesh no face knows
     which primitive it came from. The regions are re-derived from the same placement
@@ -2012,21 +2084,25 @@ def assign_materials(body: bpy.types.Object, fit: Fit) -> None:
             name = MAT_TROUSERS.name      # trousers between boot cuff and hem
         else:
             name = MAT_JACKET.name
+        if remap is not None:
+            name = remap.get(name, name)
         poly.material_index = slot[name]
         counts[name] += 1
 
     for spec in MATERIAL_SPECS:
-        print(f"MATERIAL {spec.name:15s} faces={counts[spec.name]:5d} "
+        print(f"{label} {spec.name:15s} faces={counts[spec.name]:5d} "
               f"base=({spec.color[0]:.3f},{spec.color[1]:.3f},{spec.color[2]:.3f}) "
               f"roughness={spec.roughness:.2f} metallic=0.00")
 
-    empty = [name for name, n in counts.items() if n == 0]
+    want = tuple(spec.name for spec in MATERIAL_SPECS) if required is None else required
+    empty = [name for name in want if counts[name] == 0]
     if empty:
         blendkit.fail(
             "these material slots claimed no faces: " + ", ".join(empty) + ". A region "
             "threshold and the placement table have come apart — Unity would import an "
             "unused material, and Runner_Accent with no faces is the per-runner tint "
             "system silently gone.")
+    return counts
 
 
 # ── The two checks that cost hours ──────────────────────────────────────────
@@ -3238,6 +3314,18 @@ def head(lean: float = 0.0, yaw: float = 0.0, tilt: float = 0.0) -> dict:
     return {"Head": Aim(gpm.up_dir(lean, tilt), roll=yaw)}
 
 
+def hang_rot(side: int, out: float = 0.0, swing: float = 0.0) -> Matrix:
+    """The world ROTATION ``hang_dir`` applies to straight-down.
+
+    Split out of ``hang_dir`` because the first-person framing needs the rotation itself
+    rather than the direction it produces: the framing is applied to an arm the mocap has
+    already aimed, so what is composed is a rotation, not a target vector. One expression
+    with two readings beats two expressions that agree today.
+    """
+    return (Matrix.Rotation(math.radians(-swing), 3, "X")
+            @ Matrix.Rotation(math.radians(-side * out), 3, "Y"))
+
+
 def hang_dir(side: int, out: float = 0.0, swing: float = 0.0) -> tuple:
     """A HANGING arm's direction. ``out`` + = away from the body, ``swing`` + = forward.
 
@@ -3248,10 +3336,7 @@ def hang_dir(side: int, out: float = 0.0, swing: float = 0.0) -> tuple:
     hang, and a hanging arm's whole vocabulary is fore-and-aft swing, so it is measured
     from the down axis instead of from the shoulder line.
     """
-    v = (Matrix.Rotation(math.radians(-swing), 3, "X")
-         @ Matrix.Rotation(math.radians(-side * out), 3, "Y")
-         @ Vector((0.0, 0.0, -1.0)))
-    return tuple(v)
+    return tuple(hang_rot(side, out, swing) @ Vector((0.0, 0.0, -1.0)))
 
 
 def arm(side: int, out: float = 4.0, swing: float = 0.0,
@@ -4149,6 +4234,19 @@ def sample_mixamo(path: str, target_frames: int, loop: bool, mapping=MIXAMO_MAP)
     return srest, source_up_hip, frames
 
 
+RETARGET_BWORLD: dict[str, list[dict[str, Matrix]]] = {}
+"""clip name → per-frame ``{bone: desired WORLD 3x3}``, filled by ``retarget_clip``.
+
+**This is the seam the first-person arms hang off, and it is a cache rather than a second
+retarget on purpose.** ``build_first_person_arms`` needs the same eight clips on a rig
+with the same bone names; re-importing the eight mixamo FBXs a second time would give it
+its own copy of the same numbers and its own opportunity to disagree. What it takes
+instead is the exact per-frame world orientation the body's clip asked for, and it applies
+one constant framing rotation to the four arm bones on top. So "first and third person
+cannot disagree about what the runner is doing" is not a claim about two pipelines that
+happen to match — there is one pipeline, sampled once."""
+
+
 def retarget_clip(rig: bpy.types.Object, body: bpy.types.Object, name: str) -> gpm.Clip:
     """One retargeted clip: mocap rotations on all 13 bones, a scaled vertical bob on the
     hips, and a single floor shift so the lowest planted moment sits on z = 0.
@@ -4179,12 +4277,14 @@ def retarget_clip(rig: bpy.types.Object, body: bpy.types.Object, name: str) -> g
     poses: list[blendkit.Pose] = []
     prev: dict[str, Euler] = {}
     world_offsets: list[float] = []
+    bworlds: list[dict[str, Matrix]] = []
     for i, (world_rots, vert_bob) in enumerate(frames):
         # Desired world orientation of every target bone, top-down.
         bworld: dict[str, Matrix] = {}
         for tbone in order:
             s = mapping[tbone]
             bworld[tbone] = rest[tbone] @ srest[s].inverted() @ world_rots[s]
+        bworlds.append(bworld)
         # Convert to local pose-channel eulers (gpm.make_pose's own basis math).
         rotations: dict[str, tuple[float, float, float]] = {}
         for tbone in order:
@@ -4222,6 +4322,7 @@ def retarget_clip(rig: bpy.types.Object, body: bpy.types.Object, name: str) -> g
     else:
         shift = 0.0
 
+    RETARGET_BWORLD[name] = bworlds
     measure = 1 if loop else max(1, target_frames - 1)
     seam = ""
     if loop:
@@ -4730,6 +4831,12 @@ def verify_roundtrip(path: str, expect_bones: int) -> None:
 
 
 def verify_takes(path: str, clips: list[gpm.Clip]) -> None:
+    """The body's takes. See ``verify_takes_named`` for the check itself."""
+    verify_takes_named(path, clips, RIG_NAME, MESH_NAME, bpy.data.objects[RIG_NAME])
+
+
+def verify_takes_named(path: str, clips: list[gpm.Clip], rig_name: str, mesh_name: str,
+                       rig: bpy.types.Object) -> None:
     """Every clip must be an animation stack IN THE FILE, named the way Unity will list it.
 
     Read out of the FBX's own bytes rather than out of the Blender session, because the
@@ -4757,10 +4864,1122 @@ def verify_takes(path: str, clips: list[gpm.Clip]) -> None:
             "looks up bare names, so half the animation in the file is unreachable.")
 
     models = gpm.fbx_objects(path, b"Model")
-    absent = [b.name for b in bpy.data.objects[RIG_NAME].data.bones if b.name not in models]
+    absent = [b.name for b in rig.data.bones if b.name not in models]
     if absent:
         blendkit.fail("bones missing from the FBX hierarchy: " + ", ".join(absent))
-    print(f"FBX_HIERARCHY models={len(models)} root={RIG_NAME} mesh={MESH_NAME}")
+    print(f"FBX_HIERARCHY models={len(models)} root={rig_name} mesh={mesh_name}")
+
+
+# ── The first-person arms ───────────────────────────────────────────────────
+#
+# REPO TASKS #83 AND #81. Until now the first person was served by this same
+# ``Runner.fbx``: ``PlayerWorldArms`` showed the shared body and ``PlayerFirstPersonView``
+# hid what the owner should not see. That is the wrong shape for the one thing a player
+# looks at for the whole match. A third-person body seen from inside is always either
+# clipping the near plane or missing the frame, and it cannot be both framed for the
+# camera and natural from outside — which is exactly the disagreement ``PlayerWorldArms``
+# was written to paper over, one viewer at a time, after the Animator.
+#
+# So the arms become their own asset, and the two readings stop fighting:
+#
+#   * ``Runner.fbx`` keeps the mocap unedited. Nothing in it is posed for a camera.
+#   * ``RunnerArms.fbx`` is the two sleeves and the two gloves, cut at the shoulder,
+#     carrying the SAME eight clips off the SAME mixamo sources with one constant
+#     framing rotation composed onto the four arm bones.
+#
+# **It is generated here, from the body's own code, and that is the load-bearing part.**
+# The sleeves come from ``arm_garment_parts`` — the five constructors ``build_parts``
+# itself calls. The gloves come from ``harvest_hands``, unchanged. The paint comes from
+# ``assign_materials`` with the same regions in the same final metres. The fit is not
+# re-solved, it is the body's own ``Fit`` re-applied, so the arms are the millimetre the
+# body's arms are. The clips are not re-retargeted, they are ``RETARGET_BWORLD`` — the
+# world orientations the body's own clips asked for, frame for frame. A second
+# hand-authored arm model would drift from all five of those within a month, and every
+# drift would be invisible until somebody looked at the two side by side.
+#
+# WHAT IS DIFFERENT, AND IT IS ONE THING: a constant rotation per arm bone that lifts the
+# hanging arm into the frame. See ``FP_HAND_VIEW`` for how it is derived and
+# ``verify_arms_agreement`` for the assertion that it is the ONLY difference.
+
+ARMS_MESH_NAME = "RunnerArms"
+ARMS_RIG_NAME = "RunnerArms_Rig"
+ARMS_FILENAME = "RunnerArms.fbx"
+
+ARMS_DECIMATE_RATIO = 0.14
+"""The sleeves' collapse ratio, against the body's 0.115.
+
+A little denser than the body and deliberately so: this is the one mesh that is 10–25 % of
+the screen for the whole match, at half a metre, while ``Runner.fbx`` is judged at three to
+twelve. The gloves are not decimated at all — they arrive at the cage's own quad topology
+out of ``harvest_hands`` and stay there, for the reason that function gives.
+``ARMS_REPORT`` prints the resulting triangle count against the body's so the spend is a
+number rather than a preference."""
+
+# THE FRAME, AND WHERE THE HANDS GO IN IT.
+#
+# Every number below is read off the game rather than chosen: ``verify_view_constants``
+# re-reads all four out of the C# every run and fails if they have moved. A first-person
+# framing solved against a guessed FOV is a framing for a game nobody is playing.
+FOV_DEFAULT = 80.0
+"""GameConstants.FovDefault — VERTICAL, degrees. §05's own window is 70–90."""
+
+EYE_HEIGHT = 1.630
+"""PlayerFeelHarnessMenu.EyeHeightMetres. The camera hangs on ``PitchPivot`` at this
+height over the rig root, and ``RunnerArms.fbx`` IS AUTHORED WITH ITS ORIGIN HERE — the
+asset's origin is the eye, not the floor, so the Unity side parents it to the camera at
+identity and there is no offset in C# for anybody to get wrong later."""
+
+NEAR_CLIP = 0.050
+"""PlayerFeelHarnessMenu's ``camera.nearClipPlane``. Nothing may be nearer."""
+
+RIG_RADIUS = 0.300
+"""PlayerFeelHarnessMenu.RigRadiusMetres — the CharacterController's radius, and
+therefore the closest any wall can ever get to the eye. It is the ceiling on
+``FP_HAND_DEPTH``'s ambition, not a coincidence: hands further out than this poke through
+the corridor wall every time the player faces one, and §12's corridors are 2.20 m wide."""
+
+FP_ASPECT = 16.0 / 9.0
+"""The aspect the horizontal framing is stated at. The FOV is vertical, so the vertical
+placement is aspect-free and only the x figure below moves; ``ARMS_FRAME`` prints the 4:3
+reading too, because the narrower frame is the one that could push a hand off the side."""
+
+FP_HAND_VIEW = (0.300, 0.185)
+"""Where a glove's palm is aimed, in viewport coordinates for the LEFT hand — 0,0 is
+bottom-left, and the right hand is the mirror. Both are then re-solved as a two-bone IK,
+so this is the deliverable stated where it can be judged: a viewport coordinate, checked
+against the game's own FOV, re-measured on the built asset by ``ARMS_FRAME``.
+
+x 0.320 / 0.680: outboard of centre, so the forearms enter from the bottom CORNERS rather
+than crossing in the middle of the frame. It lands 24 mm wider than the shoulder itself at
+this depth — the slight splay of someone carrying something in front of them; straight
+down from the shoulder reads as a puppet on two rails.
+
+y 0.100: the bottom of the lower third. **At 80° of VERTICAL fov this is far less low than
+it sounds and the arithmetic is worth having in front of you** — the frame is 0.74 m tall
+at the hands' depth, so viewport 0.10 is 0.295 m below the eye, i.e. 31 mm below the
+shoulder. An arm hanging at the hip sits 0.87 m below the eye, which at that depth is 22°
+below the bottom edge: the measurement §05 has been quoting all along, and the reason the
+old SHARED clips held both forearms up across the chest for everybody."""
+
+FP_HAND_DEPTH = 0.380
+"""How far in front of the eye a palm is aimed, metres.
+
+**Depth is the parameter that decides whether this pose reads as a person or as a guard
+stance, and it is fought over by two constraints that both matter.** Shallower is safer —
+the eye sits on the capsule's axis, so nothing the body can walk into is ever closer than
+``RIG_RADIUS`` — but the frame narrows toward the eye faster than the arm folds, and by
+0.28 m the only way to be in the lower third is to hold both hands ABOVE shoulder height
+with the elbow at 59°, which is a boxer's guard, not a worker running down a corridor.
+0.44 m puts the elbow at 93° — the relaxed bend of someone carrying something — and the
+hands 31 mm below the shoulder where they belong.
+
+The 140 mm it costs is 140 mm of fingertip inside a wall when a player stands flat against
+one. That is the trade, it is made with eyes open, and the wall frame in every render round
+is what it is judged on: at 93° of elbow the gloves sit inside the wall rather than the
+wall cutting the sleeve open, which is the artefact that would matter."""
+
+FP_GUN_HAND = (0.620, 0.265, 0.400)
+"""Viewport x, viewport y and depth for the RIGHT hand under ``GunIdle``/``GunWalk``.
+
+**This is the one first-person-specific pose authored on top of the mocap, and it is
+authored because the shared clip cannot express it in this frame.** §01's revolver hangs
+off ``RightLowerArm``'s tail (``RunnerGun.ArmBone``), so where that palm lands is where the
+gun lands. The third-person hold is a silhouette — ``GUN_ARM_SWING`` 55° exists so another
+runner reads 「저 사람 총 들었다」 at 12 m — and a silhouette is exactly what the person
+holding it cannot see. In here the gun has to be a readable object: in toward the centre
+(0.545), up out of the bottom third (0.235) and 80 mm nearer than the empty hand (0.360),
+which is low-ready with the muzzle in frame. The LEFT hand keeps ``FP_HAND_VIEW``, so the
+two hands differ and the pose reads as one-handed, which is what it is."""
+
+FP_MOTION = 0.30
+"""How much of the clip's own arm motion the first-person arms carry, 0–1.
+
+**Without this the split does not work at all, and the first build is the proof.** Framed
+by a constant rotation and given the mocap at full amplitude, the runner's arms leave the
+frame entirely: measured on that build, ``Run`` covered **0.00 %** of the screen at its
+stance frame with both gloves off the bottom edge, ``Crouch`` 0.00 %, and ``Idle``'s worst
+key put geometry 49 mm from a 50 mm near plane. That is not a framing that needs tuning, it
+is the wrong shape — a shoulder swing authored to read at 12 m across a body 0.6 m tall
+sweeps a hand 0.4 m across a frame 0.74 m tall when the hand is 0.44 m from the eye.
+
+So the motion is damped about **each clip's own mean pose**, which is the part that keeps
+the promise #83 makes. It is not a different animation and it is not a blend toward rest:
+the axis of every frame's deviation is the source clip's own axis, the phase is the source
+clip's own phase, and only the angle is scaled. ``verify_arms_agreement`` measures exactly
+that — axis parallelism and the angle ratio, frame by frame, against the body's clip.
+Anchoring on the mean rather than on the rest is what lets ``GunIdle`` still be a gun hold:
+its mean has the right arm forward, and damping toward the rest would have quietly turned
+the armed pose back into the empty one.
+
+0.30 was chosen by measurement over three render rounds, not by taste; ``ARMS_FRAME``
+prints the coverage and the hand placement it produces for every clip."""
+
+FP_MOTION_OVERRIDES = {"Death": 0.15}
+"""Clips that carry less than ``FP_MOTION``, and why each one does.
+
+``Death`` only. It is the one clip that is not a loop and not a gait: the actor throws an
+arm across the camera on the way down, and 0.30 of that was measured putting glove
+geometry **64 mm** from a 50 mm near plane — a 14 mm margin, on the one clip whose whole
+job is to be watched. Half that keeps the collapse legible and the margin honest. §09 makes
+the corpse something teammates come back to, but the corpse they come back to is
+``Runner.fbx``; what happens in the first person here is the last second of it."""
+
+FP_ELBOW_POLE = (1.00, 0.55, -0.62)
+"""Which way the elbow is pushed, as a direction hint in the rig's own axes (x = the
+figure's left, −y = forward, z = up), mirrored per side. Down, back and out: an elbow that
+solves forward and in ends up in front of the sternum where the camera can see it, and an
+elbow in the middle of a first-person frame is the single most common way this pose goes
+wrong. Only the hint's component ACROSS the shoulder→hand line is used, so what it names
+is a plane rather than a position."""
+
+ARMS_ELBOW_BLEND = 0.075
+"""Half-width of the weight blend across the elbow, as a fraction of the arm's length —
+~45 mm here. Narrower creases the sleeve into a hinge; wider drags the cuff round with the
+upper arm. The gloves are not blended at all: they are 100 % of their ``LowerArm``, which
+is the body's own ``HAND_SKIN`` rule, for the body's own reason."""
+
+VIEW_CONSTANT_SOURCES = (
+    ("FovDefault", FOV_DEFAULT,
+     os.path.join("unity", "HorrorGame", "Assets", "Scripts", "Core", "GameConstants.cs"),
+     r"FovDefault\s*=\s*([0-9]*\.?[0-9]+)f?\s*;"),
+    ("EyeHeightMetres", EYE_HEIGHT,
+     os.path.join("unity", "HorrorGame", "Assets", "Scripts", "Gameplay", "Player",
+                  "Editor", "PlayerFeelHarnessMenu.cs"),
+     r"EyeHeightMetres\s*=\s*([0-9]*\.?[0-9]+)f?\s*;"),
+    ("RigRadiusMetres", RIG_RADIUS,
+     os.path.join("unity", "HorrorGame", "Assets", "Scripts", "Gameplay", "Player",
+                  "Editor", "PlayerFeelHarnessMenu.cs"),
+     r"RigRadiusMetres\s*=\s*([0-9]*\.?[0-9]+)f?\s*;"),
+    ("nearClipPlane", NEAR_CLIP,
+     os.path.join("unity", "HorrorGame", "Assets", "Scripts", "Gameplay", "Player",
+                  "Editor", "PlayerFeelHarnessMenu.cs"),
+     r"nearClipPlane\s*=\s*([0-9]*\.?[0-9]+)f?\s*;"),
+)
+
+
+def verify_view_constants() -> None:
+    """Re-reads the four numbers the framing is solved against out of the C#.
+
+    ``verify_gun_mount``'s argument, applied to the other direction of the same seam: a
+    constant copied across a language boundary goes on matching long after the thing it
+    named has moved. The gun mount is a number this file MEASURES and the C# holds; these
+    four are numbers the C# holds and this file FRAMES against. Either way the generator
+    reads the consumer, so a widened FOV or a raised eye fails in Blender — where the arms
+    can be re-solved in a second — instead of arriving as a pair of forearms hanging half
+    out of the bottom of a shipped build.
+
+    Missing file or missing constant is a warning, not a failure, for ``verify_gun_mount``'s
+    reason: this script is run from a checkout of the tools alone often enough."""
+    for name, ours, rel, pattern in VIEW_CONSTANT_SOURCES:
+        path = os.path.join(REPO_ROOT, rel)
+        if not os.path.exists(path):
+            print(f"VIEW_CONSTANT {name:16s} skipped: {rel} is not in this checkout")
+            continue
+        with open(path, encoding="utf-8") as handle:
+            found = re.search(pattern, handle.read())
+        if found is None:
+            print(f"VIEW_CONSTANT {name:16s} skipped: no '{name} = ...' in {rel}")
+            continue
+        theirs = float(found.group(1))
+        print(f"VIEW_CONSTANT {name:16s} generator={ours:.4f} C#={theirs:.4f} "
+              f"delta={abs(theirs - ours):.5f}  ({os.path.basename(rel)})")
+        if abs(theirs - ours) > 1e-4:
+            blendkit.fail(
+                f"{rel} holds {name} = {theirs} and this file frames the arms against "
+                f"{ours}. The whole point of #81 is that the arms are placed in the frame "
+                "the player actually has: solved against a stale FOV, eye height or near "
+                "plane they are placed in a frame nobody is looking through. Update the "
+                "constant here and re-run — the framing is solved, not authored, so it "
+                "moves with it.")
+
+
+def frame_half(depth: float) -> tuple[float, float]:
+    """(half-width, half-height) of the frame in metres at ``depth``, at FP_ASPECT."""
+    half_h = depth * math.tan(math.radians(FOV_DEFAULT * 0.5))
+    return half_h * FP_ASPECT, half_h
+
+
+def to_view(p: Vector) -> tuple[float, float, float]:
+    """A point in the arms' own (eye-origin) frame → (viewport x, viewport y, depth).
+
+    The camera sits at the origin looking along −y with +z up, which is the runner's own
+    forward and up: Blender −y is Unity +z, Blender +z is Unity +y. Screen right is −x,
+    so the figure's LEFT arm (+x, the side the armband is on) lands on the LEFT of the
+    frame — which is where the player's left arm has to be."""
+    depth = -p.y
+    if depth <= 1e-6:
+        return (-1.0, -1.0, depth)
+    half_w, half_h = frame_half(depth)
+    return (0.5 + (-p.x) / (2.0 * half_w), 0.5 + p.z / (2.0 * half_h), depth)
+
+
+def from_view(vx: float, vy: float, depth: float) -> Vector:
+    """The inverse of ``to_view``: a viewport target back to a point in the arms' frame."""
+    half_w, half_h = frame_half(depth)
+    return Vector((-(vx - 0.5) * 2.0 * half_w, -depth, (vy - 0.5) * 2.0 * half_h))
+
+
+def _two_bone_ik(root: Vector, target: Vector, upper: float, lower: float,
+                 pole: Vector) -> Vector:
+    """The elbow, solved. ``pole`` is a direction hint; only its component across the
+    shoulder→hand line is used, which is what makes the hint a plane and not a position."""
+    d = target - root
+    reach = d.length
+    lo, hi = abs(upper - lower) + 1e-4, upper + lower - 1e-4
+    if reach < lo or reach > hi:
+        blendkit.fail(
+            f"the first-person hand target is {reach:.4f} m from the shoulder and this arm "
+            f"reaches {lo:.4f}–{hi:.4f} m (upper {upper:.4f} + fore {lower:.4f}). "
+            "FP_HAND_DEPTH and FP_HAND_VIEW place it; one of them is outside the arm.")
+    axis = d / reach
+    cos_a = max(-1.0, min(1.0, (upper * upper + reach * reach - lower * lower)
+                          / (2.0 * upper * reach)))
+    a = math.acos(cos_a)
+    n = pole - axis * pole.dot(axis)
+    if n.length < 1e-6:
+        n = Vector((0.0, 0.0, -1.0)) - axis * axis.z * -1.0
+    n.normalize()
+    return root + axis * (upper * math.cos(a)) + n * (upper * math.sin(a))
+
+
+def _minrot(a: Vector, b: Vector) -> Matrix:
+    """The shortest rotation taking direction ``a`` onto direction ``b``."""
+    return a.normalized().rotation_difference(b.normalized()).to_matrix()
+
+
+def _mean_rot(mats: list[Matrix]) -> Matrix:
+    """The mean orientation of a list of rotations, as a quaternion average.
+
+    Sign-aligned against the first sample before averaging, because q and −q are the same
+    rotation and an unaligned mean of a swinging arm converges on nothing."""
+    quats = [m.to_quaternion() for m in mats]
+    first = quats[0]
+    acc = Quaternion((0.0, 0.0, 0.0, 0.0))
+    for q in quats:
+        if q.dot(first) < 0.0:
+            q = Quaternion((-q.w, -q.x, -q.y, -q.z))
+        acc.w += q.w
+        acc.x += q.x
+        acc.y += q.y
+        acc.z += q.z
+    acc.normalize()
+    return acc.to_matrix()
+
+
+def _damp(delta: Matrix, factor: float) -> Matrix:
+    """``delta`` scaled to ``factor`` of its angle about the same axis."""
+    return Quaternion().slerp(delta.to_quaternion().normalized(), factor).to_matrix()
+
+
+def arm_frame_targets(sk: Skeleton, aim: dict[str, tuple[float, float, float]],
+                      rest_fp: dict[str, Matrix]) -> tuple[dict[str, Matrix],
+                                                           dict[str, Vector]]:
+    """The world orientation each arm bone must hold so the gloves land on ``aim``.
+
+    ``aim`` is side → (viewport x, viewport y, depth). The two-bone IK gives the elbow and
+    therefore both segment directions; the orientation is then that direction applied to the
+    ARMS RIG'S OWN REST as a minimal rotation, so the bone's roll is inherited rather than
+    invented. Roll invented here is roll that disagrees with the bind pose, which is the
+    failure ``REREF_SUFFIXES`` spends thirty lines on at the other end of the same rig."""
+    upper = math.hypot(sk.elbow_x - sk.shoulder_x, sk.elbow_z - sk.shoulder_z)
+    lower = math.hypot(sk.hand_x - sk.elbow_x, sk.hand_z - sk.elbow_z)
+    targets: dict[str, Matrix] = {}
+    joints: dict[str, Vector] = {}
+    for side, s in ((1, "Left"), (-1, "Right")):
+        x = float(side)
+        shoulder = Vector((x * sk.shoulder_x, 0.0, sk.shoulder_z))
+        hand = aim_point(aim[s])
+        pole = Vector((x * FP_ELBOW_POLE[0], FP_ELBOW_POLE[1], FP_ELBOW_POLE[2]))
+        elbow = _two_bone_ik(shoulder, hand, upper, lower, pole.normalized())
+        joints[f"{s}Shoulder"], joints[f"{s}Elbow"], joints[f"{s}Hand"] = (
+            shoulder, elbow, hand)
+        for bone, direction in ((f"{s}UpperArm", elbow - shoulder),
+                                (f"{s}LowerArm", hand - elbow)):
+            base = rest_fp[bone]
+            targets[bone] = _minrot(Vector(base.col[1]), direction) @ base
+    return targets, joints
+
+
+def aim_point(aim: tuple[float, float, float]) -> Vector:
+    """(viewport x, viewport y, depth) → the point in the FIGURE's frame, feet on z = 0.
+
+    Every aim in this file is stated for the frame the player is looking at and never
+    mirrored on the way through — a mirror inside the solver is how the gun hand ended up
+    at viewport 0.455 while the constant that placed it said 0.545, which is the wrong side
+    of the screen for the arm holding it. ``default_aim`` mirrors ONCE, in the open."""
+    v = from_view(aim[0], aim[1], aim[2])
+    return Vector((v.x, v.y, v.z + EYE_HEIGHT))
+
+
+def default_aim() -> dict[str, tuple[float, float, float]]:
+    """Both gloves on ``FP_HAND_VIEW``. The empty-handed framing, and the bind pose."""
+    left = (FP_HAND_VIEW[0], FP_HAND_VIEW[1], FP_HAND_DEPTH)
+    return {"Left": left, "Right": (1.0 - left[0], left[1], left[2])}
+
+
+def gun_aim() -> dict[str, tuple[float, float, float]]:
+    """Left glove where it always is; right glove on ``FP_GUN_HAND`` with the revolver."""
+    return {"Left": default_aim()["Left"], "Right": FP_GUN_HAND}
+
+
+GUN_CLIPS = ("GunIdle", "GunWalk")
+
+
+def arms_bone_specs(sk: Skeleton) -> tuple[list[BoneSpec], dict[str, Vector]]:
+    """The 7 bones of ``RunnerArms.fbx``, in the arms' own eye-origin frame.
+
+    ``Hips``, ``Spine`` and ``Chest`` are here and they carry no geometry, which is
+    deliberate on both counts. They are here because the arms hang off the CHEST and the
+    mocap leans that chest — a runner's torso rolls through a stride and the arms have to
+    roll with it, or the first person is the one view in the game where the runner does not
+    breathe. They carry no weight because there is no torso in this asset to weigh; the
+    rest of the chain exists to be posed, not to be seen, and ``verify_arms_skin`` states
+    that as a rule instead of leaving it to be discovered as a missing-weight failure.
+
+    The names are the body's, unchanged and unabbreviated. Everything on the C# side that
+    reaches a bone reaches it by string — ``PlayerRigBones.Find``, ``PlayerWorldArms``'s
+    own table, ``RunnerGun.ArmBone`` — so the arms rig is a strict subset of the body's
+    vocabulary and nothing has to learn a second one.
+
+    The two arm bones are the only ones whose REST differs from the body's, and they differ
+    by exactly the framing: their heads and tails are the solved empty-handed carry, so the
+    asset's BIND POSE is already in frame. That is not decoration. A viewmodel whose bind
+    pose hangs at the hip is invisible the moment anything fails to play a clip on it,
+    which is the failure mode nobody notices until a build.
+    """
+    specs = [
+        BoneSpec("Hips", (0.0, 0.0, sk.hip_z - EYE_HEIGHT),
+                 (0.0, 0.0, sk.spine_z - EYE_HEIGHT)),
+        BoneSpec("Spine", (0.0, 0.0, sk.spine_z - EYE_HEIGHT),
+                 (0.0, 0.0, sk.chest_z - EYE_HEIGHT), "Hips", True),
+        BoneSpec("Chest", (0.0, 0.0, sk.chest_z - EYE_HEIGHT),
+                 (0.0, 0.0, sk.neck_z - EYE_HEIGHT), "Spine", True),
+    ]
+    upper = math.hypot(sk.elbow_x - sk.shoulder_x, sk.elbow_z - sk.shoulder_z)
+    lower = math.hypot(sk.hand_x - sk.elbow_x, sk.hand_z - sk.elbow_z)
+    aim = default_aim()
+    joints: dict[str, Vector] = {}
+    down = Vector((0.0, 0.0, -EYE_HEIGHT))
+    for side, s in ((1, "Left"), (-1, "Right")):
+        x = float(side)
+        shoulder = Vector((x * sk.shoulder_x, 0.0, sk.shoulder_z))
+        hand = aim_point(aim[s])
+        pole = Vector((x * FP_ELBOW_POLE[0], FP_ELBOW_POLE[1], FP_ELBOW_POLE[2]))
+        elbow = _two_bone_ik(shoulder, hand, upper, lower, pole.normalized())
+        joints[f"{s}Shoulder"], joints[f"{s}Elbow"], joints[f"{s}Hand"] = (
+            shoulder, elbow, hand)
+        specs += [
+            BoneSpec(f"{s}UpperArm", tuple(shoulder + down), tuple(elbow + down), "Chest"),
+            BoneSpec(f"{s}LowerArm", tuple(elbow + down), tuple(hand + down),
+                     f"{s}UpperArm", True),
+        ]
+    return specs, joints
+
+
+def _mesh_shells(mesh: bpy.types.Mesh) -> list[set[int]]:
+    """Connected vertex components of a mesh, by edge walk."""
+    adj: dict[int, list[int]] = {i: [] for i in range(len(mesh.vertices))}
+    for edge in mesh.edges:
+        a, b = edge.vertices
+        adj[a].append(b)
+        adj[b].append(a)
+    seen: set[int] = set()
+    out: list[set[int]] = []
+    for start in range(len(mesh.vertices)):
+        if start in seen:
+            continue
+        stack, comp = [start], set()
+        seen.add(start)
+        while stack:
+            v = stack.pop()
+            comp.add(v)
+            for w in adj[v]:
+                if w not in seen:
+                    seen.add(w)
+                    stack.append(w)
+        out.append(comp)
+    return out
+
+
+def arm_weights(mesh_obj: bpy.types.Object, sk: Skeleton,
+                fit: Fit) -> dict[str, dict[int, float]]:
+    """Weights for the arms mesh, solved rather than heat-diffused, and the reason is the
+    same one ``build_rig`` gives for overriding the gloves.
+
+    Bone heat solves off the geometry that exists, which is right for a welded body where
+    no vertex knows which primitive it came from — and useless here, because three of the
+    seven bones (``Hips``/``Spine``/``Chest``) lie outside this mesh entirely and heat has
+    no solution for a bone that is not inside the volume. What is left is a two-bone limb
+    with one hinge, and a two-bone limb's weights are not a diffusion problem: they are a
+    position along the arm. So the sleeve is split on its own axis with a 45 mm blend at
+    the elbow, and each glove shell goes 100 % to its ``LowerArm`` — byte-identical to the
+    rule ``build_rig`` applies to the same shells on the body, so a glove deforms the same
+    way in both views."""
+    mesh = mesh_obj.data
+    shells = _mesh_shells(mesh)
+    hand_ceiling = fit.z(0.90)
+    groups: dict[str, dict[int, float]] = {}
+
+    def add(name: str, index: int, weight: float) -> None:
+        if weight > 1e-4:
+            groups.setdefault(name, {})[index] = weight
+
+    shoulder = Vector((sk.shoulder_x, 0.0, sk.shoulder_z))
+    hand = Vector((sk.hand_x, 0.0, sk.hand_z))
+    axis = (hand - shoulder)
+    arm_len = axis.length
+    axis = axis / arm_len
+    elbow_t = math.hypot(sk.elbow_x - sk.shoulder_x, sk.elbow_z - sk.shoulder_z) / arm_len
+
+    hands = sleeves = 0
+    for shell in shells:
+        cos = [mesh.vertices[i].co for i in shell]
+        top = max(c.z for c in cos)
+        side = "Left" if (sum(c.x for c in cos) / len(cos)) > 0.0 else "Right"
+        if top < hand_ceiling:
+            hands += 1
+            for i in shell:
+                add(f"{side}LowerArm", i, 1.0)
+            continue
+        sleeves += 1
+        for i in shell:
+            co = mesh.vertices[i].co
+            # mirrored onto the left so one axis serves both sleeves
+            local = Vector((abs(co.x), co.y, co.z)) - shoulder
+            t = local.dot(axis) / arm_len
+            lo = (t - (elbow_t - ARMS_ELBOW_BLEND)) / (2.0 * ARMS_ELBOW_BLEND)
+            lo = max(0.0, min(1.0, lo))
+            add(f"{side}LowerArm", i, lo)
+            add(f"{side}UpperArm", i, 1.0 - lo)
+
+    print(f"ARMS_SKIN shells={len(shells)} sleeves={sleeves} gloves={hands} "
+          f"elbow_at={elbow_t:.4f} of arm blend=+-{ARMS_ELBOW_BLEND * arm_len * 1000.0:.0f}mm")
+    if sleeves != 2 or hands != 2:
+        blendkit.fail(
+            f"the arms mesh welded into {len(shells)} shells ({sleeves} sleeve, {hands} "
+            "glove). It has to be exactly two sleeves and two gloves: the two sleeves are "
+            "separate because there is no torso between them, and the gloves are separate "
+            "because a 9 mm voxel turns fingers into a mitten. Anything else means the "
+            "weld bridged an arm to a hand, and the glove would then swing about the "
+            "shoulder while the sleeve swings about the elbow.")
+    return groups
+
+
+def build_arms_mesh(fit: Fit, sk: Skeleton) -> bpy.types.Object:
+    """The sleeves and the gloves, welded, fitted, painted — canonical frame, unframed."""
+    parts = arm_garment_parts()
+    print(f"ARMS_PARTS count={len(parts)} names={','.join(p.name for p in parts)}")
+    primitives: list[bpy.types.Object] = []
+    for part in parts:
+        primitives += part.build()
+    arms = weld(primitives, name=ARMS_MESH_NAME, ratio=ARMS_DECIMATE_RATIO, tag="arms_")
+
+    hands = harvest_hands()
+    arms = blendkit.join([arms] + hands, ARMS_MESH_NAME)
+    arms.data.name = ARMS_MESH_NAME
+    blendkit.shade_smooth(arms, angle_degrees=42.0)
+    _stage("arms_hands_joined", arms)
+
+    # The body's OWN fit, re-applied — never re-solved. `fit_height_and_ground` answers
+    # "how much did the smoothing shrink this union", and a pair of sleeves is a different
+    # union with a different answer. Re-solving it here would scale the arms by a number
+    # that has nothing to do with the body they belong to, and the two would disagree by
+    # exactly the difference — invisible in Blender, a wrist that does not line up with a
+    # sleeve in Unity.
+    for v in arms.data.vertices:
+        v.co *= fit.scale
+        v.co.z -= fit.drop
+    arms.data.update()
+
+    assign_materials(arms, fit,
+                     required=(MAT_JACKET.name, MAT_GEAR.name, MAT_ACCENT.name),
+                     label="ARMS_MATERIAL",
+                     remap={MAT_TROUSERS.name: MAT_GEAR.name})
+    return arms
+
+
+def frame_arms(arms: bpy.types.Object, rig: bpy.types.Object, sk: Skeleton,
+               joints: dict[str, Vector], rest_body: dict[str, Matrix],
+               weights: dict[str, dict[int, float]]) -> dict[str, Matrix]:
+    """Rotates the hanging sleeves into the first-person carry, and returns the rotations.
+
+    The framing is ONE rotation per arm bone and it is derived, not typed: ``W = rest_fp @
+    rest_tp⁻¹``, the rotation that takes the body's own rest arm onto the solved carry. It
+    is read off the two rest matrices rather than built from the IK's direction vectors so
+    that the bone ROLL Blender chose for the framed skeleton is part of it — a framing that
+    matched in direction and not in roll would put the bind pose and the animated pose in
+    different planes, which is the failure ``REREF_SUFFIXES`` documents at length on the
+    mocap side of the same rig.
+
+    The mesh is then carried by exactly the same rotations, as linear blend skinning done
+    by hand over the weights that are about to be bound. Doing it here rather than through
+    an Apply-Pose-As-Rest operator is not squeamishness about operators: the point is that
+    the geometry and the skeleton are moved by the SAME matrices, so the bind pose is
+    consistent with the rest by construction instead of by a round trip through pose mode.
+    """
+    frames: dict[str, Matrix] = {}
+    for s in ("Left", "Right"):
+        for bone in (f"{s}UpperArm", f"{s}LowerArm"):
+            frames[bone] = gpm.REST[bone] @ rest_body[bone].inverted()
+
+    down = Vector((0.0, 0.0, -EYE_HEIGHT))
+    pivots: dict[str, tuple[Vector, Vector]] = {}
+    for s in ("Left", "Right"):
+        sign = 1.0 if s == "Left" else -1.0
+        elbow_c = Vector((sign * sk.elbow_x, 0.0, sk.elbow_z))
+        pivots[f"{s}UpperArm"] = (joints[f"{s}Shoulder"], joints[f"{s}Shoulder"])
+        pivots[f"{s}LowerArm"] = (elbow_c, joints[f"{s}Elbow"])
+
+    mesh = arms.data
+    moved = [Vector((0.0, 0.0, 0.0))] * len(mesh.vertices)
+    total = [0.0] * len(mesh.vertices)
+    for bone, table in weights.items():
+        if bone not in frames:
+            continue
+        rot = frames[bone]
+        src, dst = pivots[bone]
+        for i, w in table.items():
+            moved[i] = moved[i] + (dst + rot @ (mesh.vertices[i].co - src)) * w
+            total[i] += w
+    stray = 0
+    for i, v in enumerate(mesh.vertices):
+        if total[i] <= 1e-6:
+            stray += 1
+            continue
+        v.co = moved[i] / total[i] + down
+    mesh.update()
+    if stray:
+        blendkit.fail(
+            f"{stray} vertices of the arms mesh carry no arm-bone weight, so the framing "
+            "left them behind in the hanging pose. Every vertex of this asset belongs to "
+            "one of the two sleeves or one of the two gloves; a vertex outside all four is "
+            "a weld that produced something the shell walk did not classify.")
+
+    for bone in sorted(frames):
+        axis, angle = frames[bone].to_quaternion().to_axis_angle()
+        print(f"ARMS_FRAMING {bone:14s} rot={math.degrees(angle):6.2f}deg about "
+              f"({axis.x:+.3f},{axis.y:+.3f},{axis.z:+.3f})")
+    return frames
+
+
+def clip_motion(name: str) -> float:
+    """How much of one clip's own motion the first-person arms carry."""
+    return FP_MOTION_OVERRIDES.get(name, FP_MOTION)
+
+
+def arms_motion(name: str, targets: dict[str, Matrix]
+                ) -> tuple[list[dict[str, Matrix]], dict[str, Matrix]]:
+    """The per-frame world orientations of the first-person arms, for one clip.
+
+    Three lines of arithmetic and each of them is the whole design:
+
+    1. ``mean`` — the clip's own average orientation per bone, over ``RETARGET_BWORLD``.
+    2. ``delta`` — that frame's deviation from the mean, which IS the clip's motion:
+       source axis, source phase, source amplitude.
+    3. the result — the framing target with ``FP_MOTION`` of that deviation on top.
+
+    At the mean the arms sit exactly where ``FP_HAND_VIEW`` (or ``FP_GUN_HAND``) put them,
+    which is what makes every clip framed rather than only the one the framing was solved
+    against. Away from the mean they carry the clip's own motion at a fraction of its
+    angle — never a fraction of a blend toward rest, which would have flattened the gun
+    hold back into the empty one."""
+    body_frames = RETARGET_BWORLD[name]
+    means = {b: _mean_rot([f[b] for f in body_frames]) for b in gpm.ORDER}
+    out: list[dict[str, Matrix]] = []
+    for frame in body_frames:
+        posed: dict[str, Matrix] = {}
+        for bone in gpm.ORDER:
+            delta = means[bone].inverted() @ frame[bone]
+            posed[bone] = targets[bone] @ _damp(delta, clip_motion(name))
+        out.append(posed)
+    return out, means
+
+
+def arms_clip(name: str, body_clip: gpm.Clip,
+              bworlds: list[dict[str, Matrix]]) -> gpm.Clip:
+    """One first-person clip: ``arms_motion``'s world orientations, in local channels.
+
+    The hips' location channel keeps only its DEVIATION from the clip's mean, damped by the
+    same ``FP_MOTION``. The mean is thrown away and that is not a detail: on the body it is
+    the crouch itself — ``Crouch`` drops the hips 0.3 m and ``Death`` drops them 0.7 — and
+    the first person's camera does not go down with it, because ``PlayerStance`` lowers the
+    eye on its own schedule. Carried over, the mean translated the whole viewmodel out of
+    the bottom of the frame: measured before this line existed, ``Crouch``'s gloves sat at
+    viewport −0.33 with 0.00 % coverage while their DEPTH was still a correct 0.44 m. What
+    is left is the bob, at a fraction — the camera these hang off is already carrying
+    ``PlayerViewMotion``'s own."""
+    ident = Matrix.Identity(3)
+    rest, parent, order = gpm.REST, gpm.PARENT, gpm.ORDER
+    poses: list[blendkit.Pose] = []
+    prev: dict[str, Euler] = {}
+    hips_mean = Vector((0.0, 0.0, 0.0))
+    for pose in body_clip.poses:
+        hips_mean = hips_mean + Vector(pose.locations["Hips"])
+    hips_mean = hips_mean / float(len(body_clip.poses))
+    for i, bworld in enumerate(bworlds):
+        rotations: dict[str, tuple[float, float, float]] = {}
+        for bone in order:
+            par = parent[bone]
+            pworld = bworld[par] if par else ident
+            prest = rest[par] if par else ident
+            basis = rest[bone].inverted() @ prest @ pworld.inverted() @ bworld[bone]
+            euler = (basis.to_euler("XYZ", prev[bone]) if bone in prev
+                     else basis.to_euler("XYZ"))
+            prev[bone] = euler
+            rotations[bone] = (math.degrees(euler.x), math.degrees(euler.y),
+                               math.degrees(euler.z))
+        hips = Vector(body_clip.poses[i].locations["Hips"])
+        poses.append(blendkit.Pose(
+            frame=i + 1, rotations=rotations,
+            locations={"Hips": tuple((hips - hips_mean) * clip_motion(name))}))
+    return gpm.Clip(name=name, poses=poses, loop=body_clip.loop,
+                    cycle_frames=body_clip.cycle_frames,
+                    measure_frame=body_clip.measure_frame,
+                    note=f"first-person framing, {clip_motion(name):.2f} of "
+                         + body_clip.note)
+
+
+def verify_arms_agreement(
+        rig: bpy.types.Object, clips: list[gpm.Clip],
+        intended: dict[str, list[dict[str, Matrix]]],
+        anchors: dict[str, tuple[dict[str, Matrix], dict[str, Matrix]]]) -> None:
+    """Two measurements, and #83's whole promise is the second one.
+
+    **Channel fidelity.** Each pose is pushed onto the arms rig, Blender evaluates the
+    channel eulers through the framed rest and the parent chain, and the resulting world
+    orientation is read back off ``pose_bone.matrix`` and compared with what this file
+    intended. Comparing numbers this file computed against numbers this file computed would
+    prove nothing; going through the pose evaluation catches the class of failure in
+    between — a euler branch that took the long way round, a parent solved out of order, a
+    rest matrix that is not the one the framing was derived against.
+
+    **Motion agreement.** Then the framing is divided out and what is left is compared with
+    the BODY's own clip, frame for frame, on the same bone. The first-person deviation has
+    to be about the SAME AXIS as the third-person one — that is same source clip, same
+    phase, no re-sample, no half-cycle slip — and its angle has to be ``FP_MOTION`` of it.
+    Both are reported as numbers rather than asserted away, because "the two views agree"
+    is a claim somebody has to be able to check."""
+    worst_channel, where_channel = 0.0, ""
+    worst_axis, where_axis = 0.0, ""
+    worst_ratio, where_ratio = 0.0, ""
+    checked = 0
+    for clip in clips:
+        body_frames = RETARGET_BWORLD[clip.name]
+        want = intended[clip.name]
+        for i, pose in enumerate(clip.poses):
+            gpm.apply_pose(rig, pose)
+            for bone in gpm.ORDER:
+                got = _rot3(rig.pose.bones[bone].matrix)
+                delta = (got.inverted() @ want[i][bone]).to_quaternion().angle
+                delta = math.degrees(min(delta, 2.0 * math.pi - delta))
+                checked += 1
+                if delta > worst_channel:
+                    worst_channel, where_channel = delta, f"{clip.name}/{bone}/f{i + 1}"
+
+                # Both deviations expressed in the SAME frame — the clip's own mean —
+                # so the axes are comparable. Compared in any other frame they differ by
+                # the framing's conjugation, which is a measurement of the framing rather
+                # than of the motion.
+                target, mean = anchors[clip.name]
+                mine = (target[bone].inverted() @ want[i][bone]).to_quaternion()
+                theirs = (mean[bone].inverted() @ body_frames[i][bone]).to_quaternion()
+                a_mine, ang_mine = mine.normalized().to_axis_angle()
+                a_theirs, ang_theirs = theirs.normalized().to_axis_angle()
+                # Below ten degrees an axis is mostly rounding — a 3 deg rotation's
+                # direction is carried by three near-zero quaternion components — so the
+                # axis test is only asked of deviations big enough to HAVE a direction.
+                # The RATIO test below has no floor at all and covers the small ones
+                # exactly, which is why nothing is being waved through here.
+                if ang_theirs < math.radians(10.0):
+                    continue
+                if ang_theirs > math.radians(170.0):
+                    # Past a half turn "the same rotation, damped" stops being a single
+                    # arc: slerp takes the short way and the source went the long way.
+                    # Death's collapse reaches it; nothing the player is alive for does.
+                    continue
+                axis_off = math.degrees(math.acos(
+                    max(-1.0, min(1.0, abs(a_mine.dot(a_theirs))))))
+                ratio = ang_mine / ang_theirs
+                if axis_off > worst_axis:
+                    worst_axis, where_axis = axis_off, f"{clip.name}/{bone}/f{i + 1}"
+                if abs(ratio - clip_motion(clip.name)) > worst_ratio:
+                    worst_ratio = abs(ratio - clip_motion(clip.name))
+                    where_ratio = f"{clip.name}/{bone}/f{i + 1}={ratio:.3f}"
+    gpm.clear_pose(rig)
+    print(f"ARMS_AGREEMENT bone_frames={checked} "
+          f"channel_residual={worst_channel:.5f}deg at={where_channel or '-'}")
+    print(f"ARMS_MOTION_MATCH axis_offset={worst_axis:.3f}deg at={where_axis or '-'} "
+          f"angle_ratio=clip's own +-{worst_ratio:.4f} at={where_ratio or '-'} "
+          f"(deviation from each clip's own mean, first-person against the body's, "
+          f"same bone, same frame)")
+    if worst_channel > 0.05:
+        blendkit.fail(
+            f"the arms rig evaluates {worst_channel:.4f} deg away from the pose this file "
+            f"intended, at {where_channel}. The channels are what ship; a residual here is "
+            "a clip that plays something other than what was measured.")
+    if worst_ratio > 0.01:
+        blendkit.fail(
+            f"the first-person arms carry {worst_ratio:+.4f} off their clip's fraction of "
+            f"the body's "
+            f"own deviation at {where_ratio}. It is supposed to be one constant fraction "
+            "of one clip; a varying fraction is a second animation with a similar shape.")
+    if worst_axis > 1.0:
+        blendkit.fail(
+            f"the first-person arms deviate about an axis {worst_axis:.2f} deg from the "
+            f"body's own at {where_axis}. They are supposed to be the SAME clip damped — a "
+            "different axis means a different animation, which is what #83 exists to stop.")
+
+
+def measure_arms_frame(rig: bpy.types.Object, arms: bpy.types.Object,
+                       pose) -> tuple[float, float, list[tuple[float, float, float]]]:
+    """One posed frame, measured in the player's own frame.
+
+    Returns (fraction of the frame the arms cover, the smallest depth of any vertex that
+    is inside the view pyramid, the viewport reading of both glove tips).
+
+    The coverage is rasterised rather than counted off vertices: a vertex count answers
+    "how much of the mesh is on screen", and the question #81 asks is "how much of the
+    SCREEN is arms" — a small mesh close to the camera fills a frame that a hundred distant
+    vertices do not."""
+    gpm.apply_pose(rig, pose)
+    evaluated = arms.evaluated_get(bpy.context.evaluated_depsgraph_get())
+    mesh = evaluated.to_mesh()
+    world = [evaluated.matrix_world @ v.co for v in mesh.vertices]
+
+    cols, rows = 160, 90
+    grid = bytearray(cols * rows)
+    for poly in mesh.polygons:
+        idx = list(poly.vertices)
+        for k in range(1, len(idx) - 1):
+            tri = [world[idx[0]], world[idx[k]], world[idx[k + 1]]]
+            if max(-p.y for p in tri) <= NEAR_CLIP:
+                continue
+            pts = []
+            for p in tri:
+                depth = max(NEAR_CLIP, -p.y)
+                half_w, half_h = frame_half(depth)
+                pts.append((0.5 + (-p.x) / (2.0 * half_w), 0.5 + p.z / (2.0 * half_h)))
+            xs = [q[0] for q in pts]
+            ys = [q[1] for q in pts]
+            x0 = max(0, int(min(xs) * cols))
+            x1 = min(cols - 1, int(max(xs) * cols))
+            y0 = max(0, int(min(ys) * rows))
+            y1 = min(rows - 1, int(max(ys) * rows))
+            if x1 < x0 or y1 < y0:
+                continue
+            (ax, ay), (bx, by), (cx, cy) = pts
+            det = (by - cy) * (ax - cx) + (cx - bx) * (ay - cy)
+            if abs(det) < 1e-12:
+                continue
+            for gy in range(y0, y1 + 1):
+                py = (gy + 0.5) / rows
+                for gx in range(x0, x1 + 1):
+                    px = (gx + 0.5) / cols
+                    l1 = ((by - cy) * (px - cx) + (cx - bx) * (py - cy)) / det
+                    l2 = ((cy - ay) * (px - cx) + (ax - cx) * (py - cy)) / det
+                    if l1 >= 0.0 and l2 >= 0.0 and l1 + l2 <= 1.0:
+                        grid[gy * cols + gx] = 1
+
+    near = math.inf
+    for p in world:
+        depth = -p.y
+        if depth <= 0.0:
+            continue
+        half_w, half_h = frame_half(depth)
+        if abs(p.x) <= half_w and abs(p.z) <= half_h:
+            near = min(near, depth)
+
+    tips = []
+    for bone in ("LeftLowerArm", "RightLowerArm"):
+        tip = gpm.bone_point(rig, bone, tuple(
+            Vector(gpm.REST[bone].col[1]) * rig.data.bones[bone].length))
+        tips.append(to_view(tip))
+    evaluated.to_mesh_clear()
+    return sum(grid) / float(cols * rows), near, tips
+
+
+def verify_arms_frustum(rig: bpy.types.Object, arms: bpy.types.Object,
+                        clips: list[gpm.Clip]) -> None:
+    """#81, measured: the arms have to be IN the frame and never through the near plane.
+
+    Every key of every clip is checked for the near plane, because a viewmodel only has to
+    reach the camera once for the player to see the inside of their own sleeve. Coverage
+    and hand placement are reported at each clip's own measure frame and a quarter-cycle
+    later, which is the pair the body's ``pose_measure`` already uses — a stance frame and
+    a mid-stride one."""
+    worst_near, worst_where = math.inf, ""
+    for clip in clips:
+        for pose in clip.poses:
+            _cover, near, _tips = measure_arms_frame(rig, arms, pose)
+            if near < worst_near:
+                worst_near, worst_where = near, f"{clip.name}/f{pose.frame}"
+
+    for clip in clips:
+        offsets = (0, clip.cycle_frames // 4) if clip.cycle_frames >= 8 else (0,)
+        for offset in offsets:
+            index = min(len(clip.poses) - 1, clip.measure_frame - 1 + offset)
+            cover, near, tips = measure_arms_frame(rig, arms, clip.poses[index])
+            on = sum(1 for t in tips if 0.0 <= t[0] <= 1.0 and 0.0 <= t[1] <= 1.0
+                     and t[2] > NEAR_CLIP)
+            wide = [(0.5 + (t[0] - 0.5) * FP_ASPECT / (4.0 / 3.0)) for t in tips]
+            print(f"ARMS_FRAME {clip.name:11s} f{clip.poses[index].frame:<3d} "
+                  f"cover={cover * 100.0:5.2f}% near={near * 1000.0:6.1f}mm "
+                  f"left=({tips[0][0]:.3f},{tips[0][1]:.3f})@{tips[0][2]:.3f}m "
+                  f"right=({tips[1][0]:.3f},{tips[1][1]:.3f})@{tips[1][2]:.3f}m "
+                  f"hands_on_screen={on}/2 x_at_4:3=({wide[0]:.3f},{wide[1]:.3f})")
+
+    print(f"ARMS_NEAR worst={worst_near * 1000.0:.1f}mm at={worst_where} "
+          f"near_plane={NEAR_CLIP * 1000.0:.0f}mm "
+          f"margin={(worst_near - NEAR_CLIP) * 1000.0:+.1f}mm "
+          f"(closest vertex INSIDE the view pyramid, every key of every clip)")
+    if worst_near <= NEAR_CLIP:
+        blendkit.fail(
+            f"{worst_where} puts arm geometry {worst_near * 1000.0:.1f} mm from the eye "
+            f"against a {NEAR_CLIP * 1000.0:.0f} mm near plane. The player would be looking "
+            "at the inside of their own sleeve through a hole cut by the clip plane, which "
+            "is the single worst artefact a first-person view can have — and it is the one "
+            "the shared third-person body produced, so it is not allowed back in through "
+            "the asset that replaced it.")
+
+
+def verify_arms_skin(rig: bpy.types.Object, arms: bpy.types.Object) -> None:
+    """Every VERTEX is driven, and the four arm bones drive something.
+
+    Half of ``verify_skin``, and the missing half is stated rather than dropped: on this
+    asset ``Hips``/``Spine``/``Chest`` are carriers with no geometry of their own, so the
+    "every bone moves some mesh" rule cannot apply to them. The rule that still must hold
+    is the one whose failure is unrecoverable — an unweighted vertex is pinned to the
+    armature origin, so it stays at the camera while the arm swings away and the mesh grows
+    a spike across the middle of the player's screen."""
+    counts = {g.name: 0 for g in arms.vertex_groups}
+    unweighted = 0
+    for vert in arms.data.vertices:
+        total = sum(g.weight for g in vert.groups if g.weight > 0.0)
+        for g in vert.groups:
+            if g.weight > 0.0:
+                counts[arms.vertex_groups[g.group].name] += 1
+        if total <= 1e-6:
+            unweighted += 1
+    for bone in [b.name for b in rig.data.bones]:
+        print(f"ARMS_SKIN_BONE {bone:14s} verts={counts.get(bone, 0):5d}"
+              f"{'   (carrier: posed, not skinned)' if bone in ARMS_CARRIERS else ''}")
+    print(f"ARMS_SKIN_REPORT bones={len(rig.data.bones)} groups={len(arms.vertex_groups)} "
+          f"verts={len(arms.data.vertices)} unweighted={unweighted}")
+    empty = [b for b in ARMS_DEFORMERS if counts.get(b, 0) == 0]
+    if empty:
+        blendkit.fail("these arm bones move no geometry: " + ", ".join(empty))
+    if unweighted:
+        blendkit.fail(
+            f"{unweighted} vertices of the arms carry no bone weight. Unity pins an "
+            "unweighted vertex to the skinned mesh's root, which on this asset is the "
+            "camera itself.")
+
+
+ARMS_CARRIERS = ("Hips", "Spine", "Chest")
+ARMS_DEFORMERS = ("LeftUpperArm", "LeftLowerArm", "RightUpperArm", "RightLowerArm")
+
+
+def verify_arms_roundtrip(path: str, expect_bones: int) -> None:
+    """Reads ``RunnerArms.fbx`` back and re-measures what Unity will actually see."""
+    before = {o.name for o in bpy.context.scene.objects}
+    try:
+        bpy.ops.import_scene.fbx(filepath=path, global_scale=1.0)
+    except RuntimeError as exc:
+        blendkit.fail(f"the arms FBX just written cannot be read back: {exc}")
+    fresh = [o for o in bpy.context.scene.objects if o.name not in before]
+    meshes = [o for o in fresh if o.type == "MESH"]
+    rigs = [o for o in fresh if o.type == "ARMATURE"]
+    if not meshes or not rigs:
+        blendkit.fail(
+            f"the arms FBX has {len(meshes)} meshes and {len(rigs)} armatures; it needs "
+            "one of each or Unity imports a viewmodel that cannot be posed.")
+    skinned = [o for o in meshes if o.vertex_groups
+               and any(m.type == "ARMATURE" for m in o.modifiers)]
+    bones = sum(len(r.data.bones) for r in rigs)
+    lo = Vector((math.inf,) * 3)
+    hi = Vector((-math.inf,) * 3)
+    for o in meshes:
+        for v in o.data.vertices:
+            w = o.matrix_world @ v.co
+            for i in range(3):
+                lo[i] = min(lo[i], w[i])
+                hi[i] = max(hi[i], w[i])
+    print(f"ARMS_ROUNDTRIP meshes={len(meshes)} armatures={len(rigs)} bones={bones} "
+          f"skinned={len(skinned)} size={hi.x - lo.x:.3f}x{hi.y - lo.y:.3f}x"
+          f"{hi.z - lo.z:.3f}m eye_relative_z={lo.z:+.3f}..{hi.z:+.3f}")
+    if not skinned:
+        blendkit.fail("the arms FBX has a rig and a mesh but no skin binding them.")
+    if bones != expect_bones:
+        blendkit.fail(f"the arms FBX reads back with {bones} bones, not {expect_bones}.")
+    if hi.z > 0.0:
+        blendkit.fail(
+            f"the arms reach {hi.z:+.3f} m ABOVE the eye. The asset's origin is the camera "
+            "(see EYE_HEIGHT); geometry above z = 0 is a sleeve behind the player's own "
+            "eyeball.")
+    for o in fresh:
+        bpy.data.objects.remove(o, do_unlink=True)
+
+
+def purge_orphans() -> None:
+    """Drops every action, material and image nothing is using any more.
+
+    The fake-user clear is not tidiness — it is the whole reason this works. Blender's FBX
+    importer marks every action it reads with ``use_fake_user``, which is a real user as far
+    as ``users`` is concerned, so the eight takes ``verify_roundtrip`` brings back in from
+    ``Runner.fbx`` survive an ordinary orphan purge and are still there when
+    ``blendkit.describe`` counts the arms' actions. The mesh and armature datablocks go
+    first for the same reason one step down: removing an OBJECT leaves its mesh behind, and
+    that orphaned mesh keeps its material slots alive."""
+    for action in list(bpy.data.actions):
+        # Fake users are cleared on ACTIONS ONLY. `_human_pristine` keeps the vendored
+        # CC0 cage alive with exactly this flag and no object user, so a blanket clear
+        # deletes the body this generator is built out of — measured, once.
+        if action.users == 1 and action.use_fake_user:
+            action.use_fake_user = False
+    for collection in (bpy.data.meshes, bpy.data.armatures, bpy.data.actions,
+                       bpy.data.materials, bpy.data.images):
+        for item in list(collection):
+            if item.users == 0 and not item.use_fake_user:
+                collection.remove(item)
+
+
+def build_first_person_arms(fit: Fit, sk: Skeleton, clips: list[gpm.Clip],
+                            rest_body: dict[str, Matrix], argv: list[str]) -> None:
+    """Builds, verifies and exports ``RunnerArms.fbx``. Runs after the body is finished.
+
+    Last, and not for tidiness: ``gpm.cache_rig`` is a module-global rest cache with one
+    slot, so pointing it at the arms rig is the last thing that can happen to the body's.
+    Everything the body needed from it — the retarget, the floor, the stretch, the motion
+    report — has already run and been asserted by the time this is called."""
+    if not RETARGET_BWORLD:
+        print("ARMS_SKIPPED the body's clips are procedural, so there are no source world "
+              "orientations to frame. RunnerArms.fbx is a mocap-path asset by definition — "
+              "its whole contract is that it carries the SAME motion as Runner.fbx.")
+        return
+
+    verify_view_constants()
+    arms = build_arms_mesh(fit, sk)
+    weights = arm_weights(arms, sk, fit)
+
+    specs, joints = arms_bone_specs(sk)
+    rig = blendkit.build_armature(ARMS_RIG_NAME, specs)
+    gpm.cache_rig(rig)
+
+    frames = frame_arms(arms, rig, sk, joints, rest_body, weights)
+
+    for name, table in weights.items():
+        group = arms.vertex_groups.new(name=name)
+        for index, weight in table.items():
+            group.add([index], weight, "REPLACE")
+    for carrier in ARMS_CARRIERS:
+        if carrier not in arms.vertex_groups:
+            arms.vertex_groups.new(name=carrier)
+    blendkit.bind_skin(arms, rig, auto_weights=False)
+    verify_arms_skin(rig, arms)
+
+    for bone in rig.data.bones:
+        h, t = bone.head_local, bone.tail_local
+        print(f"ARMS_BONE {bone.name:14s} parent={(bone.parent.name if bone.parent else '-'):13s} "
+              f"len={bone.length:.4f}m "
+              f"head=({h.x:+.3f},{h.y:+.3f},{h.z:+.3f}) tail=({t.x:+.3f},{t.y:+.3f},{t.z:+.3f})")
+
+    for s in ("Left", "Right"):
+        shoulder, elbow, hand = (joints[f"{s}Shoulder"], joints[f"{s}Elbow"],
+                                 joints[f"{s}Hand"])
+        u = (elbow - shoulder)
+        f = (hand - elbow)
+        flex = math.degrees(math.acos(max(-1.0, min(1.0, (-u).normalized().dot(
+            f.normalized())))))
+        eye = Vector((0.0, 0.0, EYE_HEIGHT))
+        vh = to_view(hand - eye)
+        ve = to_view(elbow - eye)
+        print(f"ARMS_POSE {s:5s} shoulder=({shoulder.x:+.3f},{shoulder.y:+.3f},"
+              f"{shoulder.z:.3f}) elbow=({elbow.x:+.3f},{elbow.y:+.3f},{elbow.z:.3f}) "
+              f"hand=({hand.x:+.3f},{hand.y:+.3f},{hand.z:.3f}) elbow_angle={flex:.1f}deg "
+              f"hand_view=({vh[0]:.3f},{vh[1]:.3f})@{vh[2]:.3f}m "
+              f"elbow_view=({ve[0]:.3f},{ve[1]:.3f})@{ve[2]:.3f}m")
+
+    rest_fp = dict(gpm.REST)
+    targets = {
+        "default": arm_frame_targets(sk, default_aim(), rest_fp)[0],
+        "gun": arm_frame_targets(sk, gun_aim(), rest_fp)[0],
+    }
+    for group, table in sorted(targets.items()):
+        for bone in ARMS_DEFORMERS:
+            axis, angle = (table[bone] @ rest_fp[bone].inverted()).to_quaternion(
+                ).to_axis_angle()
+            print(f"ARMS_TARGET {group:7s} {bone:14s} off_bind={math.degrees(angle):6.2f}deg "
+                  f"about ({axis.x:+.3f},{axis.y:+.3f},{axis.z:+.3f})")
+    for bone in ARMS_CARRIERS:
+        for table in targets.values():
+            table[bone] = rest_fp[bone]
+
+    fp_clips: list[gpm.Clip] = []
+    intended: dict[str, list[dict[str, Matrix]]] = {}
+    anchors: dict[str, tuple[dict[str, Matrix], dict[str, Matrix]]] = {}
+    for clip in clips:
+        table = targets["gun" if clip.name in GUN_CLIPS else "default"]
+        bworlds, means = arms_motion(clip.name, table)
+        intended[clip.name] = bworlds
+        anchors[clip.name] = (table, means)
+        fp = arms_clip(clip.name, clip, bworlds)
+        fp.action = blendkit.make_action(rig, fp.name, fp.poses, loop=fp.loop)
+        fp_clips.append(fp)
+    verify_arms_agreement(rig, fp_clips, intended, anchors)
+    verify_arms_frustum(rig, arms, fp_clips)
+    for clip in fp_clips:
+        stats = gpm.measure_action(clip.action)
+        print(f"ARMS_ANIM {clip.name:11s} frames={stats['start']}-{stats['end']} "
+              f"({stats['frames']:3d}f) loop={int(clip.loop)} curves={stats['curves']} "
+              f"keys={stats['keys']:4d} max_bone_motion={stats['max_deg']:6.2f}deg "
+              f"elbow={stats['per_bone'].get('RightLowerArm', 0.0):6.2f}deg")
+    gpm.clear_pose(rig)
+
+    for clip in fp_clips:
+        blendkit.stash_action(rig, clip.action)
+    for track in rig.animation_data.nla_tracks:
+        for strip in track.strips:
+            strip.extrapolation = "NOTHING"
+            strip.blend_in = 0.0
+            strip.blend_out = 0.0
+    rig.animation_data.action = None
+    gpm.clear_pose(rig)
+    bpy.context.scene.frame_set(0)
+
+    tris = _tris(arms)
+    print(f"ARMS_REPORT verts={len(arms.data.vertices)} tris={tris} "
+          f"materials={len(arms.data.materials)} bones={len(rig.data.bones)} "
+          f"clips={len(fp_clips)} decimate={ARMS_DECIMATE_RATIO}")
+
+    if "--no-export" in argv:
+        print("ARMS_NO_EXPORT built and checked; nothing written")
+        return
+
+
+    out = blendkit.out_path("Player", ARMS_FILENAME)
+    if "--arms-out" in argv:
+        i = argv.index("--arms-out") + 1
+        if i >= len(argv):
+            blendkit.fail("--arms-out needs a path after it.")
+        out = os.path.abspath(argv[i])
+        os.makedirs(os.path.dirname(out), exist_ok=True)
+
+    export_fbx(rig, arms, out)
+    report = blendkit.describe(out)
+    blendkit.assert_asset(report, min_vertices=200, max_triangles=6000,
+                          max_dimension=1.5, expect_bones=len(specs),
+                          exact_actions=len(CLIP_NAMES))
+    blendkit.print_report(report)
+    if "--glb" in argv:
+        glb = os.path.join(REPO_ROOT, "artifacts", "runner", "RunnerArms.glb")
+        os.makedirs(os.path.dirname(glb), exist_ok=True)
+        blendkit.export_gltf(glb, with_animation=True)
+        print(f"PREVIEW {glb}")
+    verify_takes_named(out, fp_clips, ARMS_RIG_NAME, ARMS_MESH_NAME, rig)
+    verify_arms_roundtrip(out, expect_bones=len(specs))
+    print(f"FILES {out}")
+    print(f"BYTES arms_fbx={os.path.getsize(out)}")
+
 
 
 # ── Entry point ─────────────────────────────────────────────────────────────
@@ -4865,6 +6084,11 @@ def main() -> None:
 
     rig = build_rig(skeleton, body, shells[1:])
     verify_skin(rig, body)
+
+    # The body's rest, captured while gpm's one-slot cache still holds it. The
+    # first-person arms derive their framing as `arms_rest @ body_rest⁻¹`, and by the time
+    # they are built this cache has been re-pointed at their own rig.
+    rest_body = dict(gpm.REST)
 
     # DEFAULT: the eight clips are professional mocap retargeted onto this rig (Task #84 —
     # the procedural gait did not read as running). `--procedural`, or a missing source
@@ -4979,6 +6203,7 @@ def main() -> None:
 
     if "--no-export" in argv:
         print("NO_EXPORT built and checked; nothing written")
+        build_first_person_arms(fit, skeleton, clips, rest_body, argv)
         return
 
     export_fbx(rig, body, out)
@@ -5015,6 +6240,21 @@ def main() -> None:
 
     print(f"FILES {out}")
     print(f"BYTES fbx={os.path.getsize(out)}")
+
+    # ── and the first person ────────────────────────────────────────────────
+    # After the body is written and read back, never before. `blendkit.describe` measures
+    # the whole SCENE, so a second asset standing beside the first would be counted into
+    # its report; and `gpm.cache_rig` has one slot, which the arms are about to take.
+    for obj in (body, rig):
+        bpy.data.objects.remove(obj, do_unlink=True)
+    # And the datablocks they left behind: the body's eight actions, the eight
+    # `verify_roundtrip` created reading Runner.fbx back, and that import's materials.
+    # Orphans are not free here — `blendkit.describe` counts `bpy.data.actions` and
+    # `bpy.data.materials`, and Blender renames a new action to `Idle.001` when an `Idle`
+    # already exists, which is a TAKE NAME: `PlayerFeelHarnessMenu.AssignClips` looks clips
+    # up by bare name, so a suffixed take is a null clip field in Unity.
+    purge_orphans()
+    build_first_person_arms(fit, skeleton, clips, rest_body, argv)
 
 
 if __name__ == "__main__":
