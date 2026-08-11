@@ -1622,6 +1622,564 @@ def build_metal_floor(res: int, seed: int) -> MapSet:
     return MapSet(colour, roughness, height, metallic, world, 0.012)
 
 
+# ── §12's three deep floors ─────────────────────────────────────────────────
+#
+# `Core/Map/FloorMaterial.cs` has named **eight** surfaces since 하강 stacked
+# eight storeys, and this file shipped five. B6 병동 (카펫), B7 수몰층 (물) and
+# B8 굴착층 (흙) therefore rendered on `MapSceneBuilder`'s placeholder colour —
+# no albedo map, no normal, no roughness, no occlusion — for as long as those
+# storeys have existed. Counted in the shipped `.mat` bytes it was six texture
+# bindings each on the five that worked and **zero** on the three that did not.
+#
+# The guard that exists to catch exactly this,
+# `ProceduralTextureMaterials.ContractualFloors`, enumerated only the five that
+# already worked, so it could never fire. The three names go into that constant
+# in the same change that makes these three surfaces exist and not before: a gate
+# asserting something that is not yet true is a gate people learn to ignore.
+#
+# They are authored to the same rule as the five — a different *structure* each,
+# never a different tint, because structure is what survives an off-axis beam.
+# And they widen §12's distinctness requirement from a five-surface space to an
+# eight-surface one. That is the part most likely to go wrong: a new floor that
+# collides with an old one is a worse defect than the missing texture was,
+# because the Listener channel it breaks is one a player was already using.
+# Where the eight land on (albedo, roughness) is in `docs/ART.md`; the short
+# version is that the three below take the two corners the five had left empty —
+# dark-and-matte (흙), dark-and-mirror (물) — and the one place a mid albedo can
+# still sit without touching 나무, which is directly above it in roughness (카펫).
+
+
+def build_carpet(res: int, seed: int) -> MapSet:
+    """§12 B6 병동 — 카펫. Contract tile, crushed lanes, ward stains.
+
+    The ward is "the one storey finished for people rather than plant"
+    (`ZoneIdentity`'s 병동 row), and what a hospital corridor is actually finished
+    in is **contract carpet tile**: 50 cm squares, low loop pile, laid
+    quarter-turned so the pile of every other tile runs the other way.
+
+    That quarter-turn is this floor's at-a-glance cue and no other surface in the
+    set makes it. Pile is directional — it is brighter looked into and darker
+    looked along — so a beam raking the room lights a soft checkerboard that
+    *appears and vanishes as the player turns*. A tint would die the moment the
+    beam went off-centre; a checker that answers to viewing angle cannot, because
+    it is carried by the normal map like every other structure here.
+
+    Its second cue is the opposite of every other floor's wear. Worn timber goes
+    pale and worn concrete burnishes brighter, so on both of them the walk line
+    is the light one. Crushed pile lies flat: the light that used to scatter back
+    out of a standing tuft now travels along it and does not come back. **On this
+    floor the traffic lane is the dark one**, and where forty years of feet have
+    taken the pile off entirely the pale jute backing shows through — dark lane,
+    bright scar inside it, which is a two-tone read nothing else here has.
+    """
+    world = 2.0
+    tiles = 4            # 50 cm contract tiles across a 2 m tile
+    tufts = 152          # ~13 mm per tuft cluster — the finest thing 512 px/m holds
+
+    row = index_of(res, tiles, axis=0)
+    col = index_of(res, tiles, axis=1)
+    tile_index = row * tiles + col
+    turned = ((row + col) % 2).astype(np.float32)
+
+    # One dome per tuft, each with its own height: loop pile is a field of
+    # individual loops, and it is the *unevenness* between them that keeps a
+    # carpet from rendering as felt.
+    distance, _, owner = worley(res, tufts, seed + 1, jitter=1.0)
+    radius = 0.70 / tufts
+    tuft = np.sqrt(np.clip(1.0 - (distance / radius) ** 2, 0.0, 1.0))
+    tuft = tuft * per_cell(owner, tufts, seed + 2, 0.50, 1.0)
+
+    # The lay. Blurring *across* the run leaves the along-run detail intact, so
+    # the pile comes out drawn in a direction rather than merely softened — the
+    # same trick `micro_grain`'s anisotropy uses on timber fibre and rolled
+    # steel. Two versions, mixed by a blurred checkerboard rather than a hard
+    # one: tiles butt, they do not gap, and the loops at a joint interlock over
+    # about a centimetre. Blurring the selector also means the wrap edge is
+    # treated exactly like the three interior joints, so the tile still tiles.
+    #
+    # The smear is deliberately *short* — about a third of a tuft. The first
+    # version drew it a whole tuft long and the normal map came back as a comb:
+    # rendered, that is brushed steel, which is another floor in this set. Pile
+    # is a dense field of loops that happens to lean, not a set of grooves, so
+    # the lean has to stay smaller than the loop that carries it.
+    lay = res / tufts * 0.34
+    along_u = ndimage.gaussian_filter1d(tuft, sigma=lay, axis=1, mode="wrap").astype(np.float32)
+    along_v = ndimage.gaussian_filter1d(tuft, sigma=lay, axis=0, mode="wrap").astype(np.float32)
+    lay_mix = blur(turned, res * 0.005)
+    pile = normalise01(along_u * (1.0 - lay_mix) + along_v * lay_mix)
+
+    seam = np.maximum(groove(stripes(res, tiles, axis=0), 0.016, softness=0.70),
+                      groove(stripes(res, tiles, axis=1), 0.016, softness=0.70))
+
+    # A heather yarn, never one colour. Contract carpet is spun from two or three
+    # shades precisely so it hides dirt, and that speckle is what a beam finds
+    # first at a metre. Per tuft, so it survives every filter that would average
+    # a noise field away — including `detile` and the mip chain.
+    yarn = per_cell(owner, tufts, seed + 3, 0.48, 1.54)
+    fleck = smoothstep(0.72, 0.92, per_cell(owner, tufts, seed + 4, 0.0, 1.0))
+    tile_tone = cell_random(tile_index, tiles * tiles, seed + 5, 0.90, 1.10)
+
+    # Broad, noise-broken, and deliberately not a stripe: a hard lane would tile
+    # into a painted line down the middle of every ward corridor in the building.
+    # Broken *less* than the first version, which mixed it 45/55 with noise and
+    # left nothing legible at all — a lane the eye cannot find is not a lane, and
+    # this one carries half of what tells 카펫 from 나무.
+    lane = np.exp(-((stripes(res, 1, axis=0) - 0.5) ** 2) / 0.105)
+    lane = np.clip(lane * (0.66 + 0.34 * warped_fbm(
+        res, seed + 6, beta=2.2, strength=res * 0.05, low_cycles=1.4)), 0.0, 1.0)
+    crush = smoothstep(0.18, 0.82, lane)
+    # Rare. Carpet wears *through* at a doorway or a bed foot, not along a whole
+    # corridor: thresholded at 0.62 it took the entire centre of the tile and the
+    # lane rendered as a pale streak, which inverts the read this floor is built
+    # on — the walk line is the dark one and the bald scars are the small bright
+    # things inside it.
+    bald = smoothstep(0.80, 0.97, lane * (0.55 + 0.45 * fbm(res, seed + 7, beta=2.0, low_cycles=5.0)))
+    backing = fbm(res, seed + 8, beta=1.2, low_cycles=90.0)
+
+    # Spills, and the rim is the point. A stain dries from its edge inward, so
+    # the solids end up concentrated in a ring — the coffee-ring effect. Without
+    # it a stain reads as an airbrush, which is what every painted-on stain in
+    # every generated texture looks like.
+    spill = np.clip(
+        stain(res, seed + 9, threshold=0.70, softness=0.05, detail=0.60, low_cycles=3.2) * 0.9
+        + stain(res, seed + 10, threshold=0.79, softness=0.03, detail=0.70, low_cycles=6.5) * 0.7,
+        0.0, 1.0)
+    ring = np.clip(blur(spill, res * 0.006) - spill, 0.0, 1.0) * 2.4
+    soil = warped_fbm(res, seed + 11, beta=2.2, strength=res * 0.04, low_cycles=1.8)
+
+    height = np.clip(
+        0.52
+        + pile * 0.34
+        + tile_tone * 0.02
+        + backing * bald * 0.03
+        - crush * 0.15
+        - bald * 0.32
+        - seam * 0.62,
+        0.0, 1.0,
+    )
+
+    shade = yarn * tile_tone * (0.84 + 0.32 * pile)
+    shade *= 1.0 - 0.14 * soil
+    colour = tint((0.232, 0.250, 0.208), shade, (0.086, 0.090, 0.078), np.clip(seam * 0.85, 0.0, 1.0))
+    colour = tint(colour, np.ones((res, res), np.float32), (0.094, 0.092, 0.076), fleck * 0.62)
+
+    # The quarter-turn read, and the one place this file bakes a directional
+    # effect into a *tone*. It is not the tint the header warns about. Pile
+    # scatters more light back the way it leans, so two tiles laid at right
+    # angles genuinely differ in luminance under any one light — every real
+    # contract-carpet install shows this checkerboard, and installers have a name
+    # for it. The normal map carries the anisotropy that produces it, but at
+    # 512 px/m a 13 mm tuft is six texels wide and the shading cancels across a
+    # mip; this term is the *mean* of what the normal is already doing, so the
+    # checker survives to the distance a player actually reads a room at.
+    # Deliberately small — nine per cent — because it is a real material's
+    # difference, not a decal of one.
+    colour *= (1.0 - 0.09 * blur(turned, res * 0.006))[..., None]
+
+    colour *= (1.0 - 0.34 * crush)[..., None]
+    colour = tint(colour, np.ones((res, res), np.float32), (0.330, 0.310, 0.268), bald * 0.70)
+    colour = tint(colour, np.ones((res, res), np.float32), (0.084, 0.068, 0.050),
+                  np.clip(spill * 0.62 + ring * 0.55, 0.0, 1.0))
+
+    # The matte end of the whole set, by a distance. Standing pile is as close to
+    # a Lambertian surface as a real material gets — the fibres point every way
+    # at once, so there is no lobe left to specular with. Everything that lowers
+    # this number is fibre being flattened or removed.
+    # Every term that lowers this is fibre being flattened or removed, and none of
+    # them may lower it far. Crushed pile is still *fibre* — it picks up a sheen,
+    # not a gloss — and a first pass that spent 0.24 on the lane and 0.42 on the
+    # bald patches pulled the mean to 0.85, which is 나무's neighbourhood. Two
+    # floors that answer a beam the same way are two floors the Listener cannot
+    # separate, and 카펫 is the one surface here whose entire identity is that it
+    # answers a beam with nothing at all.
+    roughness = np.clip(
+        0.98 + 0.03 * pile + 0.02 * seam
+        - 0.14 * crush - 0.30 * bald - 0.08 * spill,
+        0.44, 1.0,
+    )
+
+    colour = detile(colour, strength=0.70)
+
+    # Carpet wicks; it does not pool. Damp spreads out of the wall junction and
+    # travels through the backing, so the mark is broad, darker, and *not*
+    # smoother — wet wool mats. Standing water on this floor would read as
+    # 수몰층 one storey down, which is the surface this one has to be told apart
+    # from, so the pool term is deliberately zero.
+    seepage = stain(res, seed + 31, threshold=0.60, softness=0.11, detail=0.50, low_cycles=1.5)
+    film = np.clip(seepage * (0.55 + 0.45 * soil), 0.0, 1.0) * 0.80
+    colour, roughness, height = wet(
+        colour, roughness, height, film, np.zeros_like(film), 0.0,
+        darkening=0.38, film_roughness=0.90)
+
+    return MapSet(colour, roughness, height, np.zeros((res, res), np.float32), world, 0.0085)
+
+
+def build_water(res: int, seed: int) -> MapSet:
+    """§12 B7 수몰층 — 물. Standing water over a silted floor, and its shoreline.
+
+    ART.md §3.8c: 물 is one of §12's eight floor materials in its own right, B7 is
+    수몰층, and standing water is *the loudest surface in the game* — 「you cannot
+    cross it unheard」. So this floor has to be recognisable **before** a player
+    steps in it, from outside the beam, because stepping in it tells everyone
+    within 40 m where they are.
+
+    This is a flooded storey, not a swimming pool. The building's own screed is
+    still under there, silt has settled into its hollows, and about three
+    quarters of it is drowned — which leaves a **shoreline**, and the shoreline
+    is the whole read. It is the only genuinely level line anywhere in the game:
+    every other straight edge here is a joint, a course or a plank, and all of
+    them follow the building. Water follows gravity, so its edge cuts across the
+    building's geometry at whatever angle the floor happens to fall at, and a
+    contour that ignores the architecture is unmistakable at a glance.
+
+    The wet itself is `wet()` — §3.8c's three separable effects, not a fourth
+    private implementation of them — driven off `water_line`, which is a quantile
+    of this surface's own height field for the reason that function records. What
+    is added on top of it is what a *basement* flood has and a clean model of
+    water does not: dried silt cracking into polygons on the banks, a pale tide
+    mark where the level has dropped, and a scum line of dust and oil held at the
+    water's edge by surface tension.
+    """
+    world = 2.0
+
+    # The bed: a screed floor that has settled. Slow, shallow, and it is what
+    # decides where the water goes — the quantile does the rest.
+    bed = warped_fbm(res, seed + 1, beta=2.2, strength=res * 0.06, low_cycles=1.4)
+    fines = blur(fbm(res, seed + 2, beta=1.9, low_cycles=6.0), res * 0.004)
+    silt_grain = fbm(res, seed + 13, beta=1.30, low_cycles=64.0)
+
+    # Banks and islands. `stain` rather than a smoothed threshold, because a
+    # shoreline is ragged at every scale at once and that is exactly the shape
+    # `stain` exists to make — see its docstring for why the obvious
+    # construction gives smooth-edged bubbles instead.
+    banks = stain(res, seed + 3, threshold=0.44, softness=0.05, detail=0.65, low_cycles=1.8)
+    banks = np.clip(banks + stain(res, seed + 4, threshold=0.74, softness=0.04,
+                                  detail=0.70, low_cycles=5.5) * 0.7, 0.0, 1.0)
+
+    # Rubble: flat angular pieces of the building lying in the silt. They break
+    # the surface, which is what stops one big lake from reading as a lake.
+    #
+    # The *interior* of a Worley cell rather than a radius from its centre. A
+    # radius gives perfect discs, and a field of discs on water reads as bubbles
+    # or as rivets — the first version did exactly that. Broken slab is angular,
+    # so the shape has to come from the cell polygon, warped so the polygon is
+    # not obviously a polygon.
+    chip_near, chip_far, chip_owner = worley(res, 18, seed + 5, jitter=1.0)
+    chip_y = (fbm(res, seed + 14, beta=2.0, low_cycles=5.0) - 0.5) * res * 0.022
+    chip_x = (fbm(res, seed + 15, beta=2.0, low_cycles=5.0) - 0.5) * res * 0.022
+    rubble = smoothstep(0.004, 0.019, warp(chip_far - chip_near, chip_y, chip_x)) * \
+        smoothstep(0.78, 0.94, per_cell(chip_owner, 18, seed + 6, 0.0, 1.0))
+
+    # The drowned part is a screed floor, and screed is flat — so the bed takes
+    # very little of the range and the banks take most of it. That is not a
+    # shaping preference. `wet` levels the height wherever it pools, so whatever
+    # share of the range sits *below* the water line is deleted from the shipped
+    # relief: the first version spent three quarters of its height on a floor
+    # nobody can see and shipped 8.6 mm of normal for a flooded storey.
+    height = np.clip(
+        0.10
+        + bed * 0.11
+        + fines * 0.06
+        + banks * 0.62
+        + rubble * 0.15,
+        0.0, 1.0,
+    )
+
+    # Dried silt cracks into polygons as it shrinks — the one structure that says
+    # "this was under water and is not now" without a single wet texel in it.
+    # Cut from the Worley boundary for the same reason `build_concrete_floor`
+    # cuts its cracks there: that difference goes to zero exactly on the boundary
+    # between two cells, which is what a shrinkage fracture is.
+    f1, f2, _ = worley(res, 26, seed + 7, jitter=0.95)
+    wander_y = (fbm(res, seed + 8, beta=2.0, low_cycles=4.0) - 0.5) * res * 0.03
+    wander_x = (fbm(res, seed + 9, beta=2.0, low_cycles=4.0) - 0.5) * res * 0.03
+    craze = 1.0 - smoothstep(0.0, 0.0045, warp(f2 - f1, wander_y, wander_x))
+
+    water_level = water_line(height, 0.74)
+    pool = standing_water(height, water_level, softness=0.022)
+    film = np.clip(blur(pool, res * 0.014) * 1.7 - pool, 0.0, 1.0) * 0.9
+
+    # Cracks only where it is genuinely dry, and the AO sees them: silt under
+    # water has not shrunk.
+    dry = np.clip(1.0 - pool - film * 0.7, 0.0, 1.0)
+    craze = craze * dry
+    height = np.clip(height - craze * 0.10, 0.0, 1.0)
+
+    # Where the level has dropped it has left a band of pale dried silt — the
+    # tide mark. Measured off the height rather than painted, so it stays on the
+    # contour when the bed is re-tuned.
+    shore = np.exp(-((height - water_level) / 0.030) ** 2)
+    tide = shore * dry * (0.55 + 0.45 * fbm(res, seed + 10, beta=2.1, low_cycles=4.0))
+
+    # `silt_grain` is here for a measured reason. The first version's albedo put
+    # 4.1 % of its energy above 25 cycles per metre — the lowest in the set by a
+    # factor of three, and ART.md §3.9's definition of a surface with nothing left
+    # to show once a player is closer than four metres. Three quarters of this
+    # floor is under water and `wet` scales that region's contrast by a third, so
+    # whatever fine structure the silt carries has to be authored *strong* to
+    # survive being drowned.
+    silt = 0.84 + 0.24 * fines + 0.20 * silt_grain
+    shade = silt * (0.90 + 0.20 * bed) * (1.0 - 0.16 * craze)
+    colour = tint((0.300, 0.292, 0.262), shade, (0.118, 0.108, 0.092), craze * 0.65)
+    colour = tint(colour, np.ones((res, res), np.float32), (0.395, 0.380, 0.336), tide * 0.45)
+    colour = tint(colour, np.ones((res, res), np.float32), (0.245, 0.238, 0.222),
+                  per_cell(chip_owner, 18, seed + 11, 0.0, 1.0) * rubble * 0.55)
+
+    roughness = np.clip(0.82 - 0.10 * bed + 0.08 * craze + 0.06 * tide - 0.14 * rubble, 0.30, 1.0)
+
+    colour = detile(colour, strength=0.70)
+
+    # §3.8c, and it is the whole material rather than a treatment on top of one.
+    # `darkening` is the highest in the set: this is not a damp film, it is
+    # centimetres of standing water, and what comes back off it is a reflection
+    # of a room that is almost black.
+    colour, roughness, height = wet(
+        colour, roughness, height, film, pool, water_level,
+        darkening=0.68, film_roughness=0.30, pool_roughness=0.07)
+
+    # Surface tension holds every loose thing in the building at the edge of the
+    # water: dust, soot, a skin of oil. So the shoreline is a *line* and not a
+    # gradient — darker, and rough where the water beside it is a mirror. It goes
+    # on after `wet` deliberately, because `wet` is the physics and this is the
+    # dirt floating on it.
+    scum = np.clip(shore * np.clip(pool + film, 0.0, 1.0) * 1.6, 0.0, 1.0)
+    colour = (colour * (1.0 - 0.30 * scum)[..., None]).astype(np.float32)
+    roughness = np.clip(roughness + 0.34 * scum, 0.0, 1.0)
+
+    # Capillary ripple. A dead-flat mirror over a 2 m tile reads as glass, not as
+    # water: standing water is never still in a building with air moving through
+    # it. Tiny — a fifth of a millimetre — but it is what turns the beam's
+    # reflection from a hard disc into a shimmer, and it is added to the height
+    # *after* `wet` has levelled the pools, because it is a disturbance of the
+    # level surface rather than of the floor underneath.
+    ripple = micro_grain(res, world, seed + 12, 0.055, beta=1.6)
+    height = np.clip(height + pool * ripple * 0.006, 0.0, 1.0).astype(np.float32)
+
+    # Grit and dust on the water, silt still in suspension under it. Confined to
+    # the wet, and the one thing in the pools with any contrast in it at all —
+    # water itself has none, which is exactly why a rendered pool with nothing
+    # floating on it reads as a hole in the floor rather than as a surface.
+    motes = smoothstep(0.60, 0.92, fbm(res, seed + 16, beta=1.15, low_cycles=76.0))
+    wetness = np.clip(pool + film, 0.0, 1.0)
+    colour = (colour * (1.0 + (motes * 0.62 - 0.17) * wetness)[..., None]).astype(np.float32)
+
+    return MapSet(colour.astype(np.float32), roughness.astype(np.float32), height,
+                  np.zeros((res, res), np.float32), world, 0.055)
+
+
+def build_earth(res: int, seed: int) -> MapSet:
+    """§12 B8 굴착층 — 흙. A dig face: cut clay, spoil, tool marks, buried timber.
+
+    The bottom of the race, and §02 puts the finish light on it, so this is the
+    last surface in the descent and the one a player is standing on when the
+    match is decided. §07 has been promising for seven storeys that the night
+    deepens all the way down, which is why this is deliberately **the darkest
+    floor in the set** — 0.17 linear against 자갈's 0.44 and 콘크리트's 0.23. Damp
+    turned loam genuinely sits at 0.08–0.12; 0.17 is already a concession to
+    `ALBEDO_MIN_LINEAR`, not a dark-painting of the kind this file's header
+    forbids, and the darkness still comes from the paint being *this material's*
+    paint rather than from the lighting being cheated.
+
+    A dig is not ground. Ground is weathered, settled and level; a dig is a
+    *worked* surface, cut this week, and the three things that say so are:
+
+    * **Blocky clods, not stones.** Soil fails on planes, so turned earth breaks
+      into flat-topped lumps separated by open fissures — where 자갈 is a pile of
+      domes. The height field is built from the Worley cell interior (one flat
+      level per clod) and its boundary (the fissure), which is the opposite way
+      round from `build_gravel`, and it is why the two do not read alike even
+      though both are loose material.
+    * **Tool marks, and they are the specular story.** A spade in wet clay
+      polishes what it cuts. So the gouges are the *smooth* population on an
+      otherwise matte floor and the beam finds short bright slicks lying at every
+      angle — a signature no other surface here produces, because every other
+      floor's smooth places are flat and continuous (a plate, a glaze, a
+      burnished slab) and these are short, curved and scattered.
+    * **Buried timber.** Shoring boards laid on the mud to walk on, mostly
+      trodden under. They give long straight lines like 나무's plank gaps, but
+      *interrupted* — a board surfaces for 30 cm and goes back under — which is
+      the difference between a floor made of boards and a floor with boards in it.
+
+    And it is wet, because it is directly under 수몰층. Water stands in the
+    deepest gouges rather than lying in sheets, which is what a working dig looks
+    like and also what keeps this floor away from B7's on every axis at once.
+    """
+    world = 2.0
+
+    # Spoil heaped over the cut floor: the slow, metre-scale undulation a dig has
+    # and a laid floor never does. It goes in first because it is what the eye
+    # reads from across a room, before any clod is resolvable.
+    # `low_cycles` 3.2, not 2.6, and the difference is one measured number.
+    # `BLOB_CYCLES_PER_TILE` is 2.0: anything slower than that is a feature the
+    # size of the tile itself, so every copy of it lands on the lattice and the
+    # eye locks onto the repeat instead of the material. At 2.6 the heap's skirt
+    # reached into that band and this floor measured 17.0 % blob — the worst of
+    # the eight after 금속's plate. At 3.2 the undulation is 62 cm across, which
+    # is still a heap and no longer the tile.
+    heap = warped_fbm(res, seed + 1, beta=2.3, strength=res * 0.05, low_cycles=3.2)
+
+    height = np.zeros((res, res), dtype=np.float32)
+    shade = np.full((res, res), 0.9, dtype=np.float32)
+    fissure = np.zeros((res, res), dtype=np.float32)
+
+    # Two clod sizes, 29 cm and 15 cm. A third and finer scale was built, rendered
+    # and removed: three scales of Worley boundary is a *complete* polygon network
+    # at every size at once, and a complete polygon network is dried mud — which
+    # is precisely what `build_water`'s silt banks are, one storey up. Two floors
+    # sharing a structure is the §12 collision this whole section exists to avoid,
+    # and it is worse than the missing texture it would have replaced.
+    for level, (cells, lift) in enumerate(((7, 0.00), (13, 0.16))):
+        f1, f2, owner = worley(res, cells, seed + 40 + level * 41, jitter=1.0)
+
+        # One wander, applied to every term drawn from this layer, so the clod and
+        # the fissure that outlines it stay registered to each other. Unwarped,
+        # Worley cells are dead-straight polygons and no amount of tinting hides it.
+        wander_y = (fbm(res, seed + 40 + level * 41 + 5, beta=2.1, low_cycles=3.0) - 0.5) * res * 0.055
+        wander_x = (fbm(res, seed + 40 + level * 41 + 7, beta=2.1, low_cycles=3.0) - 0.5) * res * 0.055
+        boundary = warp(f2 - f1, wander_y, wander_x)
+
+        # A plateau, not a dome, and this is the whole difference from 자갈. Stone
+        # is rounded by transport and its surface is the top of a sphere; soil
+        # fails on planes, so a clod is a flat-ish face with a steep broken skirt.
+        # `build_gravel` takes a max over domes; this takes a max over tables.
+        #
+        # And the tables must NOT tessellate. `smoothstep(0, w, boundary)` fills
+        # the whole Worley cell, so every clod shares an edge with its neighbours
+        # and the floor comes out as a space-filling polygon tiling — which is
+        # cobblestone, or a turtle's shell, and it was the last thing wrong with
+        # this surface after three rounds. Shifting the zero crossing inward by
+        # `0.12 / cells` shrinks each clod off its own cell boundary and opens a
+        # real gap between it and the next one. The gaps are not empty: nothing
+        # wins the `maximum` there, so they fill with `heap` and `grit` — the
+        # loose fines that sit between lumps of turned earth, which is what a
+        # tessellation has nowhere to put.
+        plateau = smoothstep(0.0, 0.30 / cells, boundary - 0.12 / cells)
+        top = warp(per_cell(owner, cells, seed + 40 + level * 41 + 11, 0.42, 1.0), wander_y, wander_x)
+
+        candidate = (top * (1.0 - lift) + lift) * plateau
+        winner = candidate > height
+        shade = np.where(winner, warp(per_cell(owner, cells, seed + 40 + level * 41 + 13, 0.48, 1.46),
+                                      wander_y, wander_x), shade)
+
+        # Occasional, never a network. A fissure needs somewhere for the soil to
+        # have moved to, and most clod joints are simply packed shut.
+        opening = smoothstep(0.58, 0.86, fbm(res, seed + 40 + level * 41 + 17, beta=2.3, low_cycles=2.2))
+        fissure = np.maximum(fissure, (1.0 - smoothstep(0.0, 0.10 / cells, boundary)) * opening)
+        height = np.maximum(height, candidate)
+
+    grit = fbm(res, seed + 3, beta=1.25, low_cycles=26.0)
+    # Above `GRAIN_CYCLES_PER_METRE * world` = 50 cycles per tile, which is the
+    # band ART.md §3.9 measures and the band a plateau-based height field has none
+    # of by construction: flat tops carry no fine relief, so the crumb sitting on
+    # them has to be authored rather than inherited. The first pass scored 7.8 %
+    # grain — the lowest of the eight floors — for exactly that reason.
+    crumb = fbm(res, seed + 11, beta=1.15, low_cycles=62.0)
+    # Fissures pulled back from 0.26 to 0.16 now that the clods no longer
+    # tessellate: the gaps between them are doing the work a drawn fissure was
+    # standing in for, and two overlapping ways of saying "there is a hole here"
+    # is what made the first three rounds read as a crack network.
+    height = normalise01(height * 0.72 + heap * 0.34 - fissure * 0.16
+                         + grit * 0.06 + crumb * 0.03)
+
+    # Tool marks, and they have to be *big*. Drawn by `scratches`, which walks a
+    # point across the torus so a mark that leaves one edge arrives at the other
+    # instead of stopping like a scratch on a photograph. The first version drew
+    # them at a centimetre wide and they were invisible at every distance: a spade
+    # is 20 cm across and takes a scoop that size, so 4 cm of blur on an 11-stroke
+    # pass is the honest figure, not a timid one.
+    spade = smoothstep(0.46, 0.90, scratches(res, seed + 4, count=11, length=0.20, width=0.022))
+    pick = smoothstep(0.62, 0.96, scratches(res, seed + 5, count=26, length=0.08, width=0.007))
+    tool = np.clip(spade + pick * 0.65, 0.0, 1.0)
+
+    # Shoring boards laid on the mud to walk on: 22 cm of board in a 67 cm band,
+    # butted at a per-board stagger, and mostly trodden under. The exposure mask
+    # is slow noise along the board's length, so a board surfaces for a third of
+    # a metre and goes back under. That interruption is the point — uninterrupted
+    # it is 나무's staggered planking, which is a different floor in this set.
+    band = stripes(res, 3, axis=0)
+    board_face = smoothstep(0.050, 0.075, band) * smoothstep(0.360, 0.335, band)
+    butt = groove(stripes(res, 2, axis=1,
+                          phase=cell_random(index_of(res, 3, axis=0), 3, seed + 6, 0.0, 1.0)), 0.020)
+    surfaced = smoothstep(0.44, 0.70, warped_fbm(res, seed + 7, beta=2.3, strength=res * 0.055, low_cycles=2.4))
+    timber = np.clip(board_face * surfaced - butt * 0.85, 0.0, 1.0)
+    fibre = normalise01(ndimage.gaussian_filter1d(
+        fbm(res, seed + 8, beta=1.25, low_cycles=14.0), sigma=res * 0.010, axis=0, mode="wrap"))
+
+    damp = np.clip(
+        stain(res, seed + 9, threshold=0.52, softness=0.10, detail=0.55, low_cycles=1.7) * 0.8
+        + stain(res, seed + 10, threshold=0.72, softness=0.05, detail=0.60, low_cycles=4.0) * 0.5,
+        0.0, 1.0)
+
+    # A board is *flat*, and the height field has to be lerped toward its level
+    # rather than added to. The first version added `timber * 0.20` on top of the
+    # clods and got a ridge of mud shaped like a plank: every lump underneath came
+    # straight through the board, so the one structure that was supposed to give
+    # this floor a straight line did not read at any distance. A plank lying on
+    # mud replaces the mud it lies on.
+    board_level = 0.80 + fibre * 0.05
+    height = np.clip(
+        (height - tool * 0.22) * (1.0 - timber) + board_level * timber,
+        0.0, 1.0,
+    )
+
+    # `crumb` carries a third of the paint variation on purpose. It is the only
+    # term in this material above 25 cycles per metre — `grit` sits at 13 and the
+    # clod plateaux are flat by construction — so it is the whole of what this
+    # floor has to show a player standing on it. Measured as absolute RMS rather
+    # than as a share: at 0.20 the albedo carried 0.0184 in that band, the lowest
+    # of the eight floors and a fifth under 콘크리트, which was the previous worst.
+    surface = shade * (0.88 + 0.22 * grit) * (0.86 + 0.30 * crumb)
+    # Wetter than a dig above ground would be, and it has to be: this storey sits
+    # directly under 수몰층. Dry, the clay reads as sand under a beam, which is a
+    # desert and not the bottom of a flooded building.
+    surface *= 1.0 - 0.40 * damp
+    # Fissures lifted from 0.85 to 0.62. At 0.85 every clod was outlined in near
+    # black and the floor read as crazed dried mud — which is a real surface, but
+    # it is `build_water`'s silt bank one storey up, and it is not what a dig
+    # face looks like. The gap between two clods is a shadow a centimetre deep,
+    # not an ink line, and the AO map is what should be drawing it.
+    colour = tint((0.176, 0.142, 0.108), surface, (0.058, 0.046, 0.036), np.clip(fissure * 0.62, 0.0, 1.0))
+
+    # Dry fines on the clod tops — the pale crumb that sits on turned earth, and
+    # the only thing on this floor brighter than the base. Kept off the timber:
+    # a board that has been walked on is swept clean by feet.
+    dust = smoothstep(0.64, 0.94, height) * (0.40 + 0.60 * grit) * (1.0 - timber)
+    colour = tint(colour, np.ones((res, res), np.float32), (0.228, 0.202, 0.166), dust * 0.30)
+
+    # A cut face is compacted and wet, so it is darker than the crumb beside it.
+    # That is the read which makes the slicks legible as *cuts* rather than as a
+    # gloss map somebody painted: the dark places are the shiny ones, which is
+    # backwards for every other floor here and forwards for a spade in clay.
+    colour = tint(colour, np.ones((res, res), np.float32), (0.112, 0.084, 0.058), tool * 0.60)
+    colour = tint(colour, np.ones((res, res), np.float32), (0.104, 0.074, 0.046),
+                  timber * (0.55 + 0.45 * fibre) * 0.88)
+
+    roughness = np.clip(
+        0.93 + 0.07 * fissure - 0.05 * dust
+        - 0.40 * tool - 0.13 * damp - 0.18 * timber,
+        0.30, 1.0,
+    )
+
+    colour = detile(colour, strength=0.72)
+
+    # Water stands in the gouges, not in sheets. This is the storey directly
+    # under 수몰층 and it is being dug in the wet, so the causality runs one way:
+    # every pool here is in something a tool made. A ninth of the surface, for
+    # the same reason `build_concrete_floor` uses a ninth — `wet` levels the
+    # height where it pools, and a level any higher fills the tool marks flush
+    # and erases the relief the AO is baked from.
+    seepage = stain(res, seed + 33, threshold=0.48, softness=0.09, detail=0.55, low_cycles=1.8)
+    water_level = water_line(height, 0.11)
+    pool = standing_water(height, water_level, softness=0.035) * np.clip(seepage + tool * 0.5, 0.0, 1.0)
+    film = np.clip(blur(np.maximum(pool, damp * seepage), res * 0.018) * 2.2 - pool, 0.0, 1.0) * 0.85
+
+    colour, roughness, height = wet(
+        colour, roughness, height, film, pool, water_level,
+        darkening=0.58, film_roughness=0.38, pool_roughness=0.10)
+
+    return MapSet(colour, roughness, height, np.zeros((res, res), np.float32), world, 0.028)
+
+
 # ── Walls ───────────────────────────────────────────────────────────────────
 
 
@@ -2669,6 +3227,77 @@ MATERIALS: Tuple[MaterialSpec, ...] = (
         note="§12 계단 금속 — diamond tread, lowest roughness, brightest specular. "
              "CC0 base: ambientCG DiamondPlate008A. Metalness stays partial (§ambient).",
     ),
+    # ── The three storeys that had no texture at all. ──
+    #
+    # In `FloorMaterial` order of *depth* rather than of enum value, because that
+    # is the order a player meets them in and the order ART.md §3.12 and
+    # `ZoneIdentity` both list them in: B6 병동, B7 수몰층, B8 굴착층.
+    #
+    # All three are **fully procedural**, and that is a decision rather than an
+    # omission. `PhotoSpec` exists because a scan carries a surface's *history*,
+    # which noise does not — and none of the five scans vendored under
+    # `tools/textures/cc0` is any of these materials, so using one would be
+    # dressing a floor in another floor's history, which is worse than no history
+    # at all. Nothing new was downloaded (see docs/ASSETS.md). Beyond that, two of
+    # the three have an argument against a photograph on their own terms: water is
+    # not a static surface to scan — §3.8c derives it from the height field, which
+    # is why `wet()` exists — and a dig face is a *worked* surface whose tool
+    # marks and shoring have to be keyed to the geometry that carries them.
+    # `Floor_Wood` and `Floor_Gravel`, the two floors this set is judged best on,
+    # are procedural for the same reason.
+    #
+    # 0.22 linear, and it is the only one of the three not at the band's floor.
+    # A ward is the one storey in the building finished for people, and contract
+    # carpet is a mid-tone material; painting it down to 0.16 to make B6 measure
+    # darker would be exactly the "darkness from the albedo" this file forbids.
+    # It sits one point *under* `Floor_Wood` and 0.72 of roughness above it, which
+    # is where the eight-surface space had room left.
+    MaterialSpec(
+        "Floor_Carpet", build_carpet, seed=1701, target_albedo=0.22,
+        slots=("Floor_Carpet",),
+        grain=Grain(feature_mm=7.0, relief_mm=0.60, albedo=0.14, roughness=0.03),
+        detail="Detail_Fibre",
+        note="§12 B6 병동 카펫 — 50 cm contract tile laid quarter-turned, so the pile "
+             "lights as a checkerboard that answers to viewing angle. Crushed lanes are "
+             "the DARK ones, and the bald scars inside them the bright. Matte end of the set.",
+    ),
+    # 0.16 — the darkest surface in the game, and the least arbitrary number here.
+    # Water darkens what it covers by removing the air/solid interface that was
+    # scattering light straight back out (§3.8c); three quarters of this floor is
+    # under centimetres of it, and what comes back is a reflection of a room that
+    # is almost black. It is one point off `ALBEDO_MIN_LINEAR` because the band's
+    # floor is where a genuinely drowned surface belongs.
+    MaterialSpec(
+        "Floor_Water", build_water, seed=1801, target_albedo=0.16,
+        slots=("Floor_Water",),
+        grain=Grain(feature_mm=9.0, relief_mm=0.16, albedo=0.06, roughness=0.03),
+        detail="Detail_Ceramic",
+        note="§12 B7 수몰층 물 — standing water over the building's own silted screed, "
+             "74 % drowned. The shoreline is the read: the only level line in the game, "
+             "cutting across the architecture instead of following it. §3.8c throughout.",
+    ),
+    # 0.17, aimed at the dark end on purpose and 0.27 below 자갈. B8 is the last
+    # storey, §07 promises the night deepens all the way down, and
+    # `MapKitCatalogue.FloorTileFor` aliases Earth onto the GRAVEL tile mesh — so
+    # the one thing that must not happen is this material landing anywhere near
+    # gravel's 0.44, which is what an untextured floor on that mesh was already
+    # being read as. Damp turned loam is 0.08–0.12 in life; 0.17 is the band floor
+    # talking, not the art.
+    MaterialSpec(
+        "Floor_Earth", build_earth, seed=1901, target_albedo=0.17,
+        slots=("Floor_Earth",),
+        # No `ao_strength` discount, and that is deliberate rather than an
+        # oversight. 자갈 is still the only surface in the set that needs one: it
+        # carries 45 mm of relief and measured an AO contrast of 0.74 undiscounted,
+        # so the engine's SSAO was shading it a second time. 흙 measures 0.32 at
+        # full strength with 28 mm — between 콘크리트 and 자갈, which is where a
+        # surface of its depth belongs — so there is nothing here to give back.
+        grain=Grain(feature_mm=15.0, relief_mm=2.2, albedo=0.16, roughness=0.06),
+        detail="Detail_Aggregate",
+        note="§12 B8 굴착층 흙 — blocky clods over open fissures, spade cuts that read as "
+             "the smooth population, half-buried shoring boards, water standing in the "
+             "gouges. Darkest floor in the set.",
+    ),
     MaterialSpec(
         "Wall_Brick_Painted", build_wall_brick, seed=2101, target_albedo=0.22,
         slots=("Wall_Structure",),
@@ -2814,6 +3443,12 @@ DETAILS: Tuple[DetailSpec, ...] = (
     DetailSpec(
         "Detail_Ceramic", seed=9501, tile_metres=0.22, feature_mm=0.9, relief_mm=0.08,
         note="Glaze and gloss paint: almost flat, just enough to stop a mirror.",
+    ),
+    DetailSpec(
+        "Detail_Fibre", seed=9601, tile_metres=0.20, feature_mm=0.8, relief_mm=0.20,
+        note="Carpet pile: individual loops at sub-millimetre scale, the one band a "
+             "512 px/m base map cannot hold and the one a player kneeling on a ward "
+             "floor is looking straight at.",
     ),
 )
 

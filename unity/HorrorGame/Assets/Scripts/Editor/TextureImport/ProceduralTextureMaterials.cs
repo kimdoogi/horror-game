@@ -50,10 +50,36 @@ namespace HorrorGame.EditorTools.TextureImport
         /// Contractual floor names. §12 makes floor material a gameplay channel —
         /// §04's Listener reads the surface underfoot and the footstep audio matches
         /// on the same strings — so these are an interface, not a naming style.
+        /// <para>
+        /// <b>This list was five names long while <see cref="HorrorGame.Core.Map.FloorMaterial"/>
+        /// named eight</b>, and the three it omitted were exactly the three the generator
+        /// had never produced: B6 병동 카펫, B7 수몰층 물, B8 굴착층 흙. So the guard whose
+        /// entire purpose is to fail the build when a §12 surface is missing enumerated
+        /// only the surfaces that already existed and could never fire, while every floor
+        /// pixel on the bottom three storeys rendered on <c>MapSceneBuilder</c>'s flat
+        /// placeholder colour — no albedo map, no normal, no roughness, no occlusion.
+        /// </para>
+        /// <para>
+        /// The three names are added <em>in the same change that makes the textures
+        /// exist</em>, never ahead of it. A gate asserting something that is not yet true
+        /// is a gate that goes red on purpose, and this repository has already spent nine
+        /// days with a required CI job failing on an assertion somebody left ahead of the
+        /// work — after which people stop reading the gate rather than fixing the code.
+        /// Generate first, then tighten.
+        /// </para>
+        /// <para>
+        /// The correct length of this list is <c>FloorMaterial</c>'s member count minus
+        /// <c>None</c>. It is written out rather than derived from the enum because this
+        /// assembly's job is to catch a missing <em>texture set</em>, and reflecting over
+        /// the enum would make the check restate its own input: if a ninth surface is
+        /// added there, this line should fail to mention it and somebody should have to
+        /// come here and say what that surface is made of.
+        /// </para>
         /// </summary>
         private static readonly string[] ContractualFloors =
         {
             "Floor_Wood", "Floor_Tile", "Floor_Gravel", "Floor_Concrete", "Floor_Metal",
+            "Floor_Carpet", "Floor_Water", "Floor_Earth",
         };
 
         /// <summary>Builds every material and binds it to the kit. Menu and batch entry point.</summary>

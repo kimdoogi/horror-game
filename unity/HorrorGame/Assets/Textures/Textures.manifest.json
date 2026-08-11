@@ -152,6 +152,93 @@
       }
     },
     {
+      "name": "Floor_Carpet",
+      "slots": [
+        "Floor_Carpet"
+      ],
+      "note": "§12 B6 병동 카펫 — 50 cm contract tile laid quarter-turned, so the pile lights as a checkerboard that answers to viewing angle. Crushed lanes are the DARK ones, and the bald scars inside them the bright. Matte end of the set.",
+      "cc0_base": null,
+      "world_size_metres": 1.0,
+      "authored_metres_per_tile": 2.0,
+      "kit_uv_units_per_metre": 0.5,
+      "albedo_mean_linear": 0.22,
+      "roughness_mean": 0.9149,
+      "relief_mm": 7.96,
+      "texel_px_per_metre": 512.0,
+      "detail": {
+        "name": "Detail_Fibre",
+        "normal": "Detail/Detail_Fibre_normal.png",
+        "size_metres": 0.1,
+        "authored_metres_per_tile": 0.2,
+        "note": "Carpet pile: individual loops at sub-millimetre scale, the one band a 512 px/m base map cannot hold and the one a player kneeling on a ward floor is looking straight at."
+      },
+      "maps": {
+        "albedo": "Floor_Carpet/Floor_Carpet_albedo.png",
+        "normal": "Floor_Carpet/Floor_Carpet_normal.png",
+        "roughness": "Floor_Carpet/Floor_Carpet_rough.png",
+        "occlusion": "Floor_Carpet/Floor_Carpet_ao.png",
+        "metallic_smoothness": "Floor_Carpet/Floor_Carpet_ms.png"
+      }
+    },
+    {
+      "name": "Floor_Water",
+      "slots": [
+        "Floor_Water"
+      ],
+      "note": "§12 B7 수몰층 물 — standing water over the building's own silted screed, 74 % drowned. The shoreline is the read: the only level line in the game, cutting across the architecture instead of following it. §3.8c throughout.",
+      "cc0_base": null,
+      "world_size_metres": 1.0,
+      "authored_metres_per_tile": 2.0,
+      "kit_uv_units_per_metre": 0.5,
+      "albedo_mean_linear": 0.16,
+      "roughness_mean": 0.3672,
+      "relief_mm": 14.78,
+      "texel_px_per_metre": 512.0,
+      "detail": {
+        "name": "Detail_Ceramic",
+        "normal": "Detail/Detail_Ceramic_normal.png",
+        "size_metres": 0.11,
+        "authored_metres_per_tile": 0.22,
+        "note": "Glaze and gloss paint: almost flat, just enough to stop a mirror."
+      },
+      "maps": {
+        "albedo": "Floor_Water/Floor_Water_albedo.png",
+        "normal": "Floor_Water/Floor_Water_normal.png",
+        "roughness": "Floor_Water/Floor_Water_rough.png",
+        "occlusion": "Floor_Water/Floor_Water_ao.png",
+        "metallic_smoothness": "Floor_Water/Floor_Water_ms.png"
+      }
+    },
+    {
+      "name": "Floor_Earth",
+      "slots": [
+        "Floor_Earth"
+      ],
+      "note": "§12 B8 굴착층 흙 — blocky clods over open fissures, spade cuts that read as the smooth population, half-buried shoring boards, water standing in the gouges. Darkest floor in the set.",
+      "cc0_base": null,
+      "world_size_metres": 1.0,
+      "authored_metres_per_tile": 2.0,
+      "kit_uv_units_per_metre": 0.5,
+      "albedo_mean_linear": 0.17,
+      "roughness_mean": 0.6656,
+      "relief_mm": 28.1,
+      "texel_px_per_metre": 512.0,
+      "detail": {
+        "name": "Detail_Aggregate",
+        "normal": "Detail/Detail_Aggregate_normal.png",
+        "size_metres": 0.225,
+        "authored_metres_per_tile": 0.45,
+        "note": "Floated concrete and packed ballast fines: coarser, still sub-5 mm."
+      },
+      "maps": {
+        "albedo": "Floor_Earth/Floor_Earth_albedo.png",
+        "normal": "Floor_Earth/Floor_Earth_normal.png",
+        "roughness": "Floor_Earth/Floor_Earth_rough.png",
+        "occlusion": "Floor_Earth/Floor_Earth_ao.png",
+        "metallic_smoothness": "Floor_Earth/Floor_Earth_ms.png"
+      }
+    },
+    {
       "name": "Wall_Brick_Painted",
       "slots": [
         "Wall_Structure"

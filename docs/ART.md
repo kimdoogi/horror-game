@@ -144,8 +144,32 @@ cd unity/HorrorGame/Shots && python3 ../../../tools/render/frame_stats.py 'final
 > fullpipe3_Zone_B6_B6_Carpet.png          17.1   13.6   39.3   74.2    28.7      59.3    0.00    9.3
 > ```
 >
-> **All 18 zone measures in band** (crushed 15.2–28.7, legible 37.1–59.3, median
-> 5.9–13.6, blown 0.00). B3 is now the brightest zone view — a lit plant room
+> **Superseded 2026-08-12 — that run photographed six of eight storeys.** `SceneShot`
+> capped zones at `.Take(6)`, written for a three-storey building, so **B7 수몰층 and
+> B8 굴착층 were never in it** and "all 18 zone measures in band" was a claim about
+> three quarters of the building. The cap is gone from `SceneShot` and from `FrameCost`,
+> which carried its own copy. The current, whole-building table:
+>
+> ```
+> zone              crushed  legible  median  blown
+> B1 Concrete          16.1     54.8     9.0   0.00
+> B2 Wood              26.0     35.7     5.7   0.00
+> B3 Metal             25.9     53.1     9.8   0.00
+> B4 Gravel            25.5     37.4     5.8   0.00
+> B5 Tile              11.8     63.6    11.1   0.00
+> B6 Carpet            12.8     67.5    14.7   0.00
+> B7 Water             24.6     46.3     7.2   0.17
+> B8 Earth             16.0     61.1    13.0   0.00
+> ```
+>
+> **All 32 measures in band**, on all eight storeys, with `Floor_Carpet`, `Floor_Water`
+> and `Floor_Earth` textured for the first time and B8's finish light rebuilt as a
+> 5.5 m spot ([B-021](BLOCKERS.md#b-021)). B8 needed both: the texture alone moved it
+> *further* out of band, because the real material is brighter than the black rectangle
+> it replaced.
+>
+> The six-storey run's own reading, kept because its conclusion survives: B3 was the
+> brightest zone view — a lit plant room
 > mid-descent is a landmark, not a gradient break; the frame still falls to black in
 > its shadow zones and the warm mains are what the zone's own ZoneIdentity note always
 > described. The bare-scene figures this entry briefly carried (`realtex_`/`realtex2_`/

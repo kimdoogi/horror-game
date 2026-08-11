@@ -1916,6 +1916,21 @@ namespace HorrorGame.EditorTools.SceneGen
         /// you are allowed to see from across the room.
         /// </para>
         /// </summary>
+        /// <summary>
+        /// How far §02's finish fitting reaches, metres.
+        /// <para>
+        /// The same 5.5 m <c>ScatterSession.PracticalRangeMetres</c> gives every other
+        /// working fitting, and for the same reason: it is under half
+        /// <see cref="GameConstants.FlashlightRange"/>, so §03's beam is always the longer
+        /// reach and no fixture in the building out-ranges the torch you carry. Written
+        /// again here rather than shared because that field is private to the dressing
+        /// pass; if one moves, move both. It replaces <c>ZoneLightRadius</c> (18 m), which
+        /// is a zone radius and was never the right unit for a fitting — see
+        /// <see cref="BuildFinishLight"/>.
+        /// </para>
+        /// </summary>
+        private const float FinishLightRangeMetres = 5.5f;
+
         private static void BuildFinishLight(MapMarkerPlacement marker, GameObject markerRoot)
         {
             var go = Child(Child(markerRoot, MapMarkerKind.EntranceLight.ToString() + "s"), marker.Name);
@@ -1928,23 +1943,56 @@ namespace HorrorGame.EditorTools.SceneGen
             // change one without the other.
             go.transform.position = ToUnity(marker.Position) + (Vector3.up * (MapKitCatalogue.CorridorClearWidth + 0.6f));
 
-            var light = go.AddComponent<Light>();
-            light.type = LightType.Point;
-            light.range = GameConstants.ZoneLightRadius;
+            // Aimed straight down. A spot, not a point — see below.
+            go.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
 
-            // Shadows ON, on its own merits and NOT as a fix for anything. With them off
-            // an 18 m point light does not illuminate the finish, it illuminates the
-            // storey straight through the walls, and a light that ignores geometry is
-            // wrong in a game whose central mechanic is not being able to see. There are
-            // two of these in the entire scene, so the usual objection to shadowed point
-            // lights does not apply.
+            var light = go.AddComponent<Light>();
+
+            // ── B-021, closed 2026-08-12 ─────────────────────────────────────────────
+            // This fixture WAS the cause of 굴착층 being the brightest room in the
+            // building, and the note that used to stand here said the opposite. It was
+            // an 18 m point light — GameConstants.ZoneLightRadius, a *zone* radius on a
+            // *fitting* — hanging 3.6 m over the finish, and B8's zone camera stands a
+            // few metres from it.
             //
-            // Recorded because it would otherwise look like a fix: this was changed while
-            // chasing B8 굴착층's luminance (4.5 % crushed / 87.8 % legible / median 28.9
-            // against ART.md's 10–40 / 30–75 / 3–16), and it **did not move those numbers
-            // by a decimal**. The finish light is not what makes the deepest floor the
-            // brightest room in the building. That cause is still unfound — see
-            // docs/BLOCKERS.md B-021.
+            // Why the old note was wrong. It reasoned: shadows were turned on, the
+            // numbers did not move by a decimal, therefore the finish light is not the
+            // cause. That does not follow. Shadows only remove light that arrives
+            // THROUGH geometry; this light and that camera are in the same room with
+            // nothing between them, so shadowing was never going to change what it
+            // contributes. The experiment that was owed — switching it off — had never
+            // been run. Measured here, one variable at a time, SceneShot at native
+            // brightness, ART.md bands 10–40 crushed / 30–75 legible / 3–16 median:
+            //
+            //     18 m point (as shipped)    1.7 crushed / 94.3 legible / 36.4 median
+            //      6 m point                 2.2 / 92.0 / 32.9
+            //      4 m point                 7.7 / 81.2 / 25.8
+            //      3 m point                12.9 / 71.9 / 19.6
+            //      off                      18.9 / 57.7 / 11.2   ← all four bands
+            //
+            // B7 and B1 did not move by a decimal across those runs, so this is local to
+            // the fixture and not a global exposure shift.
+            //
+            // Radius alone cannot fix it, which is what sends this to a spot. The fitting
+            // hangs 3.6 m up, so any point range under that never reaches the floor at all
+            // — range 2 measured 15.9/59.6/12.2, which is "off" with extra steps and an
+            // unlit finish — while every range that does reach the floor also fills the
+            // room. The shape is wrong, not the size.
+            //
+            // So: a spot aimed down, at PracticalRangeMetres. That constant is the
+            // building's rule for a working fitting — 5.5 m, deliberately under half of
+            // §03's FlashlightRange so the torch is always the longer reach — and the old
+            // 18 m broke it by 3.3×, which is its own defect regardless of luminance.
+            // 80° gives a ~3 m pool on the floor: §02's promise is that the finish is lit
+            // and findable from the dark, not that the storey is.
+            light.type = LightType.Spot;
+            light.range = FinishLightRangeMetres;
+            light.spotAngle = 80f;
+
+            // Shadows ON, on its own merits: a light that ignores geometry is wrong in a
+            // game whose central mechanic is not being able to see. There are two of these
+            // in the entire scene, so the usual objection to shadowed spot lights does not
+            // apply.
             light.shadows = LightShadows.Soft;
             light.intensity = 1.2f;
             light.color = new Color(1.0f, 0.94f, 0.82f);

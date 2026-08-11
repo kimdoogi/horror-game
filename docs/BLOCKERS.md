@@ -62,7 +62,7 @@ re-lay at `9f0f447` and the `SceneShot` cap removal at `471ffab`.
 | [B-018](#b-018) | 🟢 closed | Every match is the same building — 3 in the roster, a second match loads another |
 | [B-019](#b-019) | 🔴 **open** | §12-D's centre-path: 21 of 22 entry points in band, the last one 2.5 m short |
 | [B-020](#b-020) | 🟢 closed | `PlayerReach` counted its own measuring body as a wall and refused eight roster slots |
-| [B-021](#b-021) | 🔴 **open** | B8 굴착층 is the brightest room in the building, and nothing had ever photographed it |
+| [B-021](#b-021) | 🟢 closed | B8 was the brightest room; the finish light was cleared by an invalid experiment and was the cause |
 | [B-022](#b-022) | 🔴 **open** | Voice: three red PlayMode tests, unfiled for four days — the creature never hears anyone speak |
 
 **Open: 6 of 23.** B-004 blocks release outright and B-015 gates it on one build nobody has
@@ -195,10 +195,10 @@ Meanwhile `dist/READ-ME-FIRST.txt` tells playtesters 「음성 대화는 동작�
 
 ---
 
-## B-021 · The deepest floor is the brightest room, and for ten days nothing had ever taken its picture
+## B-021 · 🟢 The deepest floor was the brightest room, and the fixture that did it had been cleared by an experiment that could not have found it
 
-**Status:** 🔴 **open** · opened 2026-08-10 · measured, cause not found · **re-confirmed
-2026-08-12: not re-litigated, and nothing in the tree has moved it**
+**Status:** 🟢 **closed 2026-08-12** · opened 2026-08-10 · cause found and fixed;
+all eight storeys now in all four ART.md bands
 
 `SceneShot.BuildViews` photographed `Zone_*` transforms `.Take(6)`. That cap was written
 on 2026-07-31 for a three-storey building; 하강 has stacked **eight** storeys since
@@ -223,14 +223,74 @@ falls with depth, so B8 has the fewest lit fittings in the building. It is nonet
 brightest room in it. The deepest floor of a game whose central mechanic is darkness, the
 one §02 puts the finish on, is lit like a corridor at head office.
 
-**What has been ruled out.** The obvious suspect was `MapSceneBuilder.BuildFinishLight`:
-an 18 m point light with `shadows = None`, which lights through walls, standing exactly
-where the zone camera stands. Shadows were turned on and the scene regenerated: **B8
-measured 4.5 / 87.8 / 28.9 — identical to the decimal.** The finish light is not the
-cause. The shadow change was kept anyway, on its own merits, and its comment says plainly
-that it fixed nothing.
+**CLOSED 2026-08-12. The finish light was the cause, and the entry below said it was not.**
 
-**Where to look next**, in the order I would try: the `ZoneIdentity` row for `Earth`
+**The inference that cleared it was invalid.** This entry read: shadows were switched on,
+the numbers did not move by a decimal, therefore `MapSceneBuilder.BuildFinishLight` is not
+the cause. That does not follow, and it cost two days. Turning shadows on only removes
+light arriving *through* geometry. This fixture and B8's zone camera stand in the same
+room with nothing between them, so shadowing could never have changed what it contributes
+directly. **The experiment that was owed — switching it off — had never been run**, by
+anyone, once. `MapSceneBuilder.cs` carried the same wrong conclusion in a comment, so the
+error was recorded in two places and checkable in neither.
+
+Run here, one variable at a time, `SceneShot` at native brightness, controls in every row:
+
+```
+finish light            crushed  legible   median      B7 (control)      B1 (control)
+18 m point (shipped)        1.7     94.3     36.4    24.6/46.3/7.2    16.1/54.8/9.0
+ 6 m point                  2.2     92.0     32.9    unchanged        unchanged
+ 4 m point                  7.7     81.2     25.8    unchanged        unchanged
+ 3 m point                 12.9     71.9     19.6    unchanged        unchanged
+ 2 m point                 15.9     59.6     12.2    unchanged        unchanged
+ off                       18.9     57.7     11.2    unchanged        unchanged
+ 5.5 m spot, 80° (FIX)     16.0     61.1     13.0    24.6/46.3/7.2    16.1/54.8/9.0
+```
+
+Not one of the other seven storeys moved by a decimal across any of those runs, so this is
+local to the fixture and not a global exposure shift.
+
+**Radius could not fix it; the shape was wrong.** The fitting hangs 3.6 m above the floor,
+so every point range short enough to stay out of the frame is also too short to reach the
+floor at all — the 2 m row is "off" with an unlit finish, which breaks §02. Every range
+that does reach the floor also fills the room. The fix is a **spot aimed down** at
+`FinishLightRangeMetres` = 5.5 m, 80°, giving a ~3 m pool: §02's promise is that the
+finish is lit and findable from the dark, not that the storey is.
+
+**The 18 m was its own defect, luminance aside.** It came from
+`GameConstants.ZoneLightRadius` — a *zone* radius on a *fitting*. Every other working
+fitting in the building uses `ScatterSession.PracticalRangeMetres` = 5.5 m, chosen
+deliberately under half of §03's `FlashlightRange` so **the torch you carry is always the
+longest reach in the building**. The finish light broke that rule by 3.3×.
+
+**What the new floor textures did, since it was the other hypothesis.** Nothing, and the
+run is worth keeping: `Floor_Earth` replacing a variance-free placeholder moved B8 from
+4.5 / 87.8 / 28.9 to 1.7 / 94.3 / 36.4 — *further* out of band, because the real material
+is brighter than the black rectangle it replaced. The texture pass was not the cause and
+did not become one; the fork it was set up to decide came down on light, not variance.
+
+**All eight storeys are now in all four bands**, measured in the same pass:
+
+```
+zone              crushed  legible  median  blown      band: 10–40 / 30–75 / 3–16 / <0.5
+B1 Concrete          16.1     54.8     9.0   0.00
+B2 Wood              26.0     35.7     5.7   0.00
+B3 Metal             25.9     53.1     9.8   0.00
+B4 Gravel            25.5     37.4     5.8   0.00
+B5 Tile              11.8     63.6    11.1   0.00
+B6 Carpet            12.8     67.5    14.7   0.00
+B7 Water             24.6     46.3     7.2   0.17
+B8 Earth             16.0     61.1    13.0   0.00
+```
+
+**One thing this does not fix, stated rather than buried.** §07 wants the night to deepen
+with depth, and B8's median 13.0 still sits above B2's 5.7 and B4's 5.8 — the deepest
+floor is no longer the *brightest room*, but it is not the darkest either. It is the floor
+§02 puts the finish on, so some of that is correct by design; whether all of it is has not
+been measured and is not claimed here.
+
+**The dead ends below are kept as history**, in the order they were going to be tried,
+because each was a reasonable guess and none of them was it: the `ZoneIdentity` row for `Earth`
 (tint 1.12/1.06/0.96, smoothness 0.80, occlusion 0.95 — its own note calls it "the
 smallest lift in the table", which the measurement contradicts); whether B8's floor
 material resolves to something far brighter than intended, since `Floor_Gravel` is the

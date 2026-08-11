@@ -68,7 +68,7 @@ namespace HorrorGame.EditorTools
         /// <summary>
         /// §05's nine poses: the serialized field on <see cref="PlayerAnimatorDriver"/> and
         /// the FBX take that fills it. The names are the export contract with
-        /// <c>tools/blender/gen_player.py</c>, and they are listed here rather than derived
+        /// <c>tools/blender/gen_runner.py</c>, and they are listed here rather than derived
         /// from <see cref="PlayerAnimationState"/> because the field names are what a scene
         /// file actually contains — which is what the audit below reads back.
         /// <para>
@@ -556,7 +556,7 @@ namespace HorrorGame.EditorTools
                 return "  CAUSE: NO DRIVER — the scene contains no PlayerAnimatorDriver at all.\n"
                     + "         The rig fell back to the capsule, which means "
                     + _lastPlayerModelPath + " did not load.\n"
-                    + "         FIX: regenerate the model (tools/blender/gen_player.py) and reimport.";
+                    + "         FIX: regenerate the model (tools/blender/gen_runner.py) and reimport.";
             }
 
             var importer = AssetImporter.GetAtPath(_lastPlayerModelPath) as ModelImporter;
@@ -564,7 +564,7 @@ namespace HorrorGame.EditorTools
             {
                 return "  CAUSE: MODEL MISSING — " + _lastPlayerModelPath
                     + " is not in the project.\n"
-                    + "         FIX: regenerate it with tools/blender/gen_player.py.";
+                    + "         FIX: regenerate it with tools/blender/gen_runner.py.";
             }
 
             var clips = LoadModelClips(_lastPlayerModelPath);
@@ -608,7 +608,7 @@ namespace HorrorGame.EditorTools
                     + "         Unity named them: " + string.Join(", ", found) + "\n"
                     + "         §05 expects:     " + string.Join(", ", wanted) + "\n"
                     + "         unfilled slots:  " + string.Join(", ", zeros) + "\n"
-                    + "         FIX: rename the takes in tools/blender/gen_player.py, or add a\n"
+                    + "         FIX: rename the takes in tools/blender/gen_runner.py, or add a\n"
                     + "              clipAnimations list to the .meta that maps take → name.";
             }
 
