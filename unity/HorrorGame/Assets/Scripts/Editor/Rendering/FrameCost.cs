@@ -221,10 +221,13 @@ namespace HorrorGame.EditorTools.Rendering
 
             var views = new List<View>();
 
-            var spawns = all.Where(t => t.name.StartsWith("PlayerSpawn_", StringComparison.OrdinalIgnoreCase))
-                .OrderBy(t => t.name, StringComparer.Ordinal)
-                .Take(4)
-                .ToArray();
+            // Spread across the ring of starts rather than taken off the front of an
+            // Ordinal sort, which yielded 0, 1, 10, 11 — see SceneShot.Spread.
+            var spawns = SceneShot.Spread(
+                all.Where(t => t.name.StartsWith("PlayerSpawn_", StringComparison.OrdinalIgnoreCase))
+                    .OrderBy(SceneShot.TrailingIndex)
+                    .ToArray(),
+                4);
 
             for (var i = 0; i < spawns.Length; i++)
             {
@@ -234,7 +237,14 @@ namespace HorrorGame.EditorTools.Rendering
                     new Vector3(3f, spawns[i].eulerAngles.y, 0f)));
             }
 
-            foreach (var zone in all.Where(t => t.name.StartsWith("Zone_", StringComparison.OrdinalIgnoreCase)).Take(6))
+            // Every zone, not the first six. §12's building has eight storeys, and the
+            // .Take(6) this replaces meant B7 and B8 — the two deepest, the two most
+            // heavily dressed, and therefore the two most likely to be the frame budget
+            // problem — had never once been measured. SceneShot carried the identical
+            // cap and it was removed there at 471ffab for the same reason; this is the
+            // second copy of that bug, which is what happens when a view list is written
+            // twice instead of shared.
+            foreach (var zone in all.Where(t => t.name.StartsWith("Zone_", StringComparison.OrdinalIgnoreCase)))
             {
                 var bounds = Bounds(zone.gameObject);
                 var eye = ClearStandingSpot(new Vector3(bounds.center.x, bounds.min.y + 1.63f, bounds.center.z));

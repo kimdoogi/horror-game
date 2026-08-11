@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using HorrorGame.EditorTools.SceneGen;
@@ -115,6 +116,55 @@ namespace HorrorGame.EditorTools
         }
 
         /// <summary>
+        /// The number at the end of a generated name — <c>PlayerSpawn_11</c> → 11.
+        /// <para>
+        /// Exists because these names sort wrong as text: Ordinal puts <c>_10</c>
+        /// between <c>_1</c> and <c>_2</c>, and every place that then takes the first
+        /// few gets a clumped, arbitrary sample instead of the low-numbered one it
+        /// looks like it is getting. Names that do not end in a number sort last
+        /// rather than throwing, because a stray marker should not stop a render.
+        /// </para>
+        /// </summary>
+        public static int TrailingIndex(Transform t)
+        {
+            var name = t.name;
+            var cut = name.LastIndexOf('_');
+            return cut >= 0
+                && int.TryParse(
+                    name.Substring(cut + 1),
+                    NumberStyles.Integer,
+                    CultureInfo.InvariantCulture,
+                    out var n)
+                ? n
+                : int.MaxValue;
+        }
+
+        /// <summary>
+        /// <paramref name="count"/> items sampled evenly across <paramref name="source"/>,
+        /// or all of them if there are fewer than that.
+        /// <para>
+        /// Every shot costs a render, so these tools deliberately photograph a subset.
+        /// The bug this replaces was not the subset — it was taking it off the front of
+        /// a list, which samples one corner of the building and reports it as coverage.
+        /// </para>
+        /// </summary>
+        public static T[] Spread<T>(T[] source, int count)
+        {
+            if (source.Length <= count || count <= 0)
+            {
+                return source;
+            }
+
+            var picked = new T[count];
+            for (var i = 0; i < count; i++)
+            {
+                picked[i] = source[(int)((long)i * source.Length / count)];
+            }
+
+            return picked;
+        }
+
+        /// <summary>
         /// Chooses viewpoints from the scene's own contents rather than fixed
         /// coordinates, so a regenerated map is still framed sensibly.
         /// </summary>
@@ -142,10 +192,17 @@ namespace HorrorGame.EditorTools
             // Eye height at each player spawn, which is what the game actually looks
             // like — §05 is first person, so a flattering angle nobody will ever
             // occupy tells us nothing.
-            var spawns = all.Where(t => t.name.StartsWith("PlayerSpawn_", StringComparison.OrdinalIgnoreCase))
-                .OrderBy(t => t.name, StringComparer.Ordinal)
-                .Take(4)
-                .ToArray();
+            //
+            // Four of the twenty, spread rather than taken off the top. The old code
+            // sorted Ordinal and took four, and Ordinal on "PlayerSpawn_0…_19" orders
+            // 0, 1, 10, 11, 12, … — so the four shots were 0, 1, 10 and 11: two
+            // adjacent pairs. §01 puts the starts in a ring on the B1 rim, so that
+            // photographed two arcs of it twice and the other two not at all.
+            var spawns = Spread(
+                all.Where(t => t.name.StartsWith("PlayerSpawn_", StringComparison.OrdinalIgnoreCase))
+                    .OrderBy(TrailingIndex)
+                    .ToArray(),
+                4);
 
             for (var i = 0; i < spawns.Length; i++)
             {

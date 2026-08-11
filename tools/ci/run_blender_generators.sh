@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Re-run every Blender generator headlessly and decide, correctly, whether it worked.
 #
-#     tools/ci/run_blender_generators.sh            # all four
+#     tools/ci/run_blender_generators.sh            # all seven
 #     tools/ci/run_blender_generators.sh gen_props  # one, while iterating
 #     BLENDER=/path/to/blender tools/ci/run_blender_generators.sh
 #
@@ -66,10 +66,22 @@ LOG_DIR="${BLENDER_LOG_DIR:-${REPO}/artifacts/blender}"
 # the procedural skin pipeline, both imported by gen_monster_ai) and refuses to write a
 # shipping asset unless asked with `-- --hull`. Listing it would have both generators
 # writing the same four files, with the winner decided by list order.
-# gen_ghost writes §09's 유령 and is listed AFTER gen_player_model, because it imports
-# gen_player_ai for the hands: a ghost is a dead player and building it a second, worse
-# hand would be shipping the defect that pass removed, twice.
-DEFAULT_GENERATORS="gen_mapkit gen_dressing gen_props gen_player_model gen_monster_ai gen_ghost"
+#
+# 2026-08-12: this list was checking the wrong six. It ran gen_player_model and
+# gen_ghost, whose outputs — Player.fbx and Ghost.fbx — are not on disk, not committed
+# and not gitignored, because the pivot replaced the third-person player with Runner
+# and deleted §09's 유령 outright (being caught now returns you to B1; RaceState
+# .ReportCaught keeps RacerStatus.Running). Meanwhile gen_runner, gen_gun and
+# gen_presence, which write SEVEN committed assets between them — Runner.fbx,
+# RunnerArms.fbx, Gun_Held.fbx, Gun_Pickup.fbx, Presence_Figure.fbx, Presence_Mote.fbx
+# — were in no list at all. So the script whose entire purpose is "a generator can rot
+# for weeks without anyone noticing" was watching two generators nobody needs and
+# ignoring the ones that build the player's own body and the gun in their hands.
+#
+# gen_player_model stays on disk and stays OUT of this list, for gen_mapkit_detail's
+# reason exactly: gen_runner imports it for the two-bone IK gait solver. It is a
+# library now. Running it would write a Player.fbx nothing loads.
+DEFAULT_GENERATORS="gen_mapkit gen_dressing gen_props gen_runner gen_gun gen_presence gen_monster_ai"
 GENERATORS="${*:-${DEFAULT_GENERATORS}}"
 
 resolve_blender() {
