@@ -4,9 +4,15 @@
 > did not read the exit code of. Half the checks in this project have a failure mode
 > where they look green while proving nothing.
 
-The full inventory of checks is [`docs/TESTING.md`](../TESTING.md); the last real
-output of each is [`docs/STATUS.md`](../STATUS.md). This page is the routing table
-and the list of false greens.
+The full inventory of checks is [`docs/TESTING.md`](../TESTING.md) — **but it opens at
+`a3e268e` and still documents the deleted simulator's commands, so read it against
+[`docs/STATUS.md`](../STATUS.md) §4, which is the current list.** STATUS.md also carries
+the last real output of each. This page is the routing table and the list of false greens.
+
+> **Everything below was re-derived at HEAD `4ab204f` on 2026-08-12** by running or
+> reading the artefact. The 2026-08-02 pivot ([DESCENT-PIVOT.md](../DESCENT-PIVOT.md))
+> deleted the five roles, the economy and the clue chain from the game *and from the
+> code*, and this page had been routing readers to commands that went with them.
 
 Shell preamble for everything below:
 
@@ -23,37 +29,38 @@ cd /Users/doogi/horror-game
 
 | The question you actually have | The check | Cost |
 |---|---|---|
-| Are the rules and every tuned number still correct? | `dotnet test core/HorrorGame.Core.Tests/…csproj` | **1 s** |
-| Does everything compile, including the simulator? | `dotnet build core/HorrorGame.sln -c Release` | 5 s |
+| Are the rules and every tuned number still correct? | `dotnet test core/HorrorGame.Core.Tests/…csproj` | **~1.5 min** |
+| Does everything compile? | `dotnet build core/HorrorGame.sln -c Release` | 4 s |
 | Does Unity compile? | `$U -batchmode -quit -nographics -silent-crashes -projectPath $P -logFile /tmp/u.log` then `grep -cE '^Assets/.*error CS' /tmp/u.log` | ~1 min |
 | **Can the monster reach a player at all?** | PlayMode `-testFilter "MonsterChaseTests"` | ~1 min |
-| Does the solo scene build, with the runner's animator wired? | `-executeMethod HorrorGame.EditorTools.SoloPlaytest.BuildBatch` (`VerifyBatch` was deleted with its systems; the batch entry that survives builds the scene and reads the §05 animation wiring back) | ~1 min |
+| Does the solo scene build, with the runner's animator wired? | `-executeMethod HorrorGame.EditorTools.SoloPlaytest.BuildBatch` (**not `SoloPlaytest.VerifyBatch`** — that one existed and was **deleted with the co-op loop**, along with the `SoloMatchLoopTests` it drove; see the tombstone at `SoloPlaytest.cs:227`) | ~1 min |
 | Is the navigation surface connected? | `-executeMethod HorrorGame.EditorTools.NavMeshAudit.AuditBatch -auditScene …` | ~1 min |
-| Is the map legal under §12, and how does it grade? | `-executeMethod …SceneGen.MapSceneGenerator.ReportQualityMenu` | ~1 min |
-| Will a stereo import have killed the 청음사? | `-executeMethod …AssetImportValidator.ValidateAllBatch` | ~1 min |
-| Are the five floor surfaces still tellable apart? | `tools/audio/verify_audio.py` | ~1 min |
-| Can you see the monster at 15 m? | `MonsterShot.StageBatch`, **no `-nographics`** | ~2 min |
-| Do you have hands, and is the torch in one? | `FirstPersonHandsShot.Batch`, **no `-nographics`** — reads out each hand's viewport coordinate | ~3 min |
-| Does a piece you put down land on the floor? | `DropShot.Batch`, **no `-nographics`** — first-person plus a lit side view, and a wall-facing drop | ~3 min |
-| Can four people read §08's shop in a dark room? | `ShopShot.Batch`, **no `-nographics`** — ten states | ~2 min |
+| Is the map legal under §12, and how does it grade? | `-executeMethod HorrorGame.EditorTools.SceneGen.MapSceneGenerator.ReportQualityMenu` | ~1 min |
+| Does a re-rolled map still write, dressed? | `-executeMethod HorrorGame.EditorTools.MapPipeline.RegenerateFromCommandLine` — **the only regen entry that dresses.** `MapSceneGenerator.GenerateFromCommandLine` is layout-only, so its band numbers describe a building the game does not ship | ~5 min |
+| Will a stereo import have made a footstep unplaceable? | `-executeMethod …AssetImportValidator.ValidateAllBatch` | ~1 min |
+| Are the eight floor surfaces still tellable apart? | `tools/audio/verify_audio.py` | ~1 min |
+| Can you see the monster at 15 m? | `HorrorGame.Gameplay.MonsterEditor.MonsterShot.StageBatch`, **no `-nographics`** | ~2 min |
+| Do you have hands, and is the torch in one? | `HorrorGame.Gameplay.PlayerEditor.FirstPersonHandsShot.Batch`, **no `-nographics`** — reads out each hand's viewport coordinate | ~3 min |
 | Is the picture inside ART.md's luminance bands? | `SceneShot.Batch` then `tools/render/frame_stats.py` | ~3 min |
-| Is the economy / match length sane? | `dotnet run -c Release --project core/HorrorGame.Sim -- run --matches 500 --seed 1` | ~10 s |
-| Does a seed still replay exactly? | `… -- replay --seed 42 --times 3` | ~2 s |
 | Do the Blender generators still work? | `tools/ci/run_blender_generators.sh` | ~10 s |
 | Does it produce a shippable player? | `-executeMethod HorrorGame.EditorTools.BuildPipelineRunner.BuildFromCommandLine -buildPlatform windows-x64 -buildConfig release`, then read `dist/last-build-summary.txt` **and** check for `MONO-FALLBACK-DO-NOT-SHIP.txt` | ~2 min each |
-| **Is the game fun?** | Two humans, two instances, Discord. §14 | unautomatable |
+| **Is the game fun?** | Humans, several instances, Discord. `LocalTwoInstance.LaunchSmallField` (`DefaultFieldSize` **4**). §14 | unautomatable |
 
 The last row is not a joke. §14 says questions 1 and 2 decide the project and
 「직접 만져봐야 나온다」. Every automated gate above is green or explained; none of
-them can answer it.
+them can answer it. §14's Q3 — 「관문에서 붐비는 것이 재밌는가」 — is the one the pivot
+added, it 「이 게임이 20인에서 재미있는지를 정한다」, and §14's own prototype note says it
+needs **at least four** people at once: 「문 앞에서 붐비는지 보려면 최소 넷은 필요하다」.
+Two instances cannot ask it. Twenty is `LaunchFullField`, and it is not the size to
+reach for casually — ask before running one.
 
 ---
 
 ## 2. The exact commands, in the order worth running
 
 ```bash
-dotnet test  core/HorrorGame.Core.Tests/HorrorGame.Core.Tests.csproj      # 451/451, 건너뜀 0
-dotnet build core/HorrorGame.sln -c Release                               # 0 errors
+dotnet test  core/HorrorGame.Core.Tests/HorrorGame.Core.Tests.csproj      # 357/357, 건너뜀 0
+dotnet build core/HorrorGame.sln -c Release                               # 오류 0개, 경고 4개
 
 $U -batchmode -quit -nographics -silent-crashes -projectPath $P -logFile /tmp/u.log
 grep -cE '^Assets/.*error CS' /tmp/u.log                                  # 0
@@ -74,8 +81,8 @@ $U -batchmode -quit -nographics -silent-crashes -projectPath $P \
 $U -batchmode -nographics -silent-crashes -projectPath $P \
    -executeMethod HorrorGame.EditorTools.BuildPipelineTestRunner.RunFromCommandLine -logFile /tmp/t2.log
 
-tools/audio/.venv/bin/python tools/audio/verify_audio.py
-dotnet run -c Release --project core/HorrorGame.Sim -- run --matches 500 --seed 1
+tools/audio/.venv/bin/python tools/audio/verify_audio.py                   # exit 1, RESULT: FAIL
+bash tools/ci/verify_audio.sh                                             # exit 0, RESULT: PASS
 
 # WITHOUT -nographics, or every shot is black.
 $U -batchmode -quit -silent-crashes -projectPath $P \
@@ -83,9 +90,27 @@ $U -batchmode -quit -silent-crashes -projectPath $P \
    -shotScene Assets/Scenes/Map_FirstSketch.unity -shotTag verify -logFile /tmp/shot.log
 ```
 
-Expected exit codes: **0** everywhere except the full Unity suite (**6** — one
-failure, [B-002](../BLOCKERS.md#b-002)) and `verify_audio.py` (**1** — one blocking
-defect, [F-002](09-open-questions.md)).
+Expected exit codes: **0** everywhere except `verify_audio.py` (**1** — two blocking
+defects, both [F-002](09-open-questions.md#f-002); re-run 2026-08-12). The two audio
+commands disagree on purpose: `verify_audio.py` reports the raw verdict, and
+`tools/ci/verify_audio.sh` suppresses the two F-002 rows against
+`tools/ci/audio_baseline.json` so the gate fails on *new* defects only. Read both.
+
+**The Unity suite's exit code is not on this list any more.** It used to say 6 for
+`SoloMatchLoopTests`; that test's file is gone with the co-operative loop it drove, and
+[B-002](../BLOCKERS.md#b-002) is 🟡 dormant. What the suite actually reports, carried and
+dated because Unity was not run for this pass:
+
+| Platform | Result | Dated |
+|---|---|---|
+| core (`dotnet`) | **357 / 357**, 건너뜀 0, 1 m 41 s | **2026-08-12, run here** |
+| EditMode | **95 / 95** — 3 assemblies, one of them `Pivot`, whose job is to fail if 금고 or 상점 comes back | 2026-08-08, [TESTING.md §8](../TESTING.md) |
+| PlayMode | **124 total, 121 passed, 3 failed** — all three `VoiceSocketTests` | 2026-08-08, [STATUS.md §2.3](../STATUS.md) |
+
+Anything other than exactly those three PlayMode reds is a regression. **Do not add these
+three numbers together and quote the sum across the pivot** — `e8c67ae` deleted the
+co-operative game and its tests, so no total from before it is comparable
+([STATUS.md §1.8](../STATUS.md)).
 
 Read PlayMode results properly rather than trusting the exit code:
 
@@ -122,8 +147,8 @@ command on this page was therefore attributed to STATUS.md rather than re-run.
 
 ### 3.3 The NavMesh audit passes while the monster is deadlocked
 
-The most expensive false green in the project's history. [STATUS.md §1.5](../STATUS.md)
-states it plainly:
+The most expensive false green in the project's history. On the three-storey building it
+printed:
 
 ```
 [NavMeshAudit] PASS
@@ -136,13 +161,22 @@ at a time. Those are different questions, and a `NavMeshLink` answers the first 
 not the second. The audit is necessary and **not sufficient**. `MonsterChaseTests` is
 the sufficient one. Full story: [the expensive bugs](07-expensive-bugs.md).
 
+The shape of the output has since changed and so has the shape of the trap. Today's is
+[STATUS.md §1.2](../STATUS.md) — `markers 204 · pairs 2674 · complete 2674 (100.0 %) ·
+islands 8 · monster reach 196/196 on the same storey, 8 of 8` — and it carries two
+qualifiers you have to read before quoting it. **`islands 8` is correct** on a tower whose
+only vertical links are one-way falls, even though the audit still prints
+`← the surface is in pieces` next to it ([B-014](../BLOCKERS.md#b-014)). And **the
+question got weaker when the game did:** the creature cannot climb a chute, so the audit
+now asks about reach *within* a storey, not across the building.
+
 ### 3.4 `-nographics` makes every render black
 
 `-nographics` disables the graphics device. Any command that photographs anything —
 `SceneShot.Batch`, `MonsterShot.Batch`, `MonsterShot.StageBatch`,
-`AtmosphereSetup.ShotBatch`, `GuidanceShot.Batch` — must run **without** it. A black
-PNG is a plausible-looking output for a horror game, which is what makes this one
-expensive.
+`AtmosphereSetup.ShotBatch`, `StartleShot.Batch`, `GunShot.Batch`,
+`FirstPersonHandsShot.Batch` — must run **without** it. A black PNG is a
+plausible-looking output for a horror game, which is what makes this one expensive.
 
 ### 3.5 Blender exits 0 after a Python exception
 
@@ -152,81 +186,116 @@ fourth and weakest signal.
 
 ### 3.6 A green §12 checklist does not mean a good map
 
-`MapValidator` runs exactly **17** rules (count them:
+`MapValidator` runs exactly **14** rules (count them, 2026-08-12:
 `grep -c 'public const string Rule' unity/HorrorGame/Assets/Scripts/Core/Map/MapValidator.cs`
-→ `17`). Core's own fixture map passes them all and grades **10/10 TooEasy** on the
-주자 테스트 — pinned by `MapTests.SketchMap_PassesTheChecklistAndStillGradesTooEasy`.
-The checklist is necessary, not sufficient; the grade is the second half. §12 wants
-5–7/10.
+→ `14`, and `Validate` calls fourteen `Check*` methods). Core's own fixture map passes
+them all and grades **10/10 TooEasy** on the 주자 테스트 — pinned by
+`MapTests.SketchMap_PassesTheChecklistAndStillGradesTooEasy`. The checklist is necessary,
+not sufficient; the grade is the second half.
 
-**The shipped map is worse than that: it now fails the checklist too.** 요양원 지하 5층
-passes **16 of 17** and grades 10/10 TooEasy; the three-storey building it replaced
-graded 7/10. The 17th rule, `sight-break-spacing`, landed in `66ce930` and is the
-first one to measure corner *density* — which two passes of prose had already named as
-the cause. The `RunnerCensus` line under the grade — `164/164 escapable (100%)` —
-rules out an unlucky ten-point sample, and the line under *that* is the same geometry
-the new rule fails on: 79 sight-breaking corners, mean nearest-neighbour spacing
-**4.1 m** against §12's 15–25 m, **0 inside the band**. See
-[F-007](09-open-questions.md#f-007).
+> 🔴 **History — it used to be 17, and three of the deletions are the pivot, not a
+> weakening.** `RuleObservationPosts`, `RuleCandidateSites` and `RuleConcealmentNearExit`
+> counted places for §04's 관측자, §03's clue chain and §07's ambush; all three systems
+> are gone, and `MapValidator`'s own comment is the right way to read it — *"a gate on a
+> door that has been removed from the building."* `RuleZoneDiagonal` went with the §12
+> re-derivation, because on 하강 a 구역 **is** a 층. What arrived in exchange is
+> `RuleCentrePath` (§12-D's 외곽→중심 90–140 m), which gates and which **the shipped map
+> fails on every storey** — waived by name in `MapSceneGenerator.KnownFailingRules`, and
+> the only entry left in it. That is [B-019](../BLOCKERS.md#b-019).
 
-> 🔴 **A failing checklist blocks map generation.** `MapSceneGenerator.Generate` gates
-> on it, so `HorrorGame ▸ Scene Gen ▸ Generate First Map` now exits 1 and writes
-> nothing — [B-007](../BLOCKERS.md#b-007). The committed scene predates the rule and
-> still runs; re-rolling the map is what is blocked.
+**The shipped map still grades 10/10 TooEasy**, and the census rules out an unlucky
+ten-point sample: `680/680 escapable (100%)`, 85 places on each of the eight storeys
+([STATUS.md §2.1](../STATUS.md)).
+
+> 🟢 **`sight-break-spacing` is no longer the cause, and no longer blocks generation.**
+> [B-007](../BLOCKERS.md#b-007) closed 2026-08-10 on all eight roster seeds: the bands
+> jog outward, `160 시야 차단 지점` from 456 bends, the deepest **12.5 m** against a
+> 14.4 m cap, nearest-neighbour spacing 15 m and **160/160 inside** §12's 15–25 m. The
+> earlier figures on this page — *79 corners, mean 4.1 m, 0 inside the band* — were the
+> five-storey building, and were also the **raw bend** statistic rather than the 지점
+> statistic the rule actually applies.
+>
+> **The grade did not move anyway, and that is the finding.**
+> [F-013](../BALANCE-FINDINGS.md#f-013) predicted it as arithmetic: with any §12-legal
+> geometry a release fires after 16.8 m of route past one bend, and §12 *mandates* an
+> S자 통로 of 10 m × 2 per zone — so no map that obeys §12's construction rules can fail
+> §12's own 실전 검증. The 5–7/10 band is a co-op-era instrument that asked whether one
+> player in four could out-run the creature, in a race where all twenty can. Its
+> replacement is 탈출 대가 — what a chase *costs* in §07's currency.
 
 ### 3.7 A passing suite with skipped tests
 
 `dotnet test` prints `건너뜀: N`. If N is not 0, the total is inflated by disabled
 cases. Read both numbers.
 
-### 3.8 The chase numbers are measured at a tier a third of matches reach
+### 3.8 The chase numbers are measured at one tier, and nothing measures how often a match reaches it
 
-`MonsterChaseTests` pins §07 to 심야 to measure against §06's 4.8 m/s. The simulator
-says a real match reaches 심야 **33.6 %** of the time
-([F-006](09-open-questions.md#f-006)) — it said 1.2 % until 2026-08-01, when the
-five-storey map landed and the simulator was pointed at it. The chase numbers are
-correct *for the tier they are measured at*, and that tier is now a third of the
-population rather than a rounding error. They still are not the numbers of the median
-match, which ends at 7.2 min in tier 1.
+`MonsterChaseTests` sets the clock to 20 minutes so §07 reads 심야 — the row whose monster
+speed is `ThreatSpeedLateNight` 4.8 m/s, which is `MonsterBaseSpeed` and therefore §06's
+whole derivation. The numbers are correct *for the tier they are measured at*, and §07's
+table runs 4.4 / 4.6 / **4.8** / 5.0 / 5.2.
+
+> 🔴 **This section used to say "a third of matches reach it — 33.6 %".** That figure, and
+> every tier percentage that went with it, came from `core/HorrorGame.Sim`, and
+> **the simulator was deleted entirely at `e8c67ae`.** There is no `horrorsim`, no
+> `dotnet run --project core/HorrorGame.Sim`, and no replacement
+> ([TESTING.md §9](../TESTING.md)). So the honest statement today is not a smaller
+> number — it is that **nobody knows the tier distribution of a real match**, and the
+> only instrument that ever claimed to was measuring a four-zone ring the game never
+> shipped ([B-012](../BLOCKERS.md#b-012)). Treat any tier percentage you find in an
+> older document as void rather than stale.
 
 ---
 
 ## 4. What each red thing currently means
 
+Re-derived 2026-08-12. The three rows this table used to carry are all resolved or moot,
+and are kept in the second table below so nobody re-opens them.
+
 | Red thing | Status | Do not "fix" it by |
 |---|---|---|
-| `SoloMatchLoopTests` fails on a Mirror package `.meta` | [B-002](../BLOCKERS.md#b-002) — environment, not a regression. The same code path passes outside the harness ([STATUS.md §1.4](../STATUS.md)) | widening the test's log tolerance in general — that hides the errors it exists to catch. Reinstall the package, or `LogAssert.Expect` this one message |
-| `verify_audio.py` exit 1 | [F-002](09-open-questions.md) — an open design decision | changing the mix to make the number go away. `AudioTests.OccludedAudibility_InvertsTheClarityTable_AsF002Reports` fails if you do |
-| Two `HallOpen20x20` `LogError`s on every map generation | [B-003](../BLOCKERS.md#b-003) — design intent lost quietly | ignoring it. A generator that logs errors on the happy path means nobody can use "the log is clean" as a gate |
+| `verify_audio.py` exit 1, two BLOCKING rows | [F-002](09-open-questions.md#f-002) — an open design decision. `tools/ci/verify_audio.sh` is green because `tools/ci/audio_baseline.json` suppresses exactly these two | changing the mix to make the number go away. `AudioTests.OccludedAudibility_InvertsTheClarityTable_AsF002Reports` fails if you do |
+| `[FAIL] centre-path` on every map generation, waived by name | [B-019](../BLOCKERS.md#b-019) — a *map* defect with an address, not a rule defect. 21 of 22 storey entry points are now inside §12-D's 90–140 m band | relaxing the band. §12-D forbids it in as many words: 60–90 m means 「맵을 아는 것이 실력이라는 전제」 disappears without a reward |
+| CI's `core tests (dotnet)` fails on `floor=512` against a 357-test suite | [B-013](../BLOCKERS.md#b-013) / [STATUS.md §2.6](../STATUS.md) — the floor was taken at `a3e268e`, before `e8c67ae` deleted the co-operative game and its tests | lowering the floor without saying why. The floor exists so a run that executes *nothing* cannot pass; it needs re-measuring, not deleting |
+| Three `VoiceSocketTests` red in PlayMode | [STATUS.md §2.3](../STATUS.md), carried 2026-08-08 — and one of the three is §06's mechanic, not plumbing: `MatchDirector.VoiceEffort` reads `Silent` while the player holds Shout | treating it as environment. Two of the three say no voice frame arrives at all |
+| `← the surface is in pieces` next to `islands 8` | cosmetic, [B-014](../BLOCKERS.md#b-014)'s last open piece. Eight one-way storeys **are** eight surfaces | "fixing" the map. Fix the log line |
+
+**Closed, and listed so they are not re-opened:**
+
+| Was red | Now |
+|---|---|
+| `SoloMatchLoopTests` fails on a Mirror package `.meta` | 🟡 [B-002](../BLOCKERS.md#b-002) **dormant and unverifiable** — it stopped reproducing when the package cache was rewritten, and the test file itself no longer exists at HEAD. It drove the §01 co-operative loop the pivot deleted |
+| Two `HallOpen20x20` `LogError`s on every map generation | 🟢 [B-003](../BLOCKERS.md#b-003) **closed by the pivot** 2026-08-03 — `DescentMap`/`RadialStorey` place no `HallOpen20x20` at all. The complaint underneath it survives one level up: a generator that prints `FAIL` on the happy path still means "the log is clean" cannot be a gate |
+| `sight-break-spacing` refuses to write the map | 🟢 [B-007](../BLOCKERS.md#b-007) **closed 2026-08-10** — see §3.6 |
 
 ---
 
 ## 5. Where the existing docs are already stale
 
 Not a criticism — they are dated snapshots and they say so. But **re-measure before
-quoting**, and prefer STATUS.md over the others. Known drift as of 2026-08-01 06:40:
+quoting**. Re-derived 2026-08-12 at HEAD `4ab204f`; every "Actually" below was run or read
+that day.
 
 | Claim | Where | Actually |
 |---|---|---|
-| "§12 validation PASS on all 17 rules" | ART.md §6 | there are now 17 rules, and the shipped map passes **16** of them — [B-007](../BLOCKERS.md#b-007) |
-| "47 FBX" | ASSETS.md header | 86 on disk |
-| "387 tests" | CI.md §2.1 | 451 |
-| "`Assets/Tests/EditMode/` and `Assets/Tests/PlayMode/` are still empty" | CI.md §4.2, §5 | six test assemblies exist and run |
-| "Nothing that needs the Unity editor has ever executed" | CI.md §5 | true of *CI*, not of this machine — STATUS.md quotes real editor runs |
-| "`dist/` contains logs and test results and **no player executable**" | STATUS.md §5 | corrected — an IL2CPP macOS player is built and verified to reach a match ([STATUS.md §1.10](../STATUS.md)). Read `dist/last-build-summary.txt` |
-| PlayMode is 27 tests, or 42, or 53, or 55, or 64, or 66 | anywhere | **72**; EditMode **101**; core **451**; **624** total ([STATUS.md §1.9](../STATUS.md)) |
-| "16–39 % crushed, 31–57 % legible" | ART.md §1 | re-measured every art pass — [STATUS.md §4.3](../STATUS.md) is the current one |
-| "all five zone views are inside all four bands" | ART.md §1 | **no longer true** — three of five are below the 30 % legible floor and Zone A is above the 40 % crushed ceiling. Re-measured 2026-08-01 on `land_main_Zone_*`; see ART.md §1 |
-| "the player's first-person hands are done" / "the van repaint is done" | anywhere | the *materials* and the *rig* are done and validated; the *meshes* are not — ART.md §7.13 |
-| "matches finish in 2.5 min" / "0.6% inside the window" / "심야 1.2%" | anywhere | 7.2 min, 15.8%, 33.6% — the old figures were measured against a four-zone ring the game does not ship ([F-006](09-open-questions.md#f-006)) |
-| "주자 테스트 7/10, Balanced" | anywhere | 10/10 TooEasy on the five-storey map ([F-007](09-open-questions.md#f-007)) |
+| any figure from the balance simulator — "매치 7.2 min", "심야 33.6 %", "완전 승리 11.2 %", `weight-mul-light` sweeps | CI.md §0.2, TESTING.md, older wiki pages | **void, not stale.** `core/HorrorGame.Sim` was deleted at `e8c67ae` and `core/` now holds only `HorrorGame.Core`, `HorrorGame.Core.Tests` and the solution. There is no `horrorsim` and no replacement |
+| "`Assets/Tests/EditMode/` and `Assets/Tests/PlayMode/` are still empty" | CI.md §4.2 (`docs/CI.md:641`) | **6 EditMode and 27 PlayMode test files**, across **10 test assemblies**, counted on disk |
+| "23 test files … 2 EditMode and 21 PlayMode at `a3e268e`" | `.github/workflows/unity.yml:275` | **33 files — 6 EditMode, 27 PlayMode** |
+| "Nothing that needs the Unity editor has ever executed" | CI.md §5 (`docs/CI.md:670`) | still true of *CI* — `unity.yml` has never run. Not true of this machine |
+| `floor=512` | `.github/workflows/ci.yml:102` | the suite is **357**, so the required job fails by construction — [B-013](../BLOCKERS.md#b-013) |
+| "512 tests, the solution build, and the simulator actually running" | CI.md §6.4 (`docs/CI.md:798`) | 357, the solution build, and **no simulator** |
+| "the project records no revision hash, so it cannot be read" | `.github/workflows/unity.yml:215` | `ProjectVersion.txt` **does** record one: `6000.3.21f1 (c02631ffc030)` |
+| audio separation "2.10× / 1.389× / 32.5 dB" | wherever it survives | re-measured 2026-08-12 on the eight-surface alphabet: dry worst pair **water vs gravel 1.44×**; at 25 m through a wall **metal vs gravel 1.137×**; gravel is **17.8 dB** quieter than concrete at low-pass 600 Hz |
+| "주자 테스트 7/10, Balanced" / "164/164 escapable" | anywhere | **10/10 TooEasy, 680/680 escapable** on the eight-storey building — and [F-013](../BALANCE-FINDINGS.md#f-013) retires the 5–7 band as a co-op-era instrument |
+| "the player's first-person hands are done" / "the van repaint is done" | anywhere | the hands landed in `b92ae78`; **the 차량 is deleted with §08**, so the repaint is moot — ART.md §7.12, §7.13 |
+| "`dist/windows-x64/MONO-FALLBACK-DO-NOT-SHIP.txt`" | STATUS.md §2.5 | **not on disk today.** The folder was rewritten on 2026-08-10 by a `-buildConfig development` run, which is Mono *on purpose* and writes no marker. Read `dist/windows-x64/build-report.txt` — it says `shippable on Steam: no` for a different reason |
 
-**The one that cost most.** Every "2.5 min" above was not stale prose — it was a live
-measurement of the wrong object, and it sat in `PlaytestGuidanceScreen`'s §14 overlay
-where a playtester would read it as fact. A number in a string literal is a copy; grep
-for it when the thing it copies moves.
-| audio separation 2.13× / 1.98× / 1.396× / 32.4 dB | STATUS.md §2.2, CI.md §2.2, BALANCE-FINDINGS F-002/F-003 | **2.10× / 1.89× / 1.389× / 32.5 dB**, measured twice on 2026-07-31 23:38 with the pinned toolchain. 56 footstep WAVs were regenerated in commit `4fb93cd` |
-| TESTING.md's suite command carries `-quit` | TESTING.md §4 vs its own warning box | the warning is right; the command above it is the one to use |
+**The one that cost most, and it is a rule rather than a row.** The old "matches finish in
+2.5 min" was not stale prose — it was a live measurement of the wrong object, and it sat
+in a §14 playtest overlay where a tester would read it as fact. **A number in a string
+literal is a copy; grep for it when the thing it copies moves.** The screen that held it is
+gone with the co-op UI, and the lesson is why this page now names a file and a line number
+for every row above.
 
 ---
 

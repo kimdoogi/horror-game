@@ -91,15 +91,26 @@ jobs:
       # longer loads, an asmdef change — is reported by this job as a green tick over
       # zero tests. The exit code cannot tell "512 passed" from "none ran".
       #
-      # The floor is 512, the count measured at a3e268e by the command above. It is a
+      # The floor is 357, the count measured at 4ab204f by the command above. It is a
       # floor and not an equality on purpose: adding tests must never turn the build
       # red, and *losing* several hundred is the failure this exists to catch. Deleting
       # tests deliberately means lowering this number in the same commit — which is the
       # conversation the repo wants (docs/BALANCE-FINDINGS.md's rule that a fix has to
       # fail the build once, so the write-up moves with the change).
+      #
+      # THAT CONVERSATION DID NOT HAPPEN, and this is what it cost. e8c67ae deleted the
+      # co-operative game and the ~155 tests that drove it — a legitimate deletion, and
+      # nobody moved the floor with it. So this required job failed on arithmetic about
+      # a game that no longer existed, on every push, for nine days and ~45 commits,
+      # while the suite underneath it was green the entire time. A gate nobody can fix
+      # is a gate everybody learns to scroll past, which is the argument docs/CI.md §2.2
+      # makes against gating on exit 6 — and it applied here first.
+      #
+      # The lesson is not "pick a lower number". It is that a count in a gate is a claim
+      # with a date on it, and the date is the part that rots.
       - name: Assert the suite actually ran
         run: |
-          floor=512
+          floor=357
           trx=artifacts/test-results/core-tests.trx
           if [ ! -f "${trx}" ]; then
             echo "::error::dotnet test wrote no TRX at ${trx}. The run cannot be audited, so it does not count as green."
