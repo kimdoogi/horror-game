@@ -56,8 +56,11 @@ namespace HorrorGame.Gameplay.MonsterEditor
                 AssetDatabase.SaveAssets();
                 AssetDatabase.Refresh();
 
+                var bound = BindToModel(built);
+
                 Debug.Log("[MonsterSkin] built " + built.Count + " material(s):\n  "
-                          + string.Join("\n  ", built.Values.Select(Describe)));
+                          + string.Join("\n  ", built.Values.Select(Describe))
+                          + "\n  bound onto " + ModelPath + ": " + bound + " slot(s)");
 
                 if (IsBatch())
                 {
@@ -72,6 +75,63 @@ namespace HorrorGame.Gameplay.MonsterEditor
                     EditorApplication.Exit(1);
                 }
             }
+        }
+
+        /// <summary>The FBX every scene instantiates. Not the prefab — see <see cref="BindToModel"/>.</summary>
+        public const string ModelPath = "Assets/Models/Characters/Monster.fbx";
+
+        /// <summary>
+        /// Remaps the built materials onto the model importer, so the creature the game
+        /// spawns wears them.
+        /// <para>
+        /// <b>Without this the whole file was decorative.</b> The materials above were
+        /// bound only by <c>Assets/Prefabs/Monster/Monster.prefab</c>, and an audit on
+        /// 2026-08-12 found that prefab's GUID in **no scene, prefab or asset** — while
+        /// <c>Monster.fbx</c>'s GUID appears 13 times in a single Descent scene, because
+        /// <see cref="HorrorGame.EditorTools.SoloPlaytest"/> and the map builder
+        /// instantiate the RAW MODEL. With <c>materialLocation: 1</c> and an empty
+        /// <c>externalObjects</c>, Unity then generates its own Lit materials from the
+        /// FBX's embedded Principled BSDF — three flat colours. Which is precisely the
+        /// defect this class's own header says it exists to fix, shipping unfixed for as
+        /// long as the class has existed.
+        /// </para>
+        /// <para>
+        /// Remapping on the importer rather than re-pointing the spawners is deliberate:
+        /// it binds at the asset, so every present and future instantiation gets the same
+        /// answer, and a scene that already references the FBX by GUID needs no edit.
+        /// </para>
+        /// </summary>
+        /// <returns>How many slots were remapped.</returns>
+        public static int BindToModel(Dictionary<string, Material> built)
+        {
+            var importer = AssetImporter.GetAtPath(ModelPath) as ModelImporter;
+            if (importer == null)
+            {
+                Debug.LogError("[MonsterSkin] no ModelImporter at " + ModelPath
+                               + ", so the built materials bind to nothing the game spawns.");
+                return 0;
+            }
+
+            var bound = 0;
+            foreach (var pair in built)
+            {
+                // The FBX's slot names are the generator's material names — gen_monster_ai
+                // prints them as SLOTS Monster_Hide/Monster_Eyes/Monster_Maw — so the
+                // identifier is the name and no lookup table is needed.
+                var id = new AssetImporter.SourceAssetIdentifier(typeof(Material), pair.Key);
+                importer.AddRemap(id, pair.Value);
+                bound++;
+            }
+
+            if (bound > 0)
+            {
+                // Materials must come from outside the model for a remap to be honoured.
+                importer.materialLocation = ModelImporterMaterialLocation.External;
+                AssetDatabase.WriteImportSettingsIfDirty(ModelPath);
+                AssetDatabase.ImportAsset(ModelPath, ImportAssetOptions.ForceUpdate);
+            }
+
+            return bound;
         }
 
         /// <summary>Builds the materials and returns them by generator name.</summary>

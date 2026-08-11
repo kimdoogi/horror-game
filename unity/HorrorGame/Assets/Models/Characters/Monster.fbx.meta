@@ -3,12 +3,27 @@ guid: d49ee4605388f44588e234f661bd7410
 ModelImporter:
   serializedVersion: 24300
   internalIDToNameTable: []
-  externalObjects: {}
+  externalObjects:
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Monster_Eyes
+    second: {fileID: 2100000, guid: 42e7bd762d7f04beda7fd0fb2acf27ee, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Monster_Hide
+    second: {fileID: 2100000, guid: 0918491aceeee4dddb646386d5cfd612, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Monster_Maw
+    second: {fileID: 2100000, guid: 3428ce6e9f0714215abcab4c6efd5b91, type: 2}
   materials:
     materialImportMode: 2
     materialName: 0
     materialSearch: 1
-    materialLocation: 1
+    materialLocation: 0
     searchTexturesGlobally: 0
   animations:
     legacyGenerateAnimations: 4
