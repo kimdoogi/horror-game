@@ -20,9 +20,12 @@ Both numbers below are `ffprobe` output, not intentions.
 |---|---|---|---|
 | resolution | 1280 × 720 | **1920 × 1080** | 1920 × 1080 |
 | frame rate | 24 | **30** | 30/29.97 or 60/59.94 |
-| bit rate | 1,625 Kbps | **see §6** | 5,000+ Kbps |
-| duration | 3.00 s | **41.57 s** | 30–60 s |
+| bit rate | 1,625 Kbps | **11,960 Kbps** | 5,000+ Kbps |
+| duration | 3.00 s | **41.57 s** (1247 frames) | 30–60 s |
 | subject | a four-player co-op looting party | the race | — |
+
+Re-measured 2026-08-12 with `ffprobe`; the new cut clears every row. `descent_film.py`
+asks for 12,000 Kbps (`--bitrate`, the default) and the encode landed at 11,960.
 
 `party.mp4` misses the resolution, the frame rate, the bit rate and the length, and is
 named after a party of four that this design deleted on 2026-08-02. **It is not the
@@ -61,14 +64,14 @@ next one matters:
    arrives at the same doorway, and §12-A refuses to widen it when the lobby grows.
 4. **Something in here takes everything you have gained, and does not end your run.**
 
-**Claim 4 changed on 2026-08-03 and the store copy has not caught up.** Being caught is
-not death: `MatchDirector.cs:1614` — 「§02: caught is not death. The creature sends a
-runner back to the place they started on B1 and they keep racing.」 §09's spectator ghost
-was deleted in the same change, because nothing is permanent any more and there is
-nobody to spectate. The previous version of this file had a beat built on
-**탈락 · 순위 없음 / OUT · NO PLACING** and on filming the ghost. Both were cut here.
-See [§7](#7--the-copy-still-sells-elimination) — the same error is still live in
-`copy-ko.md` and `copy-en.md`, and it is a bigger problem than the trailer was.
+**Claim 4 changed on 2026-08-04 (`e0fa042`) and the store copy took until 2026-08-12 to
+catch up.** Being caught is not death: `MatchDirector.cs:1666` — 「§02: caught is not
+death. The creature sends a runner back to the place they started on B1 and they keep
+racing.」 §09's spectator ghost was deleted in the same change, because nothing is
+permanent any more and there is nobody to spectate. The previous version of this file had
+a beat built on **탈락 · 순위 없음 / OUT · NO PLACING** and on filming the ghost. Both
+were cut here, and [§7](#7--the-copy-no-longer-sells-elimination) records the day the
+copy followed.
 
 ---
 
@@ -102,10 +105,12 @@ nobody ran — so when the cut changes, both change or neither does.
 
 ### The two beats that were cut, and why
 
-- **"Twenty runners on the ring."** Not filmed, and deliberately. Two peers have
-  connected; twenty never have. §8's rule stands: staging twenty stand-ins to photograph
-  the one claim on this page that has never been demonstrated is a lie, not a shortcut.
-  Shot 4 shows two and the cut never says a number.
+- **"Twenty runners on the ring."** Not filmed, and deliberately. Twenty *instances* have
+  connected on this desk — `LocalTwoInstance` records the run in its own doc comment
+  (2.4 GB resident, load average 29) — but **twenty people never have, and neither have
+  two.** §8's rule stands: staging twenty stand-ins to photograph the one claim on this
+  page that no human has ever demonstrated is a lie, not a shortcut. Shot 4 shows two and
+  the cut never says a number.
 - **"Being sent back to B1", as the curtain.** `CaughtScreen` is a UI curtain driven by
   `MatchDirector`, and this rig is edit-mode — no play mode, no UI, no director. Shot 20
   gets the *rule* across by cutting from the creature to the lit rim, which is what the
@@ -156,9 +161,9 @@ nothing in this repository records a player window.
 What it would take, precisely:
 
 1. The instances already accept `-screen-width 1920 -screen-height 1080`
-   (`LocalTwoInstance.cs:492`), so the window can be the right size. Clients default to
-   `-batchmode -nographics`, which renders nothing — the ones being filmed have to be
-   launched windowed.
+   (`Assets/Scripts/Editor/SceneGen/LocalTwoInstance.cs:593`), so the window can be the
+   right size. Clients default to `-batchmode -nographics` (line 583), which renders
+   nothing — the ones being filmed have to be launched windowed.
 2. Capture is then **desktop recording** — `ffmpeg -f avfoundation -i "3"` (`Capture
    screen 0` is present on this machine). That records the whole screen, so it needs a
    human to place the windows, and it needs macOS Screen Recording permission granted to
@@ -214,31 +219,32 @@ Four things that otherwise waste a night, all of them learned the expensive way:
 
 ---
 
-## 7 · The copy still sells elimination
+## 7 · The copy no longer sells elimination
 
-Found while sweeping this folder, and it is worse than anything that was wrong with the
-trailer, because the trailer was merely stale while this is a claim on the store page
-that the game contradicts.
+Raised here on 2026-08-04, fixed in the copy on **2026-08-12**. Recorded rather than
+deleted, because it is the clearest example this folder has of a document outliving the
+rule it described.
 
-The shipped rule (`MatchDirector.cs:1614`, `CaughtScreen.cs`): caught → back to your own
-starting cell on B1 → keep racing. Nothing eliminates a player. `GhostSession` is deleted
-from the repository.
+The shipped rule (`Core/Race/RaceState.cs` `ReportCaught`, `MatchDirector.cs:1666`,
+`UI/Screens/CaughtScreen.cs`): caught → back to your own starting cell on B1 → keep
+racing, with `TimesCaught` incremented and nothing else taken. Nothing in the game
+eliminates a player; `RacerStatus.Eliminated` now means only *a seat that emptied*, and
+`GhostSession` is not in the repository.
 
-Still on the page:
+What was on the page, and what replaced it:
 
-| File | Line | Says |
+| File | Said | Now says |
 |---|---|---|
-| `copy-ko.md` | 65 | 「잡히면 순위 없이 **탈락**한다」 |
-| `copy-ko.md` | 121 | 「잡히면 **탈락**입니다. 순위도 남지 않습니다 … 잘 죽는 방법은 없습니다」 |
-| `copy-ko.md` | 131 | 경주 규칙에 「**탈락**」을 열거 |
-| `copy-en.md` | 138 | "start, finish order, **elimination**, timeout" |
-| `copy-en.md` | 331 | "Caught is out, unranked, no revival ✅ code + test" — *cites `RaceDirector.cs:508`, whose comment is itself stale* |
+| `copy-ko.md` §2 | 「잡히면 순위 없이 **탈락**한다」 | 「잡히면 지하 1층부터 다시다」 |
+| `copy-ko.md` §3 | 「잡히면 **탈락**입니다 … 잘 죽는 방법은 없습니다」 | 「잡히면 지하 1층 출발선으로 돌아갑니다 … 끝내 주지 않는 것이 이 괴물의 벌입니다」 |
+| `copy-ko.md` §3 | 경주 규칙에 「**탈락**」을 열거 | 「출발 · 완주 순위 · **잡힘** · 시간 초과」 |
+| `copy-en.md` §3 | "start, finish order, **elimination**, timeout" | "start, finish order, **being caught**, timeout" |
+| `copy-en.md` §10 | "Caught is out, unranked, no revival" citing `RaceDirector.cs:508` | the `ReportCaught` row above — that citation named a line that does not contain it, and the PlayMode log it quoted (`§02 0번 탈락 — B8, 11초`) is not in the code either |
 
-Two of those are the emotional centre of the Korean long description. **Rewriting them is
-not a copy edit** — 「잘 죽는 방법은 없습니다」 is a good line about a rule that no longer
-exists, and the replacement has to be about losing eight floors of progress and running
-anyway, which is a different and arguably better pitch. It is not done here because this
-pass owns the trailer; it is [checklist.md](checklist.md)'s to schedule.
+The Korean line that had to go was the good one: 「잘 죽는 방법은 없습니다」 was the
+emotional centre of the long description and it was about a rule that no longer exists.
+Its replacement is about losing eight floors of progress and running anyway, which is a
+different and — the copy now argues — better pitch.
 
 **The gun does not appear in any store document.** Four of them ship, one each on B3–B6
 (`Gun_B3`…`Gun_B6`, verified in the scene). It is in this cut at shot 16 and in no piece
@@ -278,10 +284,13 @@ edit-suite job.
 - **The creature is heard twice at most** — once under shot 18's acquisition tell, once at
   shot 19. §06's 정지 state, 「침묵이 가장 무서운 소리다」, is the design's own argument for
   restraint.
-- ⚠ **The gravel/concrete inversion is audible.**
-  [F-002](../BALANCE-FINDINGS.md#f-002): gravel measures **26.1 dB quieter** than concrete
-  at the 800 Hz corner the mix uses, while the game tells the player gravel is the clearer
-  of the two. Shots 8–15 put both in a section whose entire purpose is that surfaces sound
-  different. **Resolve F-002 before mixing that section.** The cut's order is fixed by
-  storey (B1 concrete → B8), so the two cannot be separated by re-ordering — B1 concrete
-  and B4 gravel are three cuts apart.
+- ⚠ **The gravel/concrete inversion is still audible, and it is half what it was.**
+  [F-002](../BALANCE-FINDINGS.md#f-002) was halved on 2026-08-09 by the CC0 footstep pass.
+  Re-run here on 2026-08-12 (`tools/ci/verify_audio.sh`): gravel measures **17.8 dB
+  quieter** than concrete through the verifier's 600 Hz low-pass — down from 32.5 dB —
+  while the game still tells the player gravel is the clearer of the two. The gate
+  accepts it as a known baseline defect, so the audit passes and **the inversion is still
+  there**. Shots 8–15 put both surfaces in a section whose entire purpose is that surfaces
+  sound different. **Resolve F-002 before mixing that section.** The cut's order is fixed
+  by storey (B1 concrete → B8), so the two cannot be separated by re-ordering — B1
+  concrete and B4 gravel are three cuts apart.

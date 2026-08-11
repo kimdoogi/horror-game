@@ -3,7 +3,7 @@
 > Read this before writing a line of code in this repo. It is the agreement that
 > keeps independently written systems compiling together.
 >
-> The design document (`docs/game-design.md`, v0.5) is the authority on *what the
+> The design document (`docs/game-design.md`, v1.1) is the authority on *what the
 > game is*. This file is the authority on *where code goes and how pieces talk*.
 
 ---
@@ -43,7 +43,7 @@ the `.csproj` and nothing else.
 | **Net** | `Assets/Scripts/Net/` | ✅ | Mirror `NetworkBehaviour`s. Host authority. |
 | **Steam** | `Assets/Scripts/Steam/` | ✅ | Steamworks.NET behind an interface. Must compile with the DLLs absent. |
 | **Audio** | `Assets/Scripts/Audio/` | ✅ | Playback, 3D sources, occlusion, voice. |
-| **UI** | `Assets/Scripts/UI/` | ✅ | HUD, shop, lobby. |
+| **UI** | `Assets/Scripts/UI/` | ✅ | Race HUD, lobby, menus, settings. No shop — §08 is deleted. |
 | **Editor** | `Assets/Scripts/Editor/` | ✅ | Scene generation, map validation, build pipeline. Editor-only asmdef. |
 
 If you are unsure whether something belongs in Core: **can it be tested without
@@ -89,16 +89,24 @@ from a player becomes reproducible here. `FoundationTests` enforces this.
 Systems are written independently, so they couple through **primitives, not each
 other's types**. This is the rule that lets ten people work at once.
 
-Concretely: movement does not import the economy to learn about carry weight. The
-economy exposes a `float` multiplier; movement multiplies by a `float`.
+Concretely: movement does not import the stance system to learn whether the player
+is crouched. Stance exposes a `float` multiplier; movement multiplies by a `float`.
 
 ```
-Inventory.SpeedMultiplier ──float──▶ MovementContext.LoadMultiplier
-ThreatCurve.MonsterSpeed  ──float──▶ MonsterBrain
-IWorldProbe               ──────────▶ MonsterBrain, abilities, map queries
-IRandomSource             ──────────▶ anything that varies per match
-ITelemetrySink            ──────────▶ anything worth measuring
+PlayerStance.SpeedMultiplier ──float──▶ MovementContext.LoadMultiplier
+ThreatTier.MonsterSpeed      ──float──▶ MonsterBrain
+IWorldProbe                  ──────────▶ MonsterBrain, map queries
+IRandomSource                ──────────▶ anything that varies per match
+ITelemetrySink               ──────────▶ anything worth measuring
 ```
+
+> 🔴 **This example used to read `Inventory.SpeedMultiplier`.** `Inventory` and the
+> whole of `Core/Economy/` went with §08 (game-design v1.1), so the *illustration*
+> died — but the **seam did not**, and it is still load-bearing: `LoadMultiplier` is
+> now the §05 stance multiplier, fed by `PlayerMotor.StanceMultiplier()` from
+> `PlayerStance.SpeedMultiplier`, and core movement still knows nothing about the
+> `MonoBehaviour` that produced it. Re-founded on what is true rather than deleted,
+> because the rule the diagram teaches is the reason the file exists.
 
 ### Fixed signatures
 
@@ -116,27 +124,24 @@ public struct MoveInput
 
 public struct MovementContext
 {
-    public float BaseSpeed;           // WalkSpeed / RunSpeed / RunnerSprintSpeed
-    public float LoadMultiplier;      // from Inventory.SpeedMultiplier
-    public bool CarryingObjective;
-    public bool BagEquipped;
+    public float BaseSpeed;           // WalkSpeed 2.0 / RunSpeed 4.5 / RunnerSprintSpeed 5.6
+    public float LoadMultiplier;      // §05 stance; 1 = upright. 0 on a default struct, deliberately
 }
+// 🔴 `CarryingObjective` and `BagEquipped` were DELETED with §03's objective and
+// §08's economy. MovementContext.cs carries the reason in a comment: they were the
+// last two ways one runner could be slower than another, and §11 starts twenty
+// identical people. Re-adding either means re-adding a thing to carry.
 
 public static class SpeedResolver
 {
-    /// Applies the §05 directional table, then load, then carry state.
+    /// Applies the §05 directional table, then the stance multiplier.
     public static float Resolve(MoveInput input, MovementContext context);
 
     /// The §05 multiplier alone, for tests and telemetry.
     public static float DirectionalMultiplier(MoveInput input);
-}
 
-// Core/Economy/ — owner: economy
-public sealed class Inventory
-{
-    public int TotalWeight { get; }
-    public float SpeedMultiplier { get; }   // §08 bands
-    public bool CanSprint { get; }          // false at weight ≥ 16
+    /// Picks walk / run / sprint. Sprint needs §04's stamina, not a role.
+    public static float SelectBaseSpeed(MoveInput input, bool sprintUnlocked, bool staminaReady);
 }
 
 // Core/Threat/ — owner: threat
@@ -174,32 +179,50 @@ They never read a clock themselves. The host drives them at
 
 Mirror, host authority, no host migration.
 
-> **Clue contents and the objective's location exist only on the host.**
+> **Placement and arrival are decided on the host, and nowhere else.**
 
-§03's constraint — see it, remember it, say it out loud — dies the moment the
-answer is in a client's memory. Sending it "but only showing it when close" is
-the same as sending it.
+🔴 This section used to read "clue contents and the objective's location exist only
+on the host". There is no clue and no objective any more — game-design §13 deleted
+that row outright, because a race has no answer to hide. **The row was replaced, not
+dropped**, and §13 says the swap is what best characterises v1.1: the host's job
+moved from *concealing* to *adjudicating*.
 
-So: a client asks the host "am I reading a clue?", and the host replies with the
-rendered glyph for *that* clue only. `ObjectiveResolver` and the clue tables are
-host-side types; a `NetworkBehaviour` must never serialise them.
+So the constraint has the same teeth pointed at a different value. `RaceState`
+(`Core/Race/`) owns `ReportDescent`, `ReportFinish`, `ReportCaught` and `Standings()`,
+and only the host may call the reporting half. A client that can say "I arrived" is
+the first value anyone forges in a racing game (§02). The HUD *reads* standings; per
+§02 the screen side must not even have a method that can claim an arrival.
 
-Voice cuts off at `VoiceCutoffDistance` **at the sender** (§13). Receiving audio
-and muting it locally is trivially defeated.
+`ObjectiveResolver` is gone — do not reintroduce the name. It survives only as a
+comment in `Gameplay/Match/MatchMap.cs` explaining what the 후보 지점 markers used
+to feed.
+
+Voice cuts off at `GameConstants.VoiceCutoffDistance` (30 m) **at the sender**
+(§13). Receiving audio and muting it locally is trivially defeated.
 
 ---
 
 ## 5. Testing
 
-| Suite | Where | Runs how | Covers |
-|---|---|---|---|
-| **Core** | `core/HorrorGame.Core.Tests/` | `dotnet test` — no Unity needed | Every rule and number |
-| **EditMode** | `Assets/Tests/EditMode/` | Unity Test Runner | Adapters, prefab wiring, generated scenes |
-| **PlayMode** | `Assets/Tests/PlayMode/` | Unity Test Runner | Movement feel, monster chases, networking |
-| **Simulator** | `core/HorrorGame.Sim/` | `horrorsim` CLI | Balance sweeps over thousands of seeded matches |
+| Suite | Where | Runs how | Covers | Size |
+|---|---|---|---|---|
+| **Core** | `core/HorrorGame.Core.Tests/` | `dotnet test` — no Unity needed | Every rule and number | **357 tests, ~1½ min** |
+| **EditMode** | `Assets/Tests/EditMode/` | Unity Test Runner | Adapters, prefab wiring, generated scenes, pivot tombstones | 6 files |
+| **PlayMode** | `Assets/Tests/PlayMode/` | Unity Test Runner | Movement feel, monster chases, networking, the race | 27 files |
 
-Core tests are the ones that must always be green. Write them as **assertions
-about the design's own reasoning**, not as restatements of the implementation:
+> 🔴 **There was a fourth row: `core/HorrorGame.Sim/`, run by a `horrorsim` CLI, for
+> balance sweeps over thousands of seeded matches.** The simulator was deleted with
+> the co-op game at `e8c67ae` — the directory does not exist and the project is gone
+> from `core/HorrorGame.sln`. Balance questions are now answered by the core suite
+> and by `docs/BALANCE-FINDINGS.md`, not by a sweep. Do not cite `horrorsim`; there
+> is nothing to run.
+
+Core tests are the ones that must always be green — measured 2026-08-12 at `4ab204f`
+and again at `017b489`: `dotnet test core/HorrorGame.sln` → **357 passed, 0 failed,
+0 skipped**, in 1 m 29 s – 1 m 41 s across three runs. **It is not a three-second
+suite**; quote the count, and treat the duration as a range.
+Write them as **assertions about the design's own reasoning**, not as restatements
+of the implementation:
 
 ```csharp
 // Good — fails when the design's logic breaks.
@@ -210,8 +233,11 @@ Assert.That(sprintGain, Is.LessThan(GameConstants.AggroReleaseDistance),
 Assert.That(GameConstants.MonsterBaseSpeed, Is.EqualTo(GameConstants.MonsterBaseSpeed));
 ```
 
-Each system owns exactly one test file, named `<System>Tests.cs`. Do not edit
-another system's test file.
+A system owns its own test file, named `<System>Tests.cs`. Do not edit another
+system's test file. Two systems have earned a second file where one subject was
+big enough to stand alone — `MonsterTests.cs` + `MonsterLungeTests.cs`, and
+`MapTests.cs` + `MapSketchOffsetTests.cs`. That is the bar for splitting: a
+distinct subject, not a long file.
 
 Include the ugly cases: zero delta time, huge delta time (a frame spike must not
 teleport the monster through a wall), empty inventory, an `IWorldProbe` that
@@ -222,8 +248,9 @@ reports nothing reachable, simultaneous state transitions.
 ## 6. Where a finding goes
 
 The design document is a draft, and running its numbers surfaces contradictions
-it does not acknowledge. One is already recorded in
-`docs/BALANCE-FINDINGS.md`.
+it does not acknowledge. Thirteen are already recorded in
+`docs/BALANCE-FINDINGS.md` (F-001 … F-013), and twenty-one blockers in
+`docs/BLOCKERS.md` (B-001 … B-021).
 
 When you find another: **do not quietly "fix" the design.** Encode what the
 document literally says, write a test that pins the actual consequence, and add

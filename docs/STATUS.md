@@ -6,9 +6,12 @@ Where 하강 actually stands at **commit `9f0f447`**, 2026-08-10.
 > and the table under it, then §2 and §5.** §1 is real and it is not the part that decides
 > anything.
 
-Every number on this page is quoted with the run it came from. Where a run is named — a
-log under `scratchpad/biggate/`, `dist/test-results/playmode-results.xml` — that file is
-the evidence and the command that produced it is in [TESTING.md](TESTING.md). Nothing is
+Every number on this page is quoted with the run it came from, and the command that
+produced it is in [TESTING.md](TESTING.md). One caveat, added 08-12: the 08-11 disk
+cleanup (`55520b0`) deleted `dist/test-results/` and `dist/logs/` along with 29 GB of
+stale players. Numbers below that cite `playmode-results.xml` are therefore quoted from
+**a run whose artefact no longer exists** — they are dated, they were real, and they are
+not re-openable. Each such citation says so inline. Nothing is
 carried forward from an earlier edition of this document: the previous edition described
 commit `a3e268e`, seven days and forty commits ago, and most of what it said has since
 stopped being true in one direction or the other.
@@ -289,8 +292,9 @@ its Build Settings list **three** of the eight.
 ### 1.7 Two peers meet over real sockets, and a human's movement crosses the wire
 
 **Carried, dated: 2026-08-08 16:51:56Z–16:55:47Z**, the last full PlayMode sweep
-(`dist/test-results/playmode-results.xml`). Today's gate ran only three of the Net
-fixtures' cases, so the fixture-level evidence below has not been re-taken since 08-08.
+(`dist/test-results/playmode-results.xml`, *deleted by the 08-11 cleanup — the number is
+carried, the artefact is not on disk*). Today's gate ran only three of the Net fixtures'
+cases, so the fixture-level evidence below has not been re-taken since 08-08.
 
 The Net fixtures hold **21 cases across seven files**; the twenty-seat tests still exist
 under their original names and neither is `[Ignore]`d:
@@ -542,7 +546,8 @@ carries away.
 
 ### 2.3 Proximity voice is red on three tests, and one of them is a §06 mechanic
 
-**Carried, dated: 2026-08-08 16:51:56Z**, `dist/test-results/playmode-results.xml` — the
+**Carried, dated: 2026-08-08 16:51:56Z**, `dist/test-results/playmode-results.xml` (*that
+file was deleted by the 08-11 cleanup; the count is carried, not re-openable*) — the
 last full PlayMode sweep, `total 124 passed 121 failed 3`. All three failures are in
 `HorrorGame.Tests.PlayMode.Voice.VoiceSocketTests` (8 cases, 5 pass):
 
@@ -604,30 +609,57 @@ Three facts, in order of how much they cost:
 **Nobody has launched this player.** There is no record on disk of `HorrorGame.app` being
 run, by anyone, once.
 
-### 2.5 The Windows player — which is the product — is a Mono fallback marked DO-NOT-SHIP
+### 2.5 The Windows player is a Development build, and no Release build of anything exists
 
-`dist/windows-x64/MONO-FALLBACK-DO-NOT-SHIP.txt` (measured here):
+**Rewritten 08-12.** The previous edition of this section quoted
+`dist/windows-x64/MONO-FALLBACK-DO-NOT-SHIP.txt` and said the Windows player was Mono
+*because IL2CPP was unavailable on this Mac*. That file is gone — the 08-10 rebuild
+replaced the whole folder — and the claim it carried has since been contradicted twice.
+[B-015](BLOCKERS.md#b-015) was downgraded on 08-11 when the stated cause was disproved:
+`clang++` answers, and the corrupt-headers folder it blamed is not on disk.
+
+What the current artefact says (`dist/windows-x64/build-report.txt`, built
+2026-08-10T14:23:03Z at `471ffab`):
 
 ```
- IL2CPP UNAVAILABLE — THIS IS A MONO BUILD, NOT SHIPPABLE
- target : Windows x64
- host   : macOS (OSXEditor)
-build : 0.1.0 (4fb93cd)
-when  : 2026-07-31T14:28:02Z
-config: Release / Mono
+configuration:        Development
+scripting backend:    Mono
+backend reason:       development builds use Mono on purpose: it links in seconds and a
+                      managed debugger can attach to it.
+shippable on Steam:   no — this is a Development build (debug symbols and profiler are in it)
+output folder:        2546.09 MB
 ```
 
-Ten days old, at a commit from before the pivot. IL2CPP calls the target platform's own
-C++ toolchain, so this cannot be fixed on a Mac at any configuration — §1.10's repaired
-toolchain repairs macOS and nothing else. A Mono player ships plain managed assemblies
-that decompile in seconds, exposing the host-only race logic §13 relies on.
+So the accurate finding is narrower and harder to dismiss: **Mono here is a deliberate
+choice for a testing build, and a Release/IL2CPP build of this game has never been
+produced on any platform.** The macOS player (§2.4) is Development/Mono too. Nobody has
+observed IL2CPP either succeeding or failing since the pivot, which means the Steam-facing
+configuration is not "known broken" — it is *unattempted*, and unattempted things are
+where schedules die.
 
-Shipping to Steam needs a Windows machine or the Windows runner in
+A Mono player also ships plain managed assemblies that decompile in seconds, exposing the
+host-only race logic §13 relies on. That is a reason not to ship this build, not a reason
+it cannot be built.
+
+**The next action is one command, not a purchase**: run a Release build for macOS and read
+the exit code. If IL2CPP works locally, B-015 closes and only Windows remains open — and
+Windows needs either a Windows machine or the runner in
 `.github/workflows/unity.yml`, **which has never run because it needs a licence.**
 
-### 2.6 CI's required job has been red for six days, and the cause is a program that was deleted
+### 2.6 🟢 CI's required job was red for six days; the cause was a program that was deleted
 
-Measured here. `.github/workflows/ci.yml:174` runs, inside the `core tests (dotnet)` job:
+**Closed 08-11 — kept because the failure mode recurred three times and the record is the
+only thing that stops a fourth.** Two commits were needed, and the gap between them is the
+lesson. `471ffab` replaced the dead simulator step with a real §12 map-validator run
+(4 `MapTests.Descent_*`, asserting ≥4 selected). It did *not* fix the job: the same file
+still asserted a **512-test floor** against a suite that the pivot had cut to 357, and
+`471ffab`'s own diff had edited a comment 118 lines below to read "357-test" while leaving
+the gate at 512. `1ceb636` fixed the floor. A commit that describes the fix is not the fix.
+
+The diagnosis below is preserved as history; the `dotnet run` step it quotes no longer
+exists in `ci.yml`.
+
+Measured 08-10. `.github/workflows/ci.yml:174` ran, inside the `core tests (dotnet)` job:
 
 ```bash
 dotnet run --project core/HorrorGame.Sim -c Release -- validate
@@ -907,8 +939,10 @@ own governing finding says it is measuring the wrong question (§2.1). Every hou
 art or store copy before somebody plays a match is an hour spent tuning against an
 instrument nobody has calibrated.
 
-**Two people, two instances, twenty minutes.** It needs no build, no App ID and no Windows
-machine — `unity/HorrorGame/Builds/LocalTwoInstance/` already exists. It is cheaper than
+**Two people, two instances, twenty minutes.** It needs no App ID and no Windows machine.
+It does now need a build: the 08-11 cleanup deleted `unity/HorrorGame/Builds/`, so the
+path is the shipped player in `dist/macos-arm64/` (Development, 08-10, `471ffab`) or a
+fresh `LocalTwoInstanceEntry` run, which rebuilds what it needs. It is cheaper than
 every item above and it is the only one that can tell you whether the other four are worth
 paying for.
 

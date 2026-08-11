@@ -1,7 +1,8 @@
 # Store assets — every size, and where the number came from
 
-> **Sizes are current. The pictures inside them are not.** Every capsule below was
-> re-measured with `sips` on 2026-08-03 and every one matches Valve exactly
+> **Sizes are current. The pictures inside them are not.** All eleven capsules and all
+> five legibility proofs were re-measured with `sips` again on **2026-08-12** and every
+> one still matches Valve exactly, to the pixel
 > ([STEAM-RELEASE.md §I.3.2](../STEAM-RELEASE.md)). But every screenshot and every
 > trailer frame in this folder photographs the four-player co-op game deleted on
 > 2026-08-02 ([DESCENT-PIVOT.md](../DESCENT-PIVOT.md)), and the capsules are built
@@ -99,6 +100,18 @@ python3 tools/render/store_shots.py shoot --spec tools/render/trailer_frames.jso
 cd docs/store/screenshots && python3 ../../../tools/render/frame_stats.py '*.png'
 ```
 
+Every flag above was checked against the scripts on 2026-08-12 and every one exists.
+Two things the `--help` will not tell you:
+
+- **`probe --seed` has stale help text.** `store_shots.py:191` describes the flag as
+  beginning a match *"so the clue, loot and vehicle props exist"* — three systems the
+  pivot deleted. The flag itself is fine and does what step 1 needs; only the sentence
+  is left over.
+- **`frame_stats.py` takes no flags at all** — no argparse, no `--help`. It reads
+  `sys.argv[1:]` as glob patterns and prints one table. Its column is headed `black%`
+  and holds `crushed`, which is the number ART.md's 10–40 % band is about; do not read
+  it as a separate measure.
+
 Changing the name is one flag, and it re-bakes all eleven capsules:
 
 ```bash
@@ -176,11 +189,14 @@ visitor who reads nothing reads these.
 | 10 | **The HUD, live**, during a descent | what the player actually sees |
 
 Two of those — 1 and 5 — exist to solve B-5. ART.md's bands are **30–75 % legible**
-and **10–40 % crushed**, and eight of the ten old frames missed both (21.6–27.4 %
-legible, 41.4–46.7 % crushed). That is the open darkness regression arriving on the
-store page, and it is **not fixed here**: STEAM-RELEASE.md §2.2 — *"Do not brighten
-the game for marketing; frame it instead."* The descent hands the camera two lit
-subjects the old building did not have. Use them.
+(line 100) and **10–40 % crushed** (line 99), and eight of the ten old frames miss both.
+**Re-measured 2026-08-12** with the command below, and the figures held exactly:
+**21.6–27.4 % legible** and **41.4–46.7 % crushed** across those eight. The two that are
+in band are `05_the_shop.png` (50.7 / 19.0) and `06_five_storeys.png` (33.0 / 36.8) —
+and they are the two being deleted, which is the joke at the heart of B-5. That is the
+open darkness regression arriving on the store page, and it is **not fixed here**:
+STEAM-RELEASE.md §2.2 — *"Do not brighten the game for marketing; frame it instead."*
+The descent hands the camera two lit subjects the old building did not have. Use them.
 
 **Re-measure after shooting** and record the numbers in this table:
 
@@ -198,7 +214,7 @@ the right pixel count.
 ## 5 · Defect evidence
 
 `defects/` holds five frames that are **not for upload**. They are the evidence for
-what was measured on 2026-08-01, and three of them now document systems the pivot
+what was measured on 2026-08-01, and **four** of them now document systems the pivot
 deleted. Kept, not deleted: a measurement that was true when it was taken stays in
 the record.
 
@@ -207,5 +223,5 @@ the record.
 | `S1_clue_prop_is_a_white_square.png` | §03's clue as an untextured emissive quad | **moot** — the clue system is gone |
 | `S2_surface_vehicle_is_a_white_box.png` | §08's shop vehicle as an untextured box | **moot** — there is no surface |
 | `S3_objective_prop_is_a_white_capsule.png` | §03's objective as an untextured capsule | **moot** — there is no objective |
-| `S4_loot_props_are_white_cubes.png` | §08's loot in the open hall | ⚠ **check.** If the descent map still spawns these, they constrain every framing in §4's list exactly as they did before |
-| `S5_sky_visible_from_B3.png` | night sky seen from six metres underground — [ART.md §7.4](../ART.md) predicted it | ⚠ **re-check.** The descent stacks eight storeys in one column instead of spiralling; whether the leak survived that is unknown |
+| `S4_loot_props_are_white_cubes.png` | §08's loot in the open hall | ✅ **closed 2026-08-12 — moot, and checked rather than assumed.** `grep -l LootSpawn` over `Assets/Scenes/Descent/*.unity` returns nothing. `DescentMap.cs:423` records the replacement: the 152 전리품 markers at every 막힌 길 became part of **176 `ReachProbe_` 도달 지점** at exactly the same cells — *"A 도달 지점 has no value, nothing spawns on it and nothing can be carried off it."* 176 of them in every descent scene, and not one is a prop. **No framing in §4's list is constrained by loot.** |
+| `S5_sky_visible_from_B3.png` | night sky seen from six metres underground — [ART.md §7.4](../ART.md) predicted it | ⚠ **still unchecked, and it needs a camera.** The descent stacks eight storeys in one column instead of spiralling; whether the leak survived that cannot be settled by reading files, only by looking at a frame. Answer it during the §4 re-shoot |

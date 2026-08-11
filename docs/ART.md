@@ -5,8 +5,34 @@ settings actually decide the picture, and what is still wrong.
 
 Companion documents: [ASSETS.md](ASSETS.md) for the asset pipeline and file
 contracts, [BLOCKERS.md](BLOCKERS.md) for things that stop the game working,
-[game-design.md](game-design.md) §03 §05 §07 §12 for the rules every value here is
+[game-design.md](game-design.md) §05 §07 §12 for the rules every value here is
 derived from.
+
+> **Re-dated against commit `4ab204f`, 2026-08-12 — what the pivot did to this page.**
+> On 2026-08-02 this game stopped being a four-player co-operative looting game and
+> became a twenty-player maze race ([DESCENT-PIVOT.md](DESCENT-PIVOT.md)); §04's five
+> roles and §08's economy were deleted from the design at v1.1 and from the code at
+> `e8c67ae`. This page was written across that line and needed separating rather than
+> deleting, because the two halves aged differently:
+>
+> - **The measurements are current and they are the reason to read this page.** The
+>   luminance bands, the texel densities, the AO contrasts, the hand-fill intensity, the
+>   zone figures re-shot on the eight-storey building at tag `fullpipe3` (2026-08-09) —
+>   none of that was touched by the pivot, and none of it has been touched here.
+> - **Some rationale named a role that no longer exists, and most of that rationale
+>   survives anyway.** Five distinguishable floors were justified by the 청음사; every
+>   runner navigates by ear now, so the requirement got *stronger* and has been
+>   re-founded on §12 rather than deleted. Where a co-op-era passage explains why a
+>   number is what it is, it is marked 🔴 history and kept.
+> - **Some claims are about files that are not on disk.** The 금고, the 차량, the seven
+>   `Loot_*`, the 단서 and the 목표물 were deleted with their systems, and the props
+>   directory holds nine FBX today: `Gun_Pickup`, `Gun_Held`, four `Startle_*`, `Pipes`,
+>   `Shelving`, `Debris` (counted 2026-08-12). Those rows are marked, not silently
+>   dropped — several carry measurements that still govern props that do exist.
+>
+> Everything dated **2026-08-12** below was read off disk or off a `dotnet`/shell run
+> while re-dating this page. **The author of that pass did not run Unity or Blender**, so
+> every render figure here is carried with the date it was taken.
 
 ---
 
@@ -16,20 +42,45 @@ The look is not decoration in this game. Three design sections make it load-bear
 
 | Section | Demand on the picture |
 |---|---|
-| §03 | 어둠 = 목표의 잠금장치. Darkness gates the objective; the flashlight is the key. If a room is readable without the beam, the lock is open. |
+| §03 | 어둠. The maze is dark and gets darker with depth; the runner's light is what makes any of it readable. If a room is readable without the beam, the dark is doing nothing. |
 | §05 | First person, 90° FOV, a 22° half-angle cone. Everything the player knows arrives through that cone or not at all. |
-| §12 | 구역별로 바닥 재질이 달라야 청음사가 위치를 판별할 수 있다. Five floor materials must be **told apart on sight**, not just in the audio mixer. |
+| §12 | 소리 → 바닥 재질이 지도다. Each zone's floor is a distinct material, and it must be **told apart on sight** as well as by ear — not just in the audio mixer. |
 | §07 | The night gets worse continuously across five tiers, and it has to be felt. |
 
 So there are four targets, in priority order:
 
 1. **The beam is the source of information.** Outside it, shape only — enough to know
-   a corridor turns, not enough to read a clue.
-2. **The five floors are distinguishable at a glance**, under the beam and at the
+   a corridor turns, not enough to read the room.
+2. **The floors are distinguishable at a glance**, under the beam and at the
    edge of it.
 3. **Depth.** A frame must have a near, a middle and a far. A flat black field behind
    a lit disc is the failure mode.
 4. **You can tell where you are** from a still frame.
+
+> **Target 2 was written for a role that no longer exists, and it survived the deletion
+> with a wider audience than it had.** §12's line used to read 「구역별로 바닥 재질이
+> 달라야 **청음사**가 위치를 판별할 수 있다」 — one player in four could read the
+> building by ear, and this page's job was to make sure the eye agreed with that one
+> player's ears. The 청음사 was deleted with §04's roles. **The requirement did not go
+> with it; it got charged to everybody.** §12 now says 「소리 → 바닥 재질이 지도다」, so
+> all twenty runners navigate by floor, and `GameConstants` records the same reasoning
+> in the code: *"the table outlived the ability because a race still has to answer which
+> floor is worth crossing."* Two consequences for the picture, and they both point the
+> same way as before:
+>
+> - A pair of zones that look alike is now a pair of zones that read alike to twenty
+>   people rather than to one, so a failure here is twenty times more expensive than
+>   when it was written.
+> - The eye/ear agreement is still the real test, and it is still checked in two places
+>   that must not drift apart: this page for the look, `tools/audio/verify_audio.py` for
+>   the sound ([TESTING.md](TESTING.md) §6). That audit's `HUD vs ears: N inverted
+>   pair(s)` line is exactly the disagreement, and it is not zero.
+>
+> **The alphabet is eight surfaces now, not five.** `FloorMaterial` (read 2026-08-12)
+> is 나무, 타일, 자갈, 콘크리트, 금속, **물, 흙, 카펫** — the last three added when the
+> building went from five storeys to eight, each with its own §12 clarity rather than as
+> a re-skin. Where this page says "five floors" or "five zones" it is counting the
+> co-op building, and the count is flagged where it matters (§3.12).
 
 ### Measured targets
 
@@ -469,20 +520,36 @@ The old 284 was visibly soft and nobody had a number to say so.
 ### 3.8b Every fitting casts a shadow
 
 All 72 point lights in the map were authored with `LightShadows.None` — the caged
-bulbs the dressing pass hangs, the entrance light, and §04's switchable zone
+bulbs the dressing pass hangs, the entrance light, and the switchable zone
 lights. `AtmosphereSetup.CastShadowsFromEveryFitting` turns them on.
 
 This is not a quality setting here. A light that casts no shadow does not stop at
 walls: it lights the far side of a partition, the inside of a crate and the
 corridor behind a closed door, at full strength.
 
-- §03 makes darkness the lock on the objective, and a shadowless fitting hands
-  out light through the geometry that was keeping the room dark.
-- §04 sells the 정비공 zone lighting as an ability with a material cost. A light
-  at `ZoneLightRadius` that ignores walls lights the two zones either side of the
-  one that was paid for, so the ability cannot be balanced at all.
+- §03 makes the maze dark, and a shadowless fitting hands out light through the
+  geometry that was keeping the room dark. This is the whole argument and it does not
+  depend on anything the pivot deleted: a light that ignores brickwork makes the dark
+  optional, and the dark is the game.
+- The finish light is the case that proves it today. It is an 18 m point light at
+  `ZoneLightRadius` and there are only two shadowed point lights in the entire scene,
+  so the usual cost objection does not apply — and with shadows off it does not
+  illuminate §02's finish, it illuminates the whole storey straight through the walls.
+  `MapSceneBuilder` says so in its own comment, and turns them on for that reason
+  rather than as a fix for anything.
 - And it is most of what "looks like a real light" means: a bare filament in a
   wire cage throws the cage across the wall behind it.
+
+> 🔴 **History — the bullet that used to sit second here, and why the rule outlived
+> it.** It read: *"§04 sells the 정비공 zone lighting as an ability with a material
+> cost. A light at `ZoneLightRadius` that ignores walls lights the two zones either side
+> of the one that was paid for, so the ability cannot be balanced at all."* The 정비공 is
+> deleted with §04's roles and the 배전반 it switched lights at is deleted with the light
+> economy, so **there is no ability to balance**. Worth keeping because it is the
+> sharpest statement of the mechanism — a shadowless light leaks *by a zone*, not by a
+> metre — and because that leak is what makes §12's zone identities bleed into each
+> other whether or not anybody paid for the light. `ZoneLightRadius` itself survives as
+> a constant and is still the radius the finish light uses.
 
 Hard, not soft, and deliberately — a bare bulb is a point source and its shadows
 genuinely are sharp. Costed in §6.
@@ -492,11 +559,16 @@ zone had been reading partly by light from the room next door. The AO and floor
 albedo numbers below were re-tuned against the corrected lighting, not against
 the leak.
 
-### 3.8c Wet — §03's first worked example
+### 3.8c Wet — a floor material, not a mood
 
-§03's first example of a clue is 물이 있는 층, so wet is a gameplay-readable
-surface state and not decoration. Three separable effects, applied in the order
-they physically happen, in `gen_textures.wet`:
+Wet is a gameplay-readable surface state and not decoration. It was §03's first worked
+example of a clue — 물이 있는 층, a floor you could deduce something from — and §03's
+clue chain is deleted. **What replaced it is stronger:** 물 is one of §12's eight floor
+materials in its own right, B7 is 수몰층, and standing water is *the loudest surface in
+the game* — 「you cannot cross it unheard」, in `FloorMaterial`'s own words. So a wet
+floor now has to be recognisable **before** you step in it, by eye, from outside the
+beam, because stepping in it tells everyone within 40 m where you are. Three separable
+effects, applied in the order they physically happen, in `gen_textures.wet`:
 
 - **Darker.** Water removes the air/solid interface that was scattering light
   back out, so more of it enters the substrate. A damp patch is genuinely darker,
@@ -644,8 +716,9 @@ whether a room has a floor or is a box with a texture on the bottom.
 `HorrorGame_URP_Renderer.asset` and costs a screen-space pass every frame whether a
 decal is visible or not. These are quads lifted 1.2 cm off their surface, merged into
 one mesh per kind per storey, drawn through URP's ordinary transparent path and
-therefore **lit by the flashlight** — which is the whole point. A stain the beam does
-not find is not a clue.
+therefore **lit by the flashlight** — which is the whole point. A mark the beam does
+not find tells nobody anything, and in a maze solved eight times these marks are what
+make one junction distinguishable from the last.
 
 **One bug worth writing down, because it will happen to the next person.** URP 12
 added `_BlendModePreserveSpecular`; it defaults to **on**, and it silently redefines
@@ -660,11 +733,16 @@ in the building. It looks like a broken texture and it is a broken blend.
 
 ### 3.11 Practicals that read as sources — `PracticalGlow.cs`
 
-§03 makes darkness the lock and light the key, and §04 sells zone lighting to the
-정비공 as an ability with a material cost. Both assume a player can look down a
-corridor and see *that there is a light there*. A point light cannot say that: it puts
-a disc on the floor and leaves the source invisible, so the room reads as lit by
-nothing and a fitting that could be switched on looks identical to one that could not.
+§03 makes the maze dark and the runner's light the way through it, and §12 asks a still
+frame to say where you are. Both assume a player can look down a corridor and see *that
+there is a light there*. A point light cannot say that: it puts a disc on the floor and
+leaves the source invisible, so the room reads as lit by nothing.
+
+**In a race this is a navigation cue and not an atmosphere one**, which is a stronger
+claim than the one this section was written under. A lit fitting seen down a corridor is
+a landmark twenty runners are all trying to build a map out of at speed — §3.12's 기계실
+argument is exactly this, that a lit plant room mid-descent is a place rather than a
+gradient break.
 
 URP 17 has no volumetric fog, so there is no setting for this (§7.10). The
 alternatives are a light cookie — which URP wants as a *cubemap* for a point light,
@@ -684,9 +762,17 @@ Both are additive, and **the falloff is in RGB, not alpha**: an additive blend i
 renders as a solid rectangle of light. Batched by kind, storey and colour, so §12's
 five zone tints cost five materials rather than 123.
 
-Only fittings that are actually switched on get one. A dark bulb that glows is worse
-than no bulb: §04's ability is "pay to turn this zone on", and it is meaningless if
-the zone already looks lit.
+Only fittings that are actually switched on get one, and the rule is unchanged even
+though its original justification is gone. A dark bulb that glows is a **lie about
+where the light is** — it tells a runner reading the corridor for landmarks that there
+is a lit room ahead when there is not, which is worse than an unlit fitting saying
+nothing at all.
+
+> 🔴 **History.** This paragraph used to end: *"§04's ability is 'pay to turn this zone
+> on', and it is meaningless if the zone already looks lit."* That was the original
+> reason — a purchasable light cannot be worth buying if the unlit state looks lit — and
+> the 정비공 who bought it is deleted. The rule it produced is kept on the navigation
+> argument above, which is the one that applies to twenty runners with no shop.
 
 ### 3.12 Zone identity — `ZoneIdentity.cs`
 
@@ -696,9 +782,17 @@ central pillar."*
 
 Each zone's rooms now carry their own walls, dado and soffit. Keyed on the §12 **floor
 material** rather than on the zone letter, because letters come from the layout seed
-and move with it while the five 바닥 재질 are a contract that does not. Corridors, which
+and move with it while the 바닥 재질 are a contract that does not. Corridors, which
 live under `Map/Shared`, keep the base brick deliberately — a building where the
 corridors also change colour has no places in it, only gradients.
+
+**The table below is five rows and `ZoneIdentity.cs` now carries eight** — read on disk
+2026-08-12, in `FloorMaterial` order: 나무 기록보관소, 타일 저수조, 자갈 저탄장,
+콘크리트 하역장, 금속 기계실, **카펫 병동, 물 수몰층, 흙 굴착층**. The three added rows
+are B6/B7/B8, the storeys that did not exist when this section was written; 수몰층's own
+note in that file dates it 2026-08-08 and says B7 had no look before it. The five rows
+here are the five whose arguments were fought out and written down — they are kept
+verbatim for that reason, and the file is the authority on the current set.
 
 | Zone | Walls | Why |
 |---|---|---|
@@ -724,29 +818,61 @@ to name them. All five are namable from the still — ballast under a corridor o
 the night sky; warm cream over plank; cold green over small tile; board-formed
 concrete over a big slab; ochre over diamond plate.
 
-### 3.13 **The building has one working light in it**
+### 3.13 🟢 **The building had one working light in it. It now has fifty, and they are all on**
 
-This is the most important measurement on this page and it is not an art finding.
+This was the most important measurement on this page and it is not an art finding. It
+is also, now, closed — and the shape of the fix is worth more than the number.
+
+**Measured 2026-08-12**, by parsing `Map_FirstSketch.unity` as YAML documents rather
+than by grepping it (Unity escapes Korean names as `\uXXXX` and then quotes the whole
+value, so a prefix grep silently misses most of a scene — [TESTING.md](TESTING.md)'s
+trap table):
 
 ```
-Light components in Map_FirstSketch.unity      123
-of which m_Enabled: 1                            1
+Light components (--- !u!108) in Map_FirstSketch.unity      50
+of which m_Enabled: 1                                       50
+objects named ZoneLight*                                     0
 ```
 
-122 of those are §04's zone lighting, which is *correctly* off until the 정비공 pays
-for it. The caged bulbs that used to be lit belong to the dressing pass — and **the
-dressing pass's output is not in the scene as saved**: there is no `Map/Dressing`
-root and no reference to `Assets/Models/Dressing` anywhere in the file. §3.6 on this
-page describes "16 fittings across 2469 m²"; there is one.
+Fifty fittings, every one of them burning. Forty-nine are the dressing pass's caged
+bulbs — the scene carries 49 `Filament` objects, which is §3.11's halo geometry, one
+per lit fitting — and the fiftieth is §02's finish light. **The dressing pass's output
+is in the scene now**, decals included: `Decal_Puddle_*`, `Decal_Soot_*`,
+`Decal_WaterStain_*`, `Decal_Scuff_*`, `Decal_Contact_*` are all present, which is the
+`Map/Dressing` root this section was written to report missing.
 
-That is the whole of the luminance regression this document recorded as an art defect
-in its previous edition. The three-storey map was measured with fittings in it and the
-five-storey map was being measured without any.
+> 🔴 **What this section said, and why it was right to say it.** *"123 lights, 1
+> enabled. 122 of those are §04's zone lighting, which is correctly off until the 정비공
+> pays for it. §3.6 describes '16 fittings across 2469 m²'; there is one."* That was the
+> whole of the luminance regression this document had been recording as an art defect —
+> the three-storey map was measured with fittings in it and the five-storey map was
+> being measured without any. **Two separate things then happened, and neither is what
+> the entry predicted.**
+>
+> **The 122 did not get switched on. They were deleted.** `MapSketch`'s
+> `MapMarkerKind` carries the tombstone: *"DELETED with §04's 정비공 and the light
+> economy: ZoneLight. 567 point lights, one at every junction of degree 2 or more,
+> authored DISABLED and switchable only by the Engineer at a 배전반. With no role to
+> switch them and no panel to switch them at, they were 567 lamps nobody could ever turn
+> on."* (567 rather than 122 because the building grew to eight storeys in between.)
+> Nothing in the runtime ever named one — no component looked up `ZoneLight_`, and the
+> only reader of the group was `MatchDirector.CollectAreaLights`, which takes every
+> point light in the scene indiscriminately. **Darkness is untouched by their removal,
+> because they were off.** What went is the chore, not the dark: §01's runner carries a
+> light that simply works, and the maze is dark and gets darker with depth because that
+> is the floor's property rather than somebody's job.
+>
+> **The one working light was fixed the way this entry said it had to be** — by the
+> dressing pass's caged bulbs, not by a grade. The counter-example below is the argument
+> that settled it, and it is still the clearest statement of why: 1 fitting gives
+> 25–52 % legible, 123 give 96–99 % and a building with no dark in it. 50 lit fittings
+> is the answer that bracket was pointing at, and §1's `fullpipe3` block is the
+> measurement that it landed in band.
 
 **No grade can recover it, and that is arithmetic rather than opinion.** Tonemapping
 and colour grading are multiplicative. Multiplying a wall lit by 0.005 of ambient does
 not make it legible; it makes it a slightly less black wall. The counter-example is
-one command — nothing is saved, the zone lights are switched on in memory only:
+one command — nothing was saved, the zone lights were switched on in memory only:
 
 ```bash
 … -executeMethod HorrorGame.EditorTools.Rendering.AtmosphereSetup.ShotBatch \
@@ -760,22 +886,32 @@ Zone D · 콘크리트 unlit → lit    14.5 → 0.8   47.5 → 96.0
 Zone E · 금속    unlit → lit    17.6 → 0.1   51.9 → 99.4
 ```
 
-So the band is bracketed rather than solved: **one** fitting gives 25–52 % legible and
+So the band was bracketed rather than solved: **one** fitting gives 25–52 % legible and
 three of five zones under the floor; **123** gives 96–99 % and a building with no dark
-in it at all. The right answer is neither and it is not a grading decision — it is the
-dressing pass's caged bulbs, at ART.md's own stated density of one in five. Until they
-come back, every luminance number in this document is a number for a building with its
-lights off.
+in it at all. The right answer was neither, and it was never a grading decision — it is
+the dressing pass's caged bulbs, at this page's own stated density of one in five.
+**They came back**, at 49, and §1's `fullpipe3` block is the whole set of eighteen zone
+measures landing in band on the full pipeline. The luminance numbers in this document
+split there: anything measured before 2026-08-09 is a number for a building with its
+lights off, and §1 says which is which.
 
-It is also the first picture anyone has taken of what §04's ability actually buys, and
-it is worth looking at: `Shots/d4lit_Zone_E_B3_Metal.png`.
+`Shots/d4lit_Zone_E_B3_Metal.png` is the frame that made the upper bracket concrete —
+worth keeping as the picture of what "every fitting on" costs you, which is a building
+with nowhere to hide in it.
 
 ### 3.14 The monster — a rim, two eyes, and less fog than the room
 
-The creature was invisible past about 10 m and that was not atmosphere, it was two
-broken systems: §04's 관측자 works at 15 m and §12's 주자 table endorses pulling aggro
-from 10 m upward. Neither role can be played against something that is not in the
-frame.
+The creature was invisible past about 10 m and that was not atmosphere. **15 m is the
+number, it was §04's 관측자 range when this was written, and it survived the role's
+deletion under a new name and a better argument.** `GameConstants` renamed
+`ObserverRange` to **`HallClearSightMin` = 15 m** and re-derived it from §12 directly:
+an 개방 공간 must hold 15 m of clear sight, and that has to sit above
+`AggroReleaseDistance` (12 m) — *a runner crossing a hall has to be able to SEE the
+creature from further than the distance at which it would lose them, or the open rooms
+are places you are surprised in rather than places you commit to crossing.* So the
+demand on the picture is unchanged and is now made of twenty runners instead of one
+role: **a creature that is not in the frame at 15 m turns every hall in the building
+from a decision into an ambush.**
 
 The cause is arithmetic rather than taste. The creature's albedo is calibrated to sit
 just under the darkest wall in a §12 corridor; past the beam both are lit by the same
@@ -793,8 +929,9 @@ Three changes, in `Assets/Shaders/Monster/MonsterSkin.shader`:
   surfaces that should stay dark.
 - **Two emissive lenses**, 7 cm, placed by ray-casting the head blade's own front face
   so a re-shaped head cannot bury them. Two separated points are what a person reads a
-  face and a *facing* from at a range where the body is a smudge, and the facing is
-  half of what §04's 관측자 is for.
+  face and a *facing* from at a range where the body is a smudge. **Facing is the half
+  that matters most now**: 「마주치면 피할 수 없다」, so the only useful thing to know
+  about a creature 15 m away is which way it is pointed.
 - **`_FogResponse = 0.45`** — the creature takes 45% of the room's haze. URP hazes the
   creature and the wall behind it identically, so the haze lands on the difference
   between them and cancels it. Holding it back makes the creature fall as a *darker*
@@ -838,7 +975,11 @@ runs against has no notion of a ceiling.
 The cap skips any cell with a kit piece one storey up, which is load-bearing rather
 than tidy: a stairwell rising out of a storey lands in a corridor above, corridors are
 tiles rather than zone rects, and without that clause the cap would be poured across
-the top of the stairs and seal the only vertical route §03's clue chain has.
+the top of the stairs and seal a vertical route. That mattered to §03's clue chain when
+this was written; the clue chain is deleted and **the clause matters more now, not
+less** — the descent's only vertical links are one-way 투하구 and the 계단 §12-B③ gives
+the creature, so a sealed shaft is a storey nobody can leave or a creature that cannot
+follow.
 
 ---
 
@@ -1051,11 +1192,22 @@ and it is thorough; the overhead shot should probably be deleted rather than fix
 ### 7.8 Everything is one colour
 
 The grade is cold, saturation −34, and the practicals are the only warmth in the
-building. It is coherent, and it is monotonous over a match of any length — 7.2 minutes
-is the measured median ([F-006](BALANCE-FINDINGS.md#f-006)) and §01 asks for 25–35, and
-the complaint gets worse in proportion to which of those two you believe. §07 ramps
-brightness and vignette across the night but not hue; there is room for the last tier
-to go somewhere the first tier does not.
+building. It is coherent, and it is monotonous over a match of any length.
+
+**Neither number this section used to weigh is usable any more.** It said *"7.2 minutes
+is the measured median ([F-006](BALANCE-FINDINGS.md#f-006)) and §01 asks for 25–35"*.
+The 7.2 came from the balance simulator, which F-006 itself records was measuring a
+different building, and the simulator has since been deleted outright
+([TESTING.md](TESTING.md) §9) — so there is no measured median at all. §01's target is
+**12–20 minutes** for the race. **Nobody has ever played a match**, so how long a player
+actually spends looking at this grade is unknown in both directions, and that is the
+honest state of the complaint.
+
+§3.12 has since done most of the work this section was asking for: eight zones now carry
+their own wall colour, warm cream through cold green to ochre, so the building is no
+longer one hue even though the grade is. §07 still ramps brightness and vignette across
+the night but not hue; there is room for the last tier to go somewhere the first tier
+does not.
 
 ### 7.9 ~~What surface variation cannot do from the texture side~~ — two of three closed
 
@@ -1103,7 +1255,21 @@ beats worth cutting are *about* these objects — and filed under
 `Interactable.CreateProp` built every interactive object with
 `GameObject.CreatePrimitive` and a self-lit material tinted by colour alone:
 
-| Object | Section | Was | Is now |
+🔴 **Every object in the table below has since been deleted, and not one of these FBX is
+on disk.** Verified 2026-08-12: `Assets/Models/Props/` holds nine FBX — `Gun_Pickup`,
+`Gun_Held`, `Startle_CabinetShell`, `Startle_CabinetLeaf`, `Startle_Skitterer`,
+`Startle_PipeStub`, `Pipes`, `Shelving`, `Debris` — and a search of the whole `Assets`
+tree finds no `Clue_*`, no `Objective`, no `Loot_*`, no `Safe_*` and no `Vehicle`.
+`gen_props.py` carries the tombstone and names which section took each one: §03's 단서
+and 목표물 went because 목적지가 이미 알려져 있으니 좁혀 갈 것이 없다; §08's seven
+`Loot_*` and the 금고 went because 팔 곳도 살 것도 없다; the 차량 went because
+출발선은 B1 바깥 테두리고 도착선은 B8 한가운데다. `InteractablePropLibrary` — the
+`ScriptableObject` that put these models in the build — is gone with them, which
+`gen_props.py` notes made the remaining catalogue *"25 rows of GUIDs nothing reads."*
+**The table is kept because the defect and its fix are the subject of this section, and
+because §7.11's four surviving conclusions below are all derived from it.**
+
+| Object | Section | Was | Became (all now deleted) |
 |---|:--:|---|---|
 | 단서 clue | §03 | Quad | `Clue_LedgerStand`, 1.15 m |
 | 목표물 objective | §03 | Capsule | `Objective`, 0.60 × 0.41 × 0.40 m |
@@ -1111,7 +1277,21 @@ beats worth cutting are *about* these objects — and filed under
 | 금고 safe | §08 | Cube | `Safe_Closed`, swapping to `Safe_Open` when it pops |
 | 차량 vehicle | §08 | Cube | `Vehicle`, 2.81 × 2.94 × 6.69 m |
 
-The evidence captures are still under `docs/store/defects/`; they are now history.
+**What survived the deletion is the whole point of the section, and it governs the props
+that do exist** — the 총 the runner picks up and the 깜짝 startles are built by the
+same generator, bound by the same `PropMaterials`, and lit by the same beam:
+
+1. Nothing spawned at runtime may build itself from a primitive or resolve a shader by
+   name. This is the paragraph below and it is not about loot.
+2. `Props.manifest.json` is the metallic contract, because FBX carries no metallic.
+   Read 2026-08-12, it still ships 18 material rows and the binder still rebuilds them
+   as URP Lit — `Gun_Steel` and `Gun_SteelWorn` at metallic 1.0 are only correct
+   because of it.
+3. The 0.40 roughness floor.
+4. The highlight emission value.
+
+The evidence captures are still under `docs/store/defects/`; they are now history of a
+game that is not being made.
 
 **It was also worse in a build than in the editor, which is why it survived review.**
 `CreatePrimitive` takes its material from `RenderPipelineAsset.defaultMaterial`, and
@@ -1126,43 +1306,74 @@ no material asset references is stripped, and `Shader.Find` returns null with no
 `Props.manifest.json` with the values the Principled BSDF was authored with — FBX
 carries no metallic and every one of the 21 prop materials was importing at metallic 0,
 which is why the mirror-grade 은수저 was grey plastic. `PropMaterials` rebuilds them as
-URP Lit assets and remaps the 25 FBX importers; `InteractablePropLibrary`, a
-`ScriptableObject` under `Resources/`, is what puts the models in the build.
+URP Lit assets and remaps the FBX importers, and it is still on disk doing that job —
+the manifest it reads now carries 18 material rows against 7 props plus the two 총
+meshes. `InteractablePropLibrary`, the `ScriptableObject` under `Resources/` that put
+the models in the build, **was deleted with §08** and there is no equivalent today; the
+props that ship are placed by the dressing pass and by the map generator rather than
+resolved from a catalogue.
 
 **One override of the generator, and it is an art decision.** Prop roughness is floored
-at §7.6's own **0.40**. §05 holds the torch at the eye, so light and view arrive from
-the same direction; loot lying flat on a floor is then seen at a grazing angle and a
-near-mirror throws its whole lobe away from the camera. Measured under the game's beam
-at 2 m: mirror-grade silver spoons (authored roughness 0.16) rendered as a black smudge
-on lit gravel, which is the exact opposite of §08's "눈에 잘 보임 (유혹)". The real fix is
-a reflection probe indoors; until there is one, a metal with nothing to reflect must not
-be a mirror.
+at §7.6's own **0.40**, and it still governs every prop in the game. §05 holds the torch
+at the eye, so light and view arrive from the same direction; anything lying flat on a
+floor is then seen at a grazing angle and a near-mirror throws its whole lobe away from
+the camera. The measurement that set the floor was 은수저 — mirror-grade silver spoons at
+authored roughness 0.16, rendered under the game's beam at 2 m as a black smudge on lit
+gravel — and the spoons are deleted with §08's 전리품 while **the rule is now load-bearing
+for the 총**, which a runner has to spot on a dark floor and which `Props.manifest.json`
+authors at `Gun_Steel` metallic 1.0 / roughness 0.52. The real fix is a reflection probe
+indoors; until there is one, a metal with nothing to reflect must not be a mirror.
 
 **And they light up when the crosshair is on them.** `InteractableHighlight` drives
 `_EmissionColor` through a `MaterialPropertyBlock` — every prop material carries the
-`_EMISSION` keyword with a black colour so the dial exists. The value is 0.10/0.073/0.035
-and it is photographed, not guessed: four times that flattened the 금고 into a
-featureless tan cut-out with its brass dial gone. §03 forbids a HUD marker, so the
-object itself is the only place the cue can live.
+`_EMISSION` keyword with a black colour so the dial exists. Both the component and the
+keyword are still there (`InteractableHighlight.cs`, read 2026-08-12). The value is
+**0.10/0.073/0.035** and it is photographed, not guessed.
 
-**Photographed with `PropShot`**, which frames each prop under the real beam at 2 m and
-5 m from its *surface*:
+> 🔴 **The photograph that set it was of a deleted object, and the number stands.** Four
+> times 0.10/0.073/0.035 *"flattened the 금고 into a featureless tan cut-out with its
+> brass dial gone"* — the 금고 is gone with §08's economy and no `Safe_*` FBX is on disk.
+> Kept because it is the only recorded evidence for why the dial sits this low, and
+> because the failure mode is a property of the technique rather than of the safe: an
+> emission strong enough to be unmissable washes out the very surface detail that tells
+> you *what* you are looking at. The next prop that needs re-checking against it is the
+> 총. §03 forbids a HUD marker, so the object itself is still the only place the cue can
+> live.
+
+🔴 **Photographed with `PropShot`** — which framed each prop under the real beam at 2 m
+and 5 m from its *surface*, was run WITHOUT `-nographics`, and stood up any model the
+current seed had not placed so the 궤짝 got photographed on a seed that drew the 초상화:
 
 ```bash
 Unity -batchmode -quit -silent-crashes -projectPath unity/HorrorGame \
   -executeMethod HorrorGame.EditorTools.Props.PropShot.Batch -shotTag props
 ```
 
-Run it WITHOUT `-nographics`. It also stands up any model the current seed did not
-place, so the 궤짝 is photographed on a seed that drew the 초상화.
+**That command no longer works — `PropShot` is not in the tree** (searched
+`Assets/Scripts`, 2026-08-12: no file, no reference). It went with the props it was
+written to photograph. **This is a gap rather than a tidy-up:** the 총 and the 깜짝
+props are exactly the objects a runner has to recognise on a dark floor at speed, they
+are governed by the roughness floor and the emission value above, and there is now no
+tool that photographs a prop under the game's own beam to check either. Whoever needs
+one should read this section before rebuilding it — the 2 m/5 m framing *from the
+surface* rather than from the origin is the part that made it useful on props two
+orders of magnitude apart in size.
 
-### 7.12 ~~The 차량's body is a 90 % metal with an albedo of 0.11 — it renders as a hole~~ — MATERIAL FIXED
+### 7.12 🔴 ~~The 차량's body is a 90 % metal with an albedo of 0.11 — it renders as a hole~~ — MOOT: THE VEHICLE IS DELETED
 
-> **Closed as a material, not as a vehicle.** `Prop_VanBody` and `Prop_VanLower` now
-> exist as URP Lit assets at metallic 0 and the van reads as painted steel instead of a
-> hole. `Prop_Iron` was left alone, as this section asked. The mesh under the new paint
-> is still two cuboids and four cylinders with no windscreen, grille or wheel arches —
-> **see §7.13**, which is where the van's remaining problem lives.
+> **The 차량 does not exist.** §08's economy is deleted, and with it the van: no
+> `Vehicle` FBX, no `Prop_VanBody` and no `Prop_VanLower` anywhere under `Assets`
+> (searched 2026-08-12). `gen_props.py`'s tombstone gives the design reason in one line
+> — 출발선은 B1 바깥 테두리고 도착선은 B8 한가운데다: a race that starts on the rim of
+> B1 and finishes in the middle of B8 never returns to a vehicle, so the 안전 지대 the
+> van was has nowhere to be. **The section is kept for one paragraph of it**, marked
+> below, which is about `Prop_Iron` and is still true of every iron thing in the game.
+>
+> *The history, as it stood:* the van's body was `Prop_Iron` at metallic 0.90, it
+> rendered as a black silhouette under five of its own warm sources, and it was closed
+> as a material — `Prop_VanBody`/`Prop_VanLower` at metallic 0 — while the mesh under
+> the paint stayed two cuboids and four cylinders. §7.13's blockout list, below, is that
+> mesh, and it is now a list of defects in an object nobody will see.
 
 §7.11 gave the 차량 a real 6.69 m model and left the last thing about it unfixed: its
 body material is **`Prop_Iron` — albedo (0.112, 0.116, 0.122), metallic 0.90,
@@ -1178,17 +1389,23 @@ lamp 1.5 m above the roof and 2.4 m off its flank, and a roof beacon — and it 
 black silhouette in both. Its *shape* reads perfectly: cab, load box, wheels, loading
 ramp. Its *surface* does not exist. The brightest thing on it is the cab glass.
 
-This matters more than the other props on this page. §08 makes the 차량 the 안전 지대,
-the 상점 and the 보급소 in one object and §01 sends the team back to it 2.94 times a
-match; `SurfaceApron` now parks it in the 하역 베이 and lights it precisely so that it
-is the thing a surfacing player sees first (STATUS §4.6).
+🔴 *This mattered more than the other props on this page because §08 made the 차량 the
+안전 지대, the 상점 and the 보급소 in one object and §01 sent the team back to it 2.94
+times a match, and `SurfaceApron` parked it in the 하역 베이 and lit it so it was the
+first thing a surfacing player saw. All of that — the shop, the resupply, the return,
+the 지상 apron, and `SurfaceApron` itself — is deleted.*
 
-**The fix is an asset decision and belongs in `tools/blender/gen_props.py`, not in the
-runtime.** A works van is painted, not bare iron: it wants its own material — something
-near `Prop_Paint`'s albedo (0.221, 0.172, 0.132) at **metallic 0** and roughness ~0.6,
-assigned to the body while the chassis, wheel arches and ramp keep `Prop_Iron`.
-Changing `Prop_Iron` itself is not the fix; it is shared with the 금고, the conduit and
-every other iron thing in the game, all of which are meant to look like iron.
+**The paragraph worth keeping.** The fix was an asset decision belonging in
+`tools/blender/gen_props.py` rather than in the runtime: a works van is painted, not bare
+iron, so it wanted its own material near `Prop_Paint`'s albedo (0.221, 0.172, 0.132) at
+**metallic 0** and roughness ~0.6, with the chassis and ramp keeping `Prop_Iron`.
+**Changing `Prop_Iron` itself was not the fix then and is not now** — it is
+`(0.112, 0.116, 0.122)`, metallic 0.90, roughness 0.55 in `Props.manifest.json` today
+(read 2026-08-12) and it is still shared by every iron thing in the game. The 금고 and
+the conduit that used to share it are gone; the pipes, the shelving and the debris that
+remain are not, and they are all meant to look like iron. **The rule is the general one:
+when one object of many reads wrong, give that object a material — do not retune a
+material that many objects are reading correctly.**
 
 Do not fix it by tinting the material at runtime. §7.11's whole lesson is that the
 material the player sees has to be an asset the build contains.
@@ -1198,10 +1415,17 @@ material the player sees has to be an asset the build contains.
 **Both passes did what they set out to do, measured against the thing they were asked
 to measure, and the result still does not look like a game somebody would pay for.**
 That gap is the whole content of this section, and it is here because both passes are
-otherwise reportable as successes: §7.12's van paint exists as an asset, the player is a
-validated Humanoid, and `AssetImportValidator` passes 86 models with 0 failing.
+otherwise reportable as successes: §7.12's van paint existed as an asset, the player is a
+validated Humanoid, and `AssetImportValidator` passed 86 models with 0 failing.
 
-Measured 2026-08-01. Reproduce with:
+**Read this section for the hands.** Its three subjects were the hands, the carry
+states, and the van; §7.12 has just deleted the van, and the two-handed carry states
+were §03's 목표물 and §08's 대형 전리품 and went with them. **The hands are in every
+frame of this game regardless**, which is what makes the rest of the section still
+worth reading — and [B-017](BLOCKERS.md#b-017) is still open on them.
+
+Measured 2026-08-01. Reproduce with — noting that the third of these four commands no
+longer exists (`PropShot`, §7.11):
 
 ```bash
 U=/Applications/Unity/Hub/Editor/6000.3.21f1/Unity.app/Contents/MacOS/Unity
@@ -1209,8 +1433,6 @@ $U -batchmode -quit -silent-crashes -projectPath unity/HorrorGame \
    -executeMethod HorrorGame.Gameplay.PlayerEditor.FirstPersonHandsShot.Batch -shotTag land_hands
 $U -batchmode -quit -silent-crashes -projectPath unity/HorrorGame \
    -executeMethod HorrorGame.Gameplay.PlayerEditor.PlayerBodyShot.Batch -shotTag land_body
-$U -batchmode -quit -silent-crashes -projectPath unity/HorrorGame \
-   -executeMethod HorrorGame.EditorTools.Props.PropShot.Batch -shotTag land_prop
 $U -batchmode -quit -silent-crashes -projectPath unity/HorrorGame \
    -executeMethod HorrorGame.EditorTools.Playtest.GuidanceShot.Batch -shotTag land_guide
 ```
@@ -1246,12 +1468,19 @@ All four render identical empty hands:
 |---|---|---|
 | empty hands, torch off | nothing | nothing ✓ |
 | torch in hand, lit | the flashlight | a near-black stub intersecting the hand, no beam cone |
-| §08 대형 전리품, both hands | the crate | nothing |
-| §03 목표물, both hands | the objective | nothing |
+| 🔴 §08 대형 전리품, both hands | the crate | nothing |
+| 🔴 §03 목표물, both hands | the objective | nothing |
 
-The two-handed states are the ones §03 defines *by* what they cost you, and neither
-shows the thing it costs you. `FirstPersonHandsShot`'s own table reports `torch -` for
-both, so the tool knows; there is no held-prop renderer in first person to report.
+**The two marked rows describe carry states that no longer exist.** They were the two
+§03 defined *by* what they cost you — both hands full, so you could not hold the torch —
+and they went with §08's 전리품 and §03's 목표물. The race has no two-handed carry.
+
+**The row that is still open is the torch, and it is the one that was never fixed.**
+`FirstPersonHandsShot`'s own table reports `torch -` in every state: there is no
+held-prop renderer in first person, so the flashlight the whole of §03 is built around
+is a near-black stub intersecting the hand with no visible cone. That is also what
+[B-017](BLOCKERS.md#b-017) is about, and the 총 has since joined the list of things a
+runner is supposed to be holding and cannot see themselves holding.
 
 #### 2026-08-01 · re-measured after the hand rebuild — three of the rows above are now stale
 
@@ -1264,7 +1493,7 @@ The table above was written against the harvested-from-the-vessel hand.
 |---|---|
 | "Fingers fused into a paddle — no knuckles, no nails, no creases" | **fixed.** Five separate digits, knuckles and a thumb that opposes, visible in isolation at `arms_front` |
 | "Forearms are bare, untextured, faceted tubes — no sleeve, no cuff" | **fixed.** Coverall sleeve, cuff and role band; `Player_Arms` is 3 376 polys |
-| "§08 대형 전리품, both hands → nothing in frame" | **fixed.** The crate is in frame and held |
+| "§08 대형 전리품, both hands → nothing in frame" | 🔴 **moot.** It was fixed — the crate was in frame and held — and the state was then deleted with §08 |
 | "torch in hand → a near-black stub, no beam cone" | **still true.** `FirstPersonHandsShot` reports `torch -` in every state |
 
 #### The hands were invisible for a different reason, and it was measurable
@@ -1319,14 +1548,17 @@ Read `fill06_20_loot.png`. The mesh is good and the framing is not:
   1.4×. The eye sits directly above the shoulders, so the real arms foreshorten into
   long wedges. First-person arms in this genre are usually a separate asset posed for
   the camera rather than the body's own.
-- **The hands do not touch what they are carrying.** In the 대형 전리품 state the crate
-  is between them and both hands are clear of it. §03 defines that state by what it
-  costs you; hands beside the object read as a bug rather than as a burden.
-- **The coverall reads as pale hospital white**, not work canvas — the role band on the
-  cuff is the only saturated thing on the arm.
+- 🔴 **The hands do not touch what they are carrying.** In the 대형 전리품 state the
+  crate was between them with both hands clear of it — hands beside an object read as a
+  bug rather than as a burden. *That state is deleted with §08.* **The observation is
+  live again for the 총**, which is held rather than carried and which nothing here has
+  photographed.
+- **The coverall reads as pale hospital white**, not work canvas — the cuff band is the
+  only saturated thing on the arm. (The band was §04's role colour. It is a stripe on a
+  sleeve now, and the complaint is unchanged: everything above it is the wrong white.)
 
 None of these are the mesh. All three are pose and framing, which is
-`gen_player_ai.py`'s four carry poses and the shoulder-to-eye offset in the rig.
+`gen_player_ai.py`'s carry poses and the shoulder-to-eye offset in the rig.
 
 #### The torch does not gate anything
 
@@ -1364,13 +1596,19 @@ lit like a car park, not like this game.
 - **`PlayerBodyShot` has never photographed 15 m.** Line 138 clamps the wanted distance
   to `stand.ClearMetres - 1.2`, and the corridor it picks is too short, so the run
   writes `land_body_15m.png` at **10 m** — the filename takes the wanted distance and
-  the report table takes the actual. 15 m is `GameConstants.ObserverRange` and the whole
+  the report table takes the actual. 15 m is the constant now called
+  `GameConstants.HallClearSightMin` (it was `ObserverRange`, §3.14) and it is the whole
   reason the distance is in the list. Either find a longer run or rename the output.
-- **A teammate's body contrast is an order of magnitude under the monster's floor.**
+- **Another runner's body contrast is an order of magnitude under the monster's floor.**
   0.0013 at 3 m, 0.0084 at 8 m, 0.0038 at 10 m, against the 0.015 §6b holds the creature
   to. The figure is legible in the picture because the coverall is bright, not because
   it separates from the wall — and the coverall being bright is its own problem: it is
-  brighter than any wall in the building, so a teammate is self-lit.
+  brighter than any wall in the building, so another runner is self-lit. **This got more
+  important with the pivot, not less.** In the co-op game the other four bodies were
+  teammates you wanted to find; in a race they are nineteen rivals, and 「마주치면 피할
+  수 없다」 means seeing one coming is a decision you are entitled to make. A rival who
+  reads as the brightest object in the corridor is the opposite failure to the creature's
+  and it has never been re-measured against twenty bodies.
 
 ### 7.14 The hands, the two empty carry states, and why the beam gated nothing
 
@@ -1421,24 +1659,34 @@ Per digit, because the four fingers are 60–85 mm long and at a shared angle th
 ones never reach: `Index=86/101 Middle=83/98 Ring=80/94 Little=76/89` degrees, every one
 landing within 0.05 mm of the handle's surface.
 
-#### The sleeve is the coverall now, with a role-coloured cuff
+#### The sleeve is the coverall now, with a coloured cuff
 
 §7.13's *"first-person arms are bare skin; the third-person body wears a coverall"* is
 closed by `cuff_rings` growing a **cuff band**: two extra rings standing 2 mm proud of
-the sleeve with a hard step at each end, painted `M_ROLE`. §04's colour was already on the
-helmet, the collar, the vest, the deltoid caps and the bicep bands; this is the sixth
-place and the only one the owner also sees.
+the sleeve with a hard step at each end, painted `M_ROLE`. **The band survives the
+deletion of the thing it named.** It was §04's role colour, already on the helmet, the
+collar, the vest, the deltoid caps and the bicep bands, and the cuff was the sixth
+placement and the only one its own player also sees. There are no roles now — but the
+race put twenty bodies in one corridor, so a per-player colour on the one surface you
+always have in frame is worth more than it was, not less. `M_ROLE` is a stale name for a
+live slot.
 
-#### §03's four carry states now hold what they cost you
+#### 🔴 §03's four carry states — the two that were fixed here no longer exist
 
-`PlayerHeldProp` puts the actual model from `InteractablePropLibrary` on
-`ObjectiveMount` — the 목표물 for §03's carry, `Loot_LargePiece_Chest` for §08's 대형
-전리품 — and nothing for the other two. Never a primitive: §7.11.
+`PlayerHeldProp` put the actual model from `InteractablePropLibrary` on `ObjectiveMount`
+— the 목표물 for §03's carry, `Loot_LargePiece_Chest` for §08's 대형 전리품 — and
+nothing for the other two. Never a primitive: §7.11. **Both components are gone**
+(searched `Assets/Scripts` 2026-08-12: `InteractablePropLibrary` and `HeldPropModels`
+have no definition and no reference; `PlayerHeldProp` survives only as a tombstone
+comment in `PlayerFeelHarnessMenu.cs`), because both carried objects were deleted with
+§03's chain and §08's economy.
 
-It lives in `HorrorGame.Gameplay.Player` and the library lives in `Assembly-CSharp`,
-which references every asmdef and is referenced by none, so the lookup crosses that
-boundary through one static hook installed by `HeldPropModels`. The lower layer declares
-the hole; the upper one fills it. Inverting it would put the component that reads
+**The assembly argument is the part to keep, and it will be needed again the moment
+anything has to be visible in the runner's hands** — which the 총 already is. It read:
+the component lives in `HorrorGame.Gameplay.Player` and the model catalogue lived in
+`Assembly-CSharp`, which references every asmdef and is referenced by none, so the
+lookup crossed that boundary through one static hook. **The lower layer declares the
+hole; the upper one fills it.** Inverting it would have put the component that reads
 `PlayerLoadout` every `LateUpdate` in the one assembly the shot tools cannot reference.
 
 #### The lock: the beam was never the problem, the ambient was
@@ -1554,20 +1802,31 @@ cd unity/HorrorGame/Shots && python3 ../../../tools/render/frame_stats.py 'h3_*.
 
 Written here rather than left for the next render to discover.
 
-- **The two-handed carry states still show empty hands.** `PlayerHeldProp` instantiates
-  the right model on `ObjectiveMount` at the right scale — brightening
-  `h4_20_loot.png` 7× shows its shadow — and it is **outside the camera frustum**. The
-  offset is a typed guess; it should come from `gen_player_model.pose_metrics`'s
-  `objective_reach` for the Carry clip. Shadow casting is forced Off until it is placed,
-  so the component cannot make a frame worse than it found it. §7.13's row is still open.
+- 🔴 **The two-handed carry states still show empty hands** — *and both states have since
+  been deleted with §03's 목표물 and §08's 대형 전리품, so this item is moot as written.*
+  **The diagnosis is the part to carry forward**, because it will recur the first time
+  the 총 has to be visible in first person: `PlayerHeldProp` was instantiating the right
+  model on `ObjectiveMount` at the right scale — brightening `h4_20_loot.png` 7× showed
+  its shadow — and it was **outside the camera frustum**. The mount offset was a typed
+  guess where it should have come from `gen_player_model.pose_metrics`'s
+  `objective_reach` for the Carry clip. **A held prop that renders correctly and is
+  simply not in shot looks exactly like a held prop that does not render at all**, and
+  the only thing that told the two apart was the shadow.
 - **The ghost is over-bright.** `g4_03m_dark.png` reports `brightest 236.8` at 3 m and
   `253.6` at 10 m: it clips. `EMISSION_SCALE` in `gen_ghost.py` came down 4× after the
   first render and has not come down far enough — the bands' *ratios* are right and their
   level is still about three times too high, so the vertical gradient, the drained role
   colour and the maw are all washing out into one white cut-out. One number, one render.
 - **`PlayerBodyShot` still cannot reach 15 m.** The filename no longer lies about it, and
-  the warning now names `GameConstants.ObserverRange` and the run length needed
-  (16.2 m), but `ViewMotionShot.FindStandingSpot` scores toward a 14 m run and rejects
-  any heading with under 5 m behind it. §04's 관측자 range has still never been
-  photographed.
-- **The 차량 is untouched** — §7.13's blockout list stands in full.
+  the warning names the constant and the run length needed (16.2 m), but
+  `ViewMotionShot.FindStandingSpot` scores toward a 14 m run and rejects any heading with
+  under 5 m behind it. **15 m has still never been photographed** — and it is a live gap
+  rather than a §04 leftover: the constant was renamed `ObserverRange` →
+  `HallClearSightMin` and re-derived from §12's 개방 공간 (§3.14), so 15 m is now the
+  sight line every hall in the building has to hold for every runner.
+- 🔴 **~~The 차량 is untouched~~ — moot. There is no vehicle** (§7.12). §7.13's blockout
+  list stands in full and describes an object that is not in the game.
+- **What replaced it on the list, and has never been photographed at all:** the 총 and
+  the 깜짝 props. They are the objects `Assets/Models/Props/` actually holds, they are
+  governed by §7.11's roughness floor and emission value, and `PropShot` — the tool that
+  would check either — was deleted with the props it was written for.

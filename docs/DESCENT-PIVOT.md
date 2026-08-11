@@ -265,6 +265,16 @@ step 7의 규칙은 **「지울 수 없다면 경주가 그것을 무엇에 쓰�
 | **220개 마커** (전리품 152 + 후보 24 + 나머지) | **도달성 프로브.** 전리품이 아니라 맵 구석구석이 갈 수 있는 곳인지 재는 자였다. 개수를 바꾸면 NavMesh 통과의 의미가 바뀐다 — game-design §12-D |
 | **`ClueMinReadableLightQuality` = 0.20** | 이름만 단서를 가리킨다. 값은 §03의 「빛이 있다 / 없다」 경계이고, 밝기 슬라이더 폭과 §10 그늘의 판정이 둘 다 여기에 걸려 있다. **개명 대상** — game-design §16-3 |
 
+> ✅ **네 번째 줄의 「개명 대상」은 처리됐다 (2026-08-12 확인).**
+> `ClueMinReadableLightQuality` → **`GameConstants.MinSafeLightQuality` = 0.20f**.
+> 값은 그대로다. 「읽을 만큼 밝다」는 사라졌지만 「그늘이 생기지 않을 만큼 밝다」는
+> 살아 있고 핫 패스에 있어서, 떨어뜨리는 대신 이름을 바꿨다 —
+> `PresenceDensity.SafeLightQuality`가 정확히 이 값이다. 위 표의 「개명 대상」은
+> 이제 이력이다.
+>
+> 나머지 셋은 2026-08-12에도 그대로다: `DoorState`, `PlayerInteractor`, 그리고
+> 220개 마커 — `MapSketch`가 `NavMeshConnectivity`의 **3482개 경로**로 엮는 그 숫자.
+
 ### 문서
 
 `game-design.md`를 **v1.1**로 다시 썼다. 16개 절 번호를 전부 유지했다 — 코드가

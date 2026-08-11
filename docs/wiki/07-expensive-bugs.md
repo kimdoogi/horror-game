@@ -3,6 +3,13 @@
 > Two bugs in this project's history each cost about a day. Neither produced an error
 > message pointing at its cause. Both are recorded here because the *lesson* is
 > reusable and the next reader is going to meet the same shape of problem.
+>
+> **This page is deliberately history.** Both entries describe the three-storey
+> co-operative building that the 2026-08-02 pivot replaced, and that is the correct tense
+> for them — a bug is allowed to have happened to a game that no longer exists. What has
+> been re-checked at HEAD `4ab204f`..`017b489` on 2026-08-12 is every *live* claim: the files the
+> fixes live in, the commands you are told to run, and the "still open" table at the
+> bottom. Where the artefact had moved underneath a sentence, the sentence moved.
 
 ---
 
@@ -53,8 +60,19 @@ joined by links, so connectivity was perfect and traversal was impossible.
 full depth of the mid-landing, so both flights bake as one surface.
 `MapSceneBuilder.ForbidStairLinks` now **deletes** any `NavMeshLink` it finds, and
 `MapSceneBuilder.VerifyStairwellsAreWalkable` **fails the generation** if a shaft
-bakes as more than one island. Confirm with
-`grep -c NavMeshLink unity/HorrorGame/Assets/Scenes/Map_FirstSketch.unity` → `0`.
+bakes as more than one island. Both still exist and both still run — `MapSceneBuilder.cs`
+calls them back to back (re-read 2026-08-12). Confirm with
+`grep -c NavMeshLink unity/HorrorGame/Assets/Scenes/Map_FirstSketch.unity` → `0`, which
+is still `0` today.
+
+> **The guard outlived the geometry it was built for, and that is the interesting part.**
+> The descent map has no 계단 at all: `RadialStorey` moves you between storeys through a
+> 투하구 you fall down, so the stairwell this bug was about is gone from the building.
+> `ForbidStairLinks` is still worth its keep because it forbids a *class* of object rather
+> than a piece of a kit — a `NavMeshLink` is a gap with nothing to step onto no matter
+> what draws it — and because eight one-way storeys mean the audit now reports
+> `islands 8` by design, which is precisely the reading in which a stray link would hide
+> best.
 
 This half fixes the player too, and that is the deeper point: **a `NavMeshLink` is a
 gap with nothing to step onto, and a human being cannot use one at all.** The map had
@@ -68,13 +86,22 @@ distance as within `MonsterWaypointTolerance`, "arrived" without moving, and ask
 again. Forever.
 
 It now returns the first corner further than `MinWaypointAdvanceSqr` (0.09 m²) from
-the mover, falling back to the last corner when every corner is coincident. The
-comment in `Assets/Scripts/Gameplay/Monster/NavMeshWorldProbe.cs` says why it is kept
-even with the links gone: *"a coincident corner is not unique to links, and one of
-them used to freeze the antagonist for the rest of the match with no error of any
-kind."*
+the mover, falling back to the last corner when every corner is coincident. Both are
+still in `Assets/Scripts/Gameplay/Monster/NavMeshWorldProbe.cs` at HEAD —
+`TryGetNextPathPoint` at line 205, the constant at line 258 — and the comment above the
+loop is where the reason is written down:
 
-### What it now measures
+> "Distinct" is load-bearing, not defensive tidying. … That deadlocked the monster 95 m
+> from the player on a path the audit reported as complete, and it produced no error of
+> any kind — see `docs/BLOCKERS.md` B-001.
+
+The same comment gives the clause that is nothing to do with links, and it is why the fix
+outlives them: corner 0 is the point being left, so aiming at the next *distinct* corner
+is **"the reason a 4.8 m/s creature cannot cut the chord of §12's S-corridor."**
+
+### What it measured when it closed, and what it measures now
+
+At the close, on the three-storey building:
 
 ```
 [ChaseTest]   route            133.9 m of NavMesh path, monster spawn → (33.75, 0.18, 71.25)
@@ -86,6 +113,22 @@ kind."*
 
 `MonsterSpawn (36.25, −7.50, 11.25)` on B3 to `PlayerSpawn_2 (33.75, 0.00, 71.25)` on
 B1 — 7.5 m of vertical across two storey boundaries.
+
+Today, on the eight-storey radial building ([STATUS.md §3](../STATUS.md), owner's gate
+2026-08-10, `MonsterChaseTests` 4/4):
+
+```
+[ChaseTest] §14 Q1 — can the creature reach a runner on its own storey at all?
+[ChaseTest]   route            128.7 m of NavMesh path
+[ChaseTest]   reached          26.64 s
+[ChaseTest]   closing speed    4.79 m/s of route, against §06's 4.8 m/s of ground speed
+[ChaseTest]   worst 1 s rise   0.0 m of route (0 is a monster that never backtracked)
+```
+
+**Read the question in the first line.** It is *"on its own storey"* now, because the
+creature cannot climb a 투하구 — the vertical clause that made the original bug possible no
+longer exists to be tested. The two control corridors still reproduce §06's central claim
+to 1 %: single corner `caught 12.54 s`, two 10 m legs `released 5.50 s at 12.0 m`.
 
 ### The four lessons
 
@@ -140,7 +183,10 @@ whole trap.
 ### What the file looks like now
 
 `unity/HorrorGame/Packages/manifest.json` explicitly lists **34** `com.unity.modules.*`
-entries alongside the six real dependencies. Verify:
+entries alongside **nine** non-module dependencies — three genuinely third-party (Mirror
+`96.6.4`, Steamworks.NET `2025.164.0`, FizzySteamworks `6.0.1`) and six of Unity's own
+(AI Navigation, Input System, Multiplayer Center, URP, Test Framework, uGUI). Verify, both
+still true 2026-08-12:
 
 ```bash
 grep -c 'com.unity.modules' unity/HorrorGame/Packages/manifest.json      # 34
@@ -192,8 +238,22 @@ actually measuring.**
 
 ## Still open, and cheaper only because they are known
 
+Re-checked against `docs/BLOCKERS.md` on 2026-08-12. **The three rows this table used to
+carry are all closed or dormant** — they are kept below the live ones so nobody re-opens
+them.
+
 | | Summary | Where |
 |---|---|---|
-| B-002 | One EditMode test red on a missing `.meta` in the Mirror package cache. The loop it tests passes outside the harness | [BLOCKERS.md](../BLOCKERS.md#b-002) |
-| B-003 | Two `HallOpen20x20` rooms dropped at `LogError` on **every** map generation, so "the log is clean" cannot be a gate | [BLOCKERS.md](../BLOCKERS.md#b-003), `MapSketch.cs:1101` |
-| defect 3.8 | The floor-material chain is wired and **not pinned** — every floor-material test injects a fake probe. The next reshuffle can break it as quietly as B-001 did | [STATUS.md §3a](../STATUS.md) |
+| B-004 | The networking library in the package cache is a stranger's repack of Mirror, not Mirror. It is load-bearing and it blocks release | [BLOCKERS.md](../BLOCKERS.md#b-004) |
+| B-015 | There is no shippable build — IL2CPP will not compile for Windows on a macOS host, and Windows is what §13 ships to | [BLOCKERS.md](../BLOCKERS.md#b-015) |
+| B-019 | Every storey is 7.5–42.5 m too short from the rim to the middle. §12-D's `centre-path` gates on it, fails, and is waived by name in `MapSceneGenerator.KnownFailingRules` | [BLOCKERS.md](../BLOCKERS.md#b-019) |
+| B-021 | The deepest floor is the brightest room, and for ten days nothing had ever photographed it | [BLOCKERS.md](../BLOCKERS.md#b-021) |
+| B-013 | The *process* half is still open: three commits whose messages said the suite was green while CI was red. The arithmetic half closed in `1ceb636` — the `floor=512` that outlived the 155 tests the pivot deleted is `floor=357` now | [BLOCKERS.md](../BLOCKERS.md#b-013) |
+
+**Closed since this table was written:**
+
+| | Now |
+|---|---|
+| B-002 · one EditMode test red on a missing `.meta` in the Mirror package cache | 🟡 **dormant.** It stopped reproducing when the package cache was rewritten, and `SoloMatchLoopTests.cs` no longer exists at HEAD — it drove §01's 왕복, which the pivot deleted. EditMode has since run: **95/95**, 2026-08-08 |
+| B-003 · two `HallOpen20x20` rooms dropped at `LogError` on every map generation | 🟢 **closed by the pivot**, 2026-08-03. `DescentMap`/`RadialStorey` place no `HallOpen20x20` at all, so the piece and its error went together. **The complaint underneath it did not close** — it moved up a level to [B-014](../BLOCKERS.md#b-014): the *checklist* now prints `FAIL` on the happy path, so "the log is clean" still cannot be a gate |
+| defect 3.8 · the floor-material chain is wired and not pinned | 🔴 **the section it cited is gone.** STATUS.md has no §3a and no numbered defect list any more; its §3 is now "gates that were re-run, and gates that were not". The *worry* is still the right worry — a chain that only fake probes exercise can break as quietly as B-001 did — but it no longer has an address, and a lesson without an address is how one goes quiet |

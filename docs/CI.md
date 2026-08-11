@@ -7,7 +7,7 @@ Two workflows:
 
 | File | Needs a licence? | Runs today | Green means |
 |---|:--:|:--:|---|
-| [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) | no | ✅ every push | the rules, the numbers, §12's map checklist, the simulator and the assets are all good |
+| [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) | no | ✅ every push | the rules, the numbers, §12's map checklist and the assets are all good |
 | [`.github/workflows/unity.yml`](../.github/workflows/unity.yml) | **yes** | ❌ every job skips | **nothing.** No player was built and no Unity test ran — see [§0.4](#04-the-second-green-tick-means-nothing) |
 
 Everything in `ci.yml` was executed locally before it was committed, and the exact
@@ -15,6 +15,19 @@ output is quoted below. Nothing in `unity.yml` has ever run — see
 [§5](#5-what-cannot-run-yet).
 
 **If you read one section, read [§6](#6-the-one-thing-the-owner-has-to-click).**
+
+> 🟢 **Fixed 2026-08-12: the TRX floor was stale and the required job was red on
+> arithmetic.** `e8c67ae` deleted the co-operative game and the ~155 tests that drove
+> it — a legitimate deletion — and nobody moved the floor with it. So `core tests
+> (dotnet)` failed on **every push for nine days and ~45 commits** while the suite
+> underneath it was green the whole time. The floor is now `357`, measured at
+> `4ab204f`.
+>
+> **This is §0's own failure mode turned on §0's own fix.** §0.1 was a red required job
+> nobody read; this was a red required job whose *gate* had rotted. The lesson is not
+> "pick a lower number" — it is that **a count inside a gate is a claim with a date on
+> it, and the date is the part that rots.** Both numbers in this file that came from
+> `a3e268e` were wrong by 2026-08-12; both are now re-measured and stamped.
 
 ---
 
@@ -79,9 +92,17 @@ $ echo $?
 ```
 
 The descent pivot grew the tower to eight storeys; `SimMap`'s sign table stayed at
-five. The simulator is the only tool that answers §16-2 and
+five. The simulator was then the only tool that answered §16-2 and
 [F-006](BALANCE-FINDINGS.md#f-006), it aborted on its first command for a day, and CI
 stayed green on it the whole time because compiling is not running.
+
+> 🔴 **The simulator no longer exists.** `core/HorrorGame.Sim/` was deleted with the
+> co-op game at `e8c67ae` — 0 tracked files, gone from `core/HorrorGame.sln`. This
+> subsection is kept as **history**, because its lesson is the one this whole file
+> turns on and it outlived its subject: *checking that a tool compiles is not checking
+> that it runs.* What the section describes is no longer reproducible; what it teaches
+> is still the reason step 4 exists. See [§2.1](#21-core-tests-dotnet--the-one-that-must-always-be-green)
+> for what step 4 runs today.
 
 This is [B-006](BLOCKERS.md#b-006) one layer out. B-006 was *"the tool does not build
 and the tests do not notice"*, and the answer was to build the solution. This was *"the
@@ -102,7 +123,7 @@ $ echo $?
 
 So a suite that stops being *discovered* — a renamed namespace, an adapter that no
 longer loads, an `asmdef` change — is reported by CI as a green tick over zero tests,
-and the exit code cannot tell "512 passed" from "none ran". Closed by the TRX floor in
+and the exit code cannot tell "357 passed" from "none ran". Closed by the TRX floor in
 [§2.1](#21-core-tests-dotnet--the-one-that-must-always-be-green). The Unity side had
 the identical hole and it is closed the same way — see [§4.2](#42-what-the-job-does).
 
@@ -116,10 +137,10 @@ player that was never built and two Unity test suites that never ran.
 
 Stated plainly, because a reader has no way to tell the two ticks apart:
 
-> Today CI proves that the engine-free rules, the tuned numbers, §12's map checklist,
-> the balance simulator and the committed assets are sound. **It proves nothing at all
-> about whether the game builds, launches, or plays.** Every check that touches the
-> engine is switched off, and it is switched off in a way that looks like success.
+> Today CI proves that the engine-free rules, the tuned numbers, §12's map checklist
+> and the committed assets are sound. **It proves nothing at all about whether the
+> game builds, launches, or plays.** Every check that touches the engine is switched
+> off, and it is switched off in a way that looks like success.
 
 Two consequences:
 
@@ -138,7 +159,7 @@ table is the entire argument for [§6](#6-the-one-thing-the-owner-has-to-click):
 | Round | The defect | Would CI have caught it? |
 |---|---|---|
 | `a89cf64`–`43cf488` | `ChamberDockProbe.cs` takes `HorrorGame.Sim` down; the whole solution stops building | **Yes — and it did.** Red on three pushes. Nothing and nobody acted on it. Not a coverage gap: an *enforcement* gap |
-| ongoing, ~1 day | `SimMap` signs 5 storeys of 8; `horrorsim validate` aborts with exit 134 | **No** — built, never run. Caught from now on ([§2.1](#21-core-tests-dotnet--the-one-that-must-always-be-green)) |
+| ongoing, ~1 day | `SimMap` signs 5 storeys of 8; `horrorsim validate` aborts with exit 134 | **No** — built, never run. Moot now: the simulator was deleted at `e8c67ae`. The *lesson* is what step 4 still enforces ([§2.1](#21-core-tests-dotnet--the-one-that-must-always-be-green)) |
 | `43cf488` | §12's `open-adjacent-to-maze` was passing on a node pair joined only by a one-way 투하구 — a dishonest pass | **Not then. Yes now**: `validate` runs `MapValidator` over the shipped building headlessly, so a §12 rule changing verdict is a CI event for the first time |
 | `3fa35b3` | The shipped scene had five storeys, not eight; `ThirdPersonCamera` was in no scene; `Runner.fbx` was referenced by nothing | **No, and still no.** Nothing asserts the contents of the scene the player loads — not even with a licence. See [§5](#5-what-cannot-run-yet) |
 | `a89cf64` | The race could not be won — `MatchDirector` wrote descents into a `RaceState` nothing read | **No.** PlayMode only, licence-gated |
@@ -167,11 +188,16 @@ Mono is not a shippable answer for this game:
 
 * §13 makes Steam the entire backend, and Steam's audience is overwhelmingly Windows.
   The Windows player *is* the product.
-* Mono ships the game as IL, which decompiles in seconds. `docs/ARCHITECTURE.md` §4
-  makes "clue contents and the objective's location exist only on the host" a design
-  constraint; host-side secrets survive a decompiler, but a Mono build still hands
-  out the clue tables, glyph rendering and `ObjectiveResolver` in readable form to
-  anyone who wants to spoil §03 for a lobby.
+* Mono ships the game as IL, which decompiles in seconds. 🔴 This bullet used to
+  invoke "clue contents and the objective's location exist only on the host" — there
+  is no clue and no objective now, and `ObjectiveResolver` is gone. **The bullet
+  survives on the value that replaced them.** `docs/ARCHITECTURE.md` §4 now makes
+  *placement and arrival* host-only, and §02 says the arrival call is the first value
+  anyone forges in a racing game. Host authority survives a decompiler; what a Mono
+  build hands out is the client half — `RaceState`'s shape, the Mirror message
+  layouts, and the seeded map generator — which is the difference between forging a
+  finish being hard and being an afternoon's work. Weaker than the old argument, and
+  still the right way round.
 * IL2CPP is what the game gets profiled and tuned against. A pipeline that only ever
   produces Mono means the build that ships has never been built by CI at all.
 
@@ -197,22 +223,29 @@ the thing below it is broken.
 |:-:|---|---|
 | 1 | `dotnet test …` (writes a TRX) | a rule or a tuned number that changed meaning |
 | 2 | **Assert the suite actually ran** | the suite silently not being *discovered* ([§0.3](#03-dotnet-test-exits-0-when-it-runs-no-tests)) |
-| 3 | `dotnet build core/HorrorGame.sln -c Release` | the simulator no longer compiling ([B-006](BLOCKERS.md#b-006), and [§0.1](#01-the-three-red-commits)) |
-| 4 | **Run the simulator** | the simulator compiling and not running ([§0.2](#02-the-simulator-was-built-and-never-run)) |
+| 3 | `dotnet build core/HorrorGame.sln -c Release` | a project in the solution that the test project does not reference no longer compiling ([B-006](BLOCKERS.md#b-006), and [§0.1](#01-the-three-red-commits)) |
+| 4 | **Run §12's map validator** | `MapValidator` compiling and never being pointed at the shipped building ([§0.2](#02-the-simulator-was-built-and-never-run)) |
 
 ```sh
 export DOTNET_ROOT="$HOME/.dotnet"; export PATH="$HOME/.dotnet:$PATH"
 dotnet test core/HorrorGame.Core.Tests/HorrorGame.Core.Tests.csproj
 ```
 
-Run here on 2026-08-03 with .NET SDK 9.0.316 on macOS arm64:
+Run here on **2026-08-12**, .NET SDK 9.x on macOS arm64, at `4ab204f` and again at
+`017b489` (`dotnet test core/HorrorGame.sln`):
 
 ```
-Passed!  - Failed:     0, Passed:   512, Skipped:     0, Total:   512, Duration: 3 s - HorrorGame.Core.Tests.dll (net9.0)
+통과!  - 실패:     0, 통과:   357, 건너뜀:     0, 전체:   357, 기간: 1 m 29 s - HorrorGame.Core.Tests.dll (net9.0)
 ```
 
-512 tests, seconds, no Unity, no licence, no GPU. The whole job — checkout, SDK
-install, restore, build, test, simulate — is a couple of minutes.
+**357 tests in about 1½ minutes** — three runs gave 1 m 29 s, 1 m 34 s and 1 m 41 s, so
+quote the count and treat the duration as a range. No Unity, no licence, no GPU.
+🔴 This block used to read
+"512 … Duration: 3 s" and "512 tests, seconds" — both were `a3e268e` numbers, and both
+were wrong in the direction that matters: the suite shrank when the pivot deleted the
+co-op tests, and it is *not* a three-second suite. Budget a minute and a half locally;
+the whole job — checkout, SDK install, restore, build, test, map gate — is a few
+minutes.
 
 **Step 2, the floor.** CI adds `--logger "trx;LogFileName=core-tests.trx"` and then
 reads the counters out of the TRX, because [§0.3](#03-dotnet-test-exits-0-when-it-runs-no-tests)
@@ -220,20 +253,29 @@ measured that a zero-test run exits 0. The TRX is used rather than the console t
 because the console wording follows `DOTNET_CLI_UI_LANGUAGE` and the XML does not:
 
 ```
-TRX counters: <Counters total="512" executed="512" passed="512" failed="0" … />
-512 passed, floor 512.
+TRX counters: <Counters total="357" executed="357" passed="357" failed="0" … />
 ```
 
-The floor is `512`, the count measured at `a3e268e`, and it is a floor rather than an
-equality on purpose: **adding** tests must never turn the build red, and losing several
-hundred is the failure it exists to catch. Deliberately deleting tests means lowering
-the number in `.github/workflows/ci.yml` in the same commit — which is the conversation
-this repo wants, for the same reason `BALANCE-FINDINGS.md` makes a *fix* fail the build
-once.
+It is a floor rather than an equality on purpose: **adding** tests must never turn the
+build red, and losing several hundred is the failure it exists to catch. Deliberately
+deleting tests means lowering the number in `.github/workflows/ci.yml` in the same
+commit — which is the conversation this repo wants, for the same reason
+`BALANCE-FINDINGS.md` makes a *fix* fail the build once.
 
-Both directions were exercised before the step was committed: the real TRX passes at
-512, and a hand-written TRX with `passed="0"` fails with
-`::error::0 tests passed (total 0); the floor is 512`.
+> 🟢 **That conversation did not happen for nine days, and this step is what caught
+> it.** `e8c67ae` deleted the co-op game and its ~155 tests without lowering the floor,
+> so step 2 printed `::error::357 tests passed (total 357); the floor is 512` on every
+> push for **~45 commits**. The floor is now `357`, measured at `4ab204f`.
+>
+> The step worked exactly as designed — several hundred tests *were* lost and it
+> refused to call that green. What failed was the human half of the protocol. **Set
+> the floor from a run at HEAD and record which commit it was measured at**, which is
+> what `ci.yml`'s comment now does; that is the only thing that lets the next reader
+> tell a stale floor from a real regression.
+
+Both directions were exercised before the step was committed: a real TRX passed, and a
+hand-written TRX with `passed="0"` failed with
+`::error::0 tests passed (total 0); the floor is …`.
 
 **What it protects.** `docs/ARCHITECTURE.md` §1 keeps the core sources inside the
 Unity project and compiles them a second time through
@@ -254,55 +296,57 @@ build. Whoever adds it will not notice; this job notices in under three minutes.
 dotnet build core/HorrorGame.sln --configuration Release
 ```
 
-The test project does not reference `HorrorGame.Sim`, so the balance simulator — the
-tool §16-2's loot-value question depends on — can stop compiling without a single
-test failing. Two extra seconds closes that gap. This is the step that was red on
-`a89cf64`, `af2563d` and `43cf488`; [§0.1](#01-the-three-red-commits) is the account.
+A project can sit in the solution without the test project referencing it, and then
+stop compiling without a single test failing. Two extra seconds closes that gap. This
+is the step that was red on `a89cf64`, `af2563d` and `43cf488`;
+[§0.1](#01-the-three-red-commits) is the account. (The project it was written to
+protect, `HorrorGame.Sim`, no longer exists — the step outlived it and still guards
+whatever is in `HorrorGame.sln` tomorrow.)
 
-**Step 4, running the simulator.**
+**Step 4, running §12's map validator.**
 
 ```sh
-dotnet run --project core/HorrorGame.Sim -c Release -- validate
+dotnet test core/HorrorGame.Core.Tests/HorrorGame.Core.Tests.csproj \
+  -c Release --no-build --filter "FullyQualifiedName~MapTests.Descent_"
 ```
 
-Building it does not prove it runs, and [§0.2](#02-the-simulator-was-built-and-never-run)
-is the day that cost. `validate` is the right smoke command rather than a match run:
-it takes seconds, it is deterministic, and it *exits* rather than printing a verdict
-and returning 0 — `5` the map does not build, `6` §12 rejects the map, `4` §03's clue
-chain does not converge on the objective.
+🔴 **This step used to run `dotnet run --project core/HorrorGame.Sim -- validate`.**
+The simulator was deleted with the co-op game at `e8c67ae`, so for **six days and 37
+commits the required job was failing on a command that can never succeed again** — a
+red X nobody could fix, which teaches people to stop reading the X. That is worse than
+the defect the step was written to catch, and it is the same argument
+[§2.2](#22-asset-audit-12-audio--and-the-f-002-decision) makes against a permanently
+red gate.
 
-It also does something CI has never done before: `validate` calls
-`MapValidator.Validate` on the building `FirstMapSketch` produces, so **§12's checklist
-is now enforced on every push, headlessly, with no Unity licence.** A §12 rule changing
-its verdict is a CI event from now on.
+**The step's subject survived the deletion, because `MapValidator` did.** "Run §12's
+validator, do not merely build it" is now enforced by name in the core suite. Measured
+here on 2026-08-12 at `4ab204f`:
 
-*One exit code is waived, by rule id, and it is worth understanding.* Exit `6` means
-`MapValidator` rejects the shipped map — and this project knowingly ships a map that
-does: [B-007](BLOCKERS.md#b-007), whose fix is filed as
-[F-007](BALANCE-FINDINGS.md#f-007). Gating hard on `6` would make this check red on the
-day it was added and keep it red until a level decision lands, which is exactly the
-thing [§2.2](#22-asset-audit-12-audio--and-the-f-002-decision) argues at length is not
-a gate at all. Ignoring the exit code is the other bad answer and
-`ARCHITECTURE.md` §6 forbids it. So the workflow uses the audio gate's arrangement,
-pointed at the map — a waiver **by rule id, each naming the finding that owns it**:
+```
+통과!  - 실패: 0, 통과: 4, 건너뜀: 0, 전체: 4, 기간: 36 s
+```
 
-| Situation | Result |
+Four tests, and the filter must match all four:
+
+| Test | Pins |
 |---|---|
-| `validate` exits 0 | **pass**, plus a `::warning::` asking for the waiver to be deleted |
-| §12 fails only on waived rules | **pass** — each printed as `KNOWN … → B-007 / F-007` |
-| §12 fails on a rule that is not waived | **fail** — the map regression this exists to catch |
-| exit 6 with no readable rule list | **fail** — an unreadable result is not a known one |
-| any other non-zero exit (a crash, 4, 5) | **fail** — the simulator is dead, which is the whole point |
+| `Descent_EveryOtherSection12Rule_StillPasses` | walks the passing §12 rules **by name** — names the rule that broke |
+| `Descent_MeetsSection12sSightBreakSpacing` | [B-007](BLOCKERS.md#b-007) closed, at 12.5 m |
+| `Descent_CentrePath_IsInsideSection12DsBandExceptAtTheRimCellBesideAGate` | [B-019](BLOCKERS.md#b-019)'s exact remaining miss — 21 of 22 entry points, one 2.5 m short, so a slide back is a failure rather than a smaller green |
+| `Descent_IsDeterministic_AndTwoSeedsAreNotTheSameBuilding` | [B-018](BLOCKERS.md#b-018) |
 
-The waiver lives in `.github/workflows/ci.yml` and currently holds one id,
-`sight-break-spacing` — the single rule `validate` reported failing when this step was
-written on 2026-08-03. All five rows above were exercised, the pass row against the
-real command and the rest against stubs.
+**The filter has to select something.** A `--filter` matching zero tests exits 0 and
+prints "No test matches" ([§0.3](#03-dotnet-test-exits-0-when-it-runs-no-tests)) —
+which would make this step green by describing nothing, the same vacuum the deleted
+project left behind. So the step counts the tests out of the log and fails when fewer
+than four ran, before it looks at the exit code at all.
 
-**If this check comes back red on a rule you did not expect, that is the check
-working.** §12's failing set moves as the map is authored; the rule to add an id here
-is the same one `audio_baseline.json` enforces — it must name the blocker or finding
-that owns it, and if you cannot name one, the map is the thing to fix, not this list.
+There is **no exit-code waiver any more.** The old arrangement — waive exit `6` by rule
+id, `sight-break-spacing`, naming B-007/F-007 — went with the simulator. B-007 is
+closed now (`9f0f447`), so there is nothing to waive: the map tests are expected to
+pass outright, and the waiver's job is done by `Descent_CentrePath_…` pinning B-019's
+*measured* miss instead of excusing it. **If this check comes back red, that is the
+check working** — read `artifacts/map-validate.log`, which names the rule.
 
 > **Where the "make this required" instruction went.** It is now
 > [§6](#6-the-one-thing-the-owner-has-to-click), with the caveat that turns out to
@@ -322,12 +366,30 @@ already tells you to use — installs the pinned `numpy` and `scipy` from
 the result against `tools/ci/audio_baseline.json`.
 
 **What it protects.** §12's rule that each zone has a different floor material is,
-in its own words, 시스템 결정 rather than an art decision: §04's 청음사 reads the
-monster's position from the surface it walks on. That makes the five materials an
-alphabet, and "the alphabet is still legible" is a property of the *set* of clips.
-No single generator can check it — retune gravel and the check that breaks lives in
-the wood file. It is also invisible in play right up until someone reports that the
-role "doesn't work", which is the hardest kind of bug to trace to a commit.
+in its own words, 시스템 결정 rather than an art decision.
+
+🟢 **The rule outlived the role that motivated it, and got bigger.** This paragraph
+used to read "§04's 청음사 reads the monster's position from the surface it walks on".
+The 청음사 was deleted with the other four roles. game-design §12 re-founds the
+requirement in one line — 「귀는 스무 명 전부가 가지고 있다」 — and the audience went
+from one listener to twenty. It is now also how a runner hears **which gate the field
+is piling up at**, not just where the monster is, so the alphabet is load-bearing for
+§11's bottleneck as well as §06's chase.
+
+**And it is eight letters, not five.** `Core/Map/FloorMaterial.cs` declares Wood,
+Tile, Gravel, Concrete, Metal, Water, Earth, Carpet, and
+`Editor/SceneGen/DescentMap.cs` spends one per storey so that a footstep names a
+floor:
+
+| B1 하역장 | B2 기록보관소 | B3 기계실 | B4 저탄장 | B5 저수조 | B6 병동 | B7 수몰층 | B8 굴착층 |
+|---|---|---|---|---|---|---|---|
+| concrete | wood | metal | gravel | tile | carpet | water | earth |
+
+That is why the separation matrix is **8 × 8** and `Assets/Audio/Footsteps` holds
+**96 clips — 8 surfaces × 12**. "The alphabet is still legible" is a property of the
+*set*: no single generator can check it, because retuning gravel breaks a check that
+lives in the earth file. It is also invisible in play right up until someone reports
+that they cannot tell which floor they are on.
 
 **The awkward part, stated plainly:** the audit currently reports one blocking
 defect. It is F-002 in `docs/BALANCE-FINDINGS.md` — `GameConstants.ListenerClarity*`
@@ -353,7 +415,7 @@ and what would resolve it. The gate is then two-sided.
 | Only baselined blocking defects reproduce | **pass** — each one printed as `KNOWN … → F-002` |
 | A blocking defect that is not baselined | **fail** — this is the regression case the job exists for |
 | A baselined defect stops reproducing | **fail** — the finding is answered; update `docs/BALANCE-FINDINGS.md` and delete the baseline entry in the same commit |
-| Warnings (F-003's 1.396×, the flare loop seam) | reported, never gated |
+| Warnings (the occluded pair, the two clarity inversions, two layout notes) | reported, never gated |
 
 The third row is the one worth arguing for. `docs/BALANCE-FINDINGS.md` opens with
 "Every finding is pinned by a test, so a later edit that changes the answer fails the
@@ -362,27 +424,48 @@ also has to fail the build once, so the write-up moves in the same commit as the
 change, while the reasoning is still in someone's head.
 
 Every baseline entry must name a finding id; the gate rejects one that does not. That
-is the rule that stops the file becoming a mute button. It currently holds exactly
-one entry.
+is the rule that stops the file becoming a mute button. It currently holds **two**
+entries, `gravel vs concrete` and `gravel vs earth` — both F-002, the second being the
+same mechanism on a surface pair that only began existing when the tower grew to eight
+storeys.
 
-Warnings are never gated because F-003 sits 0.004 from its threshold. Gating it would
-make the build a coin toss on filter rounding, and it is already pinned by the
-audit's own output and its write-up.
+Warnings are never gated because a warning is a range limit, not a regression: the
+worst occluded pair sits at 1.137× against a 1.4× requirement, and no amount of
+regenerating clips closes that — game-design §12 says so, and the answer is in the
+Unity mix (occlusion filter strength, 3D rolloff). Gating on it would make the build
+red on a thing the generators cannot fix.
 
-Local run, 2026-07-30 (Python 3.9.6, numpy 2.0.2, scipy 1.13.1):
+Run here on **2026-08-12** at `4ab204f` (`tools/ci/verify_audio.sh`):
 
 ```
-  §12 Listener alphabet: SUPPORTED — worst surface pair metal vs tile at 2.13x (need >= 1.4x)
-  worst within a single actor: 1.98x
-  at 25m through a wall it does NOT hold: worst pair wood vs metal at 1.396x
-  clips: 166   loops checked: 18   blocking defects: 1   warnings: 2
+  §12 Listener alphabet: SUPPORTED — worst surface pair water vs gravel at 1.44x (need >= 1.4x)
+  worst within a single actor: 1.41x
+  at 25m through a wall it does NOT hold: worst pair metal vs gravel at 1.137x
+  HUD vs ears: 4 inverted pair(s) — gravel/concrete, gravel/earth, water/wood, tile/concrete
+  clips: 164   loops checked: 16   blocking defects: 2   warnings: 5
   RESULT: FAIL
 ...
 AUDIO GATE — blocking defects against tools/ci/audio_baseline.json
+  audit result:        FAIL
+  blocking defects:    2
+  accepted (baseline): 2
+  warnings:            5
   KNOWN     [consistency] gravel vs concrete  → F-002
-            still reproducing, still awaiting a decision in docs/BALANCE-FINDINGS.md
+  KNOWN     [consistency] gravel vs earth     → F-002
   RESULT: PASS
 ```
+
+> **Read the margin, not just the verdict.** The alphabet passes at **1.44×** against
+> a 1.4× requirement, and the worst pair *within one actor* is **1.41×**. That is
+> 0.04 and 0.01 of headroom — the previous numbers in this file were 2.13× and 1.98×,
+> measured on 2026-07-30 before three surfaces were added. Adding a ninth material, or
+> retuning any of the eight, is now overwhelmingly likely to put this check red. It is
+> the closest thing in this repo to a gate that is about to bite.
+
+> **`clips: 164` versus 168 `.wav` on disk.** The audit ignores `Audio/Presence/`
+> (4 clips) — it warns `folder belongs to no known family`, along with the empty
+> `Audio/Resources/`. So §09's 유령 audio is committed and **audited by nothing**.
+> Filed here because `tools/audio/` is not this document's to change.
 
 The audit says FAIL, the gate says PASS, and both are correct — that is the whole
 point of the split.
@@ -390,7 +473,7 @@ point of the split.
 ### 2.3 `blender generators` — and the exit code that lies
 
 ```sh
-tools/ci/run_blender_generators.sh                  # all four
+tools/ci/run_blender_generators.sh                  # all six
 tools/ci/run_blender_generators.sh gen_props        # one, while iterating
 BLENDER=/path/to/blender tools/ci/run_blender_generators.sh
 ```
@@ -424,19 +507,65 @@ So the script runs four checks per generator and fails on any of them:
 Rows two and three of that table are why 1–3 all exist. Trusting the exit code alone
 would put a green tick over a dead toolchain, which is worse than having no job.
 
-Local run, 2026-07-30, Blender 5.2.0 LTS — all four generators, 8 seconds:
+**Six generators, read out of `run_blender_generators.sh` on 2026-08-12:**
 
 ```
-  OK   gen_mapkit  21 asset(s)
-  OK   gen_props  24 asset(s)
-  OK   gen_player_model  1 asset(s)
-  OK   gen_monster_model  1 asset(s)
-  all 4 generator(s) ran clean
+DEFAULT_GENERATORS="gen_mapkit gen_dressing gen_props gen_player_model gen_monster_ai gen_ghost"
 ```
+
+Six of `tools/blender/`'s **fourteen** scripts. Five of the other eight are libraries
+with no `main()` that writes anything — `blendkit`, `gen_mapkit_detail`,
+`gen_monster_model`, `gen_player_ai`, `monster_fit` — and the script's comments say so
+for the two it mentions. The remaining three are a gap: **`gen_gun`, `gen_presence` and
+`gen_runner` write shipped assets and are in nobody's list** (`Gun_Held.fbx`,
+`Gun_Pickup.fbx`, `Presence_Figure.fbx`, `Presence_Mote.fbx`, `Runner.fbx`,
+`RunnerArms.fbx`).
+
+> 🔴 **And the list runs two generators whose output the repo does not contain.**
+> `gen_player_model` declares `Assets/Models/Characters/Player.fbx`; `gen_ghost`
+> declares `Ghost.fbx` + `Ghost.glb`. **`Assets/Models/Characters/` holds `Monster.fbx`
+> and `Monster.glb` and nothing else** (checked 2026-08-12). Neither missing file is
+> gitignored — the assets were deleted and the generators were not.
+>
+> So the six-generator run is: four that regenerate committed assets (`gen_mapkit`,
+> `gen_dressing`, `gen_props`, `gen_monster_ai`) and **two that build things nothing
+> consumes** — while three generators that *do* own committed assets are never
+> exercised. The job still catches a broken `gen_mapkit`, which is most of its value.
+> It is nonetheless checking the wrong six.
+
+> ⚠️ **`gen_ghost` builds something the repo does not keep, for a rule that no longer
+> exists.** It declares `Assets/Models/Characters/Ghost.fbx` + `Ghost.glb` as its
+> output, and **neither file is in the repo** — not committed, not gitignored. Its
+> subject, §09's 유령, was deleted from game-design on 2026-08-12 because nothing
+> eliminates a player any more. What *is* committed is the debris: `Ghost.textures.json`,
+> `GhostMaterials.cs`, `GhostShot.cs` and a set of `Ghost_*.mat` files, three of which
+> (`Ghost_Role_Observer`, `Ghost_Role_Engineer`, `Ghost_Role_Runner`) are named after
+> §04 roles deleted two rounds ago. So this job spends Blender time on a generator whose
+> product nothing consumes — the opposite of the rot the job exists to catch, and worth
+> resolving in the same commit either way.
+
+> 🔴 **The run that used to be quoted here is gone, not updated.** It read
+> `all 4 generator(s) ran clean` and listed `gen_monster_model  1 asset(s)`, from
+> 2026-07-30. Both are now wrong: the list is six, and `gen_monster_ai` replaced
+> `gen_monster_model` as the thing that writes `Monster.fbx`. **No replacement run is
+> quoted because none was performed** — Blender is not run from this audit, and this
+> file does not print numbers nobody measured. Whoever next runs the script should
+> paste the real output here.
+
+What *is* verified today is the committed output the job protects — 75 `.fbx` and
+1 `.glb` under `Assets/Models`: MapKit 22, Dressing 39, Props 9, Player 2
+(`Runner.fbx`, `RunnerArms.fbx`), Presence 2, Characters 1 (`Monster.fbx`).
+
+> **Three generators write assets and are in nobody's list:** `gen_gun` (`Gun_Held.fbx`,
+> `Gun_Pickup.fbx`), `gen_runner`, and `gen_presence` (`Presence_Figure.fbx`,
+> `Presence_Mote.fbx`). Their output is committed under `Assets/Models`, so they can rot
+> exactly the way §2.3 says a generator rots — this is the same gap the paragraph below
+> describes for the audio generators, and it is not called out anywhere else.
 
 **What this job does *not* do:** assert byte-identical regeneration.
 `docs/ASSETS.md` says a clean rebuild is byte-identical, and for the mesh data it is
-— but the containers are not. Regenerating `Crate.fbx` here produced a file of
+— but the containers are not. Regenerating `Crate.fbx` (a §08 loot prop, since deleted
+along with the economy — the measurement stands, the file does not) produced one of
 *identical length* differing in 53 bytes, every one of them inside the FBX header's
 `CreationTime` (Hour / Minute / Second / Millisecond). A `git diff --exit-code` gate
 would therefore fail on every run for a reason that has nothing to do with the game.
@@ -446,7 +575,9 @@ prints how many files differ, as information only.
 
 **Also not covered, and this one is live:** the *audio* generators are not re-run. The
 audit in §2.2 checks their committed output but never invokes `gen_footsteps.py` and
-friends, so those five scripts can rot exactly the way the Blender ones can — the
+friends, so those **seven** scripts — `gen_ambience`, `gen_caught`, `gen_footsteps`,
+`gen_items`, `gen_monster_audio`, `gen_scares`, `gen_ui` — can rot exactly as the
+Blender ones can. The
 committed `.wav` keeps working while the only way to *change* it quietly stops
 existing. This is not hypothetical any more: `tools/audio/gen_ambience.py` and
 `tools/audio/gen_footsteps.py` were both edited during the descent pivot, and new
@@ -469,19 +600,21 @@ export DOTNET_ROOT="$HOME/.dotnet"; export PATH="$HOME/.dotnet:$PATH"
 
 dotnet test core/HorrorGame.Core.Tests/HorrorGame.Core.Tests.csproj
 dotnet build core/HorrorGame.sln --configuration Release
-dotnet run --project core/HorrorGame.Sim -c Release -- validate   # ← and RUN it
+dotnet test core/HorrorGame.Core.Tests/HorrorGame.Core.Tests.csproj \
+  -c Release --filter "FullyQualifiedName~MapTests.Descent_"   # ← §12, and RUN it
 tools/ci/verify_audio.sh
 tools/ci/run_blender_generators.sh
 ```
 
-That is the entire green tick, reproducible on a laptop in well under a minute of
-work. The workflow calls the same two scripts, so a red run is a copy-paste away from
-a local repro rather than an archaeology exercise in YAML.
+That is the entire green tick. Budget **about four minutes**, not "well under a
+minute": the suite alone is 1 m 34 s and the map filter another 36 s, both measured on
+2026-08-12. The workflow calls the same two scripts, so a red run is a copy-paste away
+from a local repro rather than an archaeology exercise in YAML.
 
 The third line is the one that is easy to skip and is the point of
 [§0.2](#02-the-simulator-was-built-and-never-run): the line above it succeeded for a
-day while this one aborted with exit 134. Check the exit code, not the wall of text —
-`validate` prints several cheerful lines before it gets to the part that fails.
+day while the tool it built aborted on its first command. Check that the filter
+actually **selected** something — a filter that matches nothing exits 0.
 
 | File | What it is |
 |---|---|
@@ -600,8 +733,8 @@ Two flags worth explaining:
   artifact that looks right. `build.sh` exits 5 instead.
 * **`--require-tests` IS now passed.** This entry used to read "deliberately not
   passed — `Assets/Tests/EditMode/` and `Assets/Tests/PlayMode/` are still empty; add
-  it in the same commit as the first suite". They are not empty: at `a3e268e` there are
-  **23 test files, 2 EditMode and 21 PlayMode**, and the whole descent pivot was
+  it in the same commit as the first suite". They are not empty: at `4ab204f` there are
+  **33 test files, 6 EditMode and 27 PlayMode**, and the whole descent pivot was
   verified through them. The stated condition was met rounds ago and the flag was
   simply never added — which is its own small instance of the theme of this document.
   `build.sh` exits **9** when no test ran, so "the suites silently stopped being
@@ -634,14 +767,18 @@ Plainly:
   the first real run to need fixes — most likely in the Hub's headless install, which
   is the flakiest part of the toolchain.
 * **The Unity Hub may not list `6000.3.21f1` by version alone.** If it does not, the
-  install needs `--changeset <hash>` from Unity's download archive. It cannot be read
-  from this repository: `ProjectSettings/ProjectVersion.txt` records
-  `m_EditorVersionWithRevision: 6000.3.21f1` with no revision hash. The install step
-  prints this instruction when it cannot find the editor afterwards.
+  install needs `--changeset <hash>` from Unity's download archive. 🔴 This bullet used
+  to say the changeset "cannot be read from this repository". **It can.**
+  `ProjectSettings/ProjectVersion.txt` reads
+  `m_EditorVersionWithRevision: 6000.3.21f1 (c02631ffc030)` — the revision is right
+  there, so the install can pass `--changeset c02631ffc030` without going to the
+  download archive at all. (`.github/workflows/unity.yml` still prints the old claim in
+  its failure branch; it is wrong there too.)
 * **The Unity suites exist and no automated system has ever run them.** This bullet
-  used to say the test folders were empty. They are not: **23 test files at `a3e268e`,
-  2 EditMode and 21 PlayMode** (counted here; the number of *tests* is whatever the
-  last hand-run reported, see `docs/TESTING.md`), covering adapters, prefab wiring,
+  used to say the test folders were empty. They are not: **33 test files at `4ab204f`,
+  6 EditMode and 27 PlayMode** (counted here on 2026-08-12; the number of *tests* is
+  whatever the last hand-run reported, see `docs/TESTING.md`) — up from 23 at
+  `a3e268e` — covering adapters, prefab wiring,
   generated scenes, movement feel, chases and networking — the whole Unity half of
   `docs/ARCHITECTURE.md` §5's table.
   Every one of them has only ever been run by a person, by hand, on this Mac. They are
@@ -758,7 +895,7 @@ The name GitHub shows is the job's `name:`, not the job id.
 
 | Check | Require it? | Why |
 |---|:--:|---|
-| **`core tests (dotnet)`** | **YES** | 512 tests, the solution build, and the simulator actually running. Two to three minutes. This is the gate |
+| **`core tests (dotnet)`** | **YES** | 357 tests, the solution build, and §12's map validator actually running. A few minutes. This is the gate |
 | `asset audit (§12 audio)` | reasonable second | Fast, and its gate is already two-sided (§2.2). Add it once you are comfortable with the first |
 | `blender generators` | no | Downloads and installs Blender, up to 30 minutes, and [§5](#5-what-cannot-run-yet) notes the Linux path has never actually been run. Blocking every merge on that is blocking on infrastructure, not on the game |
 | `licence preflight` | **never** | It passes unconditionally. Requiring it requires nothing |

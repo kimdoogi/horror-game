@@ -24,12 +24,16 @@
 Nothing can be released tomorrow, and nothing can be released in a week, because
 **the 30-day clock has not been started** — Valve requires 30 days between paying
 the app fee and releasing, and the app fee has not been paid. That is not the
-binding constraint for long, though. The binding constraint is that **no two peers
-have ever connected in this repository, by any evidence on disk**, in a game whose
-entire premise is twenty of them; that the shipped player's main menu contains no
-networking code at all and its Play button loads a *solo* scene; and that every
-word of the finished store copy describes a four-player co-op looting game that was
-deleted on 2026-08-02. The build pipeline is in good shape and a release path
+binding constraint for long, though. 🔴 **Two clauses of this paragraph were overtaken
+between 2026-08-03 and 2026-08-12** and are corrected here: peers *have* connected —
+seven PlayMode test files drive real sockets (§I.4.2) — and `RaceLobby` installs itself
+from a `[RuntimeInitializeOnLoadMethod]`, so the networked path is reachable in a build
+(§I.4.1). The store copy has also been rewritten for the race. What remains binding is
+narrower and still real: **twenty peers have never finished a match with a transcript
+anyone can read**, in a game whose entire premise is twenty of them; the shipped main
+menu still has no host/join affordance and its Play button loads a *solo* scene; and
+the lobby in front of a twenty-connection socket still seats **four**
+(`PlayersPerMatch`, §I.4.3). The build pipeline is in good shape and a release path
 demonstrably works — on macOS. Windows, which is the product, has never once been
 built with IL2CPP. The fastest defensible path is **not** a release: it is to start
 the account clock today, put up a Coming Soon page for the race, and ship a Steam
@@ -75,10 +79,11 @@ Ordered by what blocks what, not by size.
 
 | # | Item | Evidence | Size |
 |:--:|---|---|---|
-| 1 | **Get two peers to connect, once** | §I.4.2 — never done | the whole risk |
-| 2 | A networked entry point in the shipped build (menu → host/join) | §I.4.1 — `GameShell` has none | days |
+| ~~1~~ | ~~**Get two peers to connect, once**~~ | §I.4.2 — **done**: seven test files drive real sockets | — |
+| 1 | **Twenty peers finish one match, with a log on disk** | §I.4.2 — the temp logs are gone, so this is unevidenced | the whole risk |
+| 2 | A host/join affordance in the shipped menu | §I.4.1 — `GameShell` has none; `LobbyScreen` is in no scene | days |
 | 3 | The race exists as a scene (`RaceDirector` is in no scene) | §I.4.3 | in progress elsewhere |
-| 4 | Reconcile the 4-vs-20 player cap | §I.4.3 | small, but touches Net |
+| 4 | Reconcile the 4-seat lobby in front of the 20-connection socket | §I.4.3 — `PlayersPerMatch` | small, but touches Net |
 | 5 | A Windows **IL2CPP** player — never once produced | §I.2.3 | needs a Windows host |
 | 6 | Real App ID into `SteamAppConfig.cs` **and** `steam.config` together | §5.1 | one line each |
 | ~~7~~ | ~~`steam_appid.txt` must not reach a depot~~ | §I.2.5 defects 1–3 | **done 2026-08-08** — and it was never one line |
@@ -166,6 +171,13 @@ shippable on Steam:   no — IL2CPP was unavailable on this host, so it is a Mon
 and the pipeline dropped `MONO-FALLBACK-DO-NOT-SHIP.txt` into the folder, ending
 *"Delete this file only after replacing this folder with an IL2CPP build."*
 
+> 🔴 **Both artefacts described above have since been overwritten (re-checked
+> 2026-08-12).** `dist/windows-x64/` no longer holds that Release/Mono-fallback build
+> and **no longer holds `MONO-FALLBACK-DO-NOT-SHIP.txt`** — the marker file is dropped
+> only on a *Release* build that fell back, and the folder now holds a **Development**
+> build, which is unshippable for a different reason and so never got the marker. The
+> quoted report text is history; the table below is what is on disk today.
+
 > **No Windows IL2CPP player has ever been produced in this repository.** A Mac
 > cannot make one: IL2CPP transpiles to C++ and then needs MSVC. The only two routes
 > are a Windows machine or the CI job in `.github/workflows/unity.yml`, and that job
@@ -173,16 +185,31 @@ and the pipeline dropped `MONO-FALLBACK-DO-NOT-SHIP.txt` into the folder, ending
 > `UNITY_EMAIL`/`UNITY_PASSWORD`/`UNITY_SERIAL` or `UNITY_LICENSE` secrets. There is
 > no evidence in the repo that it has ever run.
 
-The current state of `dist/` — the three build reports on disk:
+The current state of `dist/` — **re-read 2026-08-12**, two build reports on disk:
 
-| Folder | Configuration | Backend | Built (UTC) | Size | shippable |
-|---|---|---|---|---|:--:|
-| `dist/windows-x64/` | **Release** | Mono (fallback) | 2026-07-31T14:28:02Z | 144.09 MB | no |
-| `dist/macos-arm64/` | Development | Mono | 2026-08-02T02:32:06Z | 277.68 MB | no |
-| `dist/macos-universal/` | Development | Mono | 2026-08-02T15:02:48Z | 572.69 MB | no |
+| Folder | Configuration | Backend | Built (UTC) | Commit | Size | shippable |
+|---|---|---|---|---|---|:--:|
+| `dist/windows-x64/` | Development | Mono | 2026-08-10T14:23:03Z | `471ffab` | 2546.09 MB | no |
+| `dist/macos-arm64/` | Development | Mono | 2026-08-10T14:34:28Z | `471ffab` (working tree dirty) | 2569.62 MB | no |
 
-`dist/last-build-summary.txt` records the most recent run, and it was
-`-buildConfig development`.
+`dist/last-build-summary.txt` records the most recent run — `-buildPlatform mac-arm64
+-buildConfig development`, exit 0, 94.2 s.
+
+> 🔴 **Three things in the old version of this table were wrong by 2026-08-12.**
+> `dist/macos-universal/` **no longer exists**. Both remaining folders were rebuilt on
+> 2026-08-10 at build number 100, and both are **Development** builds now — so the
+> Windows folder's configuration flipped from Release to Development, and its size
+> went from 144.09 MB to **2546.09 MB** (a Development player carries debug symbols and
+> the profiler; that is a 17× difference, and it is the number that matters for a depot
+> upload). The macOS report also says **`(working tree dirty)`**, which §I.2.4 lists as
+> a thing to refuse.
+>
+> **The headline of this section still holds, and for the original reason:** every
+> player on disk is Mono, none is shippable, and **no Windows IL2CPP player has ever
+> been produced here.** What changed is only that the newest Windows artefact is
+> unshippable for being a *Development* build rather than for being a Mono *fallback* —
+> which is worth noticing, because it means the folder no longer carries the
+> `MONO-FALLBACK-DO-NOT-SHIP.txt` warning a reader might be looking for.
 
 ### I.2.4 The report format — how to recognise a good one
 
@@ -396,42 +423,45 @@ and an honest page checklist (`docs/store/checklist.md`). The generators are
 
 ### I.3.3 What this repo does NOT have
 
-**1. There is no trailer.** `docs/store/party.mp4` is the only video in the repo.
-Measured with `ffprobe`:
+**1. ~~There is no trailer.~~ 🟢 There is one, and it passes.** Cut on 2026-08-04 as
+`docs/store/trailer_descent.mp4`. Measured with `ffprobe` on 2026-08-12:
 
 ```
-codec_name=h264   width=1280   height=720   r_frame_rate=24/1
-duration=3.000000  size=609331  bit_rate=1624882
+codec_name=h264   width=1920   height=1080   r_frame_rate=30/1
+nb_frames=1247    duration=41.566667   size=62140351   bit_rate=11959650
 ```
 
-**1280 × 720, three seconds, 24 fps, 1.62 Mbps.** Valve's trailer spec is *"up to
-1920 x 1080 resolution, 30/29.97 or 60/59.94 fps"* at *"high bit rate (5,000+
-Kbps)"*, H.264/AAC in `.mov`/`.wmv`/`.mp4`, audio at 44 or 48 kHz
-([trailer](https://partner.steamgames.com/doc/store/trailer)). The file misses the
-resolution, the frame rate and the bit rate, and three seconds is not a trailer in
-any case. `docs/store/trailer.md` is a shot list and `docs/store/trailer/` is 13
-still PNGs; **no video has been cut.** This is the single highest-leverage asset on
-a store page and it does not exist.
+**1920 × 1080, 41.6 s, 30 fps, 11.96 Mbps.** Valve's spec is *"up to 1920 x 1080
+resolution, 30/29.97 or 60/59.94 fps"* at *"high bit rate (5,000+ Kbps)"*, H.264/AAC
+in `.mov`/`.wmv`/`.mp4`
+([trailer](https://partner.steamgames.com/doc/store/trailer)) — it clears every one,
+with the bit rate more than double the floor.
 
-**2. The client icon is missing.** Valve's client icon is a **32 × 32 TGA**. The
-repo has `docs/store/capsules/shortcut_icon_256x256.png` — wrong size, wrong format.
+`docs/store/party.mp4` is the *old* file this item used to describe: 1280 × 720, three
+seconds, 24 fps, 1.62 Mbps. It is still in the repo and is **not** the trailer; do not
+upload it. `docs/store/trailer.md` is the shot list the cut was made from (23 shots,
+1247 frames at 30 fps — the two agree exactly).
+
+**2. ~~The client icon is missing.~~** The size in this item was wrong. Valve's client
+icon is **256 × 256**, not a 32 × 32 TGA, and the repo has
+`docs/store/capsules/shortcut_icon_256x256.png` at exactly that size.
+`docs/store/assets.md` §1 is the authoritative list; §2.1 of Part II has been corrected
+to match.
 
 **3. The library hero has an unchecked safe area.** Valve specifies a **860 × 380**
 safe area at the centre of the 3840 × 1240 hero, and the library logo is composited
 over it. `docs/store/assets.md` does not record this number. Re-check
 `library_hero_3840x1240.png` against it before upload.
 
-**4. Every word of the store copy describes a game that was deleted.**
-`docs/store/copy-en.md` was written 2026-08-01; the pivot landed 2026-08-02. It
-still says, verbatim:
+**4. ~~Every word of the store copy describes a game that was deleted.~~ 🟢 Rewritten
+2026-08-12.** `copy-en.md` and `copy-ko.md` were written 2026-08-01, the pivot landed
+2026-08-02, and for ten days the finished copy sold a four-player co-op looting game:
+*"Four people. Five roles. One of them is missing."*, tags `Co-op` / `Online Co-Op` /
+`Asymmetric`, a feature flag reading *"Online Co-op ✅ 4 players"*. Both files now
+describe the race, and both carry a table of the removed tags **with the reason**, so
+nobody re-adds them.
 
-- line 42 — *"Four-player co-op horror… Time is the only currency and the wallet is shared."*
-- line 54 — *"Four people. Five roles. One of them is missing."*
-- line 96 — *"the four-player networking layer is written and passes its own tests, and nobody has yet played a four-player match"*
-- line 144 — tags: *"Co-op, Online Co-Op, Horror, Survival Horror, Multiplayer, Asymmetric…"*
-- line 197 — feature flag: *"Online Co-op ✅ 4 players"*
-
-The game is now a **20-player competitive race** with **no roles**, **no shared
+The game is a **20-player competitive race** with **no roles**, **no shared
 wallet** and **no co-op** ([DESCENT-PIVOT.md](DESCENT-PIVOT.md)). The screenshots
 match the old game too: `05_the_shop.png` photographs the §08 economy that the pivot
 deleted, and `06_five_storeys.png` names five storeys where the design now has
@@ -486,20 +516,72 @@ None of it is reachable from the game.
   literally cannot call them.
 - **The Play button loads a solo scene.** `GameShell.DefaultMatchScene = "Map_FirstSketch_Solo"`.
 
-`StartHost()` and `StartClient()` are called from exactly one file in the entire
-runtime tree — `Assets/Scripts/Gameplay/Race/RaceLobby.cs`, lines **236** and **273**.
+> 🔴 **THE CONCLUSION THIS SECTION DREW IS NO LONGER TRUE (re-verified 2026-08-12).**
+> The observations above still hold one by one — `Bootstrap.unity` really does carry
+> only three scripts, `HorrorGame.UI.asmdef` really does reference neither `Mirror` nor
+> `HorrorGame.Net`, and `GameShell.DefaultMatchScene` is still `"Map_FirstSketch_Solo"`.
+> **The inference from them was wrong, and the thing that makes it wrong is that
+> `RaceLobby` does not need to be in a scene.**
+>
+> `Assets/Scripts/Gameplay/Race/RaceLobby.cs:609` carries
+> `[RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]` on
+> `Install()`. Unity calls that in **every** build, from no scene reference at all — so
+> the audit's central evidence ("its GUID appears in no `.unity`, no `.prefab`, no
+> `.asset`") proves nothing about whether it runs. `GameShell.cs:38–47` states the
+> arrangement outright, and `HorrorGameNetworkManager.cs:70–73` relies on it: the
+> manager's `Awake` is corrected afterwards by `RaceLobby.EnsureManager`, which the
+> comment says "does run".
+>
+> The searches quoted in this section were **scoped to scenes and prefabs**, which is
+> exactly where a `RuntimeInitializeOnLoadMethod` never appears. That is the same class
+> of error the section was written to expose, pointed the other way: a grep that found
+> nothing was read as "nothing is there" rather than "I looked in the wrong place".
 
-> **`RaceLobby` is referenced by nothing.** `grep -rn "RaceLobby"` across `Scripts/`
-> and `Tests/`, excluding its own file, returns zero hits. Its GUID
-> `d0193d794aaa24c97990a3069cb97066` appears in no `.unity`, no `.prefab` and no
-> `.asset`. `LobbyScreen.cs` (GUID `1ee10fcc8a8e5432ba850d80d7667e1f`) is likewise in
-> no scene or prefab.
+`StartHost()` and `StartClient()` are reached from `RaceLobby.cs`, and four other
+runtime files touch them — `Net/HorrorGameNetworkManager.cs`, `Net/NetLobby.cs`,
+`Net/NetMonster.cs`, `Net/NetPlayer.cs`.
 
-**There is no path from the shipped main menu to a networked session.** This is
-precisely the failure mode this repository's CLAUDE.md was written about — invisible
-in the source, obvious in the artefact.
+**What is still true:** the *menu* has no networking in it, `LobbyScreen.cs` is in no
+scene or prefab, and `RaceDirector` (GUID `6d574d52940774f5b81d9ab2f033eb6d`) appears
+in **no** `.unity` file — confirmed again on 2026-08-12. So the path from the main menu
+to a twenty-runner descent is still not something this document can call proven. It is
+no longer *absent*; it is *unverified from the shipped menu*, which is a materially
+different claim and a much shorter distance.
 
-### I.4.2 No test has ever run more than one peer
+### I.4.2 ~~No test has ever run more than one peer~~ — FALSE as of 2026-08-12
+
+> 🔴 **This whole subsection is stale and every load-bearing claim in it is now
+> false.** It is kept, struck through, because it is quoted elsewhere and because the
+> way it was wrong is worth reading.
+>
+> **"`NetTests.cs` is the only networking test file"** — there are now **seven** test
+> files that call `StartHost` / `StartClient` over real sockets:
+> `NetSocketTests`, `NetHumanRunnerTests`, `NetRunnerTests`, `NetRaceStandingsTests`,
+> `NetRunnerAnimationTests`, `LobbyEntryWiringTests`, and `Voice/VoiceSocketTests`.
+>
+> **"No test anywhere in the repo calls `StartHost` or `StartClient`"** — false, see
+> above.
+>
+> **"The two-instance harness is dead … nothing reads them"** — false. The grep this
+> section quotes as returning nothing now returns
+> `Assets/Scripts/Gameplay/Race/LocalTwoInstanceEntry.cs`, an **823-line** runtime
+> class whose own header calls it *"§14 step 2's missing half — the side that READS
+> `-horror-host` and `-horror-client`"*. It installs itself from a
+> `[RuntimeInitializeOnLoadMethod]` at line 173 and declares both argument constants at
+> lines 65 and 68.
+>
+> **"Peers ever connected in this repository, by any evidence on disk: zero"** — false.
+> The socket tests connect real peers, and `LocalTwoInstance.cs` records a measured
+> multi-instance field in its own doc comment.
+>
+> **What has still never been measured:** twenty *processes* on this machine with a
+> transcript on disk that an auditor can read. The temp-directory logs
+> `LocalTwoInstance.LogPathFor` writes are gone, so the twenty-instance run survives
+> only as a source comment — which is source, not artefact, and this file does not
+> count that as evidence. Also unchanged: nothing has ever connected two peers **across
+> two machines**, or over Steam Datagram Relay rather than loopback.
+
+The original text follows.
 
 `Assets/Tests/PlayMode/Net/NetTests.cs` is the only networking test file. What it
 does, at lines 195, 274, 448 and 494:
@@ -538,35 +620,47 @@ performed, and it looks like it has.
 > **Peers ever connected in this repository, by any evidence on disk: zero.** Not
 > twenty. Not four. Not two.
 
-### I.4.3 The player cap is 4, not 20
+### I.4.3 ~~The player cap is 4, not 20~~ — the socket now opens at 20
 
-Two constants, both in `Assets/Scripts/Core/GameConstants.cs`:
+Re-read 2026-08-12. **The cap that executes is `RaceRunnersMax` = 20.**
 
 ```csharp
-public const int RaceRunnersMin =  2;   // line 466
-public const int RaceRunnersMax = 20;   // line 478
-public const int PlayersPerMatch = 4;   // line 1097  ← the pre-pivot co-op party
-public const int RoleCount       = 5;   // line 1100  ← §04, deleted by the pivot
+public const int RaceRunnersMin  =  2;   // GameConstants.cs:606
+public const int RaceRunnersMax  = 20;   // GameConstants.cs:618
+public const int PlayersPerMatch =  4;   // GameConstants.cs:1228  ← the pre-pivot co-op party
 ```
 
-Which one executes:
+- `Assets/Scripts/Net/HorrorGameNetworkManager.cs:88` — `maxConnections =
+  GameConstants.RaceRunnersMax;`. Its own comment (lines 69–73) records that this line
+  **used** to read `PlayersPerMatch`, and that it was changed precisely because a socket
+  enforcing four would refuse the fifth runner.
+- Lines 330–346 of the same file describe the four-seat path as *"a latent cap …
+  currently unreachable"*.
 
-- `Assets/Scripts/Net/HorrorGameNetworkManager.cs:60` — `maxConnections = GameConstants.PlayersPerMatch;`
-  in `Awake()`, commented *"§11 fixes the party at four."*
-- `…:202` — the fifth connection is refused: *"Refusing a connection: all 4 seats are
-  taken."*, via `NetLobby`, which builds `PlayersPerMatch` seats.
-- `Assets/Scripts/Gameplay/Race/RaceLobby.cs:427` — `manager.maxConnections = GameConstants.RaceRunnersMax;`
-  with a careful comment explaining that twenty is a map limit, not a socket limit.
+> 🔴 **Three things in the previous version of this subsection were wrong.** The four
+> line numbers were all stale (466/478/1097/1100 against 606/618/1228); **`RoleCount`
+> does not exist at all** — it is in `GameConstants`' deleted-names tombstone; and the
+> conclusion *"the only cap that can execute today is four, and a twentieth runner would
+> be disconnected at the door"* inverted the truth. It followed from §I.4.1's mistake
+> about `RaceLobby` never running.
+>
+> Also gone: `NetClueTerminal.cs` and `Host/HostClueAuthority.cs` **do not exist**, and
+> the two role tests named here (`TheLobbySeatsFourOfFiveRolesAndLeavesExactlyOneAbsent`,
+> `TwoPlayersCannotTakeTheSameRole`) were replaced — `NetTests.cs:156` names them in the
+> comment that records the replacement.
 
-`RaceLobby` never runs (§I.4.1). **So the only cap that can execute today is four,
-and a twentieth runner would be disconnected at the door.**
+**What is genuinely still open, and it is the interesting half.** `PlayersPerMatch = 4`
+is alive and read by six places — `NetLobby`'s seat array, `SteamworksLobbyService`'s
+default capacity, `NullSteamService`, `VoiceRoster`'s initial list size,
+`MapSketch`, and `HorrorInterestManagement`. `GameConstants` says so itself and calls
+it *"a live finding, not a settled design … a co-op survivor that a DLL sweep cannot
+see either, because it is a number rather than a name."* So the socket admits twenty
+and **the lobby in front of it still seats four.** That is the thing to resolve before
+a twenty-player claim goes on a store page.
 
-The rest of the `Net/` layer is still the deleted game: `NetClueTerminal.cs`,
-`Host/HostClueAuthority.cs`, and `NetLobby`'s role seating. The tests assert it too —
-`TheLobbySeatsFourOfFiveRolesAndLeavesExactlyOneAbsent`, `TwoPlayersCannotTakeTheSameRole`
-— roles that §04 no longer has. `Net/Interest/HorrorInterestManagement.cs` documents
-its cost as `PlayersPerMatch` distance checks per spawned object; at twenty that is
-25× the work, and it has never been measured at any number.
+`Net/Interest/HorrorInterestManagement.cs` still documents its cost as
+`PlayersPerMatch` distance checks per spawned object; at twenty that is 25× the work,
+and it has never been measured at any number.
 
 **The race is not in a scene, either.** `RaceDirector` (GUID
 `6d574d52940774f5b81d9ab2f033eb6d`) appears in **no** `.unity` file. The only
@@ -611,11 +705,17 @@ release date, and it buys nothing.**
 
 **Still nothing, on Steam.** The 30-day gate makes that arithmetic, not opinion.
 
-What can be *live* in a week is a **Coming Soon store page** — and only if the copy
-is rewritten for the race first (§I.3.3). The assets are ready; the words are about
-a deleted game. Budget: 2–3 days to rewrite `copy-ko.md`/`copy-en.md` and fix the
-tags, then submit and wait 3–5 business days for review. Valve says submit ≥ 7 days
-before you want it live.
+What can be *live* in a week is a **Coming Soon store page**, and 🟢 as of 2026-08-12
+the two things this section said were blocking it are done: `copy-ko.md` and
+`copy-en.md` are rewritten for the race with the tags fixed, and a compliant trailer
+exists (§I.3.3). Remaining budget is Valve's, not ours: submit and wait 3–5 business
+days for review, and Valve says submit ≥ 7 days before you want it live.
+
+**What is still not ready is the screenshots.** `05_the_shop.png` photographs the §08
+economy the pivot deleted and `06_five_storeys.png` names five storeys where the design
+has eight; both are on the delete list in `docs/store/assets.md`. Eight of the ten also
+fail the legibility floor. A page can go up without them being perfect, but not with
+those two on it.
 
 A trailer is not required for a Coming Soon page and should not be allowed to delay
 it. §0 of Part II is right about this and it is worth re-reading: the page exists to
@@ -625,12 +725,15 @@ accumulate wishlists *before* the game is finished.
 
 A shipped 20-player race. In order of how long each takes, longest first:
 
-1. **Twenty peers in one match.** Today the count is zero and the entry point does
-   not exist in the built game (§I.4.1–2). The path is: build a menu that can host and
-   join → get two peers connected once → four → twenty. Each step is where the bugs
-   are, and none of them has been taken. Nothing about the schedule can be estimated
-   honestly until step two happens, because step two is what tells you whether the
-   Steam transport, the relay, the lobby and the interest manager work at all.
+1. **Twenty peers in one match, evidenced.** 🔴 Corrected 2026-08-12: two peers *do*
+   connect — seven PlayMode files drive real sockets — and `RaceLobby` reaches the
+   networked path from a `[RuntimeInitializeOnLoadMethod]`. What is missing is the
+   *menu* affordance and a **transcript on disk** for a large field. The remaining
+   path is: a host/join screen in `Bootstrap` → a run across **two machines** (never
+   done — every connection so far is loopback in-process) → over Steam Datagram Relay
+   rather than loopback → twenty. Nothing about the schedule can be estimated honestly
+   until the two-machine step happens, because that is what tells you whether the Steam
+   transport, the relay, the lobby and the interest manager work outside one process.
 2. **Twenty-player scale.** Interest management, voice roster and lobby are all
    written and reasoned about at four. Twenty is 25× the interest-management work and
    a different bandwidth problem. Unmeasured at any player count.
@@ -656,7 +759,7 @@ In order:
 | **Days 1–10** | content | Rewrite `copy-ko.md`/`copy-en.md` for a 20-player race; **fix the tags**; re-shoot screenshots once the race map lands; cut a real trailer (≥ 1920 × 1080, 30 or 60 fps, 5,000+ Kbps, H.264/AAC). |
 | **~Day 12** | owner | Complete the **content survey** — it gates review — then submit store presence. Wait 3–5 business days. |
 | **~Day 17** | — | **Coming Soon page live.** The two-week clock starts here. Wishlists accumulate from this moment and from no earlier moment. |
-| **In parallel** | engineering | One Windows IL2CPP build. Then **two peers connected, once**. Then four. Then twenty. Report the peer count honestly at each step. |
+| **In parallel** | engineering | One Windows IL2CPP build. A host/join screen in `Bootstrap`. Then **two peers across two machines** (loopback is already proven). Then four. Then twenty. Report the peer count honestly at each step, **and keep the log** — the last field run's transcript was written to a temp directory and is gone. |
 | **When 20 peers finish a match** | both | Request a **Steam Playtest**, upload to it, and let strangers play. Only then choose a release date. |
 
 **Why a Playtest and not a release.** It is a separate free app — no second $100 —
@@ -686,7 +789,9 @@ Where the two disagree, Part I wins. The specific lines:
 | §2.5 | the 청음사 (Listener) class needs headphones | §04 roles were deleted; **the headphone requirement itself still holds** — §05's 3D audio is camera-relative regardless of roles |
 | §4.2 | `internal` branch is "you + 3 friends", "a 4-player game needs four people" | twenty; a private branch matters *more*, not less |
 | §4.3 | "a match is 25–35 minutes" | one descent, not a 25–35 min round trip |
-| §7 | "A four-player match completed… by four people on four machines" | **twenty**, and the current number is zero (§I.4.2) |
+| §7 | "A four-player match completed… by four people on four machines" | **twenty**. Loopback peers are proven (§I.4.2); a run **across separate machines** is the number that is still zero |
+| §2.1 | "Client icon 32 × 32 (TGA)" | **256 × 256** — corrected 2026-08-12; `docs/store/assets.md` §1 has the authoritative list |
+| §I.0 / §I.1 | "the store copy describes a four-player co-op looting game" | rewritten for the race on 2026-08-12 — see `docs/store/copy-ko.md` and `copy-en.md` |
 | §7 | "Clue contents and objective location confirmed absent from client memory" | §03's clue system was deleted with the co-op game |
 | §8 | "직접 띄울 서버가 0대" | still true, and Steam Datagram Relay is enabled (§I.4.1) — but it is an unproven claim at 20 players, not a measured one |
 
@@ -857,7 +962,7 @@ different ones, and Valve will not scale one into another for you.
 | **Library header** | **920 × 430** | Library detail header | release |
 | **Library hero** | **3840 × 1240** | Wide banner at the top of the library page | release |
 | **Library logo** | **1280 × 720** | Transparent PNG logo, composited over the hero | release |
-| Client icon | 32 × 32 (TGA) | Taskbar / friends list while running | release |
+| Client icon | **256 × 256** | Taskbar / friends list while running | release |
 | Community icon | 184 × 184 | Community hub | release |
 
 Rules that get pages rejected on review:
@@ -1275,9 +1380,11 @@ Work down it. Anything unchecked is a launch-day problem.
 - [ ] One `--preview` run against the real App ID, clean
 - [ ] Build uploaded to `staging`, **installed from the Steam client and played
       through a full 25–35 minute match** (§01)
-- [ ] **Two** peers connected on a private branch, ever — the count today is
-      **zero** (§I.4.2), and every other networking box below is unverifiable
-      until this one is ticked
+- [x] **Two** peers connected — done in PlayMode over real sockets, seven test
+      files (§I.4.2, re-verified 2026-08-12)
+- [ ] **Two** peers connected **on two separate machines**, over Steam Datagram
+      Relay rather than loopback — never done, and every other networking box
+      below is unverifiable until this one is ticked
 - [ ] A **twenty**-runner match completed on a private branch by twenty people on
       twenty machines — §11's field means nothing else counts as tested
       *(was "four" pre-pivot; see §I.4.3)*

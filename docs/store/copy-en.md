@@ -11,9 +11,17 @@ editor; everything outside a fenced block is a note to whoever is pasting.
 [copy-ko.md](copy-ko.md) is the **original** — the design document is Korean and the
 sentences are written there first. This file follows it.
 
-Every claim traces to a section of [`docs/game-design.md`](../game-design.md) v1.0 or
+Every claim traces to a section of [`docs/game-design.md`](../game-design.md) v1.1 or
 to a file on disk, and the evidence for all of them is in one table at §10.
 **Nothing marked ⚠ goes on the page until it is true or the sentence is cut.**
+
+> **Audited 2026-08-12 — elimination is gone from this file.** On 2026-08-04
+> (`e0fa042`) §06 stopped removing a caught runner from the race and started
+> **sending them back to their starting cell on B1**. `RaceState.ReportCaught` puts
+> the status back to `Running`, the storey back to 0 and adds one to `TimesCaught`;
+> `GhostSession` is deleted from the repository. The design document still says
+> 탈락 · 유령 in §02, §06, §09 and §11 — **the document is the stale one**, and this
+> copy follows the code.
 
 ---
 
@@ -23,8 +31,8 @@ The pivot re-opened this. Three places currently say different things:
 
 | Where | Calls it | Evidence |
 |---|---|---|
-| The design documents | **하강** | `docs/game-design.md` v1.0 title, `docs/DESCENT-PIVOT.md` |
-| The shipped main menu | **요양원 지하** | `Assets/Scripts/UI/Screens/MainMenuScreen.cs:128` |
+| The design documents | **하강** | `docs/game-design.md` v1.1 title, `docs/DESCENT-PIVOT.md` |
+| The shipped main menu | **요양원 지하** | `Assets/Scripts/UI/Screens/MainMenuScreen.cs:145` |
 | All eleven capsules | **요양원 지하 / SANATORIUM BELOW** | defaults at `tools/render/store_capsules.py:275,277` |
 | The map the race runs down | **하강 — 요양원 지하 8층** | `DescentMap.MapName` |
 
@@ -38,7 +46,7 @@ as things stand ships a page whose art disagrees with its title.
 
 | Option | Cost | Consequence |
 |---|---|---|
-| **하강 / DESCENT** ← recommended | re-bake 11 capsules (one command) + one line in `MainMenuScreen.cs:128` | The name becomes the thing the game does. "요양원 지하" names a building, and that building was the stage of the five-storey co-op game. Now that going down eight floors *is* the game, the verb should be the title — and one word survives a 462 × 174 capsule better than two |
+| **하강 / DESCENT** ← recommended | re-bake 11 capsules (one command) + one line in `MainMenuScreen.cs:145` | The name becomes the thing the game does. "요양원 지하" names a building, and that building was the stage of the five-storey co-op game. Now that going down eight floors *is* the game, the verb should be the title — and one word survives a 462 × 174 capsule better than two |
 | 요양원 지하 / SANATORIUM BELOW | none | No rework. But the design documents and the store would then use different names for the same game, which is how a wiki, a press kit and a Discord end up with three |
 
 ```sh
@@ -60,8 +68,8 @@ python3 tools/render/store_capsules.py --title "하강" --subtitle "DESCENT" --c
 ## 2 · Short description — the block under the capsule
 
 Search results, hover cards, every recommendation queue, and the store page itself
-directly beneath the capsule. The hard limit is 300 characters; this is **295**
-including spaces (counted, not estimated).
+directly beneath the capsule. The hard limit is 300 characters; this is **296**
+including spaces (re-counted 2026-08-12, not estimated).
 
 Steamworks asks this field to answer *what makes this different from other games in
 its genre*. So the first sentence gives the scale, and the second gives the one rule
@@ -69,7 +77,7 @@ that exists nowhere else: reaching the middle of a floor puts you on the outside
 the next one.
 
 ```
-Twenty runners start together on the rim of B1. Eight storeys down, each the same shape and a different maze, gates narrowing four to two to one. The chute in the middle drops you on the rim below — win a floor and you are last again. Being caught is being out, unranked. Headphones recommended.
+Twenty runners start together on the rim of B1. Eight storeys down, each the same shape and a different maze, gates narrowing four to two to one. The chute in the middle drops you on the rim below — win a floor and you are last again. Get caught and you start again on B1. Headphones recommended.
 ```
 
 ### When one line is all there is
@@ -99,7 +107,7 @@ All eight storeys are the same shape: an outer ring, a middle ring, an inner rin
 So by the second floor you already know how this building thinks, and you still do not know the way. What you learn is not a map. It is a grammar.
 
 [h2]Winning a floor puts you back at the start.[/h2]
-There are two holes in the middle of every storey. Step into one and you come out on the [i]outer ring[/i] of the floor below. Far side, back at the edge, beginning again.
+There are two holes in the middle of every storey but the last. Step into one and you come out on the [i]outer ring[/i] of the floor below. Far side, back at the edge, beginning again.
 
 That single rule is the whole race. A lead does not compound. Eight times you are put back on the same line as everybody else — only now you are more tired and your battery is shorter.
 
@@ -125,7 +133,9 @@ It is not there to be beaten. It is terrain. You cannot kill it and you have no 
 
 Walking is 2.0 m/s. Running is 4.5. It is 4.8: three tenths of a metre per second faster than your run, which is close enough to feel survivable and never is. Only the sprint at 5.6 outruns it, and the sprint lasts as long as your stamina does. Which makes this game's real decision a single one — [i]spend it now, or spend it at the last gate?[/i]
 
-Being caught is being [b]out[/b]. Not out with a placing: out. Finish twentieth and you are recorded twentieth; get caught and there is nothing to record. [b]There is no good order to die in.[/b]
+Being caught does not kill you. It sends you back to the cell you started in on B1, and that is worse. Every floor you had won is gone and you are on the start line again, running. Caught on B6 and that is six storeys. [b]The creature's punishment is that it does not finish you.[/b]
+
+Finishing records a place. Come twentieth and twentieth is what the match remembers. The only way out of this race is to leave it.
 
 [h2]It gets darker toward the middle.[/h2]
 The outer ring is lit, and twenty people can see each other on it. The middle ring is not. On the inner ring, whatever is outside your torch does not exist. The battery is a fixed amount per match with nothing to top it up, so getting lost is spending it.
@@ -135,9 +145,9 @@ The only thing that glows is the hole in the middle. You can see it from anywher
 [h2]What this is, honestly[/h2]
 This is a store page for an unfinished game, put up early to collect wishlists, which is what Steam pages are for. There is no release date on it, because we do not yet know one we could keep.
 
-What actually runs today: the eight storeys exist, and one runner has been walked from the rim of B1 to the middle of B8 — all eight legs, all seven holes, arriving where the fall was supposed to put them. The race rules — start, finish order, elimination, timeout — run in automated tests.
+What actually runs today: the eight storeys exist, and one runner has been walked from the rim of B1 to the middle of B8 — all eight legs, all seven holes, arriving where the fall was supposed to put them. The race rules — start, finish order, being caught, timeout — run in automated tests. Twenty instances on one computer have connected to each other over real sockets and raced.
 
-What does not: [b]two machines have never once been connected to each other and run a match.[/b] Twenty is the design, not a measurement. Proximity voice is built, and no two people have heard each other through it.
+What does not: [b]no person has ever played a match of this.[/b] Not the people making it, not a tester. The twenty that connected were twenty processes on one desk; two separate machines have never met across a network. Proximity voice is built, and no two people have heard each other through it.
 
 So this page is a promise, and it only promises things the game can keep. If that is not the deal you want, wishlist it and wait — the page will say so when it changes. Nothing here is a render, a mock-up or concept art. Every screenshot is the game, at the brightness the game actually runs at.
 ```
@@ -165,7 +175,7 @@ a glance.
 [*] Gates narrow four → two → one. They do not multiply when the lobby does.
 [*] One door per floor: 1.1 s to shut, 4.5 s to break, and it does not come back.
 [*] 30 m proximity voice. Cooperating with a rival is possible and always temporary.
-[*] Something in the building you cannot kill. Caught is out, unranked — no good order to die in.
+[*] Something in the building you cannot kill. Caught sends you back to B1 — every floor you won, gone.
 [*] Eight floor surfaces, one per storey. Footsteps tell you which floor somebody is on.
 [/list]
 ```
@@ -278,10 +288,12 @@ Recommended:
 
 ⚠ **Every number in that block is an estimate**, and the estimate is now worse than
 it was: it was made for a four-player co-op game, and this one puts up to twenty
-networked players in one building. No player build has been profiled on any machine
-other than the M1 Pro this was written on, and **a Windows IL2CPP player has never
-once been produced** ([STEAM-RELEASE.md §I.2.3](../STEAM-RELEASE.md)). Measure a real
-build before this goes public — a wrong minimum spec is a refund queue.
+networked players in one building. **No player build has ever been launched**, on this
+machine or any other, so there is nothing to profile: `dist/windows-x64/HorrorGame.exe`
+does exist on disk (2026-08-10) but it is a Development **Mono** build whose own report
+says `shippableOnSteam: false`, and **a Windows IL2CPP player has never once been
+produced** ([STEAM-RELEASE.md §I.2.3](../STEAM-RELEASE.md)). Measure a real build before
+this goes public — a wrong minimum spec is a refund queue.
 
 ---
 
@@ -293,7 +305,7 @@ document and notices a gap.
 | Not written | Why |
 |---|---|
 | **A match duration** | §01 says 12–20 minutes and nothing has measured it. F-006's 7.2-minute median was measured on the co-op game and does not transfer. The most natural sentence to write here is the one most likely to be false |
-| **"Twenty players" as an achievement** | It appears as the design's number and the honest paragraph says the measured peer count is zero. Do not let it drift into a boast |
+| **"Twenty players" as an achievement** | It appears as the design's number and the honest paragraph says no person has played a match. Twenty *processes* on one desk is not twenty players, and the difference is the whole claim. Do not let it drift into a boast |
 | Anything about a story, a sanatorium, or why you are racing | There is none written. Inventing one on the store page is how a page ends up promising a narrative game |
 | Early Access framing | This is a Coming Soon page. Whether it launches into Early Access is a separate decision with its own Valve questionnaire |
 | Review quotes, laurels, scores | There are none, and Valve rejects capsules carrying them |
@@ -319,23 +331,25 @@ sentence is cut before the page is submitted.
 
 | Claim in the copy | Status | Evidence |
 |---|---|---|
-| Eight storeys, same shape, different mazes | ✅ measured | NavMesh audit: 289 markers, 6993 pairs, 100.0 % complete, 8 islands (one per storey), worst snap 0.22 m |
-| Rim of B1 to the middle of B8 is actually connected | ✅ measured | One runner walked it: 8/8 legs PathComplete on the real bake, 7/7 chutes, arrival 0.00 m from the drop point |
-| Gates 4 → 2 → 1 | ✅ code | `Assets/Scripts/Editor/SceneGen/RadialStorey.cs` — bands at d8/d5/d2 punched with 4, 2 and 1 gates |
-| **Two** holes per storey, landing on opposite sides of the rim below | ✅ code | `Editor/SceneGen/DescentMap.cs` `HangChutes` — two per floor, `Pick(rim, +1)` / `Pick(rim, -1)`. Note the design document says "2~3"; the artefact says two, and the copy follows the artefact |
+| Eight storeys, same shape, different mazes | ✅ measured | NavMesh audit after the 2026-08-10 re-lay (STATUS §1.2): **204 markers, 2674 pairs, 100.0 % complete, 8 islands** (one per storey), worst snap **0.25 m** (`PlayerSpawn_14`), creature reach 196/196 over 8/8 storeys. *The 289/6993/0.22 m figures this row used to carry were measured on the building before that re-lay.* |
+| Rim of B1 to the middle of B8 is actually connected | ✅ measured | One runner walked it (STATUS §1.4): 8/8 legs PathComplete on the real bake, 7/7 chutes, **0.00 m from the middle of B8**, 171 s elapsed. That is a NavMesh robot, not a match length |
+| Gates 4 → 2 → 1 | ✅ code | `Assets/Scripts/Editor/SceneGen/RadialStorey.cs` — the four 외곽 관문 cross the wall at **d9**, the two 중간 관문 take the **d5** lane, and the single 중심 관문 goes through **d2** into the chamber. *(The bands jogged outward on 2026-08-11: 안쪽 d3, 중간 d7/d8, 외곽 d10/d11. This row used to say "bands at d8/d5/d2", which named the old layout.)* |
+| **Two** holes per storey, landing on opposite sides of the rim below | ✅ code | `Editor/SceneGen/DescentMap.cs` `HangChutes` — two per floor, `Pick(rim, +1)` / `Pick(rim, -1)`. The loop runs `level < Storeys - 1`, so **B8 has none** — it carries the finish instead. Note the design document says "2~3"; the artefact says two, and the copy follows the artefact |
 | It is a fall, not a teleport | ✅ code | `Gameplay/Race/Chute.cs` — `DropHeightMetres = 3.0f`, then the controller's own gravity |
-| **One door per floor** | ✅ code | `RadialStorey.cs`: *"One door a storey, on one of the two 중간 gates."* A door on one of four parallel rim gates is not a bottleneck; a door on the single inner gate would delete the centre |
+| **One door per floor** | ✅ code | `RadialStorey.cs`: *"One door a storey, on one of the two 중간 관문."* A door on one of four parallel rim gates is not a bottleneck; a door on the single inner gate would delete the centre |
 | 1.1 s to shut, 4.5 s to break | ✅ code | `Core/GameConstants.cs` — `DoorShutSeconds = 1.1f`, `DoorBreakSeconds = 4.5f` |
 | A broken door does not come back | ✅ code | `Core/DoorState.cs`: `DoorPhase.Broken` is *"Broken open for the rest of the match. It cannot be shut again."*, and the type comment says *"A broken door stays broken."* `DoorRepairFraction = 0.25f` only backs off **partial** break progress, so a door somebody stopped hitting recovers and a door somebody finished never does |
 | Walk 2.0 / run 4.5 / creature 4.8 / sprint 5.6 | ✅ measured | §06, measured on real geometry: 4.80 m/s in a corridor, 0.80 m/s sprint gap (STATUS §1.3) |
-| Caught is out, unranked, no revival | ✅ code + test | `Gameplay/Race/RaceDirector.cs:508` — *"§02 탈락 — out, unranked, no revival."* PlayMode log: `[Race] §02 0번 탈락 — B8, 11초. 부활은 없다.` |
+| Caught sends you back to your starting cell on B1 | ✅ code | `Core/Race/RaceState.cs` `ReportCaught` — status back to `Running`, storey back to 0, `TimesCaught` + 1. `Gameplay/Match/MatchDirector.cs:1666` — *"§02: caught is not death. The creature sends a runner back to the place they started on B1 and they keep racing."* `UI/Screens/CaughtScreen.cs` draws a 0.5 s curtain reading `B6 → B1` |
+| **Nothing in this game eliminates a player** | ✅ code | `RacerStatus.Eliminated` survives, but only for **a seat that emptied** — `RaceState.cs:21`: *"Nothing in the game eliminates a player any more."* `GhostSession` is not in the repository. The design document's §02, §06, §09 and §11 still describe 탈락 and the 유령; **they are the stale side** |
 | Finishing records a place | ✅ code | `RaceDirector.CheckFinish` → `RaceState.ReportFinish` returns the place; `Finished` fires for every finisher |
 | Proximity voice at 30 m | ⚠ **code exists, nobody has heard it** | `GameConstants.VoiceCutoffDistance = 30f`; `Assets/Scripts/Steam/Voice/`. Never heard by two humans. **Do not tick the Voice Chat category** |
 | Eight floor surfaces | ✅ on disk | `Assets/Audio/Footsteps/` — carpet, concrete, earth, gravel, metal, tile, water, wood |
 | "One surface per storey" | ✅ code | `DescentMap.Storey` assigns them deepest-last: B1 concrete 하역장, B2 wood 기록보관소, B3 metal 기계실, B4 gravel 저탄장, B5 tile 저수조, B6 carpet 병동, B7 water 수몰층, B8 earth 굴착층 |
 | Ring lighting: outer lit, inner torch-only | ⚠ **design** | §03. Confirm the descent map actually carries per-ring lighting before this paragraph ships |
 | Battery fixed per match, no resupply | ⚠ **design** | §03 (inherited from the deleted §08). The rule is simpler now that there is no shop, but it has not been measured on a race map |
-| Twenty players | ⚠ **design, and the copy says so** | `GameConstants.RaceRunnersMax = 20`, but the cap that executes is `PlayersPerMatch = 4`, and **no two peers have ever connected in this repository** ([STEAM-RELEASE.md §I.4](../STEAM-RELEASE.md)) |
+| Twenty players | ⚠ **the socket takes twenty; twenty people have not** | The cap that executes **is twenty**: `Net/HorrorGameNetworkManager.cs:88` sets `maxConnections = GameConstants.RaceRunnersMax` and Mirror enforces it in `NetworkServer.IsConnectionAllowed`. `PlayersPerMatch = 4` is `NetLobby`'s seat count and **nothing on the race path spawns a NetLobby** — the manager's own comment (lines 330–346) calls it *"a latent cap … currently unreachable"*. What is true is that every peer that has ever connected was a process on this one desk. *(This row used to say the executing cap was four and that no two peers had ever connected; both came from [STEAM-RELEASE.md §I.4](../STEAM-RELEASE.md), which is now the stale document — `LocalTwoInstanceEntry.cs` reads `-horror-host`/`-horror-client` and drives the real lobby, and `NetSocketTests`/`NetHumanRunnerTests`/`NetRunnerTests` all call `StartHost`/`StartClient`.)* |
+| **Nobody has played it** | ✅ measured, and this is the honest claim | STATUS.md: *"nobody has played it. Not the owner, not a tester, not for one match."* This — not the peer count — is the sentence the page's credibility rests on |
 | "The storeys do not reshuffle between matches" | ✅ code | Generation is Editor-side and baked (`Assets/Scripts/Editor/SceneGen/`). This is also why `Procedural Generation` is not a tag |
 | Match length | — | **No number is written anywhere in this copy.** §01's 12–20 minutes is unmeasured. Do not add one |
-| "Every screenshot is the game" | ⚠ **false until they are re-shot** | The ten on disk are the deleted co-op building. [checklist.md §1](checklist.md) |
+| "Every screenshot is the game" | ⚠ **false until they are re-shot** | The ten on disk are the deleted co-op building, all stamped 2026-08-01 01:59 on seed 1204. [checklist.md §1](checklist.md) |

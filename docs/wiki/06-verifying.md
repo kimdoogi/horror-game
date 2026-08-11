@@ -9,7 +9,7 @@ The full inventory of checks is [`docs/TESTING.md`](../TESTING.md) — **but it 
 [`docs/STATUS.md`](../STATUS.md) §4, which is the current list.** STATUS.md also carries
 the last real output of each. This page is the routing table and the list of false greens.
 
-> **Everything below was re-derived at HEAD `4ab204f` on 2026-08-12** by running or
+> **Everything below was re-derived at HEAD `4ab204f`..`017b489` on 2026-08-12** by running or
 > reading the artefact. The 2026-08-02 pivot ([DESCENT-PIVOT.md](../DESCENT-PIVOT.md))
 > deleted the five roles, the economy and the clue chain from the game *and from the
 > code*, and this page had been routing readers to commands that went with them.
@@ -256,7 +256,7 @@ and are kept in the second table below so nobody re-opens them.
 |---|---|---|
 | `verify_audio.py` exit 1, two BLOCKING rows | [F-002](09-open-questions.md#f-002) — an open design decision. `tools/ci/verify_audio.sh` is green because `tools/ci/audio_baseline.json` suppresses exactly these two | changing the mix to make the number go away. `AudioTests.OccludedAudibility_InvertsTheClarityTable_AsF002Reports` fails if you do |
 | `[FAIL] centre-path` on every map generation, waived by name | [B-019](../BLOCKERS.md#b-019) — a *map* defect with an address, not a rule defect. 21 of 22 storey entry points are now inside §12-D's 90–140 m band | relaxing the band. §12-D forbids it in as many words: 60–90 m means 「맵을 아는 것이 실력이라는 전제」 disappears without a reward |
-| CI's `core tests (dotnet)` fails on `floor=512` against a 357-test suite | [B-013](../BLOCKERS.md#b-013) / [STATUS.md §2.6](../STATUS.md) — the floor was taken at `a3e268e`, before `e8c67ae` deleted the co-operative game and its tests | lowering the floor without saying why. The floor exists so a run that executes *nothing* cannot pass; it needs re-measuring, not deleting |
+| ~~CI's `core tests (dotnet)` fails on `floor=512` against a 357-test suite~~ | 🟢 **fixed `1ceb636`, 2026-08-12** — `floor=357` now, and the comment beside it records what nine days of red cost. It had failed every push for ~45 commits while the suite underneath was green | lowering it again without saying why. The floor exists so a run that executes *nothing* cannot pass — **a count in a gate is a claim with a date on it** |
 | Three `VoiceSocketTests` red in PlayMode | [STATUS.md §2.3](../STATUS.md), carried 2026-08-08 — and one of the three is §06's mechanic, not plumbing: `MatchDirector.VoiceEffort` reads `Silent` while the player holds Shout | treating it as environment. Two of the three say no voice frame arrives at all |
 | `← the surface is in pieces` next to `islands 8` | cosmetic, [B-014](../BLOCKERS.md#b-014)'s last open piece. Eight one-way storeys **are** eight surfaces | "fixing" the map. Fix the log line |
 
@@ -273,18 +273,19 @@ and are kept in the second table below so nobody re-opens them.
 ## 5. Where the existing docs are already stale
 
 Not a criticism — they are dated snapshots and they say so. But **re-measure before
-quoting**. Re-derived 2026-08-12 at HEAD `4ab204f`; every "Actually" below was run or read
+quoting**. Re-derived 2026-08-12, re-checked at HEAD `017b489`; every "Actually" below was run or read
 that day.
 
 | Claim | Where | Actually |
 |---|---|---|
 | any figure from the balance simulator — "매치 7.2 min", "심야 33.6 %", "완전 승리 11.2 %", `weight-mul-light` sweeps | CI.md §0.2, TESTING.md, older wiki pages | **void, not stale.** `core/HorrorGame.Sim` was deleted at `e8c67ae` and `core/` now holds only `HorrorGame.Core`, `HorrorGame.Core.Tests` and the solution. There is no `horrorsim` and no replacement |
-| "`Assets/Tests/EditMode/` and `Assets/Tests/PlayMode/` are still empty" | CI.md §4.2 (`docs/CI.md:641`) | **6 EditMode and 27 PlayMode test files**, across **10 test assemblies**, counted on disk |
-| "23 test files … 2 EditMode and 21 PlayMode at `a3e268e`" | `.github/workflows/unity.yml:275` | **33 files — 6 EditMode, 27 PlayMode** |
-| "Nothing that needs the Unity editor has ever executed" | CI.md §5 (`docs/CI.md:670`) | still true of *CI* — `unity.yml` has never run. Not true of this machine |
-| `floor=512` | `.github/workflows/ci.yml:102` | the suite is **357**, so the required job fails by construction — [B-013](../BLOCKERS.md#b-013) |
-| "512 tests, the solution build, and the simulator actually running" | CI.md §6.4 (`docs/CI.md:798`) | 357, the solution build, and **no simulator** |
-| "the project records no revision hash, so it cannot be read" | `.github/workflows/unity.yml:215` | `ProjectVersion.txt` **does** record one: `6000.3.21f1 (c02631ffc030)` |
+| "`Assets/Tests/EditMode/` and `Assets/Tests/PlayMode/` are still empty" | CI.md §4.2 | **6 EditMode and 27 PlayMode test files**, across **10 test assemblies**, counted on disk |
+| "23 test files … 2 EditMode and 21 PlayMode at `a3e268e`" | `.github/workflows/unity.yml` | **33 files — 6 EditMode, 27 PlayMode** |
+| "Nothing that needs the Unity editor has ever executed" | CI.md §5 | still true of *CI* — `unity.yml` has never run. Not true of this machine |
+| `floor=512` | `.github/workflows/ci.yml` | 🟢 **fixed** in `1ceb636` — `floor=357`, matching the suite. It had been red on every push for nine days and ~45 commits |
+| "the project records no revision hash, so it cannot be read" | `.github/workflows/unity.yml` | `ProjectVersion.txt` **does** record one: `6000.3.21f1 (c02631ffc030)` |
+| "`ClueMinReadableLightQuality`라는 이름으로 남아 있고" / §16-3's rename task | game-design.md §03, §16-3 | **already done, and better than asked** — the constant is `GameConstants.MinSafeLightQuality` = `0.20f` |
+| "map validates against all sixteen §12 rules" | `MapSketch.cs:1101` (a source comment) | **fourteen** |
 | audio separation "2.10× / 1.389× / 32.5 dB" | wherever it survives | re-measured 2026-08-12 on the eight-surface alphabet: dry worst pair **water vs gravel 1.44×**; at 25 m through a wall **metal vs gravel 1.137×**; gravel is **17.8 dB** quieter than concrete at low-pass 600 Hz |
 | "주자 테스트 7/10, Balanced" / "164/164 escapable" | anywhere | **10/10 TooEasy, 680/680 escapable** on the eight-storey building — and [F-013](../BALANCE-FINDINGS.md#f-013) retires the 5–7 band as a co-op-era instrument |
 | "the player's first-person hands are done" / "the van repaint is done" | anywhere | the hands landed in `b92ae78`; **the 차량 is deleted with §08**, so the repaint is moot — ART.md §7.12, §7.13 |
@@ -301,22 +302,34 @@ for every row above.
 
 ## 6. What is verified, what is built-but-unverified, and what is missing
 
-Short form; [STATUS.md §5 and §6](../STATUS.md) are the authority.
+Short form; [STATUS.md §1, §2 and §3](../STATUS.md) are the authority — §1 is what works
+with the evidence, §2 what does not, §3 which gates were re-run and which are carried.
 
-- **Verified:** rules core, Unity compile, the chase, the solo loop, NavMesh
-  connectivity, §12 validation and the 주자 grade, asset import settings.
-- **Built, never exercised:** two-instance networking, the Steam upload path, three of
-  the five roles in a real match, and the floor-material chain end-to-end (wired, not
-  pinned — [STATUS.md §3a](../STATUS.md) defect 3.8).
-- **Player builds — check `dist/last-build-summary.txt`, do not quote a doc.**
-  STATUS.md §5 says `dist/` holds no player executable; that was true when it was
-  written and is not true now. As of 2026-07-31 23:39 there is an IL2CPP macOS
-  arm64 Release player and a **Mono** `dist/windows-x64/HorrorGame.exe` carrying
-  `MONO-FALLBACK-DO-NOT-SHIP.txt`. That marker is the pipeline working as designed:
-  macOS cannot cross-compile IL2CPP for Windows, §13's audience is Windows, and a
-  Mono player ships plain managed assemblies that decompile in seconds — which hands
-  out the host-only clue and objective logic §13 depends on. **Never ship a build
-  that printed that warning**; pass `-buildRequireIl2cpp` to make it a hard failure,
-  and produce the real one on a Windows machine or `.github/workflows/unity.yml`.
-- **Missing:** every §14 verification question. Q1, Q2, Q4 and Q5 are askable today
-  and unanswered. **Q3 cannot be asked at all** until F-006 is fixed.
+- **Verified:** rules core (357/357, run 2026-08-12), the solution build, Unity compile,
+  the chase, the solo scene build with §05's animation wiring, NavMesh connectivity per
+  storey, §12 validation under one named waiver, asset import settings, the audio
+  alphabet.
+- **Built, never exercised:** the Steam upload path, and a twenty-player field — every
+  networking figure on record is two peers or four (`LocalTwoInstance.DefaultFieldSize`),
+  and §16-1 names 20인 동시 접속 as the project's top open risk for exactly that reason.
+- **Player builds — check `dist/last-build-summary.txt`, do not quote a doc.** It records
+  only the *most recent* build, whatever platform that was; today it is a macOS
+  Development Mono player from 2026-08-10. The Windows folder is a Development Mono build
+  from the same day, and Windows is what §13 ships to. **The marker to look for is
+  `MONO-FALLBACK-DO-NOT-SHIP.txt`** (`BuildPipelineBackend.FallbackMarkerFileName`), which
+  a *release* build writes when it falls back: macOS cannot cross-compile IL2CPP for
+  Windows, and a Mono player ships plain managed assemblies that decompile in seconds —
+  which hands out the host-authoritative race logic §13 depends on. Never ship a build
+  that printed that warning; pass `-buildRequireIl2cpp` to make it a hard failure, and
+  produce the real one on a Windows machine or `.github/workflows/unity.yml`.
+  [B-015](../BLOCKERS.md#b-015) is the entry.
+- **Missing:** every §14 verification question. All five are askable today and none is
+  answered. Q3 — 「관문에서 붐비는 것이 재밌는가」 — needs four people at once and is the
+  one the pivot added; §14 says it decides whether this game works at twenty.
+
+> 🔴 **History.** This section used to say "three of the five roles" had never been
+> exercised in a real match, and that Q3 could not be asked until F-006 was fixed. Both
+> statements are about the four-player co-operative game: §04's five roles are deleted,
+> and §14's Q3 is no longer 「지금 나갈까?」 but 「관문에서 붐비는 것이 재밌는가」. The
+> *habit* they encoded survives untouched — say which things are built and which are
+> exercised, and never let "it compiles" stand in for "somebody played it."

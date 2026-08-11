@@ -7,14 +7,77 @@ options — **not** a decision. Retuning is the designer's call.
 Every finding is pinned by a test, so a later edit that changes the answer fails
 the build instead of passing silently.
 
+**Last triaged: 2026-08-12, at commit `4ab204f` — every entry.** Each status was re-tested
+against the tree rather than carried forward. Four closed by deletion or supersession
+(F-001, F-006, F-007, F-011); F-009 and F-012 were verified still fixed and marked; the
+rest were confirmed open with today's evidence.
+
+| # | State | The one thing that decides it |
+|---|---|---|
+| [F-001](#f-001) | 🟢 closed by deletion | §08's weight bands are gone; the pinning test is a tombstone comment |
+| [F-002](#f-002) | 🔴 open — **designer's decision** | Gate PASSES; 2 blocking inversions remain, plus 2 the entry never listed |
+| [F-003](#f-003) | 🟡 open — needs a mix decision | Dry 1.44×; through a wall at 25 m, 1.137× |
+| [F-004](#f-004) | 🔴 open | 5.6 × 12 = 67.2 m still outlasts 60 m of route |
+| [F-005](#f-005) | ⚪ open, lowest priority | 8 zones now, so the floor is 8 against a minimum of 3 |
+| [F-006](#f-006) | 🟢 closed by deletion | Its instrument *and* its subject were deleted at `e8c67ae` |
+| [F-007](#f-007) | 🟢 closed — superseded | Superseded by F-013; its five-storey map no longer exists |
+| [F-008](#f-008) | 🟠 open in one clause only | 15.0 m is the pessimal legal spacing — and the map now sits on it |
+| [F-009](#f-009) | 🟢 closed by measurement | Both halves of the fix verified in the tree today |
+| [F-010](#f-010) | 🟠 open, and wider | 초저녁 patrols 1 zone of **8** — orthogonal to F-013's fix |
+| [F-011](#f-011) | 🟢 closed — superseded and disproved | Its premise was changed and the grade did not move |
+| [F-012](#f-012) | 🟢 fixed 2026-08-02 | Cue path verified live; `TakeFootstepCue` → `ReportSound` |
+| [F-013](#f-013) | 🔴 open | 680/680, 10/10 TooEasy — **unchanged in kind**, see the note |
+
+> ⚠️ **`/tmp` was wiped on 2026-08-10.** Every `/tmp/r*.log` and `/tmp/r*.xml` cited below
+> is gone, as are `dist/test-results/` and `biggate/`. Quotations are kept as the record;
+> none can be re-opened. Where a 2026-08-12 status rests on something re-runnable today —
+> `dotnet test`, `tools/ci/verify_audio.sh`, the sources, `git` — it names that instead.
+
 ---
 
 ## F-001 · The weight table is a cliff, not a gradient
 
 **Sections:** §06 (speeds) × §08 (weight bands) · **Priority:** feeds §16-2, the
-document's own stated bottleneck · **Status:** 🔴 open, needs a decision
+document's own stated bottleneck · **Status:** 🟢 **closed by deletion 2026-08-03**
+(`e8c67ae`) — **the designer answered it by removing the table**
 
-### The arithmetic
+> **How it closed.** The pivot deleted §08's carry weight entire. `GameConstants.cs:673–674`
+> is the tombstone: *"GONE: §08's carry-weight bands — WeightFreeMax, WeightLightMax,
+> WeightHeavyMax, WeightMulLight, WeightMulHeavy, WeightMulOverloaded"*, alongside
+> `BagSpeedMultiplier`, `SharedCarryMaxCarriers` and the four `LootWeight*`. Nobody picks
+> anything up in a race, so there is no weight, no cliff and no gradient.
+>
+> **This is none of the three options below — it is the fourth**, and it is worth saying
+> which: the contradiction was resolved by deleting the side of it that was optional.
+> Option 2 (raise `WeightMulLight` above 0.857) was the recommendation and it never landed;
+> it did not need to.
+>
+> **The pinning test is gone too, and its tombstone is better than most closures**, which
+> is why it is quoted rather than summarised. `FoundationTests.cs:167–180`:
+>
+> ```
+> // DELETED with §08's carry weight. Two tests stood here:
+> //   HeavyLoad_CostsTheRunnerItsEscape
+> //   WeightBands_AreACliffForTheRunner_NotAGradient
+> //
+> // The second was a genuine FINDING and it is worth recording why it can go
+> // rather than just that it did. …
+> // The pivot resolved the contradiction by deleting the table. Nobody picks
+> // anything up, so there is no weight, no cliff and no gradient. The margin
+> // that decides whether a runner lives is now direction and stance alone,
+> // and it is asserted in MovementTests against MarginVersusMonster.
+> ```
+>
+> **What survived is the question underneath the table**, and it is now asserted somewhere
+> else: the runner's margin over the creature is 5.6 − 4.8 = 0.8 m/s and it is spent on
+> **direction and stance** instead of load. `GameConstants.Validate` still brackets it from
+> both sides — `RunnerSprintSpeed × MulBackward < MonsterBaseSpeed` (`:2027`) and
+> `RunnerSprintSpeed × MulDiagonal > MonsterBaseSpeed` (`:2029`) — so backing away still
+> loses and cutting a diagonal still wins. F-001's real content was *"three quarters of the
+> table describe one outcome"*; the replacement has two rows and both of them mean
+> something.
+
+### The arithmetic, as it stood before the table was deleted
 
 §08 defines four weight bands, which reads as a progressive slowdown:
 
@@ -69,7 +132,57 @@ entry must be updated in the same commit.
 ## F-002 · The Listener's HUD contradicts the player's ears through a wall
 
 **Sections:** §04 (청음사) × §12 (바닥 재질) · **Priority:** 🔴 blocking — the role
-misinforms the player · **Status:** open, **halved 2026-08-09**
+misinforms the player · **Status:** open, **halved 2026-08-09**, halving **confirmed
+2026-08-12** · **the remaining move is the designer's, and it is option 1**
+
+> ### Confirmed 2026-08-12 by running the gate, with one correction to the count
+>
+> `bash tools/ci/verify_audio.sh` → **`RESULT: PASS`**. The halving is real and it is in
+> the artefact, not just in the generator sources:
+>
+> ```
+>   audit result:        FAIL
+>   blocking defects:    2
+>   accepted (baseline): 2
+>   KNOWN  [consistency] gravel vs concrete  → F-002
+>   KNOWN  [consistency] gravel vs earth     → F-002
+> ```
+>
+> `gravel vs carpet` no longer appears at all — deleted from the baseline as that file's
+> rule requires, and not reproducing. **Blocking inversions 3 → 2, and the CI job
+> `asset audit (§12 audio)` is green** ([B-013](BLOCKERS.md#b-013) records that it was red
+> on 2026-08-03 for exactly these).
+>
+> **The correction: this finding covers four inverted pairs, not two.** The audit's own
+> verdict line reads:
+>
+> ```
+>   HUD vs ears: 4 inverted pair(s) — gravel/concrete, gravel/earth, water/wood, tile/concrete.
+>   RESULT: FAIL
+> ```
+>
+> **`water vs wood` (6.2 dB) and `tile vs concrete` (6.5 dB) are inversions this entry's
+> own table has never listed.** They are classed as *warnings* rather than blocking
+> defects, which is why the gate passes over them and why the 3 → 2 count above is correct
+> as far as it goes — but they are the same defect, same instrument, same direction: a
+> surface the code ranks as louder measuring quieter through a wall. `water` is clarity
+> 1.00, the top of the table, and it reads 6.2 dB **under** wood at 0.80.
+>
+> So the honest shape is: **two blocking, two warning, four total, one mechanism.** The
+> gap between "the audio job is green" and "the audio is right" is those four rows, and
+> option 1 resolves all four at once because none of them is a mixing choice.
+>
+> **The remaining decision is the designer's and it has not moved.** Nothing in the
+> 08-09 pass touched `ListenerClarity*`; it changed what gravel *sounds* like, not what the
+> HUD *claims*. Option 1 — clarity as a function of occlusion rather than a constant — is
+> still the answer this finding is waiting on, it is still a Core change to
+> `ListenerAbility`, and per this document's opening rule it is **not** something the audio
+> side may decide on its own. What the audio side could do it has now done.
+>
+> One live caveat, unchanged and stated in the 08-09 note below: occluded separation at
+> 800 Hz fell 1.377× → **1.137×** (worst pair metal vs gravel) and that row is still a
+> warning in today's run. It was already failing before the change; the trade was taken
+> deliberately and the one-line revert is recorded.
 
 > 🟡 **Halved from the audio side, 2026-08-09 — one of the three inversions no longer
 > reproduces and the other two shrank by 14.7 dB each.** The CC0 footstep pass gave
@@ -189,8 +302,23 @@ constants re-derived at the occlusion the role works through (option 2).
 ### Pinned by
 
 `tools/audio/verify_audio.py` section 6 — reports every inversion between the clarity
-the code claims and measured audibility. Currently three blocking inversions, all one
-mechanism: gravel vs concrete, gravel vs earth, gravel vs carpet.
+the code claims and measured audibility.
+
+**As measured 2026-08-12** (was: "three blocking inversions … gravel vs concrete, gravel vs
+earth, gravel vs carpet"):
+
+| pair | 2026-08-03 | 2026-08-12 | class |
+|---|---|---|---|
+| gravel vs concrete | 32.5 dB | **17.8 dB** | blocking, baselined |
+| gravel vs earth | 28.5 dB | **13.8 dB** | blocking, baselined |
+| gravel vs carpet | 12.2 dB | **gone** | — |
+| tile vs concrete | not listed | 6.5 dB | warning |
+| water vs wood | not listed | 6.2 dB | warning |
+
+`AudioTests.OccludedAudibility_InvertsTheClarityTable_AsF002Reports` fails if anyone
+"fixes" the finding by quietly changing the mix instead of the rule. It is in EditMode,
+which ran 95/95 on 2026-08-08 ([B-016](BLOCKERS.md#b-016)) — so unlike most pins in this
+file, this one has a dated green behind it.
 
 `AudioTests.OccludedAudibility_InvertsTheClarityTable_AsF002Reports` fails if anyone
 "fixes" the finding by quietly changing the mix instead of the rule.
@@ -200,9 +328,30 @@ mechanism: gravel vs concrete, gravel vs earth, gravel vs carpet.
 ## F-003 · The five-surface alphabet holds in the room, not at range through a wall
 
 **Sections:** §12 (바닥 재질) × §04 (청음사) · **Priority:** 🟡 needs a mix decision
-· **Status:** open
+· **Status:** open · re-measured 2026-08-12, still open, numbers moved slightly
 
-### Measured
+> **Re-measured 2026-08-12** by `bash tools/ci/verify_audio.sh`, and the shape is
+> unchanged — the alphabet is legible dry and illegible through a wall:
+>
+> ```
+>   §12 Listener alphabet: SUPPORTED — worst surface pair water vs gravel at 1.44x (need >= 1.4x)
+>   worst within a single actor: 1.41x
+>   at 25m through a wall it does NOT hold: worst pair metal vs gravel at 1.137x
+> ```
+>
+> Two things to carry forward. **The margin is thinner than when this was written:** dry
+> was 2.13× (metal vs tile) and is now **1.44×** against a 1.40× threshold, and the worst
+> pair changed identity to water vs gravel. That is the 08-09 gravel substrate paying for
+> [F-002](#f-002)'s halving out of this finding's budget — the trade was recorded there and
+> this is where the bill lands. **And the occluded figure got worse**, 1.396× → 1.137×,
+> with metal vs gravel now the tight pair.
+>
+> Both remain the same one decision, and it is still a mix decision rather than a
+> generator one. Option 2 — a low-frequency signature per surface — is the only option that
+> buys margin at occlusion 1.00 *and* composes with F-002's option 1, and the 08-09 pass
+> demonstrated the cost of doing it by ear on one surface alone.
+
+### Measured, 2026-08-01
 
 §12 requires the Listener to tell zones apart by floor material. Taking 1.4×
 spectral-centroid separation as the threshold for "reliably distinguishable":
@@ -301,7 +450,36 @@ asserts the corner lands on the floor and not below it.
 ## F-004 · The Runner's sprint-timing dilemma cannot exist at these numbers
 
 **Sections:** §06 (주자의 진짜 딜레마) × §05 (질주 최대 이동 거리) × §12 (실전 검증)
-· **Priority:** 🔴 a named skill expression is unreachable · **Status:** open
+· **Priority:** 🔴 a named skill expression is unreachable · **Status:** open ·
+**re-verified 2026-08-12 — unchanged, and the pivot made it bigger**
+
+> **Every constant is where it was.** `RunnerSprintSpeed = 5.6f` (`GameConstants.cs:43`),
+> `SprintStaminaSeconds = 12f` (`:450`), `SprintMaxTravelDistance = 60f` (`:460`).
+> 5.6 × 12 = **67.2 m against 60 m**. The bar still outlasts the route by 7.2 m.
+>
+> The one path that could have quietly closed this was checked and does not:
+> `GameConstants.Validate` (`:2066`) computes the 45°-peek capacity
+> `RunnerSprintSpeed × MulDiagonal × SprintStaminaSeconds` = **63.84 m** and asserts it
+> stays inside [59, 68] of the route reach. Even on the pessimistic reading the capacity
+> outlasts the route. **There is no reading of today's constants under which the dilemma
+> exists.**
+>
+> **The pivot widened this rather than narrowing it.** §06's 주자 was one player in four;
+> DESCENT-PIVOT §5 gives 질주 5.6 m/s to all twenty. So the missing timing decision is not
+> one role's missing skill expression — it is the only skill expression the game has, for
+> everybody, and it is unreachable for everybody. `RunnerSprintSpeed` is now a misnomer for
+> the same reason: there are no roles to be the runner among.
+>
+> The waste this entry names is also still being paid: `RunnerTestAttempt.SprintDelaySeconds`
+> still exists (`RunnerTest.cs:80`, set at `:53`) and is still read by
+> `MapSceneGenerator.cs:863,865`, so every route still pays for N simulations of strategies
+> that cannot win.
+>
+> **Pinned by** — `MapTests.RunnerTest_SpendingTheSprintAtOnce_DominatesHoldingIt`
+> (`core/HorrorGame.Core.Tests/MapTests.cs:1121`). It survived the co-op deletion because it
+> builds its map from a test-local `BuildLongHouse()` rather than from the deleted
+> `FirstMapSketch`, and it is green in today's 357/357 — which is independent confirmation
+> that every attempt still reports zero delay.
 
 ### The arithmetic
 
@@ -354,7 +532,20 @@ Option 1 is the smallest change that makes §06's paragraph true.
 
 ## F-005 · §12 states two loop rules and only one can ever bind
 
-**Sections:** §12 (순환로 개수) · **Priority:** 🟢 redundant rule · **Status:** open
+**Sections:** §12 (순환로 개수) · **Priority:** 🟢 redundant rule · **Status:** open ·
+**re-verified 2026-08-12 — still true, and the gap doubled**
+
+> All three constants are unchanged: `ZoneCountMin = 4` (`GameConstants.cs:1394`),
+> `LoopsPerZoneMin = 1` (`:1474`), `LoopsTotalMin = 3` (`:1477`). `ZoneCountMax` was raised
+> 6 → 9 on 2026-08-02 (`:1415`), because §12's 4~6 was written for a single-storey 100 m
+> square.
+>
+> **On the shipped building the redundancy is wider, not narrower.** `DescentMap.Build`
+> calls `AddZone` once per level over `Storeys = 8`, so 하강 has **8 zones**, one per
+> storey. The binding floor is 8 × 1 = **8 loops** against a map-wide minimum of **3**.
+> The floor measures 87 순환로 in practice. So this entry's closing suggestion — that
+> raising `LoopsTotalMin` above 4 is what would make it a real floor — should now read
+> **above 8**, and the rule is further from ever binding than on the day it was written.
 
 ```
 ZoneCountMin 4 × LoopsPerZoneMin 1 = 4   ≥   LoopsTotalMin 3
@@ -383,11 +574,52 @@ Pinned by `MapTests.SketchMap_PassesTheChecklistAndStillGradesTooEasy`.
 ## F-006 · Matches finish in 7.2 minutes against §01's 25~35 — and what ends them is the battery, not the clock
 
 **Sections:** §01 (한 판의 흐름) × §07 (시간 = 위협도) × §08 (경제) × §03 (배터리)
-· **Priority:** 🔴 highest — it invalidates the tuning of everything downstream
-· **Status:** open, and for the first time this entry ends in a recommendation rather than a list
+· **Priority:** ~~🔴 highest~~ · **Status:** 🟢 **closed by deletion 2026-08-03**
+(`e8c67ae`) — **both its subject and its instrument were removed**
 · **Source:** 500 matches on 요양원 지하 5층 itself (seeds 1–500), plus five swept axes at
 300–400 matches per point over identical seeds
 · **Measured:** 2026-08-01, 03:43–07:10
+
+> ### Closed by deletion — and this is the largest single block of void measurement in the file
+>
+> **Nothing below can be reproduced, and nothing below is about this game.** `e8c67ae`
+> deleted, in one commit:
+>
+> - **the subject** — §08's economy, the shop, the wallet, the credits, §03's clue chain,
+>   the objective, and **the battery economy and 배전반**. This entry's headline finding is
+>   that matches end because the torch dies rather than because the clock runs out. There
+>   is no torch economy: DESCENT-PIVOT gives every runner "a light that simply works",
+>   because *"total darkness is unplayable and a torch you maintain is the busywork being
+>   complained about"*.
+> - **the instrument** — `core/HorrorGame.Sim`. Every command quoted below
+>   (`horrorsim run`, `sweep tier-minutes`, `sweep dwell`, `replay`, `validate`) is
+>   unrunnable: `git ls-files core/HorrorGame.Sim` returns **0** and the project is gone
+>   from `core/HorrorGame.sln`. See [B-012](BLOCKERS.md#b-012).
+> - **the building** — the 164-place, 180-passage, 217.5 m five-storey map. Today's is
+>   680 places over eight radial storeys.
+>
+> So the ⚠ banner at the top of this entry — *"re-run every number below once F-007's
+> reshape lands"* — resolves as: **the reshape landed twice over, and there is nothing left
+> to re-run it with.** F-007 is closed for the same reason.
+>
+> **What is worth keeping, and it is not a number.** This entry's §4 — *"the part no
+> simulator can measure"* — argued that a team three times slower than the simulated agents
+> would not play a 22-minute version of the same match, and that only a human at a keyboard
+> could size the difference. That argument survives its own data intact and now applies to
+> the race: §01 targets 12~20 minutes, nothing has ever measured a human descent, and
+> `dist/READ-ME-FIRST.txt` asks playtesters 「한 판이 몇 분 걸렸나요?」 as its first
+> question. The instrument that replaces `horrorsim` is a person.
+>
+> **The methodological lesson also survives, and it is the one that keeps being paid for:**
+> this entry's own banner — the census line printed above every run so that a change of
+> *building* could never be mistaken for a change of *result* — earned itself mid-sweep
+> when the verdict flipped PASS → FAIL while every census figure stayed byte-identical.
+> That is the same discipline `SceneGen_` stamps enforce for the map
+> ([B-009](BLOCKERS.md#b-009)) and that `MapTests` now enforce for §12. Whatever measures
+> the race next needs it on line one.
+>
+> **Everything below is retained as the record of what was learned about the deleted
+> game.** Nothing in it may be quoted as a fact about 하강.
 
 > ### ⚠ Re-run every number below once F-007's reshape lands
 >
@@ -1028,10 +1260,36 @@ whose median moves only when somebody means it to.
 
 **Sections:** §12 (실전 검증 · 주자 테스트) × §06 (추격)
 · **Priority:** 🟠 high — it is the one grade §12 gives the map, and it moved the wrong way
-· **Status:** **open — still 10/10 as of 2026-08-01 06:25.** Two passes have now been
-spent on it and the grade has not moved
+· **Status:** 🟢 **closed 2026-08-03 — superseded by [F-013](#f-013)**, and its map was
+deleted by the pivot
 · **Source:** `MapSceneGenerator.ReportQualityMenu` and `horrorsim map`, seed 1204
 · **Found:** 2026-08-01, integrating the map-scale pass
+
+> **How it closed, in two stages.**
+>
+> **Its subject no longer exists.** This entry is about a five-storey co-op building
+> reshaped from a three-storey one, measured through `horrorsim map` on seed 1204. That
+> building was replaced by the eight-storey radial descent map, and `horrorsim` itself was
+> deleted at `e8c67ae` ([B-012](BLOCKERS.md#b-012)). Neither the map nor the instrument can
+> be reached.
+>
+> **Its question was answered, and the answer was that the question was wrong.**
+> [F-013](#f-013) proved from arithmetic that the 50~70 % band **cannot discriminate at
+> §12's own parameters** — a release fires after 16.8 m of route past one bend, and §12's
+> construction rules hand that out from everywhere, so *no §12-legal map can score inside
+> the band*. This entry spent two passes trying to move a grade that was never movable. The
+> right reading of "the five-storey map lost the band the three-storey one held" is that the
+> three-storey map held it by accident.
+>
+> **The stronger confirmation arrived later and by experiment rather than by proof.** The
+> 2026-08-10 re-lay (`9f0f447`) changed exactly the variable this entry and
+> [F-011](#f-011) blamed — cover spacing went from saturated to 15 m~15 m, `sight-break-spacing`
+> passes, [B-007](BLOCKERS.md#b-007) closed — and **the grade did not move**: still 10/10
+> TooEasy, still 100 % escapable. Two passes of tuning and one whole-map re-lay have now
+> been spent on this grade, and it has never once responded.
+>
+> Retire the grade, not the map. F-013 §3 carries the instrument that replaced it —
+> 탈출 대가, measured in seconds — and the reason it can see what the pass rate cannot.
 
 > **Read this before the numbers below.** This finding has now been assigned to two
 > working passes whose brief was to bring the grade back inside 5–7/10. It is still
@@ -1167,7 +1425,42 @@ new is that the **Unity** map, which was 7/10 and inside the band, has joined it
 ## F-008 · §12's escape geometry and §01's match length pull in opposite directions
 
 **Sections:** §12 (실전 검증) × §01 (한 판의 흐름) × §06 (어그로 해제)
-· **Priority:** 🔴 the two cannot both be satisfied by scale · **Status:** open
+· **Priority:** 🟠 down from 🔴 · **Status:** **open in one clause only** —
+re-triaged 2026-08-12; three of its four options are dead and the fourth landed
+
+> **Option by option, against the tree today:**
+>
+> | option | state |
+> |---|---|
+> | 1 · raise the aggro start in `RunnerTest` | **dead.** [F-011](#f-011) measured it as a cliff (0 % at 3.0 m → 97 % at 4.0 m); [F-013](#f-013) §1 closed it — *"the knob was never turned because it is not a knob"*. `RunnerTestAggroStartDistance` is still 10 m and deliberately held. |
+> | 2 · make the band scale-aware | **superseded.** F-013 replaces the band with 탈출 대가 rather than rescaling it. `RunnerTestPassRateMin/Max` stay at §12's written 0.50/0.70 so the report keeps quoting the section honestly. |
+> | 3 · shorten routes, accept a shorter match, reopen F-006 | **dead.** [F-006](#f-006)'s subject and instrument were both deleted at `e8c67ae`. There is nothing to reopen and nothing to reopen it with. |
+> | 4 · give the monster something that does not decay with distance | **landed**, though not as written: one creature per storey, eight of them, gated by `MatchDirector.VerifyCreatureCount` since 2026-08-08. See F-013 §5. |
+>
+> ### The one clause still live — and it stopped being hypothetical
+>
+> This entry's last substantive observation was that **15.0 m spacing — the *minimum* the
+> rule permits — is the worst legal choice for the escape rate**, and that §12's S자 통로
+> rule mandates the very shape the spacing rule exists to prevent. The constants behind it
+> are unchanged: `SingleCornerMinDistance = 14.4f` (`GameConstants.cs:1286`),
+> `SightBreakPointSpanMax = SingleCornerMinDistance − RunnerTestAggroStartDistance` = 4.4 m
+> (`:1346`).
+>
+> **The 2026-08-10 re-lay put the shipped map exactly there.** It now reports
+> `160 시야 차단 지점 built from 456 bend(s), the deepest 12.5 m (cap 14.4 m),
+> nearest-neighbour spacing 15 m~15 m inside §12's 15 m~25 m` — pinned to the **floor** of
+> the rule, on all eight roster seeds. So F-008's pessimal legal case is not a thought
+> experiment any more; it is the building. And the grade behaved exactly as this entry
+> predicted it would: unchanged.
+>
+> That is worth holding onto, because it means **B-007's closure and F-013's verdict are
+> the same measurement seen from two sides** — the geometry now satisfies §12's spacing
+> rule *by sitting on its worst permitted value*, which is legal, deliberate, and the
+> reason the escape rate did not respond.
+>
+> **One empirical prop below is now false** and is left in place as the record: the
+> "79 bends at a 4.1 m mean, 0 inside §12's 15~25 m" building no longer exists, and neither
+> does `FirstMapSketch.cs`, which this entry's closing line reports as unchanged.
 
 ### The arithmetic, measured
 
@@ -1254,7 +1547,32 @@ cannot reach the band should not be applied to four more storeys first.
 
 **Sections:** §12 (맵 설계 규칙) × §06 (추격 수치) × §05 (조작과 이동)
 · **Priority:** 🟢 the defect is fixed; the finding is the arithmetic
-· **Status:** closed by measurement, but the *shape* of it is open
+· **Status:** 🟢 **closed by measurement** · **fix re-verified in the tree 2026-08-12**
+
+> **Both halves of the fix are still in the code**, which is the only thing that needed
+> checking here — a closed entry whose fix has been quietly reverted is the failure mode
+> this triage exists to catch, and it has happened on this project before:
+>
+> - `PlayerStance.ApplyStepOffset` still zeroes the offset in mid-air —
+>   `PlayerStance.cs:540`, `controller.stepOffset = _airborne ? 0f : _groundedStepOffset;`
+>   (captured at `:513`), with the full derivation still in the doc block above it.
+> - `PlayerMotor` still drops frozen horizontal velocity on a mid-air side collision —
+>   `PlayerMotor.cs:411`, `if (_airborne && (flags & CollisionFlags.Sides) != 0)`.
+> - The constraint is still asserted at startup: `GameConstants.Validate:2049`,
+>   `Require(JumpApexMetres < PlayerStepOffsetMetres, …)`, with the
+>   `JumpCooldownSeconds > JumpAirtimeSeconds` guard immediately after.
+> - Constants unchanged: `PlayerStepOffsetMetres = 0.40f` (`:170`),
+>   `JumpApexMetres = 0.35f` (`:191`).
+>
+> **Pinned by** `PlayerStanceTests.The_hop_cannot_mount_a_ledge_a_walk_cannot`
+> (`Assets/Tests/PlayMode/Player/PlayerStanceTests.cs:311`), in the PlayMode Player
+> assembly, green in the 2026-08-08 sweep.
+>
+> **The one sub-item this entry left open is now moot:** the 차량 rear ladder at 0.400 m
+> pitch. The 차량 was §01/§08 surface furniture — 안전 지대, 상점, 보급소 — and went with
+> the co-op game at `e8c67ae`. It is not placed in `DescentMap`. *(Verified against the map
+> generator; I did not re-audit the whole prop kit, so read this as one step short of
+> certain.)*
 
 §05's control table lists 마우스 · WASD · Shift · F and no jump. One was added
 anyway, so the first question was how high it may go without changing what §12's
@@ -1355,10 +1673,44 @@ figures above.
 **Sections:** §07 (시간 = 위협도 · 순찰) × §12 (맵 설계) × §01 (한 판의 흐름)
 · **Priority:** 🟠 high — it is the measured reason the monster feels absent
 · **Status:** open, and **not** silently changed. Recording it, per the rule that §07 is the
-designer's to retune
+designer's to retune · **re-verified 2026-08-12 — still live, and the staleness has grown
+from 2.2× to 8×**
 · **Source:** `ThreatTier.PatrolZoneCountFor`, the census in [STATUS.md §1.6](STATUS.md), and
 the 500-match population in [F-006](#f-006)
 · **Found:** 2026-08-01, while building the 그늘 (§10) and asking the same question of it
+
+> **Re-verified 2026-08-12.** `ThreatTier.PatrolZoneCountFor(int mapZoneCount)` still
+> exists (`Core/Threat/ThreatTier.cs:164`), the runtime still calls the map-aware overload
+> (`MonsterAgent.cs:506`), and §07's table is unchanged in shape (`ThreatCurve.cs:199–247`):
+> rows 0 and 1 are `PatrolScope.FixedZones` at `ThreatPatrolZonesEarlyEvening = 1` and
+> `ThreatPatrolZonesNight = 2`; rows 2/3/4 are `HalfTheMap` / `WholeMap` / `WholeMap`.
+>
+> **The descent building has 8 zones — one per storey.** So `PatrolZoneCountFor(8)` gives
+> 초저녁 **1**, 밤 **2**, 심야 **4**, 새벽 **8**, 동트기 전 **8**. §12's "1개 구역" was
+> written for 1-of-4 on a single-storey map; it now resolves to **1-of-8, and a 구역 is a
+> whole floor.** This entry's measured 2.2× staleness is 8× against §12's original.
+>
+> ### It is *not* closed by F-013's eight creatures, and the distinction matters
+>
+> [F-013](#f-013) §5 fixed **presence** — there are now eight creatures, one per storey,
+> and `MatchDirector.VerifyCreatureCount` refuses to start a match whose standing count
+> differs from the map's declared spawns. This entry is about **scope**: how much of its
+> own storey each creature sweeps, which the first two §07 rows still express as an
+> absolute count rather than a fraction. The two are orthogonal, and it would be easy to
+> read "the creature is on every floor now" as closing both. It does not: at 초저녁 each
+> creature patrols one zone, a zone is its entire floor, and the row that was written to
+> mean "a quarter of the map" now means either all of it or a number that no longer refers
+> to anything. **Option 3 below — "leave §07 alone and fix the match length instead" — is
+> dead**, because F-006's instrument is deleted and match length is now §01's 12~20 minute
+> descent rather than a battery-economy output. Options 1 and 2 are untouched.
+>
+> **Pinned by** `PresenceTests.TheDarkCoversEveryZone_WhereThePatrolTableCoversOne`
+> (`core/HorrorGame.Core.Tests/PresenceTests.cs:486`), green in today's 357/357. It sweeps
+> `zoneCount` from `ZoneCountMin` to `ZoneCountMax` and asserts
+> `dusk.PatrolZoneCountFor(zoneCount) == ThreatPatrolZonesEarlyEvening` for every one, with
+> the message *"§07's 초저녁 row is an absolute count, so it does not grow with the map —
+> this is the defect being avoided"*. The defect is asserted, dated and green: the test
+> holds the finding, not the fix.
 
 ### The arithmetic
 
@@ -1447,8 +1799,43 @@ anybody makes it proportional without updating the page.
 
 **Sections:** §12 (실전 검증 · 개방 공간/미로 공간) × §06 (어그로 해제) × §05 (질주)
 · **Priority:** 🔴 the map's only quality metric is blind to the map
-· **Status:** measured and open. It supersedes [F-008](#f-008)'s option 1, which is now
-disproved rather than untried
+· **Status:** 🟢 **closed 2026-08-12 — superseded by [F-013](#f-013), and its central
+premise has since been disproved by experiment.** It supersedes [F-008](#f-008)'s option 1,
+which is now disproved rather than untried
+
+> ### How it closed — and this is the cleanest experimental result in the file
+>
+> **The mechanism this entry describes is still in the code, exactly as written.**
+> `RunnerTest`'s cover test is the same three lines (`RunnerTest.cs:675–679`,
+> `if (monster < arc[i] && arc[i] < runner) covered = true;` with
+> `brokenFor = covered ? brokenFor + step : 0f` at `:682`), and every term of the inequality
+> it reduces to is unchanged: `SprintStaminaSeconds` 12, 5.6 − 4.8 = 0.8,
+> `AggroReleaseDistance` 12, `AggroReleaseLineOfSightBreak` 3,
+> `RunnerTestAggroStartDistance` 10.
+>
+> **But the premise that made cover ambient is gone.** This entry rests on
+> *"79 bends at a mean nearest-neighbour spacing of 4.1 m … 0 of them inside §12's 15~25 m
+> rule"* — a saturated-bend map where a runner is never more than a few metres from a
+> corner. The 2026-08-10 re-lay (`9f0f447`) changed precisely that: the shipped building
+> now measures `160 시야 차단 지점 … nearest-neighbour spacing 15 m~15 m inside §12's
+> 15 m~25 m`, `sight-break-spacing` passes, and [B-007](BLOCKERS.md#b-007) closed.
+>
+> **And the grade did not move.** Still `10/10 TooEasy`, still 100 % escapable (680/680).
+>
+> That is the experiment this entry could not run. It blamed the metric's blindness on
+> ambient cover; the ambient cover was removed by a whole-map re-lay; the metric returned
+> the same answer. **So the escape rate is not blind because the map is saturated with
+> corners — it is blind because 16.8 m of route past one bend is all it ever asks for, and
+> every §12-legal map hands that out by construction.** F-013 §1 predicted exactly this
+> from arithmetic before the re-lay happened, which is why F-013 supersedes this entry
+> rather than merely postdating it.
+>
+> **Also void below, and left as the record:** the harness ran on `FirstMapSketch.Build(1204)`
+> and `FirstMapSketch` was deleted at `e8c67ae`, so nothing here can be re-run. The whole
+> 개방 공간 analysis — the 32.3 % share, the five-storey B1–B5 table, the option-1 geometry
+> blocked by [B-003](BLOCKERS.md#b-003) — describes a building that no longer exists.
+> This entry's "Pinned by: nothing yet" is still true; no test asserts an 개방 공간 share,
+> and on a map with no 개방 공간 none should.
 · **Source:** a harness over `FirstMapSketch.Build(1204)` and `RunnerTest`, sweeping
 `RunnerTestAggroStartDistance` and the 개방 공간 share
 · **Found:** 2026-08-01, while trying to act on F-008's recommendation
@@ -1617,9 +2004,37 @@ past it.
 ## F-012 · The monster could never chase anybody, because nothing ever made a sound
 
 **Sections:** §06 (괴물) × §04 (청음사) × §10 (그늘) · **Priority:** 🔴 was blocking —
-the game had no antagonist · **Status:** fixed 2026-08-02 ·
+the game had no antagonist · **Status:** 🟢 **fixed 2026-08-02** · **cue path re-verified
+in the tree 2026-08-12** ·
 **Source:** the owner playing the solo build — *괴물앞에있어도 안죽는데?* — then
 `MonsterKillTests.Standing_in_front_of_the_creature_kills_you`
+
+> **The emission path is alive end to end**, though the method was renamed since this was
+> written — `ReportFootsteps` is now `MatchDirector.TakeFootstepCue()` (`:867`), accumulating
+> on `AudioTuning.FootstepStrideMetres` at `:883` with the range computed at `:907`. The cue
+> reaches the creature at **`MatchDirector.cs:763`** —
+> `monster.ReportSound(footstep.Value.At, footstep.Value.RangeMetres, footstep.Value.Loudness)`
+> — and a gunshot emitter has since been added at `RunnerGun.cs:491`.
+> `MonsterFootstepHearingRange = 35f` (`GameConstants.cs:570`) is still bracketed on both
+> sides by `Validate` at `:1978` and `:1981`. Both secondary defects are still fixed: the
+> lunge is on `GameConstants.FixedStep`, and
+> `MonsterTests.Patrol_ChasesSomethingStandingInItsFace`
+> (`core/HorrorGame.Core.Tests/MonsterTests.cs:241`) is green in today's 357/357.
+> `MonsterKillTests.Standing_in_front_of_the_creature_kills_you` is at
+> `Assets/Tests/PlayMode/Match/MonsterKillTests.cs:163`.
+>
+> **One drift worth correcting:** this entry says the clarity multiplier comes from §04's
+> `ListenerClarity*`. It does not any more — `MatchDirector.cs:906` reads
+> `MapZone.ClarityOf(FloorSurfaces.Sample(here))`, rewired when §04/청음사 was deleted with
+> the roles. Same table, different owner. The surface numbers below are still right; the
+> class they name is gone.
+>
+> ⚠️ **And there is a second cue that this fix's shape was never extended to.**
+> `MatchDirector.cs:768` takes a **voice** cue the same way it takes a footstep — and it is
+> never raised, because `VoiceEffort` is stuck at `Silent`. That is
+> [B-022](BLOCKERS.md#b-022), filed 2026-08-12, and it is this finding's exact headline —
+> *the monster could never chase anybody, because nothing ever made a sound* — recurring on
+> the one emitter this pass did not cover. Footsteps make noise; shouting does not.
 
 ### What was wrong
 
@@ -1713,8 +2128,64 @@ it names which link of the chain was open rather than only that the player survi
 **Sections:** §12 (실전 검증 · 주자 테스트) × §01/§02 (경주) × §06 (어그로 해제) × §07
 (시간 = 유일한 통화) × §12-B③ (괴물이 안쪽을 순찰한다)
 · **Priority:** 🔴 the map's only grade has been red for three working passes and cannot
-ever be green · **Status:** measured 2026-08-03. Supersedes [F-007](#f-007) and
-[F-011](#f-011); closes the question [F-008](#f-008) option 2 left open
+ever be green · **Status:** open · measured 2026-08-03, **re-read 2026-08-12 against a map
+that has since been re-laid**. Supersedes [F-007](#f-007) and [F-011](#f-011); closes the
+question [F-008](#f-008) option 2 left open
+
+> ### ⚠️ Read this before reacting to the numbers: **680 is not a regression**
+>
+> The 주자 테스트 today reads **10/10 TooEasy, 680/680 escapable**. Every per-place figure
+> in this entry says **720**. The difference is not a defect and not a change of result:
+>
+> | | 2026-08-03, when this was written | 2026-08-12 |
+> |---|--:|--:|
+> | places | 720 | **680** |
+> | escapable | 720/720 | **680/680** |
+> | rate | 100 % | **100 %** |
+> | verdict | TooEasy | **TooEasy** |
+>
+> **The denominator moved because the building did.** `9f0f447` (2026-08-10) re-laid
+> `RadialStorey` so the bands jog outward — the change that closed
+> [B-007](BLOCKERS.md#b-007) and took [B-019](BLOCKERS.md#b-019) down to its last 2.5 m. It
+> removed cells; 720 → 680 places, 766 passages, 87 순환로, asserted in
+> `core/HorrorGame.Core.Tests/MapTests.cs:1880`. **The rate and the verdict are unchanged,
+> which is what this entry is about.** Anyone reading 680 as a new failure is reading a
+> smaller building, not a worse one.
+>
+> **§6's prediction needs restating, because as written it now reads as falsified.** It
+> says the next generation must print `720/720 escapable` *byte for byte*, and that **"if
+> either moves, this entry is wrong."** That was conditioned on the four named constants
+> being held — `RunnerTestAggroStartDistance`, `AggroReleaseDistance`,
+> `SprintMaxTravelDistance` and both pass-rate constants — and **all four are still held at
+> their stated values.** It was not conditioned on the geometry being frozen, and it should
+> have been. The correct form of the prediction is:
+>
+> > **the *rate* must stay at 100 % and the verdict at TooEasy**, whatever the place count,
+> > until one of those constants moves.
+>
+> And it has now survived the strongest available test of itself. §1 argues from arithmetic
+> that no §12-legal map can score inside the 50~70 % band. The 08-10 re-lay changed every
+> corridor on every floor, changed the cover statistic that [F-011](#f-011) blamed from
+> saturated to 15 m~15 m, and closed a §12 rule the map had never once passed — **and the
+> grade did not move.** That is this entry's central claim confirmed by experiment rather
+> than by proof, and it is the reason F-007 and F-011 are now closed rather than merely
+> superseded.
+>
+> **What the re-lay does invalidate is §3's toll distribution**, and this is a real gap:
+> the per-place tolls, the ring-graded table (중심 +15.0 m against 외곽 −10.0 m) and the
+> 7.2 s median were all measured on the 720-place building. §12-B③'s ring grading is a
+> claim about geometry, and the geometry moved. **Nobody has re-run the toll harness on the
+> 680-place map.** Until somebody does, §3's *shape* is the finding and its decimals are
+> historical — and re-running it needs the harness §3 describes, not Unity.
+>
+> Two smaller corrections while re-reading: §5's table and `DescentMap.cs:195–206` are now
+> the **fourth** file to go on saying the game ships one creature after it stopped —
+> `DescentMap`'s prose still reads *"MapSketch.MonsterStart as it stands keeps ONE creature
+> … the change is inert if its other half does not land"*, and `MapSketch` grew its list on
+> 2026-08-08 (`MapSketch.cs:329`). §5 caught three files doing this and predicted the
+> pattern; here is the fourth. And §5's closing note about `ChamberDockProbe.cs` breaking
+> the dotnet build is resolved — the exclusion landed, and
+> `dotnet test core/HorrorGame.sln -c Release` runs **357/357** today.
 · **Source:** a harness over `DescentMap.Build(20260802)` + `RunnerTest`, run under
 `dotnet` (no Unity), plus `/tmp/r4_gen.log` and `/tmp/r4_all.xml` from the 2026-08-03
 generation

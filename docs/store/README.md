@@ -15,7 +15,15 @@ actually stands. Nothing here repeats it.
 > **Copy rewritten 2026-08-03 for the 20인 경주.** Everything in this folder was
 > written on 2026-08-01 for a four-player asymmetric co-op looting game. That game was
 > deleted on 2026-08-02 ([DESCENT-PIVOT.md](../DESCENT-PIVOT.md)). The words are now
-> about the race. **The pictures are not** — see below.
+> about the race. **The still pictures are not** — see below.
+>
+> **Audited 2026-08-12 against the artefact, not against these documents.** Four things
+> this folder was asserting had stopped being true: the copy still sold an **elimination
+> rule the game deleted on 2026-08-04**, it named `PlayersPerMatch = 4` as the executing
+> player cap when the socket has enforced twenty since the manager's `Awake` was fixed,
+> it carried NavMesh figures from the building that existed before the 2026-08-10 re-lay,
+> and it said there was no trailer while a 41-second one sat in this directory. Every
+> number below now comes from something run or read on 2026-08-12.
 
 ---
 
@@ -27,7 +35,7 @@ actually stands. Nothing here repeats it.
 | [copy-ko.md](copy-ko.md) | The Korean copy — name, short description, About This Game, bullets, tags, requirements. **This is the original**; the English follows it |
 | [copy-en.md](copy-en.md) | The same in English, plus the tag list, the genre and category fields, and one table tracing every claim to the file that backs it |
 | [headphone-notice.md](headphone-notice.md) | §13's 헤드폰 권장 표기, in the four places players actually see, and why the pivot made the requirement broader rather than narrower |
-| [trailer.md](trailer.md) | The shot list: ten beats for the descent, what each proves, which four can be shot today |
+| [trailer.md](trailer.md) | The cut, shot by shot: 23 shots, 41.57 s, what each proves, what the rig cannot do, and the five beats that still need a person at a keyboard |
 | [assets.md](assets.md) | Every capsule size with the Steamworks page it was read off, the rules that get a page rejected, and the screenshot re-shoot list |
 
 ---
@@ -36,26 +44,31 @@ actually stands. Nothing here repeats it.
 
 ```
 docs/store/
-  capsules/          11 assets at Valve's current sizes, + legibility/ proofs
-  screenshots/       10 frames — ⚠ all of the deleted co-op game
-  trailer/           13 reference frames — ⚠ same
-  defects/           5 frames that are evidence, NOT for upload
-  party.mp4          ⚠ not a trailer: 1280×720, 3.00 s. Delete or move it
+  capsules/              11 assets at Valve's current sizes, + legibility/ 5 proofs
+  screenshots/           10 frames — ⚠ all of the deleted co-op game
+  trailer/               13 reference frames — ⚠ same, and no longer an input to anything
+  defects/               5 frames that are evidence, NOT for upload
+  trailer_descent.mp4    ✅ the trailer. 1920×1080, 30 fps, 41.57 s, 11,960 Kbps, 59 MB
+  party.mp4              ⚠ not a trailer: 1280×720, 24 fps, 3.00 s. Delete or move it
 ```
+
+Every line of that tree was counted and every figure `ffprobe`d or `sips`ed on
+2026-08-12.
 
 ---
 
 ## The short version
 
-**The copy can go up. The pictures cannot.** That is the exact inverse of what this
-file said on 2026-08-01, which is why it is worth saying in those words.
+**The copy can go up. The stills cannot.** That is the exact inverse of what this
+file said on 2026-08-01, which is why it is worth saying in those words. The moving
+picture can go up too, which is new since 2026-08-04.
 
 Both descriptions have been rewritten for the race, every claim in them is traced to
 a file on disk in [copy-en.md §10](copy-en.md), and the tags no longer say `Co-op`.
-Capsule **sizes** are all correct — re-verified with `sips` on 2026-08-03
-([STEAM-RELEASE.md §I.3.2](../STEAM-RELEASE.md)).
+Capsule **sizes** are all correct — re-verified with `sips` on 2026-08-12, all eleven
+plus the five legibility proofs ([STEAM-RELEASE.md §I.3.2](../STEAM-RELEASE.md)).
 
-**Three things block the page, in order:**
+**Two things block the page, in order** — it was three until the trailer got shot:
 
 1. **All ten screenshots photograph the deleted game.** One of them is the shop; one
    is captioned "five storeys" for a building that now has eight. The capsules are
@@ -66,15 +79,26 @@ Capsule **sizes** are all correct — re-verified with `sips` on 2026-08-03
    요양원 지하 / SANATORIUM BELOW. `DescentMap.MapName` already reconciles them —
    *하강 — 요양원 지하 8층* — which is the argument for making the title the descent
    and the sanatorium the setting. [copy-en.md §1](copy-en.md) has the command.
-3. **No trailer**, and the file called `party.mp4` is a three-second 720p clip named
-   after a party of four that no longer exists. [trailer.md](trailer.md) is a shot
-   list for the race, and it says which four of the ten beats can be shot this week —
-   they are the four strongest ones.
+
+**And one that stopped blocking it.** There is a trailer now:
+`trailer_descent.mp4`, 23 shots and 1247 frames rendered in-engine by
+`tools/render/descent_film.py`, clearing every row of Valve's format table. It is
+**silent** — the mix is an edit-suite job and [trailer.md §9](trailer.md) says what has
+to happen first. `party.mp4` is still sitting beside it: a three-second 720p clip named
+after a party of four that no longer exists. Move it before somebody uploads the wrong
+file.
 
 **One thing that is honestly missing and is nobody's marketing problem:** there is no
-screenshot with more than one player in it, on the store page of a twenty-player race,
-because **no two peers have ever connected in this repository** (STEAM-RELEASE.md
-§I.4.2). The copy says so in its own words rather than hiding it.
+screenshot or frame with more than one *player* in it, on the store page of a
+twenty-player race. Not because the peers cannot connect — twenty instances have
+connected on this desk, and the trailer rig can stand two shipped `Runner.fbx` bodies on
+two real spawn marks — but because **nobody has played a match of this game.** Not the
+owner, not a tester, not once. The copy says so in its own words rather than hiding it.
+
+> ⚠ **Do not re-import "no two peers have ever connected" from STEAM-RELEASE.md
+> §I.4.2.** That paragraph was written before `LocalTwoInstanceEntry.cs` existed, and it
+> is now the stale document. The true and much more uncomfortable sentence is the one
+> above it: no person has played this.
 
 ---
 
@@ -84,14 +108,17 @@ because **no two peers have ever connected in this repository** (STEAM-RELEASE.m
 python3 tools/render/store_shots.py probe --seed 20260802 --out /tmp/descent_probe.json
 python3 tools/render/store_shots.py shoot --spec tools/render/store_shots.json
 python3 tools/render/store_capsules.py --check
-python3 tools/render/store_shots.py shoot --spec tools/render/trailer_frames.json
+python3 tools/render/descent_film.py --out docs/store/trailer_descent.mp4
 ```
 
-⚠ **Both spec files are stale.** `store_shots.json` and `trailer_frames.json` hold
-camera coordinates in the seed-1204 sanatorium; the descent is
+⚠ **`store_shots.json` is stale and `trailer_frames.json` is dead.** Both hold camera
+coordinates in the seed-1204 sanatorium; the descent is
 `DescentMap.DefaultSeed = 20260802`, eight storeys, every one centred on cell (12, 12)
-with radius 11. Re-probe, rewrite the specs against [assets.md §4](assets.md) and
-[trailer.md §2](trailer.md), then shoot.
+with radius 11 (`DescentMap.Centre = 12`, `DescentMap.Radius = 11`). Re-probe and rewrite
+`store_shots.json` against [assets.md §4](assets.md), then shoot. **Do not rewrite
+`trailer_frames.json`** — the trailer moved to `trailer_shots.json`, which names anchors
+the rig resolves against the scene rather than coordinates that go stale on a re-seed
+([trailer.md §0](trailer.md)).
 
 Never add `-nographics`; the driver deliberately omits it, because that flag disables
 the graphics device and every frame comes out black. Check the exit code before the
@@ -108,8 +135,10 @@ Recorded here because these are the sentences somebody will helpfully add back:
   game and does not transfer.
 - **No release date.** A date is a promise Valve enforces with a two-week gate, and
   moving it costs the page more than never setting one.
-- **No claim that twenty players work.** Twenty is the design; the measured peer count
-  is zero, and the About This Game says that out loud.
+- **No claim that twenty players work.** Twenty is the design and the socket really does
+  enforce it (`HorrorGameNetworkManager.cs:88`), but no person has played a match at any
+  field size, and the About This Game says that out loud. Do not upgrade "twenty
+  instances connected on one desk" into "twenty players work".
 - **`Single-player` is not ticked.** It was, on the old page, because it was the only
   mode that worked. The game needs two players (§11) and a solo scene is a test
   harness.

@@ -22,8 +22,8 @@ start with `/`. Commands are written to be run from that root.
 | 6 | [How to verify anything](06-verifying.md) | Which check answers which question — and which ones look green while failing? |
 | 7 | [The expensive bugs](07-expensive-bugs.md) | The two that cost the most days, and what they taught. |
 | 8 | [Design decisions](08-design-decisions.md) | Why Mirror, why host authority, why the monster is 0.3 m/s faster than a run. |
-| 9 | [Open questions](09-open-questions.md) | The six balance findings, what each blocks, and who decides. |
-| 10 | [Glossary](10-glossary.md) | 주자 → `RunnerAbility`. The design document is in Korean; the code is in English. |
+| 9 | [Open questions](09-open-questions.md) | F-001…F-007, what each blocks, and who decides. [BALANCE-FINDINGS.md](../BALANCE-FINDINGS.md) now runs to **F-013** — that file is the list, this page is the triage. |
+| 10 | [Glossary](10-glossary.md) | 주자 테스트 → `Core/Map/RunnerTest.cs`. The design document is in Korean; the code is in English. |
 
 ---
 
@@ -33,7 +33,7 @@ This wiki routes. These decide.
 
 | Document | Authority over | Never do this |
 |---|---|---|
-| [`docs/game-design.md`](../game-design.md) v0.5 | **What the game is.** 16 sections, cited everywhere as §01…§16 | Do not "fix" the design silently — see [Open questions](09-open-questions.md) |
+| [`docs/game-design.md`](../game-design.md) v1.1 | **What the game is.** 16 sections, cited everywhere as §01…§16. §04 (직업) and §08 (경제) are **tombstones** — the numbers went, the section numbers stayed so code citations still resolve | Do not "fix" the design silently — see [Open questions](09-open-questions.md) |
 | [`docs/ARCHITECTURE.md`](../ARCHITECTURE.md) | **Where code goes and how pieces talk** | Do not add a Unity reference under `Assets/Scripts/Core/` |
 | `unity/HorrorGame/Assets/Scripts/Core/GameConstants.cs` | **Every tuned number** | Do not write a tuned literal anywhere else |
 | [`docs/STATUS.md`](../STATUS.md) | **What is actually true today**, with the command that produced each number | Do not quote a number from any other doc without re-running it |
@@ -50,15 +50,15 @@ luminance bands) · [ASSETS.md](../ASSETS.md) (asset contracts) · [CI.md](../CI
 
 | I want to | Read first | Then run |
 |---|---|---|
-| change a speed, a weight, a price, a timing | [Where every number lives](03-where-numbers-live.md) | `dotnet test core/HorrorGame.Core.Tests/HorrorGame.Core.Tests.csproj` |
+| change a speed, a multiplier, a timing | [Where every number lives](03-where-numbers-live.md) | `dotnet test core/HorrorGame.Core.Tests/HorrorGame.Core.Tests.csproj` |
 | add a rule / a state machine / anything testable without an engine | [The layering rule](02-layering-rule.md) | same |
 | add a `MonoBehaviour` | [Where a file may live](04-where-code-lives.md) | Unity compile check, [Verifying §2](06-verifying.md) |
-| change the map, its size, or its kit | [Open questions F-006](09-open-questions.md) + [ART.md §2.3](../ART.md) | §12 validation **and** `MonsterChaseTests` — [Verifying §3](06-verifying.md) |
+| change the map, its size, or its kit | [Open questions F-007](09-open-questions.md#f-007) + [ART.md §2.3](../ART.md) | §12 validation **and** `MonsterChaseTests` — [Verifying §3](06-verifying.md). Regeneration is `MapPipeline` only; `MapSceneGenerator.GenerateFromCommandLine` is layout-only and its numbers describe a building without dressing, decals or glows |
 | touch the monster's movement or pathing | [The expensive bugs B-001](07-expensive-bugs.md) | `MonsterChaseTests`, **not** the NavMesh audit alone |
 | touch audio generation or the clarity table | [The asset pipeline §2](05-asset-pipeline.md) + [F-002/F-003](09-open-questions.md) | `tools/audio/verify_audio.py` |
 | touch a model, prop or map-kit piece | [The asset pipeline §3](05-asset-pipeline.md) | `tools/ci/run_blender_generators.sh`, then reimport in Unity |
 | change how the game looks | [ART.md](../ART.md) | `SceneShot.Batch` **without** `-nographics`, then `tools/render/frame_stats.py` |
-| add a networked field | [Design decisions §3](08-design-decisions.md) | `NetTests` in PlayMode — `NetReplicationAudit` fails on a leaked host secret |
+| add a networked field | [Design decisions §3](08-design-decisions.md) | `NetTests` in PlayMode. 🔴 **`NetReplicationAudit` is deleted** — it walked every replicated surface looking for a leaked clue or objective, and a race has no answer to hide ([ARCHITECTURE §4](../ARCHITECTURE.md)). Nothing scans for you now; the host-authority rule is enforced by `RaceState` owning the reporting half and by review |
 | know whether the game is fun | Nothing here can tell you | Two instances, two humans — §14. This is the highest-value unfinished thing in the project |
 
 ---
@@ -72,12 +72,12 @@ allowed to assume the invariant holds.
 |:--:|---|---|
 | 1 | No file under `Assets/Scripts/Core/` references `UnityEngine` or `UnityEditor` | `FoundationTests.CoreSources_DoNotReferenceUnityEngine` + `noEngineReferences: true` in `HorrorGame.Core.asmdef` |
 | 2 | Every tuned number is in `GameConstants`; a literal elsewhere is a bug | `GameConstants.Validate()` guards the *relationships*; reviewers guard the literals |
-| 3 | Core code never reads a clock or a global RNG | `FoundationTests` — takes `IRandomSource` and an explicit `float deltaSeconds` |
-| 4 | A seed replays a match exactly | `dotnet run --project core/HorrorGame.Sim -- replay --seed 42 --times 3` |
-| 5 | Clue contents and the objective's location never leave the host | `[HostOnly]` + `NetReplicationAudit`, run by `NetTests` in PlayMode |
-| 6 | The monster can walk from its spawn to a player across three storeys | `MonsterChaseTests` in PlayMode — **not** the NavMesh audit |
-| 7 | Every positional audio clip is mono | `AssetImportValidator.ValidateAllBatch` + `verify_audio.py` section 5 |
-| 8 | A generated map passes all 16 §12 rules before it can be saved | `MapValidator.Validate` called from the generator; generation fails, it does not warn |
+| 3 | Core code never reads a clock or a global RNG | `FoundationTests.CoreSources_DoNotUseAmbientRandomnessOrClock` — Core takes an `IRandomSource` and an explicit `float deltaSeconds` |
+| 4 | A seed replays a match exactly | `FoundationTests.DeterministicRandom_SameSeed_SameSequence` and `.CoreSources_DoNotUseAmbientRandomnessOrClock`; for the building, `MapTests.Descent_IsDeterministic_AndTwoSeedsAreNotTheSameBuilding`. 🔴 **The old command here was `dotnet run --project core/HorrorGame.Sim -- replay`.** The simulator was deleted with the co-op game at `e8c67ae`; there is no `horrorsim`. The *invariant* survived it — see [CI.md §2.1](../CI.md) |
+| 5 | Only the host may say a runner arrived | `RaceState` (`Core/Race/`) owns `ReportDescent` / `ReportFinish` / `ReportCaught`; the HUD only reads `Standings()`. 🔴 **This row used to read "clue contents and the objective's location never leave the host", enforced by `[HostOnly]` + `NetReplicationAudit`.** Both the clue chain and the audit are deleted — a race announces its destination on purpose. The row was *replaced*, not dropped ([ARCHITECTURE §4](../ARCHITECTURE.md)): the host's job moved from concealing to adjudicating, and an arrival is the first value anyone forges in a racing game |
+| 6 | The monster can walk from its spawn to a runner on its own storey | `MonsterChaseTests` in PlayMode — **not** the NavMesh audit. Only its own storey: a creature cannot use a 투하구, so it has not been able to cross the building since the pivot ([BLOCKERS.md B-001](../BLOCKERS.md#b-001)) |
+| 7 | Every positional audio clip is mono | `AssetImportValidator.ValidateAllBatch` + `verify_audio.py` section 5 (`CHANNEL POLICY`) |
+| 8 | A generated map passes §12's 14 rules, or the failure is waived **by name** | `MapValidator.Validate` called from the generator. A failure not listed in `MapSceneGenerator.KnownFailingRules` aborts generation and writes nothing; a listed one writes the map and stamps `이 빌드에는 알려진 지도 결함이 있다` on it. Exactly one is waived today — `centre-path` ([STATUS.md §2.2](../STATUS.md)) |
 
 ---
 
@@ -106,24 +106,25 @@ Run these before trusting any count on any page. Each one regenerates a fact thi
 wiki asserts, and each is cheap and needs no Unity licence and no project lock:
 
 ```bash
-# the assembly ownership table on page 4
-find unity/HorrorGame/Assets/Scripts -name '*.asmdef' | sort
+# the assembly ownership table on page 4 (21 under Scripts/, 10 under Tests/)
+find unity/HorrorGame/Assets/Scripts unity/HorrorGame/Assets/Tests -name '*.asmdef' | sort
 
-# the number of §12 rules (page 6 §3.6 says 16)
+# the number of §12 rules (14 on 2026-08-12; page 6 §3.6 still says 17 — it is wrong)
 grep -c 'public const string Rule' unity/HorrorGame/Assets/Scripts/Core/Map/MapValidator.cs
 
-# the number of tuned constants (page 3 says 184)
+# the number of tuned constants (page 3 says 138)
 grep -cE 'public (const|static readonly)' unity/HorrorGame/Assets/Scripts/Core/GameConstants.cs
 
-# the asset counts on page 5 (86 fbx / 166 wav as of 2026-07-31)
+# the asset counts on page 5 (75 fbx / 168 wav as of 2026-08-12)
 find unity/HorrorGame/Assets/Models -name '*.fbx' | wc -l
 find unity/HorrorGame/Assets/Audio  -name '*.wav' | wc -l
 ```
 
-Anything about the **map's size, grade or shape** is deliberately not stated here —
-[F-006](09-open-questions.md)'s most likely resolution is to grow the map, so those
-figures move. Get them from `HorrorGame ▸ Scene Gen ▸ Report Map Quality`, which
-writes nothing.
+Anything about the **map's size, grade or shape** is deliberately not stated here.
+There is no longer *one* building: `Assets/Scenes/Generated/Resources/DescentRoster.txt`
+names **eight**, one per seed, and the lobby picks one — so every per-place figure is a
+property of a seed rather than of the project. Get them from
+`HorrorGame ▸ Scene Gen ▸ Report Map Quality`, which writes nothing.
 
 ---
 
@@ -137,3 +138,8 @@ quietly working around it.
 
 Measurements in this wiki are dated and attributed. A number without a date is a
 number nobody re-ran.
+
+Every count on **this page** was re-derived on **2026-08-12 at `4ab204f`** by the four
+commands above. Pages 06–10 were not part of that pass and at least three of their
+numbers are known stale — page 6 §3.6 and §5 say §12 has 17 rules (it has 14), and page
+10 still maps 주자 onto `Core/Abilities/RunnerAbility.cs`, a file the pivot deleted.

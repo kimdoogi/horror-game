@@ -4,18 +4,36 @@ Things that stop the game working, as opposed to design questions. Balance
 contradictions live in [BALANCE-FINDINGS.md](BALANCE-FINDINGS.md). Art defects that do
 not stop the game live in [ART.md](ART.md) §7.
 
-**Last triaged: 2026-08-03, at commit `a3e268e`.** Every status below was re-checked
-against the artefact at that commit; where an entry was closed by a measurement, the
-measurement and the log it came from are quoted.
+**Last triaged: 2026-08-12, at commit `4ab204f` — every entry, not a subset.** Each
+status below was re-tested rather than carried forward. **Five closed** — B-002, B-011,
+B-012, B-016, B-017 — **B-015 was downgraded** once its stated cause was disproved, and
+**B-022 was opened** for a red that had never been filed at all. The other sixteen were
+re-tested and confirmed where they stood.
 
-> **2026-08-05 — B-007, B-014 and the new B-019 only.** Those three were re-measured
-> against the §12 report the shipped graph produces today; nothing else in this file was
-> re-checked and the 08-03 triage still stands for the rest.
->
-> **2026-08-05, later the same night — B-018 closed and B-020 opened-and-closed.** Both
-> were measured on `gen-20260805-025901-seed20260802` and on the roster published at
-> `A135BAD7`: four matches were run and the building each one loaded was read out of the
-> log, and the solo scene's reach audit was re-taken. Still nothing else re-triaged.
+> ⚠️ **`/tmp` was wiped on 2026-08-10 and every log this file cites from it is gone** —
+> `/tmp/r3`–`r7*`, `/tmp/editmode.xml`, `/tmp/r7_all.xml`, all of it. So are
+> `dist/test-results/` and `biggate/`. The quotations below are kept as the record of what
+> was measured, but **none of them can be re-opened**; where a 2026-08-12 status rests on
+> one of those logs it says so, and where it rests on something re-runnable today
+> (`dotnet test`, `tools/ci/verify_audio.sh`, `clang++`, the sources, `git`) it names that
+> instead. This is why closures are now pinned to tests and commits rather than to logs.
+
+<details><summary>Earlier triage passes, kept for provenance</summary>
+
+**2026-08-03, at `a3e268e`.** The first full pass; where an entry was closed by a
+measurement, the measurement and the log it came from are quoted.
+
+**2026-08-05 — B-007, B-014 and the new B-019 only.** Those three were re-measured
+against the §12 report the shipped graph produces today; nothing else was re-checked.
+
+**2026-08-05, later the same night — B-018 closed and B-020 opened-and-closed.** Both
+were measured on `gen-20260805-025901-seed20260802` and on the roster published at
+`A135BAD7`.
+
+**2026-08-10 — B-007 closed, B-019 nearly closed, B-021 opened.** By the `RadialStorey`
+re-lay at `9f0f447` and the `SceneShot` cap removal at `471ffab`.
+
+</details>
 
 > **The game changed shape on 2026-08-02.** Four-player co-operative recovery became a
 > twenty-player competitive descent ([DESCENT-PIVOT.md](DESCENT-PIVOT.md)). Several
@@ -24,7 +42,7 @@ measurement and the log it came from are quoted.
 | # | State | One line |
 |---|---|---|
 | [B-001](#b-001) | 🟢 closed | The creature could not reach the player |
-| [B-002](#b-002) | 🟡 dormant | EditMode red on a Mirror package-cache `.meta` |
+| [B-002](#b-002) | 🟢 closed by deletion 2026-08-03 | EditMode red on a Mirror package-cache `.meta` — the test is gone |
 | [B-003](#b-003) | 🟢 closed by the pivot | Two 개방 공간 dropped from every generation |
 | [B-004](#b-004) | 🔴 **open — blocks release** | The networking library is a stranger's repack |
 | [B-005](#b-005) | 🟢 closed | Regenerating the map unregistered the scene 시작 loads |
@@ -34,23 +52,153 @@ measurement and the log it came from are quoted.
 | [B-009](#b-009) | 🟢 closed | The NavMesh audited was not the one just built |
 | [B-009b](#b-009b) | 🟢 closed | …and the chamber sealed the middle its own way |
 | [B-010](#b-010) | 🟢 closed | The middle of a radial storey had no piece |
-| [B-011](#b-011) | 🔴 **open** | The one red test is on the path a human takes |
-| [B-012](#b-012) | 🔴 **open** | The simulator measures a building the game deleted |
-| [B-013](#b-013) | 🟠 open (process) | CI was red for three commits that said green |
+| [B-011](#b-011) | 🟢 closed 2026-08-03 | The one red test is on the path a human takes — the seat now gets a real body |
+| [B-012](#b-012) | 🟢 closed by deletion 2026-08-03 | The simulator measured a building the game deleted; the simulator went too |
+| [B-013](#b-013) | 🟠 open (process) | CI was red for three commits that said green — **and it happened again for six days** |
 | [B-014](#b-014) | 🟢 closed | §12's report said FAIL for three different reasons and named none of them |
-| [B-015](#b-015) | 🔴 **open — blocks release** | No shippable build: IL2CPP will not compile here |
-| [B-016](#b-016) | 🟠 open | EditMode has not been run since the pivot |
-| [B-017](#b-017) | 🟠 open | The first-person view has no hands on the runner rig |
+| [B-015](#b-015) | 🟠 open — owner action | No Release build exists. The toolchain fault it blamed is **fixed**; the claim is untested |
+| [B-016](#b-016) | 🟢 closed 2026-08-08 | EditMode had not been run since the pivot — it ran, 95/95 |
+| [B-017](#b-017) | 🟢 closed 2026-08-10 | The first-person view has no hands — `RunnerArms.fbx` and a viewmodel landed |
 | [B-018](#b-018) | 🟢 closed | Every match is the same building — 3 in the roster, a second match loads another |
-| [B-019](#b-019) | 🔴 **open** | §12-D's centre-path: every storey is 7.5–42.5 m short of the band |
+| [B-019](#b-019) | 🔴 **open** | §12-D's centre-path: 21 of 22 entry points in band, the last one 2.5 m short |
 | [B-020](#b-020) | 🟢 closed | `PlayerReach` counted its own measuring body as a wall and refused eight roster slots |
 | [B-021](#b-021) | 🔴 **open** | B8 굴착층 is the brightest room in the building, and nothing had ever photographed it |
+| [B-022](#b-022) | 🔴 **open** | Voice: three red PlayMode tests, unfiled for four days — the creature never hears anyone speak |
+
+**Open: 6 of 23.** B-004 blocks release outright and B-015 gates it on one build nobody has
+run; B-013 is process; B-019 and B-021 are measured map/lighting defects; B-022 is a
+shipped feature that has never once been green.
+
+---
+
+## B-022 · Proximity voice has three red tests, has never been green, and nobody filed it
+
+**Status:** 🔴 **open** · opened 2026-08-12 · red since it was written on 2026-08-04 ·
+**cause found in the source, not yet confirmed in the engine**
+
+Three PlayMode cases in
+`Assets/Tests/PlayMode/Voice/VoiceSocketTests.cs` have been failing in every recorded
+sweep, and until today **they appeared in no blocker**. STATUS.md §2.3 said so in as many
+words — *"this is the largest red in the project and it is not in BLOCKERS.md"* — and
+that sentence sat there for four days. This entry is that omission being closed.
+
+The three, with the file's own line numbers:
+
+| # | test | asserts |
+|---|---|---|
+| 242 | `AVoiceCrossesARealSocketAndArrivesAttenuatedByTheRule` | the relay forwards > 0 frames, KCP carries them, the client plays them at `VoiceRules.Gain` |
+| 492 | `AWallBetweenThemCostsTheRulesOcclusionAndNotTheEnginesRolloff` | with a wall between, `FramesPlayed > 0` and the gain is the occluded one |
+| 575 | `SpeakingIsReportedToTheCreatureEvenWithNobodyInRange` | `MatchDirector.VoiceEffort == Shout` while Shout is held |
+
+Last measured 2026-08-08 16:51:56Z: `total 124 passed 121 failed 3`, and all three failures
+were these. Two later commits (`58b22b9` 08-08, `8db3d78` 08-09) report the same 121/3.
+`VoiceSocketTests.cs` has been touched by exactly **one** commit in its life — `4924ae5`,
+2026-08-04, the one that created it. **No commit has ever claimed to fix or re-run it.**
+
+### What is actually broken, and what is not
+
+Two of the three symptoms are consequences, not defects. The forwarding path is present
+and correct — `VoiceHostRelay.cs:186` builds a `VoiceDownstreamMessage` and `conn.Send`s
+it, incrementing `FramesForwarded` on the same statement — and the occlusion path is
+present and correct at `VoicePlayback.cs:376` (`Physics.Raycast` against
+`GameAudio.OccluderMask`, both ends inset 0.35 m). **Neither is ever reached, because no
+frame is ever produced.** `FramesForwarded == 0` means `Accept` was not called, not that
+the send is missing.
+
+The defect that explains all three is one line. `VoiceRuntime.cs:321–329` attaches
+`VoicePushToTalk` to the **same GameObject** as `VoiceCapture`:
+
+```csharp
+_capture = gameObject.AddComponent<VoiceCapture>();
+gameObject.AddComponent<VoicePushToTalk>();
+```
+
+and `VoicePushToTalk.Update` then writes the keyboard's answer over the top, every frame:
+
+```csharp
+// VoicePushToTalk.cs:83-84
+Effort = Read(keyboard);
+capture.SetEffort(Effort);
+```
+
+`Read` returns `Silent` when no key is held. So **anything driving `VoiceCapture`
+programmatically is reset to Silent within one frame** — which is exactly what the fixture
+does at `VoiceSocketTests.cs:595` and `:917`. That single cause produces these three
+failures and no others: test 575 reads `Silent` at the director; tests 242 and 492 get
+`CloseMicrophone()` (`VoiceCapture.cs:206`), which clears the injected queue
+(`InjectedVoiceLine.cs:91`), so the frames the fixture pushed are discarded before `Drain`
+ever sees them. The fourth voice test, `AWhisperDoesNotCarryAndTheMicrophoneCloses`,
+asserts only zeros and therefore **passes vacuously** — it is green for the same reason
+the others are red.
+
+**What is not yet known** is whether that is what fires. `VoicePushToTalk.cs:73–81`
+guards against precisely this, returning early when `Keyboard.current == null`, with a
+comment saying the guard exists so it does not "silently mute anything driving
+`VoiceCapture` directly". Whether `Keyboard.current` is null in the batch-mode test host
+cannot be settled without running Unity. `InteractionKeyPathTests.cs:95` asserts a
+batch-mode editor has no input devices — but `GunTests` and `PlayerStanceTests` both add a
+`Keyboard` and remove it again, so a leaked device is possible. **Mechanism confirmed in
+source; trigger inferred.** One PlayMode run settles it.
+
+### The existing explanation in the repo is wrong, and it matters
+
+`TESTING.md` §"floating failures" calls these three "environment-gated — they need the
+microphone to be producing *sound*", citing a log line `[Voice] Microphone line at
+16000 Hz`. Two things rule that out:
+
+1. **The fixture replaces the line.** `VoiceSocketTests.cs:176` sets `VoiceLines.Override`,
+   and `VoiceLines.cs:51` returns the override before consulting a device;
+   `InjectedVoiceLine.IsAvailable` is unconditionally `true` and its `Name` is
+   `"Injected"`. A real microphone is not in this path, and a Voice-fixture session would
+   have logged `Injected`, not `Microphone`. `VoiceRuntime` installs itself in *every*
+   PlayMode session, so that quoted line was written by some other fixture's run.
+2. **Even granting a dead microphone, failure 575 is unexplainable by it.**
+   `ReportToDirector` is called at `VoiceCapture.cs:186`, deliberately *before* the
+   `IsAvailable` check at `:195`, with a comment saying it must not sit behind any gate
+   because "the creature hears the room, not the network". A missing microphone cannot
+   make `VoiceEffort` read `Silent`.
+
+Calling a red "environmental" is the most expensive kind of wrong answer, because it
+converts a defect into an expected result. That is [B-013](#b-013)'s lesson in a different
+costume.
+
+### What it costs the game
+
+Not stamina — there is no cost for talking anywhere in the design, and §06 is the monster
+section, not a voice section. What is lost is the **noise cue**: §06's patrol leaves
+순찰 on 「소리 감지 → 경계」, `MatchDirector.cs:935–951` implements it, and
+`VoiceRules.cs:115–136` prices it — Whisper 0 m, Talk 12 m × floor clarity, Shout 30 m ×
+1.4 × clarity, i.e. **42 m on metal**. With `VoiceEffort` stuck at `Silent` the creature
+is never told a runner is speaking, so **twenty people can shout to each other across a
+floor and nothing hunts them for it.** That is the one thing voice was supposed to cost in
+a game whose currency is time, and it is exactly the shape of [F-012](BALANCE-FINDINGS.md#f-012)
+— the monster could never chase anybody, because nothing ever made a sound.
+
+Meanwhile `dist/READ-ME-FIRST.txt` tells playtesters 「음성 대화는 동작이 확인되지
+않았습니다」, which is honest, and this entry is why.
+
+### What it would take
+
+1. Decide who owns the effort. Either `VoicePushToTalk` stops writing when it has no
+   device (make the `Keyboard.current == null` guard actually hold in batch mode, and
+   test *that*), or `VoiceCapture.SetEffort` gains an explicit override the fixture can
+   take and the push-to-talk component respects.
+2. Re-run the fixture. The three tests already assert the right things; nothing about them
+   needs weakening.
+3. **Do not baseline these as expected failures**, and do not restore the "microphone"
+   explanation. A vacuously-green fourth test is already in this fixture; a fifth would
+   finish the job of making voice look tested.
+
+> **Note the shape of this entry, because it recurs.** The measurement was four days old
+> and correct, the diagnosis attached to it was wrong, and the wrong diagnosis was the
+> reason nobody filed it. A red with an explanation stops being read.
 
 ---
 
 ## B-021 · The deepest floor is the brightest room, and for ten days nothing had ever taken its picture
 
-**Status:** 🔴 **open** · opened 2026-08-10 · measured, cause not found
+**Status:** 🔴 **open** · opened 2026-08-10 · measured, cause not found · **re-confirmed
+2026-08-12: not re-litigated, and nothing in the tree has moved it**
 
 `SceneShot.BuildViews` photographed `Zone_*` transforms `.Take(6)`. That cap was written
 on 2026-07-31 for a three-storey building; 하강 has stacked **eight** storeys since
@@ -143,6 +291,15 @@ is why the two audits are always taken over a named, stamped surface.
 
 **Status:** 🔴 **open** · opened 2026-08-05 · **21 of 22 entry points inside the band as of
 2026-08-10**; one is 2.5 m short and the waiver stays until it is closed
+
+> **Re-confirmed 2026-08-12, and it is now gated rather than merely pinned.**
+> `MapTests.Descent_CentrePath_IsInsideSection12DsBandExceptAtTheRimCellBesideAGate`
+> asserts the report contains `walk 87.5 m~132.5 m` and `1 of 22 OUTSIDE`, and it passes
+> in today's `dotnet test core/HorrorGame.sln -c Release` — 357/357, 0 failed.
+> `MapSceneGenerator.KnownFailingRules` holds exactly one entry, `RuleCentrePath`, which
+> is the same fact from the generator's side. `471ffab` also made this one of the four
+> §12 tests the required CI job runs by name, so a slide back toward 47.5 m now fails a
+> push rather than a re-read.
 
 > **Nearly closed, 2026-08-10, by the same re-lay that closed [B-007](#b-007).** The
 > 중간 관문 now walks 20 m round the new d5 lane before turning in — length added to every
@@ -397,9 +554,65 @@ not have to: the screen only ever runs on the handful being considered for a slo
 
 ## B-017 · The first-person view has no hands on the runner rig
 
-**Status:** 🟠 open · found 2026-08-03 · warning only, which is why a green suite kept it
+**Status:** 🟢 **closed 2026-08-10** by `b92ae78` · found 2026-08-03 · **two of this
+entry's own asks were not done, and they are carried below rather than dropped**
 
-Printed on **every** rig build, in `/tmp/r6_solo.log` and `/tmp/r6_net.log`:
+> **How it closed.** `b92ae78` — *"the player finally has hands — a dedicated viewmodel
+> instead of a third-person body seen from inside"*, authored 2026-08-10 00:23:01 +0900.
+> Not 08-11: that date has been corrected here because a closure dated a day late is a
+> closure nobody can find in `git log`.
+>
+> The fix is neither of the two this entry proposed. Rather than re-exporting `Runner.fbx`
+> with `MESH_SPLIT`, or teaching `PlayerFirstPersonView` to find arms by bone subtree, a
+> **separate viewmodel asset** was authored: `Assets/Models/Player/RunnerArms.fbx`
+> (558 620 bytes, tracked, 7 bones, 5 730 tris, 8 clips), instantiated under the rig's
+> Camera by the new `PlayerFirstPersonView.EnsureFirstPersonArms()` (`:339`, called from
+> `:160` and `Collect()` at `:437`). Classification is now **by parentage** (`:441–455`) —
+> anything under `_firstPersonArms` is arms — with the old material-slot rule kept only as
+> a fallback. That removes the export-flag dependency this entry complained about, which
+> was the point of proposal two, without the bone-subtree heuristic.
+>
+> **Measured, from the commit's own figures:**
+>
+> | | before | after |
+> |---|--:|--:|
+> | frame covered by the body | 78–100 % | **7.1–12.2 %** |
+> | gloves on screen | **none** (viewport y −0.21 to −2.25, or behind the camera) | both, in every live clip |
+> | nearest geometry to the eye | 15.8 mm — inside the near plane | **151.9 mm**, 3× the near plane |
+>
+> The engine-side confirmation is a log line quoted in STATUS.md — `1 arm renderer(s)
+> drawn (1 of them the RunnerArms viewmodel) … arms: RunnerArms bones=7 weighted=3` —
+> from `biggate/8_solo.log`, **a file that no longer exists**. So the closure rests on the
+> commit's measurements and on the asset being in the tree, not on a re-readable log.
+
+### Two things this entry asked for that did **not** land
+
+Carried forward deliberately, because both are the reason the defect was invisible for
+five days in the first place:
+
+1. **The warning is still a warning.** `PlayerFirstPersonView.cs:489` still calls
+   `Debug.LogWarning`, with the same opening sentence — only the remedy text was
+   rewritten. A *second* `LogWarning` was added at `:381` for a missing `RunnerArms.fbx`.
+   This entry's own words stand: *a first-person game whose player has no body is not a
+   warning*.
+2. **No test covers the viewmodel.** `PlayerFirstPersonViewTests` was not touched by
+   `b92ae78`; its last commit is `e8c67ae`. `RunnerArms`, `EnsureFirstPersonArms` and
+   `FirstPersonArms` appear **nowhere** in `Assets/Tests/PlayMode/Player/`. The fixture's
+   `BuildSplitRig()` builds from `Player_Body`/`Player_Arms`/`Player_Torch` — the
+   vocabulary of a model `PlayerFirstPersonView.cs:448` says this project no longer ships
+   — and contains no `Camera`, so `EnsureFirstPersonArms` returns null at `:365` and the
+   viewmodel branch is never entered. The commit gates it out on purpose ("the synthetic
+   test fixtures never grow a viewmodel"), so its reported `PlayerFirstPersonViewTests
+   7/7` is true and says nothing about the fix.
+
+**Net: a regression here would still be silent, and would still only be a warning.** That
+is a smaller entry than this one and belongs to whoever owns those files; it is recorded
+here rather than left as a fresh discovery for the next reader.
+
+### The original entry, as written on 2026-08-03
+
+Printed on **every** rig build, in `/tmp/r6_solo.log` and `/tmp/r6_net.log` (both since
+deleted):
 
 ```
 [Player] No renderer under this rig reads as the owner's hands, so they will see nothing
@@ -430,7 +643,45 @@ all green) builds its rig from a different prefab.
 
 ## B-016 · EditMode has not been run since the pivot
 
-**Status:** 🟠 open · found 2026-08-03 · a whole test platform is unmeasured
+**Status:** 🟢 **closed 2026-08-08** · found 2026-08-03 · the run happened: **95/95**
+
+> **How it closed.** EditMode ran on **2026-08-08 at 16:56Z, 95 of 95 passing**, recorded
+> in STATUS.md's verification table and committed at `471ffab`. Two earlier commit
+> messages report the same figure independently — `8bf2e75` (2026-08-05) and `8db3d78`
+> (2026-08-09), both "EditMode 95/95".
+>
+> **The XML is gone** (`/tmp` was wiped on 08-10), so the run itself cannot be re-read.
+> What *can* be checked is whether 95 is the right number, and it is — counted from the
+> sources at `4ab204f`, 2026-08-12:
+>
+> | file, under `Assets/Tests/EditMode/` | cases |
+> |---|--:|
+> | `Audio/AudioTests.cs` | 26 |
+> | `UI/UiTests.cs` | 17 |
+> | `Pivot/PivotTombstoneTests.cs` | 47 (6 `[Test]` + 41 from three `[TestCaseSource]`s) |
+> | `Pivot/PivotSceneTombstoneTests.cs` | 4 |
+> | `Pivot/PivotAssetTombstoneTests.cs` | 1 |
+> | **total** | **95** |
+>
+> The 41 generated cases come from `Pivot/DeletedVocabulary.txt` — 10 `token|`, 24
+> `probe|`, 7 `assetprobe|` rows, parsed by `PivotVocabulary.cs`. Pivot alone is **52**,
+> which is exactly the figure STATUS.md quotes from the run. Two independent counts landing
+> on the doc's two numbers is as close to re-reading the XML as this machine now gets.
+>
+> **And the answer to the entry's real question — red, or green while testing a game that
+> no longer exists — is the third one it did not consider: the platform was rebuilt.**
+> Of the five files this entry tabulated, three were deleted outright at `e8c67ae`
+> (`DropPlacementTests.cs` 13, `MatchGuidanceTests.cs` 2, `SoloMatchLoopTests.cs` 1),
+> `UiTests.cs` fell 59 → 17 as the §08 shop went with them, and `AudioTests.cs` is
+> untouched at 26. Nothing under `Assets/Scripts/**/Editor/` carries a `[Test]` any more.
+> The 52 new Pivot cases exist to assert the co-op game **stays** deleted — so the platform
+> that was "green while testing a game that no longer exists" is now substantially a
+> platform whose job is to prove that game is gone.
+>
+> The sentence this entry ended on — *"no document in this repository may quote a total
+> that includes an EditMode number"* — is lifted as of 2026-08-08.
+
+### The original entry, as written on 2026-08-03
 
 Every test result in `/tmp` newer than the pivot is PlayMode. The newest EditMode XML on
 this machine is `/tmp/editmode.xml`, `start-time 2026-08-01 11:51:06Z`, **101/101** —
@@ -459,9 +710,51 @@ document in this repository may quote a total that includes an EditMode number.
 
 ---
 
-## B-015 · There is no shippable build — IL2CPP will not compile on this host
+## B-015 · There is no shippable build — ~~IL2CPP will not compile on this host~~
 
-**Status:** 🔴 **open — blocks release** · owner action · reproduced 2026-08-03
+**Status:** 🟠 **open — owner action, one build wide** · opened 2026-08-03 ·
+**the cause this entry names is fixed; the claim in its title is now untested**
+
+> **The host toolchain is repaired. Measured 2026-08-12, no Unity involved:**
+>
+> ```bash
+> printf '#include <cmath>\nint main(){return 0;}\n' > /tmp/p.cpp
+> clang++ -std=c++17 /tmp/p.cpp -o /tmp/p          # exit 0 — binary produced
+> ```
+>
+> **Exit 0, with `CPLUS_INCLUDE_PATH` unset.** And the directory this entry blames is not
+> merely repaired, it is **gone**: `/Library/Developer/CommandLineTools/usr/include/c++`
+> no longer exists, so clang can no longer prefer a broken copy over the intact one. The
+> SDK's copy is still whole at 185 headers. Apple clang 17.0.0, `xcode-select -p` →
+> `/Library/Developer/CommandLineTools`. **The two explanations this entry could not
+> separate are now moot — neither can reproduce.**
+>
+> **But the title is still literally true, and that is why this stays open.** `dist/`
+> holds two players, both from 2026-08-10 at `471ffab`, and **both are Development/Mono**:
+>
+> | | config | backend | report's own verdict |
+> |---|---|---|---|
+> | `dist/macos-arm64` | Development | Mono | `shippable on Steam: no — this is a Development build` |
+> | `dist/windows-x64` | Development | Mono | `shippable on Steam: no — this is a Development build` |
+>
+> No `MONO-FALLBACK-DO-NOT-SHIP.txt` exists anywhere under `dist/`, and no build log does
+> either — `dist/logs/` is gone with `/tmp`. **So no Release build is recorded on this
+> machine since 2026-08-03**, and there is no IL2CPP log to read, failing or passing.
+> (Stated as an absence of evidence, which is what it is: a Release attempt could have been
+> made and left nothing behind. Nothing suggests one was.)
+>
+> **So the honest state is: a blocker whose stated cause has been disproved and whose
+> claim has never been re-tested.** It is one command from being closed or from being
+> re-opened with a real cause, and until somebody runs that command it must not be quoted
+> either way — least of all as "IL2CPP does not work here", which is now a claim with no
+> evidence behind it at all. Step 2 below (`sudo rm -rf` the Command Line Tools) is
+> **withdrawn**: the directory it would delete is already absent.
+>
+> Requires Unity, so it belongs to the owner. Step 3 — that a Windows Release player
+> cannot be produced on a Mac at all — is unaffected by any of this and is still the
+> reason Steam needs a Windows machine or the licensed runner.
+
+### The original entry, as reproduced on 2026-08-03
 
 ```
 exit code : 4
@@ -595,14 +888,61 @@ obsolete in one clause and load-bearing in the other, and deleting it whole gave
 the map passes for nothing.
 
 Still open, and still worth doing: fix `NavMeshAudit.Report`, which prints
-`← the surface is in pieces` on every run because eight islands is now correct
-(`NavMeshConnectivity.cs:556`).
+`← the surface is in pieces` on every run because eight islands is now correct.
+**Re-checked 2026-08-12 — unchanged, and the line has moved to
+`NavMeshConnectivity.cs:568`:** `sb.AppendLine($"  islands          {Islands}" + (Islands > 1
+? "  ← the surface is in pieces" : string.Empty))`. One island per storey is the designed
+answer (a 투하구 is a fall, not a path), so this scolds the reader on every correct run —
+the same happy-path-cries-wolf defect the whole entry is about, surviving inside its own
+closure.
 
 ---
 
 ## B-013 · CI was red for three commits whose messages said the suite was green
 
-**Status:** 🟠 open (process, not code) · found 2026-08-03 · the code half is fixed
+**Status:** 🟠 open (process, not code) · found 2026-08-03 · **both named holes are now
+closed, and the failure they describe recurred anyway and ran for six days**
+
+> **Re-triaged 2026-08-12. Read the recurrence first, because it is the whole entry.**
+>
+> From `471ffab`, 2026-08-10: the required `core tests (dotnet)` job had been running
+> `dotnet run --project core/HorrorGame.Sim -- validate` — **a project deleted at
+> `e8c67ae` on 2026-08-03** ([B-012](#b-012)). The gate therefore failed on **every push
+> for six days and 37 commits**, on a command that could never succeed again. The commit's
+> own reading is the right one: *"a red X nobody can fix is how people learn to stop
+> reading it."*
+>
+> It was not found by anybody reading CI. It was found while rewriting STATUS.md against
+> the artefact. **That is hole 1 — "nobody looked" — reproducing exactly, four days after
+> this entry named it, on the very job this entry asked to be made required.** Making a
+> check required does not make anyone read it.
+>
+> **Hole 2 is fixed.** `.github/workflows/ci.yml:28` now reads
+> `cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}`, so `main` no longer
+> cancels its own runs and a published commit gets a verdict rather than a grey tick.
+>
+> **The step was repaired rather than deleted**, and how it was repaired is worth keeping:
+> it now runs the four `MapTests` that own §12 by name — `Descent_EveryOtherSection12Rule
+> _StillPasses`, `Descent_MeetsSection12sSightBreakSpacing` (pins B-007's closure at
+> 12.5 m), `Descent_CentrePath_…` (pins B-019's exact remaining miss) and
+> `Descent_IsDeterministic_…` (holds B-018) — **and asserts the filter selected at least
+> four**, because a `--filter` matching nothing exits 0 while checking nothing, which is
+> the same vacuum the deleted project left. A gate that can pass vacuously is the thing
+> this entry is about, and that assertion is the only defence against it in the file.
+>
+> **The second red job named below is closed.** `asset audit (§12 audio)` passes:
+> `bash tools/ci/verify_audio.sh` on 2026-08-12 → `RESULT: PASS`, 2 blocking defects, both
+> accepted against `tools/ci/audio_baseline.json` and both pointing at
+> [F-002](BALANCE-FINDINGS.md#f-002). The `gravel vs carpet` inversion that helped fail it
+> in 08-03 no longer reproduces at all. **Note what the gate's PASS does and does not
+> mean:** the audit underneath it still reads `RESULT: FAIL` with four inverted pairs. The
+> gate passes because two of those are baselined with a written finding, which is exactly
+> what `audio_baseline.json` asks for — but "the audio job is green" and "the audio is
+> right" are different sentences.
+>
+> **Why this stays open.** Both mechanical holes are shut and the code half is fixed twice
+> over; what has not been demonstrated is a human reading a CI result. The recurrence
+> above is the evidence that the missing thing is not a setting.
 
 `ChamberDockProbe.cs` landed in `Assets/Scripts/Editor/SceneGen/` at **a89cf64**
 (2026-08-03 04:55). Both engine-free projects glob that folder, and the file does
@@ -662,9 +1002,58 @@ about a minute together), and make `core tests (dotnet)` a required status check
 
 ## B-012 · The balance simulator measures a building the game deleted — F-006, a second time
 
-**Status:** 🔴 **open** · found 2026-08-03 · every simulator figure is void
+**Status:** 🟢 **closed by deletion 2026-08-03** (`e8c67ae`) · found 2026-08-03 ·
+**a defect in a thing that no longer exists is closed, and this entry says so rather than
+disappearing**
 
-Measured 2026-08-03:
+> **How it closed, and it is not any of the three fixes proposed below.**
+> `core/HorrorGame.Sim` was **deleted whole** at `e8c67ae` — *"DESCENT-PIVOT step 7 finally
+> ran — the co-op game is deleted, not gated"* — in the same commit that removed §03's clue
+> chain, §08's economy, the shop, the wallet and the battery economy. The commit is explicit
+> about why: *"every subject it modelled is gone, so there is no balance simulator until one
+> is written for a race."*
+>
+> **Verified in the artefact, 2026-08-12:**
+>
+> ```bash
+> git ls-files core/HorrorGame.Sim | wc -l      # 0
+> ls core/                                       # Directory.Build.props  HorrorGame.Core
+>                                                #  HorrorGame.Core.Tests  HorrorGame.sln
+> grep 'Project(' core/HorrorGame.sln            # HorrorGame.Core, HorrorGame.Core.Tests — no Sim
+> ```
+>
+> Zero tracked files, no directory on disk, and gone from the solution. `dotnet test
+> core/HorrorGame.sln -c Release` runs 357/357 against Core alone.
+>
+> **Option 3 in the list below is what happened, taken to its limit** — "retire or rewrite
+> the §03/§08 half" turned out to be the whole thing. Options 1 and 2 are void: there is
+> no `SimMap.Build` to point at `DescentMap.Build`, and no second number to compare.
+>
+> **The prohibition survives its own entry, and should be read as permanent rather than
+> pending:** *no figure from `horrorsim` may be quoted anywhere* — not match length, not
+> the threat curve, not the outcome mix. There is now no binary that could produce one, so
+> any such figure appearing in this repository is a quotation from a document, and every
+> such document is quoting a building **two** pivots old. [F-006](BALANCE-FINDINGS.md#f-006)
+> is closed by the same deletion for the same reason.
+>
+> **The lesson this entry paid for is not deleted with the code**, and it is the reason
+> this closure is written out instead of the entry being dropped: a build-time include
+> guarantees the *sources* agree and guarantees nothing about **which function you call**.
+> F-006 found that once, this entry found the identical defect a second time in the same
+> file, and both times the mechanism was a compiled-in call that had silently stopped being
+> the one the game makes. The next simulator — if one is written for the race — needs the
+> runtime comparison proposed in option 2, not a csproj glob.
+>
+> **And the deletion had a tail nobody saw for six days.** CI's required `core tests
+> (dotnet)` job went on invoking `dotnet run --project core/HorrorGame.Sim -- validate`
+> until `471ffab` on 2026-08-10 — 37 commits of a gate failing on a command that could
+> never succeed. That is filed under [B-013](#b-013), where it belongs, but it is recorded
+> here too because **deleting a project is not finished when the project is gone**; it is
+> finished when nothing invokes it.
+
+### The original entry, as measured on 2026-08-03
+
+Measured 2026-08-03, against the then-existing simulator:
 
 ```bash
 ~/.dotnet/dotnet run -c Release --project core/HorrorGame.Sim -- map
@@ -722,7 +1111,77 @@ length, not the threat curve, not the outcome mix.
 
 ## B-011 · The one red test is on the path a human takes to host a game
 
-**Status:** 🔴 **open** · found 2026-08-03 · the only red in 113 PlayMode cases
+**Status:** 🟢 **closed 2026-08-03** by `f072827` · found 2026-08-03 · green in every
+sweep since; **the residual gap this entry identified is real and is recorded below**
+
+> **How it closed.** `f072827`, 2026-08-03 09:42:57 — 62 minutes after `a3e268e`, which is
+> where this entry's evidence came from. It deleted the bare seat:
+>
+> ```diff
+> -   NetworkServer.AddConnection(new NetworkConnectionToClient(SecondRunnerConnectionId));
+> ```
+>
+> and replaced it with `SeatASecondRunnerWithABody()` —
+> `LobbyEntryWiringTests.cs:596`, called at `:380`:
+>
+> ```csharp
+> var conn = new NetworkConnectionToClient(SecondRunnerConnectionId) { isAuthenticated = true };
+> Assert.That(NetworkServer.AddConnection(conn), Is.True, …);
+> // Mirror's ReadyMessage handler, called by hand because this seat has no
+> // socket to send one over. Everything it reaches — TryAddRunner,
+> // NetRunner.Build, NetworkServer.AddPlayerForConnection — is the shipped path.
+> manager!.OnServerReady(conn);
+> ```
+>
+> **So the red was the fake connection**, exactly as `a3e268e` claimed and this entry
+> declined to assume. The second seat now gets a real body through the shipped
+> `OnServerReady → TryAddRunner → NetRunner.Build → AddPlayerForConnection` chain, the
+> bodiless seat the test used to manufacture no longer exists, and `ReportStartLine` stops
+> having anything to report.
+>
+> **It was not closed by silencing the log**, which this entry forbade in bold.
+> `grep -n LogAssert` over the whole 851-line fixture returns **one** hit — line 132, inside
+> a doc comment that rejects that fix on this project's own grounds: *"Silencing it with
+> `LogAssert.Expect` would have left a future reader unable to tell that expectation from a
+> genuine regression, which is this repo's one recurring defect wearing a test's clothes."*
+>
+> **And the production code did not move**, which is the part that makes this a closure
+> rather than a patch. `RaceRunners.ReportStartLine` (now `RaceRunners.cs:371`, the error at
+> `:396–400`; this entry cites the pre-`2c4ed98` line 298) is unchanged, still
+> `Debug.LogError`, still carrying the identical Korean text. `RaceLobby.KeepBodiesAcrossTheLoad`
+> (`RaceLobby.cs:1269`) is **byte-identical** from `8bf2e75` to HEAD. The lobby detector
+> that would see a room full of invisible people is intact; it simply has nothing to see.
+>
+> **Green since, three independent times**, from the commit messages of the agents that ran
+> the suite: `8bf2e75` 2026-08-05 "PlayMode 121/121"; `58b22b9` 2026-08-08 and `8db3d78`
+> 2026-08-09 both "PlayMode 121 passed / 3 failed", where the three are
+> [B-022](#b-022)'s voice tests and this fixture is not among them. The fixture itself has
+> not been touched since `8bf2e75` on 2026-08-05, whose only change to it was the §13
+> roster-landing assertions.
+>
+> ⚠️ **The XML is gone.** `/tmp/r7_all.xml` and `dist/test-results/playmode-results.xml`
+> both no longer exist, so the 121/121 is commit-message and STATUS.md testimony rather
+> than a re-readable artefact. The *fix*, by contrast, is in the tree and can be read.
+>
+> ### What this closure does not cover, and it is what the entry actually worried about
+>
+> This entry asked for "a real socket and a real body — a second `KcpClient`". **Half of
+> that landed: the body is real, the socket is still synthetic.** The fixture argues the
+> case at `:110–141` and `:583–594` — host mode forbids a second `NetworkClient` in one
+> process, so a genuinely remote peer needs a second process, which is what `NetSocketTests`
+> does at the cost of giving up host mode, the one thing this fixture cannot give up. It
+> also measures why the fake socket is safe: vendored `kcp2k` `KcpServer.Send` is
+> `if (connections.TryGetValue(…)) c.SendData(…)` with **no `else`**, so an unknown
+> `connectionId` is dropped silently rather than throwing.
+>
+> That reasoning is sound and the closure stands. But **the production claim underneath
+> this entry is still uncovered**: no test anywhere puts *two genuinely remote seats*
+> through the descent's scene load, which is the thing `KeepBodiesAcrossTheLoad` exists
+> for. It is a smaller thing than a blocker — the shipped host path is now exercised
+> end-to-end and the detector is live — so it is left here as a named gap rather than
+> re-opened. The next multi-process test is where it gets closed.
+
+### The original entry, as written on 2026-08-03
 
 `/tmp/r7_all.xml`, 2026-08-03 08:37 — `total 113 passed 112 failed 1`:
 
@@ -1053,8 +1512,18 @@ straight legs, and they are the same edit to the same generator.
 
 ## B-006 · The core solution did not build — the simulator never compiled a file it depends on
 
-**Status:** 🟢 **CLOSED** 2026-08-01 · re-verified 2026-08-03:
-`dotnet build core/HorrorGame.sln -c Release` → `오류 0개`
+**Status:** 🟢 **CLOSED** 2026-08-01 · re-verified 2026-08-12:
+`dotnet test core/HorrorGame.sln -c Release` → **357 passed, 0 failed**
+
+> **Note what the solution now contains, because this entry is about a project that is no
+> longer in it.** `HorrorGame.Sim` was deleted at `e8c67ae` ([B-012](#b-012)), so
+> `core/HorrorGame.sln` holds `HorrorGame.Core` and `HorrorGame.Core.Tests` and nothing
+> else, and the 512-test figure [B-013](#b-013) quotes is now 357. The **inversion** this
+> entry describes — Unity-only files named, the engine-free half globbed — survived the
+> deletion in `HorrorGame.Core.Tests.csproj` and is still the arrangement that makes a
+> stray `using UnityEngine` break the build loudly. That judgement is unchanged and was
+> vindicated twice more since: once by B-013's `ChamberDockProbe`, once by `9f0f447`'s map
+> re-lay, which broke three §12 rules and had them fail in `dotnet` rather than in a scene.
 
 `MapQualityReport` gained a `RunnerCensus`; `HorrorGame.Sim.csproj` listed the engine-free
 map sources **by name**, so the new file was never compiled and the solution failed on
@@ -1088,7 +1557,21 @@ nothing.
 
 ## B-004 · The networking library is a stranger's repack, not Mirror
 
-**Status:** 🔴 **open — blocks release** · supply chain · **more urgent since the pivot**
+**Status:** 🔴 **open — blocks release** · supply chain · **more urgent since the pivot** ·
+re-confirmed 2026-08-12, nothing has changed
+
+> **Re-checked 2026-08-12.** `unity/HorrorGame/Packages/manifest.json:4` still reads
+> `"com.mirrornetworking.mirror": "96.6.4"`, still resolved through the OpenUPM scoped
+> registry declared at `:47–52`. No vendored `.unitypackage` under `Assets/`.
+>
+> Second-order confirmation, from a place that is easy to stop noticing: **both** build
+> reports of 2026-08-10 list three tolerated errors, all the same one —
+> `Asset Packages/com.mirrornetworking.mirror/Mirror/Assets has no meta file, but it's in
+> an immutable folder` — with the note that this is "a known defect in the OpenUPM package
+> … the package repacks Mirror's git submodule". Every shipped build carries a written
+> acknowledgement that the networking layer is a repack, and it reads as routine because it
+> is printed every time. That is the same mechanism as [B-014](#b-014), on the supply chain
+> instead of the map.
 
 `Packages/manifest.json` pulls `com.mirrornetworking.mirror` 96.6.4 from OpenUPM. Its own
 `package.json`, read from the package cache:
@@ -1152,7 +1635,28 @@ level up — the *checklist* prints `FAIL` on the happy path.
 
 ## B-002 · The EditMode solo-match test fails on a broken Mirror package install
 
-**Status:** 🟡 **dormant** · never a code regression · **unverifiable right now**
+**Status:** 🟢 **closed by deletion 2026-08-03** (`e8c67ae`) · never a code regression ·
+**"dormant" was the wrong word and is retired**
+
+> **Why not dormant.** Dormant claimed the defect was asleep and could wake. It cannot:
+> **`Assets/Scripts/Gameplay/Match/Editor/SoloMatchLoopTests.cs` was deleted at
+> `e8c67ae`**, 2026-08-03 19:45:12, with the rest of the co-op game. There is no
+> `Solo_match_runs_the_whole_round_trip` anywhere in the tree. The entry's own second
+> paragraph anticipated this — *"the test itself drives the §01 co-operative loop the pivot
+> deleted, so it may not be a test worth keeping"* — and that is what was decided, four
+> hours after the entry was written.
+>
+> Both of the questions this entry said "are answered by one EditMode run" now have
+> answers, and neither needed the run: the test does not reproduce **because it does not
+> exist**, and it was not worth keeping. The run happened anyway on 2026-08-08 — 95/95,
+> [B-016](#b-016) — and `SoloMatchLoopTests` is not among the 95.
+>
+> **The underlying package fault is [B-004](#b-004) and is emphatically not closed** — it
+> is still printed three times in every build report of 2026-08-10. What is closed is this
+> entry's subject: a specific test failing on it. If the message ever surfaces in a
+> *different* test, the guidance below still stands and is the reason this entry is kept
+> rather than dropped: `LogAssert.Expect` on that one message in that one test, **not**
+> widening the harness's log tolerance in general.
 
 `SoloMatchLoopTests.Solo_match_runs_the_whole_round_trip` failed on an unhandled log
 message — `Asset Packages/com.mirrornetworking.mirror/Mirror/Assets has no meta file, but

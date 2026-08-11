@@ -53,7 +53,7 @@ Already in both drafts as the closing clause — [copy-en.md §2](copy-en.md),
 [copy-ko.md §2](copy-ko.md).
 
 ```
-… Being caught is being out, unranked. Headphones recommended.
+… Get caught and you start again on B1. Headphones recommended.
 ```
 
 ```
@@ -112,9 +112,14 @@ ever reaches them.
 
 | Where | State |
 |---|---|
-| Main menu, along the bottom | ✅ **already there.** `Shots/menu_main.png` carries §05's headphone warning across the foot of the title screen (STATUS §4.2) |
-| Settings → audio bus rows | ✅ each row already carries the § reference for why its range is what it is |
+| Main menu, along the bottom | ✅ **already there, in the code.** `Assets/Scripts/UI/Screens/MainMenuScreen.cs:114–115` writes one of two strings — 「§05 · 헤드폰 권장 — 3D 오디오는 카메라 기준이다. 괴물도, 옆 주자의 목소리도 방향으로 온다.」 or the blunter 「헤드폰이 필요하다」 variant |
+| Settings → audio bus rows | ✅ `Assets/Scripts/UI/Screens/SettingsScreen.cs:264` carries 「헤드폰 필수 — §05: 『3D 오디오는 카메라 기준 → 헤드폰 필수』」, and each row above it carries the § reference for why its range is what it is |
 | First-launch, dismissible, once | ❌ **not built.** Tracked in [checklist.md §3](checklist.md) |
+
+> Checked 2026-08-12 against the source, because this table used to cite
+> `Shots/menu_main.png` and "STATUS §4.2" as its evidence. **Neither exists** — there is
+> no `Shots/` directory in the repository and STATUS.md has no §4.2. The claim was right;
+> the receipt was not.
 
 The third is the one that catches the invited player. One line, a dismiss button, a
 flag in Steam Cloud so it is never shown twice.
@@ -157,16 +162,26 @@ hear *what floor another player is on* — through a floor, through walls, at ra
 That is a strictly larger claim about the mix, and the two open findings against it
 were both measured under the smaller one:
 
-- [F-003](../BALANCE-FINDINGS.md#f-003) — spectral separation between surfaces is
-  **2.13× dry** and **1.396× at 25 m through a wall.** Through-structure is precisely
-  the case the new headline claim depends on.
-- [F-002](../BALANCE-FINDINGS.md#f-002) — gravel measures **26.1 dB quieter** than
-  concrete at the 800 Hz corner the mix uses, while the game tells the player gravel
-  is the clearer of the two. Those two surfaces are now **B4 and B1**, so an inverted
-  clarity pair is an inverted *floor number*.
+Both figures below were re-measured on **2026-08-12** by running
+`tools/ci/verify_audio.sh` — not carried over from the finding, which was written when
+the alphabet was five surfaces and before the 2026-08-09 CC0 footstep pass moved both
+numbers.
 
-A headphone notice does not fix an inverted clarity table, and it does not make
-1.396× audible. If the copy still says "footsteps tell you which floor somebody is
-on" while F-002 and F-003 are open, the notice becomes the thing reviewers quote
-back. **The notice is a hardware requirement, not a mix**, and §14's validation
-question 5 — 「발소리의 방향·거리를 구별할 수 있는가?」 — is still unanswered.
+- [F-003](../BALANCE-FINDINGS.md#f-003) — dry, the eight-surface alphabet **passes**:
+  worst pair water vs gravel at **1.44×** against a 1.40× floor, worst within a single
+  actor 1.41×. **At 25 m through a wall it does not hold** — worst pair metal vs gravel
+  at **1.137×**. Through-structure is precisely the case the headline claim depends on,
+  and the dry margin is now 0.04× rather than the 2.13× the finding was written against.
+- [F-002](../BALANCE-FINDINGS.md#f-002) — gravel measures **17.8 dB quieter** than
+  concrete through the verifier's 600 Hz low-pass (down from 32.5 dB, halved 2026-08-09),
+  while the game still tells the player gravel is the clearer of the two. The audit
+  carries it as an accepted baseline defect, so the gate passes and **the inversion is
+  still there**. Those two surfaces are now **B4 and B1**, so an inverted clarity pair is
+  an inverted *floor number*.
+
+A headphone notice does not fix an inverted clarity table, and it does not make 1.137×
+audible. If the copy still says "footsteps tell you which floor somebody is on" while
+F-002 and F-003 are open, the notice becomes the thing reviewers quote back. **The notice
+is a hardware requirement, not a mix**, and §14's validation question 5 — 「발소리의
+방향·거리를 구별할 수 있는가?」 — is still unanswered, because no two people have ever
+listened to this game at the same time.
